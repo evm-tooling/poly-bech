@@ -1,0 +1,80 @@
+# Example: Hash function benchmarks
+#
+# This example demonstrates benchmarking hash functions across Go and TypeScript.
+# It shows how to use fixtures for shared test data.
+
+suite hash {
+    description: "Cryptographic hash function benchmarks"
+    iterations: 5000
+    warmup: 100
+    
+    # Setup code for each language
+    setup go {
+        import "crypto/sha256"
+        import "golang.org/x/crypto/sha3"
+        
+        func keccak256(data []byte) []byte {
+            h := sha3.NewLegacyKeccak256()
+            h.Write(data)
+            return h.Sum(nil)
+        }
+        
+        func sha256Hash(data []byte) []byte {
+            h := sha256.Sum256(data)
+            return h[:]
+        }
+    }
+    
+    setup ts {
+        import { keccak256, sha256 } from 'viem'
+    }
+    
+    # Fixtures with portable hex format
+    fixture short_data {
+        description: "11-byte input (hello world)"
+        hex: "68656c6c6f20776f726c64"
+    }
+    
+    fixture long_data {
+        description: "1KB of sequential bytes"
+        # Language-specific implementations for complex fixtures
+        go: {
+            data := make([]byte, 1024)
+            for i, _ := range data { 
+                data[i] = byte(i % 256) 
+            }
+            return data
+        }
+        ts: {
+            const arr = new Uint8Array(1024);
+            for (let i = 0; i < 1024; i++) arr[i] = i % 256;
+            return '0x' + Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+    }
+    
+    # Benchmarks
+    bench keccak256_short {
+        description: "Keccak256 on 11-byte input"
+        go:  keccak256(short_data)
+        ts:  keccak256(short_data_hex)
+    }
+    
+    bench keccak256_long {
+        description: "Keccak256 on 1KB input"
+        iterations: 10000
+        go:  keccak256(long_data)
+        ts:  keccak256(long_data)
+    }
+    
+    bench sha256_short {
+        description: "SHA256 on 11-byte input"
+        go:  sha256Hash(short_data)
+        ts:  sha256(short_data_hex)
+    }
+    
+    bench sha256_long {
+        description: "SHA256 on 1KB input"
+        go:  sha256Hash(long_data)
+        ts:  sha256(long_data)
+    }
+}

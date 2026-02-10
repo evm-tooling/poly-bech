@@ -1,0 +1,22 @@
+suite example {
+    iterations: 1000
+    warmup: 100
+    description: "Example benchmark to get you started"
+
+    setup go {
+        import "crypto/sha256"
+    }
+
+    setup ts {
+        import { createHash } from 'crypto';
+    }
+
+    fixture data {
+        hex: "68656c6c6f20776f726c64"  // "hello world"
+    }
+
+    bench sha256 {
+        go: sha256.Sum256(data)
+        ts: createHash('sha256').update(Buffer.from(data)).digest()
+    }
+}

@@ -1,0 +1,78 @@
+# viem-simple
+
+A poly-bench project for cross-language benchmarking.
+
+## Getting Started
+
+1. Install dependencies:
+
+```bash
+poly-bench install
+```
+
+2. Run benchmarks:
+
+```bash
+poly-bench run
+```
+
+## Project Structure
+
+```
+viem-simple/
+├── polybench.toml       # Project configuration
+├── benchmarks/          # Benchmark files (.bench)
+│   └── example.bench    # Example benchmark
+├── go.mod               # Go module
+├── package.json         # Node.js dependencies
+└── .polybench/          # Generated files (gitignored)
+```
+
+## Adding Dependencies
+
+### Go
+
+```bash
+poly-bench add --go "github.com/ethereum/go-ethereum@v1.13.0"
+```
+
+### TypeScript
+
+```bash
+poly-bench add --ts "viem@^2.0.0"
+```
+
+## Creating New Benchmarks
+
+```bash
+poly-bench new my-benchmark
+```
+
+This creates `benchmarks/my-benchmark.bench` with a template.
+
+## DSL Reference
+
+```bench
+suite my_suite {
+    iterations: 1000
+    warmup: 100
+    description: "My benchmarks"
+
+    setup go {
+        import "my/package"
+    }
+
+    setup ts {
+        import { myFunc } from 'my-package';
+    }
+
+    fixture data {
+        hex: "68656c6c6f"  // Binary data as hex
+    }
+
+    bench my_benchmark {
+        go: myFunc(data)
+        ts: myFunc(data)
+    }
+}
+```

@@ -1,0 +1,29 @@
+[project]
+name = "viem-simple"
+version = "0.1.0"
+
+[defaults]
+iterations = 1000
+warmup = 100
+languages = [
+    "go",
+    "ts",
+]
+
+[go]
+module = "viem-simple"
+version = "1.21"
+
+[go.dependencies]
+"github.com/ethereum/go-ethereum" = "latest"
+"golang.org/x/crypto/sha3" = "latest"
+"github.com/ChefBingbong/viem-go" = "v0.0.31"
+
+[ts]
+runtime = "node"
+
+[ts.dependencies]
+viem = "latest"
+
+[output]
+report_formats = []
