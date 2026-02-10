@@ -1,0 +1,365 @@
+//! Lexer for the poly-bench DSL
+//!
+//! Converts source text into a stream of tokens.
+
+use crate::dsl::ast::Span;
+use crate::dsl::tokens::{Token, TokenKind, keyword_from_str};
+use crate::dsl::error::ParseError;
+
+/// Lexer state
+pub struct Lexer<'a> {
+    source: &'a str,
+    chars: std::iter::Peekable<std::str::CharIndices<'a>>,
+    current_pos: usize,
+    line: usize,
+    col: usize,
+    line_start: usize,
+}
+
+impl<'a> Lexer<'a> {
+    pub fn new(source: &'a str) -> Self {
+        Self {
+            source,
+            chars: source.char_indices().peekable(),
+            current_pos: 0,
+            line: 1,
+            col: 1,
+            line_start: 0,
+        }
+    }
+
+    /// Tokenize the entire source
+    pub fn tokenize(&mut self) -> Result<Vec<Token>, ParseError> {
+        let mut tokens = Vec::new();
+
+        loop {
+            match self.next_token() {
+                Ok(token) => {
+                    let is_eof = token.kind == TokenKind::Eof;
+                    tokens.push(token);
+                    if is_eof {
+                        break;
+                    }
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        Ok(tokens)
+    }
+
+    /// Get the next token
+    pub fn next_token(&mut self) -> Result<Token, ParseError> {
+        self.skip_whitespace_and_comments();
+
+        let start_pos = self.current_pos;
+        let start_line = self.line;
+        let start_col = self.col;
+
+        let Some((pos, ch)) = self.advance() else {
+            return Ok(Token::new(
+                TokenKind::Eof,
+                Span::new(start_pos, start_pos, start_line, start_col),
+                String::new(),
+            ));
+        };
+
+        let (kind, lexeme) = match ch {
+            '{' => (TokenKind::LBrace, "{".to_string()),
+            '}' => (TokenKind::RBrace, "}".to_string()),
+            '(' => (TokenKind::LParen, "(".to_string()),
+            ')' => (TokenKind::RParen, ")".to_string()),
+            ':' => (TokenKind::Colon, ":".to_string()),
+            '@' => {
+                // Check for @file
+                if self.peek_str("file") {
+                    self.advance_n(4);
+                    (TokenKind::FileRef, "@file".to_string())
+                } else {
+                    (TokenKind::At, "@".to_string())
+                }
+            }
+            '"' => self.scan_string()?,
+            '\'' => self.scan_single_quote_string()?,
+            c if c.is_ascii_digit() => self.scan_number(pos)?,
+            c if c.is_ascii_alphabetic() || c == '_' => self.scan_identifier(pos)?,
+            // Code characters - treat as identifiers for inline code
+            '.' | ',' | '+' | '-' | '*' | '/' | '%' | '=' | '<' | '>' | '!' | '&' | '|' | 
+            '[' | ']' | ';' | '?' | '^' | '~' | '`' => {
+                // Scan the rest as a code expression
+                self.scan_code_expr(pos, ch)?
+            }
+            _ => {
+                return Err(ParseError::UnexpectedChar {
+                    char: ch,
+                    span: Span::new(start_pos, self.current_pos, start_line, start_col),
+                });
+            }
+        };
+
+        Ok(Token::new(
+            kind,
+            Span::new(start_pos, self.current_pos, start_line, start_col),
+            lexeme,
+        ))
+    }
+
+    /// Advance and return the next character
+    fn advance(&mut self) -> Option<(usize, char)> {
+        let result = self.chars.next();
+        if let Some((pos, ch)) = result {
+            self.current_pos = pos + ch.len_utf8();
+            if ch == '\n' {
+                self.line += 1;
+                self.col = 1;
+                self.line_start = self.current_pos;
+            } else {
+                self.col += 1;
+            }
+        }
+        result
+    }
+
+    /// Advance n characters
+    fn advance_n(&mut self, n: usize) {
+        for _ in 0..n {
+            self.advance();
+        }
+    }
+
+    /// Peek at the next character without consuming
+    fn peek(&mut self) -> Option<char> {
+        self.chars.peek().map(|(_, ch)| *ch)
+    }
+
+    /// Check if the next characters match a string
+    fn peek_str(&self, s: &str) -> bool {
+        self.source[self.current_pos..].starts_with(s)
+    }
+
+    /// Skip whitespace and comments
+    fn skip_whitespace_and_comments(&mut self) {
+        loop {
+            match self.peek() {
+                Some(c) if c.is_whitespace() => {
+                    self.advance();
+                }
+                Some('#') => {
+                    // Skip until end of line
+                    while let Some(c) = self.peek() {
+                        if c == '\n' {
+                            break;
+                        }
+                        self.advance();
+                    }
+                }
+                _ => break,
+            }
+        }
+    }
+
+    /// Scan a string literal
+    fn scan_string(&mut self) -> Result<(TokenKind, String), ParseError> {
+        let start_line = self.line;
+        let start_col = self.col - 1; // Account for opening quote
+        let start_pos = self.current_pos - 1;
+        
+        let mut value = String::new();
+        
+        loop {
+            match self.advance() {
+                Some((_, '"')) => break,
+                Some((_, '\\')) => {
+                    // Handle escape sequences
+                    match self.advance() {
+                        Some((_, 'n')) => value.push('\n'),
+                        Some((_, 't')) => value.push('\t'),
+                        Some((_, 'r')) => value.push('\r'),
+                        Some((_, '\\')) => value.push('\\'),
+                        Some((_, '"')) => value.push('"'),
+                        Some((_, c)) => {
+                            return Err(ParseError::InvalidEscape {
+                                char: c,
+                                span: Span::new(start_pos, self.current_pos, start_line, start_col),
+                            });
+                        }
+                        None => {
+                            return Err(ParseError::UnterminatedString {
+                                span: Span::new(start_pos, self.current_pos, start_line, start_col),
+                            });
+                        }
+                    }
+                }
+                Some((_, c)) => value.push(c),
+                None => {
+                    return Err(ParseError::UnterminatedString {
+                        span: Span::new(start_pos, self.current_pos, start_line, start_col),
+                    });
+                }
+            }
+        }
+
+        Ok((TokenKind::String(value.clone()), format!("\"{}\"", value)))
+    }
+
+    /// Scan a number literal
+    fn scan_number(&mut self, start: usize) -> Result<(TokenKind, String), ParseError> {
+        while let Some(c) = self.peek() {
+            if c.is_ascii_digit() || c == '_' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        let lexeme = &self.source[start..self.current_pos];
+        let clean = lexeme.replace('_', "");
+        let value = clean.parse::<u64>().map_err(|_| ParseError::InvalidNumber {
+            span: Span::new(start, self.current_pos, self.line, self.col),
+        })?;
+
+        Ok((TokenKind::Number(value), lexeme.to_string()))
+    }
+
+    /// Scan an identifier or keyword
+    fn scan_identifier(&mut self, start: usize) -> Result<(TokenKind, String), ParseError> {
+        while let Some(c) = self.peek() {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        let lexeme = &self.source[start..self.current_pos];
+        
+        // Check if it's a keyword
+        let kind = keyword_from_str(lexeme)
+            .unwrap_or_else(|| TokenKind::Identifier(lexeme.to_string()));
+
+        Ok((kind, lexeme.to_string()))
+    }
+
+    /// Scan a single-quoted string (for JS imports)
+    fn scan_single_quote_string(&mut self) -> Result<(TokenKind, String), ParseError> {
+        let start_line = self.line;
+        let start_col = self.col - 1;
+        let start_pos = self.current_pos - 1;
+        
+        let mut value = String::new();
+        
+        loop {
+            match self.advance() {
+                Some((_, '\'')) => break,
+                Some((_, '\\')) => {
+                    match self.advance() {
+                        Some((_, 'n')) => value.push('\n'),
+                        Some((_, 't')) => value.push('\t'),
+                        Some((_, 'r')) => value.push('\r'),
+                        Some((_, '\\')) => value.push('\\'),
+                        Some((_, '\'')) => value.push('\''),
+                        Some((_, c)) => {
+                            return Err(ParseError::InvalidEscape {
+                                char: c,
+                                span: Span::new(start_pos, self.current_pos, start_line, start_col),
+                            });
+                        }
+                        None => {
+                            return Err(ParseError::UnterminatedString {
+                                span: Span::new(start_pos, self.current_pos, start_line, start_col),
+                            });
+                        }
+                    }
+                }
+                Some((_, c)) => value.push(c),
+                None => {
+                    return Err(ParseError::UnterminatedString {
+                        span: Span::new(start_pos, self.current_pos, start_line, start_col),
+                    });
+                }
+            }
+        }
+
+        Ok((TokenKind::String(value.clone()), format!("'{}'", value)))
+    }
+
+    /// Scan a code expression (for inline code)
+    fn scan_code_expr(&mut self, start: usize, first_char: char) -> Result<(TokenKind, String), ParseError> {
+        let mut expr = first_char.to_string();
+        
+        // Continue until we hit a delimiter
+        while let Some(c) = self.peek() {
+            // Stop at structural delimiters
+            if matches!(c, '{' | '}' | '\n' | '#') {
+                break;
+            }
+            
+            // Include most characters in the code expression
+            expr.push(c);
+            self.advance();
+        }
+        
+        let trimmed = expr.trim().to_string();
+        Ok((TokenKind::Identifier(trimmed.clone()), trimmed))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_basic_tokens() {
+        let source = "suite hash { }";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        
+        assert_eq!(tokens.len(), 5); // suite, hash, {, }, EOF
+        assert_eq!(tokens[0].kind, TokenKind::Suite);
+        assert!(matches!(tokens[1].kind, TokenKind::Identifier(_)));
+        assert_eq!(tokens[2].kind, TokenKind::LBrace);
+        assert_eq!(tokens[3].kind, TokenKind::RBrace);
+        assert_eq!(tokens[4].kind, TokenKind::Eof);
+    }
+
+    #[test]
+    fn test_string_literal() {
+        let source = r#""hello world""#;
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        
+        assert!(matches!(&tokens[0].kind, TokenKind::String(s) if s == "hello world"));
+    }
+
+    #[test]
+    fn test_number_literal() {
+        let source = "12345";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        
+        assert!(matches!(tokens[0].kind, TokenKind::Number(12345)));
+    }
+
+    #[test]
+    fn test_comment() {
+        let source = "suite # this is a comment\nhash";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        
+        assert_eq!(tokens.len(), 3); // suite, hash, EOF
+        assert_eq!(tokens[0].kind, TokenKind::Suite);
+        assert!(matches!(tokens[1].kind, TokenKind::Identifier(_)));
+    }
+
+    #[test]
+    fn test_file_ref() {
+        let source = r#"@file("path.hex")"#;
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        
+        assert_eq!(tokens[0].kind, TokenKind::FileRef);
+        assert_eq!(tokens[1].kind, TokenKind::LParen);
+        assert!(matches!(&tokens[2].kind, TokenKind::String(s) if s == "path.hex"));
+        assert_eq!(tokens[3].kind, TokenKind::RParen);
+    }
+}
