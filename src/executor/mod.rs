@@ -1,0 +1,18 @@
+//! Benchmark execution orchestration
+
+mod scheduler;
+mod comparison;
+
+use std::path::PathBuf;
+
+/// Project roots for different languages
+#[derive(Debug, Clone, Default)]
+pub struct ProjectRoots {
+    /// Go module root (directory containing go.mod)
+    pub go_root: Option<PathBuf>,
+    /// Node.js project root (directory containing package.json or node_modules)
+    pub node_root: Option<PathBuf>,
+}
+
+pub use scheduler::run;
+pub use comparison::{BenchmarkResults, SuiteResults};
