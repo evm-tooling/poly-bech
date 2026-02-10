@@ -9,6 +9,7 @@ mod ir;
 mod runtime;
 mod executor;
 mod reporter;
+mod project;
 
 #[derive(Parser)]
 #[command(name = "poly-bench")]
@@ -33,11 +34,11 @@ enum Commands {
         show_ast: bool,
     },
 
-    /// Run benchmarks from a DSL file
+    /// Run benchmarks from a DSL file or project
     Run {
-        /// Path to the .bench file
+        /// Path to the .bench file (optional if in a poly-bench project)
         #[arg(value_name = "FILE")]
-        file: PathBuf,
+        file: Option<PathBuf>,
 
         /// Run only benchmarks for a specific language (go, ts)
         #[arg(long, value_name = "LANG")]
@@ -80,6 +81,42 @@ enum Commands {
         #[arg(long, short, value_name = "DIR")]
         output: PathBuf,
     },
+
+    /// Initialize a new poly-bench project
+    Init {
+        /// Project name or "." for current directory
+        #[arg(value_name = "NAME")]
+        name: String,
+
+        /// Languages to include (comma-separated: go,ts)
+        #[arg(long, short, value_delimiter = ',', default_value = "go,ts")]
+        languages: Vec<String>,
+
+        /// Skip generating example benchmark
+        #[arg(long)]
+        no_example: bool,
+    },
+
+    /// Create a new benchmark file
+    New {
+        /// Benchmark/suite name
+        #[arg(value_name = "NAME")]
+        name: String,
+    },
+
+    /// Add a dependency
+    Add {
+        /// Go package (e.g., "github.com/ethereum/go-ethereum@v1.13.0")
+        #[arg(long)]
+        go: Option<String>,
+
+        /// NPM package (e.g., "viem@^2.0.0")
+        #[arg(long)]
+        ts: Option<String>,
+    },
+
+    /// Install dependencies from polybench.toml
+    Install,
 }
 
 #[tokio::main]
@@ -99,10 +136,26 @@ async fn main() -> Result<()> {
             go_project,
             ts_project,
         } => {
-            cmd_run(&file, lang, iterations, &report, output, go_project, ts_project).await?;
+            cmd_run(file, lang, iterations, &report, output, go_project, ts_project).await?;
         }
         Commands::Codegen { file, lang, output } => {
             cmd_codegen(&file, &lang, &output).await?;
+        }
+        Commands::Init {
+            name,
+            languages,
+            no_example,
+        } => {
+            cmd_init(&name, languages, no_example)?;
+        }
+        Commands::New { name } => {
+            cmd_new(&name)?;
+        }
+        Commands::Add { go, ts } => {
+            cmd_add(go, ts)?;
+        }
+        Commands::Install => {
+            cmd_install()?;
         }
     }
 
@@ -147,7 +200,7 @@ async fn cmd_check(file: &PathBuf, show_ast: bool) -> Result<()> {
 }
 
 async fn cmd_run(
-    file: &PathBuf,
+    file: Option<PathBuf>,
     lang: Option<String>,
     iterations: Option<u64>,
     report_format: &str,
@@ -157,18 +210,33 @@ async fn cmd_run(
 ) -> Result<()> {
     use colored::Colorize;
 
-    // Parse the DSL file
-    let source = std::fs::read_to_string(file)
-        .map_err(|e| miette::miette!("Failed to read file {}: {}", file.display(), e))?;
-
-    let filename = file.file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown");
-
-    let ast = dsl::parse(&source, filename)?;
-
-    // Lower to IR
-    let ir = ir::lower(&ast, file.parent())?;
+    // Get benchmark files to run
+    let files = match file {
+        Some(f) => vec![f],
+        None => {
+            // Try to find project root and discover benchmark files
+            let current_dir = std::env::current_dir()
+                .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+            
+            let project_root = project::find_project_root(&current_dir)
+                .ok_or_else(|| miette::miette!(
+                    "No .bench file specified and not in a poly-bench project.\n\
+                    Either specify a file: poly-bench run <file.bench>\n\
+                    Or initialize a project: poly-bench init <name>"
+                ))?;
+            
+            let bench_files = project::find_bench_files(&project_root)?;
+            
+            if bench_files.is_empty() {
+                return Err(miette::miette!(
+                    "No .bench files found in {}/",
+                    project::BENCHMARKS_DIR
+                ));
+            }
+            
+            bench_files
+        }
+    };
 
     // Filter languages if specified
     let langs: Vec<dsl::Lang> = match lang.as_deref() {
@@ -178,13 +246,40 @@ async fn cmd_run(
         None => vec![dsl::Lang::Go, dsl::Lang::TypeScript],
     };
 
-    // Resolve project roots for module resolution
-    let project_roots = resolve_project_roots(go_project, ts_project, file)?;
+    // Run each benchmark file
+    let mut all_results = Vec::new();
+    
+    for bench_file in &files {
+        // Parse the DSL file
+        let source = std::fs::read_to_string(bench_file)
+            .map_err(|e| miette::miette!("Failed to read file {}: {}", bench_file.display(), e))?;
 
-    println!("{} Running benchmarks from {}", "▶".green().bold(), file.display());
+        let filename = bench_file.file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
 
-    // Execute benchmarks
-    let results = executor::run(&ir, &langs, iterations, &project_roots).await?;
+        let ast = dsl::parse(&source, filename)?;
+
+        // Lower to IR
+        let ir = ir::lower(&ast, bench_file.parent())?;
+
+        // Resolve project roots for module resolution
+        let project_roots = resolve_project_roots(go_project.clone(), ts_project.clone(), bench_file)?;
+
+        println!("{} Running benchmarks from {}", "▶".green().bold(), bench_file.display());
+
+        // Execute benchmarks
+        let results = executor::run(&ir, &langs, iterations, &project_roots).await?;
+        all_results.push(results);
+    }
+
+    // Merge results if multiple files
+    let results = if all_results.len() == 1 {
+        all_results.remove(0)
+    } else {
+        // Merge multiple results into one
+        merge_results(all_results)
+    };
 
     // Generate reports
     match report_format {
@@ -225,7 +320,21 @@ async fn cmd_run(
     Ok(())
 }
 
-use executor::ProjectRoots;
+use executor::{ProjectRoots, BenchmarkResults};
+
+/// Merge multiple benchmark results into one
+fn merge_results(mut results: Vec<BenchmarkResults>) -> BenchmarkResults {
+    if results.is_empty() {
+        return BenchmarkResults::new(vec![]);
+    }
+    
+    let mut all_suites = Vec::new();
+    for result in results.drain(..) {
+        all_suites.extend(result.suites);
+    }
+    
+    BenchmarkResults::new(all_suites)
+}
 
 /// Resolve project roots for module resolution
 fn resolve_project_roots(
@@ -325,4 +434,41 @@ async fn cmd_codegen(file: &PathBuf, lang: &str, output: &PathBuf) -> Result<()>
     }
 
     Ok(())
+}
+
+fn cmd_init(name: &str, languages: Vec<String>, no_example: bool) -> Result<()> {
+    let options = project::init::InitOptions {
+        name: name.to_string(),
+        languages,
+        no_example,
+    };
+    project::init::init_project(&options)?;
+    Ok(())
+}
+
+fn cmd_new(name: &str) -> Result<()> {
+    project::init::new_benchmark(name)?;
+    Ok(())
+}
+
+fn cmd_add(go: Option<String>, ts: Option<String>) -> Result<()> {
+    if go.is_none() && ts.is_none() {
+        return Err(miette::miette!(
+            "No dependency specified. Use --go or --ts to add a dependency."
+        ));
+    }
+
+    if let Some(ref spec) = go {
+        project::deps::add_go_dependency(spec)?;
+    }
+
+    if let Some(ref spec) = ts {
+        project::deps::add_ts_dependency(spec)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_install() -> Result<()> {
+    project::deps::install_all()
 }
