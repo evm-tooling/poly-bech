@@ -1,0 +1,22 @@
+# Minimal benchmark example
+# Tests basic math operations
+
+suite math {
+    description: "Simple math operations"
+    iterations: 10000
+    warmup: 100
+    
+    fixture data {
+        hex: "48656c6c6f"
+    }
+    
+    bench add {
+        go: 1 + 2
+        ts: 1 + 2
+    }
+    
+    bench multiply {
+        go: 3 * 4
+        ts: 3 * 4
+    }
+}

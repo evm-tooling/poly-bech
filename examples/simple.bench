@@ -1,0 +1,22 @@
+# Simple example for testing the parser
+#
+# This is a minimal benchmark file for quick testing.
+
+suite simple {
+    description: "Simple test benchmarks"
+    iterations: 1000
+    warmup: 10
+    
+    bench noop_go {
+        go: 1 + 1
+    }
+    
+    bench noop_ts {
+        ts: 1 + 1
+    }
+    
+    bench both {
+        go: 1 + 1
+        ts: 1 + 1
+    }
+}
