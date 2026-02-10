@@ -2,6 +2,7 @@
 
 use crate::project::{
     manifest::{self, Manifest},
+    runtime_env_go, runtime_env_ts,
     templates, BENCHMARKS_DIR, MANIFEST_FILENAME,
 };
 use colored::Colorize;
@@ -103,23 +104,29 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         );
     }
 
-    // Create go.mod if Go is enabled
+    // Create runtime-env dirs and language-specific env files (keeps root uncluttered)
     if has_go {
-        let go_mod_path = project_dir.join("go.mod");
+        let go_env = runtime_env_go(&project_dir);
+        std::fs::create_dir_all(&go_env)
+            .map_err(|e| miette::miette!("Failed to create {}: {}", go_env.display(), e))?;
         let go_version = manifest.go.as_ref().and_then(|g| g.version.as_deref());
         let go_mod_content = templates::go_mod(&project_name, go_version);
-        std::fs::write(&go_mod_path, go_mod_content)
+        std::fs::write(go_env.join("go.mod"), go_mod_content)
             .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
-        println!("{} Created go.mod", "✓".green().bold());
+        let deps_content = templates::go_deps_file(&[]);
+        std::fs::write(go_env.join(templates::GO_DEPS_FILENAME), deps_content)
+            .map_err(|e| miette::miette!("Failed to write deps.go: {}", e))?;
+        println!("{} Created .polybench/runtime-env/go/ (go.mod, deps.go)", "✓".green().bold());
     }
 
-    // Create package.json if TypeScript is enabled
     if has_ts {
-        let package_json_path = project_dir.join("package.json");
+        let ts_env = runtime_env_ts(&project_dir);
+        std::fs::create_dir_all(&ts_env)
+            .map_err(|e| miette::miette!("Failed to create {}: {}", ts_env.display(), e))?;
         let package_json_content = templates::package_json_pretty(&project_name);
-        std::fs::write(&package_json_path, package_json_content)
+        std::fs::write(ts_env.join("package.json"), package_json_content)
             .map_err(|e| miette::miette!("Failed to write package.json: {}", e))?;
-        println!("{} Created package.json", "✓".green().bold());
+        println!("{} Created .polybench/runtime-env/ts/ (package.json)", "✓".green().bold());
     }
 
     // Create .gitignore
@@ -235,12 +242,13 @@ mod tests {
         let result = init_project(&options);
         assert!(result.is_ok());
 
-        // Check files exist
+        // Check files exist (runtime-env layout: deps under .polybench/runtime-env/)
         assert!(project_path.join(MANIFEST_FILENAME).exists());
         assert!(project_path.join(BENCHMARKS_DIR).exists());
         assert!(project_path.join(BENCHMARKS_DIR).join("example.bench").exists());
-        assert!(project_path.join("go.mod").exists());
-        assert!(project_path.join("package.json").exists());
+        assert!(crate::project::runtime_env_go(&project_path).join("go.mod").exists());
+        assert!(crate::project::runtime_env_go(&project_path).join(templates::GO_DEPS_FILENAME).exists());
+        assert!(crate::project::runtime_env_ts(&project_path).join("package.json").exists());
         assert!(project_path.join(".gitignore").exists());
         assert!(project_path.join("README.md").exists());
     }
@@ -259,8 +267,8 @@ mod tests {
         let result = init_project(&options);
         assert!(result.is_ok());
 
-        assert!(project_path.join("go.mod").exists());
-        assert!(!project_path.join("package.json").exists());
+        assert!(crate::project::runtime_env_go(&project_path).join("go.mod").exists());
+        assert!(!crate::project::runtime_env_ts(&project_path).join("package.json").exists());
     }
 
     #[test]
@@ -277,7 +285,7 @@ mod tests {
         // First init should succeed
         assert!(init_project(&options).is_ok());
 
-        // Second init should fail
+        // Second init should fail (manifest already exists)
         assert!(init_project(&options).is_err());
     }
 }

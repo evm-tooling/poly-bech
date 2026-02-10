@@ -82,12 +82,16 @@ impl Runtime for JsRuntime {
 
         // Determine where to write and run the benchmark
         let (script_path, working_dir) = if let Some(ref project_root) = self.project_root {
-            // Use the project root directory - create a .polybench subdirectory
-            let bench_dir = project_root.join(".polybench");
-            std::fs::create_dir_all(&bench_dir)
-                .map_err(|e| miette!("Failed to create .polybench directory: {}", e))?;
-            
-            let script_path = bench_dir.join("bench.mjs");
+            // When using .polybench/runtime-env/ts, write directly there; else use .polybench subdir
+            let is_runtime_env = project_root.as_os_str().to_string_lossy().contains("runtime-env");
+            let script_path = if is_runtime_env {
+                project_root.join("bench.mjs")
+            } else {
+                let bench_dir = project_root.join(".polybench");
+                std::fs::create_dir_all(&bench_dir)
+                    .map_err(|e| miette!("Failed to create .polybench directory: {}", e))?;
+                bench_dir.join("bench.mjs")
+            };
             (script_path, project_root.clone())
         } else {
             // Fall back to temp directory

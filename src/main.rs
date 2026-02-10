@@ -371,22 +371,31 @@ fn resolve_project_roots(
     let mut current = start_dir.canonicalize().ok();
 
     while let Some(dir) = current {
-        // Check for go.mod (only set if not already found)
+        // Inside a poly-bench project: prefer .polybench/runtime-env/go and .../ts
+        if roots.go_root.is_none() && dir.join(project::MANIFEST_FILENAME).exists() {
+            let go_env = project::runtime_env_go(&dir);
+            if go_env.join("go.mod").exists() {
+                roots.go_root = Some(go_env);
+            }
+        }
+        if roots.node_root.is_none() && dir.join(project::MANIFEST_FILENAME).exists() {
+            let ts_env = project::runtime_env_ts(&dir);
+            if ts_env.join("package.json").exists() || ts_env.join("node_modules").exists() {
+                roots.node_root = Some(ts_env);
+            }
+        }
+        // Fallback: classic layout (go.mod / package.json at project root)
         if roots.go_root.is_none() && dir.join("go.mod").exists() {
             roots.go_root = Some(dir.clone());
         }
-        
-        // Check for package.json or node_modules (only set if not already found)
-        if roots.node_root.is_none() && 
-           (dir.join("package.json").exists() || dir.join("node_modules").exists()) {
+        if roots.node_root.is_none()
+            && (dir.join("package.json").exists() || dir.join("node_modules").exists())
+        {
             roots.node_root = Some(dir.clone());
         }
-        
-        // Stop if we've found both
         if roots.go_root.is_some() && roots.node_root.is_some() {
             break;
         }
-        
         current = dir.parent().map(|p| p.to_path_buf());
     }
 

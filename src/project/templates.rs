@@ -209,13 +209,14 @@ pub fn readme(name: &str, has_go: bool, has_ts: bool) -> String {
     content.push_str("├── polybench.toml       # Project configuration\n");
     content.push_str("├── benchmarks/          # Benchmark files (.bench)\n");
     content.push_str("│   └── example.bench    # Example benchmark\n");
+    content.push_str("└── .polybench/          # Generated files (gitignored)\n");
+    content.push_str("    └── runtime-env/      # Per-runtime deps and harness\n");
     if has_go {
-        content.push_str("├── go.mod               # Go module\n");
+        content.push_str("        └── go/           # go.mod, deps.go, generated bench code\n");
     }
     if has_ts {
-        content.push_str("├── package.json         # Node.js dependencies\n");
+        content.push_str("        └── ts/           # package.json, node_modules, generated bench code\n");
     }
-    content.push_str("└── .polybench/          # Generated files (gitignored)\n");
     content.push_str("```\n\n");
 
     content.push_str("## Adding Dependencies\n\n");

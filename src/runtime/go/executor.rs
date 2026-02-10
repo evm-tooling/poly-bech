@@ -119,12 +119,16 @@ impl GoRuntime {
         
         // Determine where to write and run the benchmark
         let (src_path, working_dir) = if let Some(ref module_root) = self.module_root {
-            // Use the module root directory - create a .polybench subdirectory
-            let bench_dir = module_root.join(".polybench");
-            std::fs::create_dir_all(&bench_dir)
-                .map_err(|e| miette!("Failed to create .polybench directory: {}", e))?;
-            
-            let src_path = bench_dir.join("bench_standalone.go");
+            // When using .polybench/runtime-env/go, write directly there; else use .polybench subdir
+            let is_runtime_env = module_root.as_os_str().to_string_lossy().contains("runtime-env");
+            let src_path = if is_runtime_env {
+                module_root.join("bench_standalone.go")
+            } else {
+                let bench_dir = module_root.join(".polybench");
+                std::fs::create_dir_all(&bench_dir)
+                    .map_err(|e| miette!("Failed to create .polybench directory: {}", e))?;
+                bench_dir.join("bench_standalone.go")
+            };
             (src_path, module_root.clone())
         } else {
             // Fall back to temp directory

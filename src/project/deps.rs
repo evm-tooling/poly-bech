@@ -1,10 +1,46 @@
 //! Dependency management for poly-bench projects
 
-use crate::project::{self, manifest, templates};
+use crate::project::{self, manifest, runtime_env_go, runtime_env_ts, templates};
 use colored::Colorize;
 use miette::Result;
 use std::path::Path;
 use std::process::Command;
+
+/// Resolve the directory used for Go (runtime-env if present, else project root)
+fn resolve_go_root(project_root: &Path) -> std::path::PathBuf {
+    let env_go = runtime_env_go(project_root);
+    if env_go.exists() {
+        env_go
+    } else {
+        project_root.to_path_buf()
+    }
+}
+
+/// Resolve the directory used for TypeScript (runtime-env if present, else project root)
+fn resolve_ts_root(project_root: &Path) -> std::path::PathBuf {
+    let env_ts = runtime_env_ts(project_root);
+    if env_ts.exists() {
+        env_ts
+    } else {
+        project_root.to_path_buf()
+    }
+}
+
+/// Ensure go.mod and deps.go exist in go_root (for add when runtime-env exists but empty)
+fn ensure_go_env(go_root: &Path, go_config: &manifest::GoConfig) -> Result<()> {
+    std::fs::create_dir_all(go_root)
+        .map_err(|e| miette::miette!("Failed to create Go env dir: {}", e))?;
+    if !go_root.join("go.mod").exists() {
+        let content = templates::go_mod(&go_config.module, go_config.version.as_deref());
+        std::fs::write(go_root.join("go.mod"), content)
+            .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
+    }
+    let import_paths: Vec<String> = go_config.dependencies.keys().cloned().collect();
+    let deps_content = templates::go_deps_file(&import_paths);
+    std::fs::write(go_root.join(templates::GO_DEPS_FILENAME), deps_content)
+        .map_err(|e| miette::miette!("Failed to write deps.go: {}", e))?;
+    Ok(())
+}
 
 /// Parse a dependency spec like "package@version" into (package, version)
 fn parse_dep_spec(spec: &str) -> (String, String) {
@@ -68,13 +104,16 @@ pub fn add_go_dependency(spec: &str) -> Result<()> {
         version
     );
 
+    let go_root = resolve_go_root(&project_root);
+    ensure_go_env(&go_root, manifest.go.as_ref().unwrap())?;
+
     // Use module/...@version so Go fetches all packages and transitive deps into go.sum
     let go_get_arg = go_get_spec_for_transitives(&package, &version);
     println!("{} Running go get {}...", "→".blue(), go_get_arg);
 
     let status = Command::new("go")
         .args(["get", &go_get_arg])
-        .current_dir(&project_root)
+        .current_dir(&go_root)
         .status()
         .map_err(|e| miette::miette!("Failed to run go get: {}", e))?;
 
@@ -116,8 +155,15 @@ pub fn add_ts_dependency(spec: &str) -> Result<()> {
         version
     );
 
-    // Sync new dependency to package.json so it appears under "dependencies"
-    update_package_json_deps(&project_root, manifest.ts.as_ref().unwrap())?;
+    let ts_root = resolve_ts_root(&project_root);
+    std::fs::create_dir_all(&ts_root)
+        .map_err(|e| miette::miette!("Failed to create TS env dir: {}", e))?;
+    if !ts_root.join("package.json").exists() {
+        let pkg = templates::package_json_pretty(&manifest.project.name);
+        std::fs::write(ts_root.join("package.json"), pkg)
+            .map_err(|e| miette::miette!("Failed to write package.json: {}", e))?;
+    }
+    update_package_json_deps(&ts_root, manifest.ts.as_ref().unwrap())?;
 
     // Run npm install
     let npm_spec = if version == "latest" {
@@ -130,7 +176,7 @@ pub fn add_ts_dependency(spec: &str) -> Result<()> {
 
     let status = Command::new("npm")
         .args(["install", &npm_spec])
-        .current_dir(&project_root)
+        .current_dir(&ts_root)
         .status()
         .map_err(|e| miette::miette!("Failed to run npm install: {}", e))?;
 
@@ -183,8 +229,11 @@ pub fn install_all() -> Result<()> {
 fn install_go_deps(project_root: &Path, go_config: &manifest::GoConfig) -> Result<()> {
     println!("{} Go dependencies", "→".blue().bold());
 
-    // Ensure go.mod exists
-    let go_mod_path = project_root.join("go.mod");
+    let go_root = resolve_go_root(project_root);
+    std::fs::create_dir_all(&go_root)
+        .map_err(|e| miette::miette!("Failed to create Go env dir: {}", e))?;
+
+    let go_mod_path = go_root.join("go.mod");
     if !go_mod_path.exists() {
         let go_mod_content =
             templates::go_mod(&go_config.module, go_config.version.as_deref());
@@ -200,7 +249,7 @@ fn install_go_deps(project_root: &Path, go_config: &manifest::GoConfig) -> Resul
 
         let output = Command::new("go")
             .args(["get", &go_get_arg])
-            .current_dir(project_root)
+            .current_dir(&go_root)
             .output()
             .map_err(|e| miette::miette!("Failed to run go get: {}", e))?;
 
@@ -220,12 +269,10 @@ fn install_go_deps(project_root: &Path, go_config: &manifest::GoConfig) -> Resul
     }
 
     // Generate deps.go so the module has a buildable main that blank-imports each dep.
-    // This keeps go.sum complete and allows `go build .` to work. Use package import
-    // paths in polybench.toml (e.g. .../viem-go/abi) for modules with no root package.
     if !go_config.dependencies.is_empty() {
         let import_paths: Vec<String> = go_config.dependencies.keys().cloned().collect();
         let deps_content = templates::go_deps_file(&import_paths);
-        let deps_path = project_root.join(templates::GO_DEPS_FILENAME);
+        let deps_path = go_root.join(templates::GO_DEPS_FILENAME);
         std::fs::write(&deps_path, deps_content)
             .map_err(|e| miette::miette!("Failed to write {}: {}", deps_path.display(), e))?;
         println!("  {} Created {}", "✓".green(), templates::GO_DEPS_FILENAME);
@@ -245,8 +292,11 @@ fn install_ts_deps(
 ) -> Result<()> {
     println!("{} TypeScript dependencies", "→".blue().bold());
 
-    // Ensure package.json exists
-    let package_json_path = project_root.join("package.json");
+    let ts_root = resolve_ts_root(project_root);
+    std::fs::create_dir_all(&ts_root)
+        .map_err(|e| miette::miette!("Failed to create TS env dir: {}", e))?;
+
+    let package_json_path = ts_root.join("package.json");
     if !package_json_path.exists() {
         let package_json_content = templates::package_json_pretty(project_name);
         std::fs::write(&package_json_path, package_json_content)
@@ -254,16 +304,14 @@ fn install_ts_deps(
         println!("  {} Created package.json", "✓".green());
     }
 
-    // Update package.json with dependencies from manifest
     if !ts_config.dependencies.is_empty() {
-        update_package_json_deps(project_root, ts_config)?;
+        update_package_json_deps(&ts_root, ts_config)?;
     }
 
-    // Run npm install
     println!("  {} Running npm install...", "→".blue());
     let status = Command::new("npm")
         .args(["install"])
-        .current_dir(project_root)
+        .current_dir(&ts_root)
         .status()
         .map_err(|e| miette::miette!("Failed to run npm install: {}", e))?;
 

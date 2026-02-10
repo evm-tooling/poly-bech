@@ -22,6 +22,30 @@ pub const MANIFEST_FILENAME: &str = "polybench.toml";
 /// The default benchmarks directory name
 pub const BENCHMARKS_DIR: &str = "benchmarks";
 
+/// Directory under .polybench for per-runtime env (go.mod, package.json, deps, harness)
+pub const RUNTIME_ENV_DIR: &str = ".polybench/runtime-env";
+/// Go runtime env subdir (go.mod, go.sum, deps.go, generated bench code)
+pub const RUNTIME_ENV_GO: &str = "go";
+/// TypeScript/Node runtime env subdir (package.json, node_modules, generated bench code)
+pub const RUNTIME_ENV_TS: &str = "ts";
+
+/// Path to the Go runtime env for a project (where go.mod and deps live)
+pub fn runtime_env_go(project_root: &Path) -> PathBuf {
+    project_root.join(RUNTIME_ENV_DIR).join(RUNTIME_ENV_GO)
+}
+
+/// Path to the TypeScript runtime env for a project
+pub fn runtime_env_ts(project_root: &Path) -> PathBuf {
+    project_root.join(RUNTIME_ENV_DIR).join(RUNTIME_ENV_TS)
+}
+
+/// True if path looks like a runtime-env root (e.g. .../runtime-env/go)
+pub fn is_runtime_env_root(path: &Path) -> bool {
+    path.as_os_str()
+        .to_string_lossy()
+        .contains("runtime-env")
+}
+
 /// Find the project root by searching for polybench.toml
 ///
 /// Starts from `start_path` and walks up the directory tree until
