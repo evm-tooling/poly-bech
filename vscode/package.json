@@ -1,0 +1,43 @@
+{
+  "name": "poly-bench",
+  "displayName": "poly-bench",
+  "description": "Syntax highlighting and diagnostics for .bench files with embedded Go and TypeScript",
+  "version": "0.1.0",
+  "publisher": "poly-bench",
+  "engines": { "vscode": "^1.74.0" },
+  "categories": ["Programming Languages"],
+  "main": "./out/extension.js",
+  "activationEvents": ["onLanguage:polybench"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "polybench",
+        "aliases": ["poly-bench", "bench"],
+        "extensions": [".bench"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "polybench",
+        "scopeName": "source.bench",
+        "path": "./syntaxes/polybench.tmLanguage.json",
+        "embeddedLanguages": {
+          "source.go.embedded.bench": "go",
+          "source.ts.embedded.bench": "typescript"
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -p . -w"
+  },
+  "dependencies": {
+    "typescript": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.74.0"
+  }
+}

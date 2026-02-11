@@ -1,0 +1,276 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "poly-bench",
+  "scopeName": "source.bench",
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#suite-block"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.bench",
+      "match": "#.*$"
+    },
+    "suite-block": {
+      "begin": "\\b(suite)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
+      "end": "^\\}(\\s*)$",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.bench"
+        },
+        "2": {
+          "name": "entity.name.section.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "include": "#suite-attributes"
+        },
+        {
+          "include": "#setup-go-block"
+        },
+        {
+          "include": "#setup-ts-block"
+        },
+        {
+          "include": "#fixture-block"
+        },
+        {
+          "include": "#bench-block"
+        }
+      ]
+    },
+    "suite-attributes": {
+      "patterns": [
+        {
+          "match": "\\b(description)\\s*:\\s*",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(iterations|warmup)\\s*:\\s*(\\d+)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.numeric.bench"
+            }
+          }
+        }
+      ]
+    },
+    "setup-go-block": {
+      "name": "meta.block.setup.go.bench",
+      "begin": "\\b(setup)\\s+(go)\\s*\\{\\s*$",
+      "end": "^(\\s{2,4})\\}(\\s*)$",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.bench"
+        },
+        "2": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "contentName": "source.go.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.go"
+        }
+      ]
+    },
+    "setup-ts-block": {
+      "name": "meta.block.setup.ts.bench",
+      "begin": "\\b(setup)\\s+(ts)\\s*\\{\\s*$",
+      "end": "^(\\s{2,4})\\}(\\s*)$",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.bench"
+        },
+        "2": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "contentName": "source.ts.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.ts"
+        }
+      ]
+    },
+    "fixture-block": {
+      "begin": "\\b(fixture)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
+      "end": "\\}",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.bench"
+        },
+        "2": {
+          "name": "entity.name.tag.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "include": "#fixture-go-block"
+        },
+        {
+          "include": "#fixture-ts-block"
+        },
+        {
+          "match": "\\b(hex)\\s*:\\s*",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            }
+          }
+        },
+        {
+          "name": "string.quoted.double.bench",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "match": "[0-9a-fA-F]+",
+              "name": "constant.other.hex.bench"
+            }
+          ]
+        }
+      ]
+    },
+    "bench-block": {
+      "begin": "\\b(bench)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
+      "end": "\\}",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.bench"
+        },
+        "2": {
+          "name": "entity.name.function.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "include": "#bench-go-line"
+        },
+        {
+          "include": "#bench-ts-line"
+        }
+      ]
+    },
+    "bench-go-line": {
+      "name": "meta.expression.go.bench",
+      "begin": "\\b(go)\\s*:\\s*",
+      "end": "$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "contentName": "source.go.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.go"
+        }
+      ]
+    },
+    "bench-ts-line": {
+      "name": "meta.expression.ts.bench",
+      "begin": "\\b(ts)\\s*:\\s*",
+      "end": "$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "contentName": "source.ts.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.ts"
+        }
+      ]
+    },
+    "fixture-go-block": {
+      "name": "meta.block.fixture.go.bench",
+      "begin": "\\b(go)\\s*:\\s*\\{\\s*$",
+      "end": "^[ \\t]{4,8}\\}\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "contentName": "source.go.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.go"
+        }
+      ]
+    },
+    "fixture-ts-block": {
+      "name": "meta.block.fixture.ts.bench",
+      "begin": "\\b(ts)\\s*:\\s*\\{\\s*$",
+      "end": "^[ \\t]{4,8}\\}\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "contentName": "source.ts.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.ts"
+        }
+      ]
+    }
+  }
+}

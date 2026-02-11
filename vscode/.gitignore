@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Build output
+out/
+*.map
+
+# Package artifact
+*.vsix
+
+# OS
+.DS_Store

@@ -1,0 +1,8 @@
+src/**
+node_modules/**
+.gitignore
+tsconfig.json
+*.map
+*.ts
+!syntaxes/**/*.json
+hash.bench
