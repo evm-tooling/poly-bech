@@ -298,6 +298,51 @@ fn get_tsserver_hover(
 /// Get hover information at a position (DSL keywords and AST only)
 pub fn get_hover(doc: &ParsedDocument, position: Position) -> Option<Hover> {
     let (word, range) = doc.word_at_position(position)?;
+    
+    // Convert position to offset for span-based matching
+    let offset = doc.position_to_offset(position);
+
+    // Check for UseStd statements first (position-aware)
+    if let Some(ref ast) = doc.ast {
+        if let Some(offset) = offset {
+            for use_std in &ast.use_stds {
+                // Check if hovering over 'use' keyword
+                if offset >= use_std.use_span.start && offset < use_std.use_span.end {
+                    return Some(Hover {
+                        contents: HoverContents::Markup(MarkupContent {
+                            kind: MarkupKind::Markdown,
+                            value: keyword_docs("use").unwrap_or("").to_string(),
+                        }),
+                        range: Some(range),
+                    });
+                }
+                
+                // Check if hovering over 'std' namespace
+                if offset >= use_std.std_span.start && offset < use_std.std_span.end {
+                    return Some(Hover {
+                        contents: HoverContents::Markup(MarkupContent {
+                            kind: MarkupKind::Markdown,
+                            value: std_namespace_docs().to_string(),
+                        }),
+                        range: Some(range),
+                    });
+                }
+                
+                // Check if hovering over module name
+                if offset >= use_std.module_span.start && offset < use_std.module_span.end {
+                    if let Some(docs) = stdlib_module_docs(&use_std.module) {
+                        return Some(Hover {
+                            contents: HoverContents::Markup(MarkupContent {
+                                kind: MarkupKind::Markdown,
+                                value: docs.to_string(),
+                            }),
+                            range: Some(range),
+                        });
+                    }
+                }
+            }
+        }
+    }
 
     // Look up keyword documentation
     if let Some(docs) = keyword_docs(&word) {
@@ -554,6 +599,45 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             Helps detect order-dependent issues."
         ),
 
+        // Standard library import
+        "use" => Some(
+            "**use** `std::module`\n\n\
+            Import a module from the poly-bench standard library.\n\n\
+            Available modules:\n\
+            - `constants` - Mathematical constants (std_PI, std_E)"
+        ),
+
+        _ => None,
+    }
+}
+
+/// Get documentation for the stdlib namespace
+fn std_namespace_docs() -> &'static str {
+    "**std**\n\n\
+    Poly-bench standard library namespace.\n\n\
+    Use `use std::module` to import a standard library module.\n\n\
+    Available modules:\n\
+    - `constants` - Mathematical constants"
+}
+
+/// Get documentation for a stdlib module
+fn stdlib_module_docs(module: &str) -> Option<&'static str> {
+    match module {
+        "constants" => Some(
+            "**std::constants**\n\n\
+            Mathematical constants from the poly-bench standard library.\n\n\
+            **Provided constants:**\n\
+            - `std_PI` - Pi (π ≈ 3.14159265358979323846)\n\
+            - `std_E` - Euler's number (e ≈ 2.71828182845904523536)"
+        ),
+        "math" => Some(
+            "**std::math** *(planned)*\n\n\
+            Mathematical utility functions."
+        ),
+        "chart" => Some(
+            "**std::chart** *(planned)*\n\n\
+            Charting and visualization utilities for benchmark results."
+        ),
         _ => None,
     }
 }

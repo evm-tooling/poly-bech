@@ -49,9 +49,11 @@ impl Parser {
     /// Parse a use std::module statement
     fn parse_use_std(&mut self) -> Result<UseStd> {
         let use_token = self.expect_keyword(TokenKind::Use)?;
+        let use_span = use_token.span.clone();
         
         // Expect "std" identifier
         let std_token = self.expect_identifier()?;
+        let std_span = std_token.span.clone();
         let std_name = match &std_token.kind {
             TokenKind::Identifier(s) => s.clone(),
             _ => unreachable!(),
@@ -70,12 +72,21 @@ impl Parser {
         
         // Expect module name
         let module_token = self.expect_identifier()?;
+        let module_span = module_token.span.clone();
         let module = match &module_token.kind {
             TokenKind::Identifier(s) => s.clone(),
             _ => unreachable!(),
         };
         
-        Ok(UseStd::new(module, use_token.span))
+        // Full span from 'use' to end of module name
+        let full_span = Span::new(
+            use_span.start,
+            module_span.end,
+            use_span.line,
+            use_span.col,
+        );
+        
+        Ok(UseStd::new(module, full_span, use_span, std_span, module_span))
     }
 
     /// Parse a suite definition

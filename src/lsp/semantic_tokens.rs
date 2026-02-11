@@ -48,6 +48,40 @@ pub fn get_semantic_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
 
     // If we have a parsed AST, use it for semantic tokens
     if let Some(ref ast) = doc.ast {
+        // Handle use std::module statements
+        for use_std in &ast.use_stds {
+            // 'use' keyword
+            add_token(
+                doc,
+                &mut tokens,
+                &mut prev_line,
+                &mut prev_char,
+                &use_std.use_span,
+                0, // KEYWORD
+                0,
+            );
+            // 'std' identifier
+            add_token(
+                doc,
+                &mut tokens,
+                &mut prev_line,
+                &mut prev_char,
+                &use_std.std_span,
+                8, // NAMESPACE
+                0,
+            );
+            // module name
+            add_token(
+                doc,
+                &mut tokens,
+                &mut prev_line,
+                &mut prev_char,
+                &use_std.module_span,
+                8, // NAMESPACE
+                0,
+            );
+        }
+
         for suite in &ast.suites {
             // Suite keyword and name
             add_keyword_tokens(doc, &mut tokens, &mut prev_line, &mut prev_char, &suite.span);
@@ -111,8 +145,11 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
         "suite", "bench", "setup", "fixture", "hex", "description", "iterations",
         "warmup", "declare", "init", "helpers", "import", "timeout", "tags",
         "skip", "validate", "before", "after", "each", "requires", "order",
-        "compare", "baseline", "shape", "async",
+        "compare", "baseline", "shape", "async", "use",
     ];
+
+    // std and stdlib module names get NAMESPACE highlighting
+    let namespace_keywords = ["std", "constants", "math", "chart"];
 
     let lang_keywords = ["go", "ts", "typescript", "rust", "python"];
 
@@ -133,6 +170,7 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
                     &keywords,
                     &lang_keywords,
                     &order_values,
+                    &namespace_keywords,
                     &mut tokens,
                     &mut prev_line,
                     &mut prev_char,
@@ -160,6 +198,7 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
                     &keywords,
                     &lang_keywords,
                     &order_values,
+                    &namespace_keywords,
                     &mut tokens,
                     &mut prev_line,
                     &mut prev_char,
@@ -200,6 +239,7 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
             &keywords,
             &lang_keywords,
             &order_values,
+            &namespace_keywords,
             &mut tokens,
             &mut prev_line,
             &mut prev_char,
@@ -216,6 +256,7 @@ fn emit_word_token(
     keywords: &[&str],
     lang_keywords: &[&str],
     order_values: &[&str],
+    namespace_keywords: &[&str],
     tokens: &mut Vec<SemanticToken>,
     prev_line: &mut u32,
     prev_char: &mut u32,
@@ -226,6 +267,8 @@ fn emit_word_token(
         Some(0) // KEYWORD
     } else if lang_keywords.contains(&word) {
         Some(1) // TYPE
+    } else if namespace_keywords.contains(&word) {
+        Some(8) // NAMESPACE
     } else if order_values.contains(&word) {
         Some(4) // PROPERTY
     } else if word.parse::<u64>().is_ok() {

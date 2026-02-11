@@ -208,13 +208,19 @@ impl Value {
 pub struct UseStd {
     /// The module name (e.g., "constants", "math", "chart")
     pub module: String,
-    /// Source location
+    /// Full statement span (from 'use' to end of module name)
     pub span: Span,
+    /// Span of the 'use' keyword
+    pub use_span: Span,
+    /// Span of the 'std' identifier
+    pub std_span: Span,
+    /// Span of the module name
+    pub module_span: Span,
 }
 
 impl UseStd {
-    pub fn new(module: String, span: Span) -> Self {
-        Self { module, span }
+    pub fn new(module: String, span: Span, use_span: Span, std_span: Span, module_span: Span) -> Self {
+        Self { module, span, use_span, std_span, module_span }
     }
 }
 
