@@ -151,8 +151,24 @@ fn find_tsc_cmd() -> Option<(String, bool)> {
 
 /// Run tsc on the given code and return error output
 fn run_tsc(tsc_cmd: &str, use_npx: bool, code: &str, ts_module_root: Option<&str>) -> Option<String> {
-    let temp_dir = TempDir::new().ok()?;
-    let check_file = temp_dir.path().join("check.ts");
+    // If we have a module root, write the check file there so tsc can resolve node_modules
+    // Otherwise fall back to a temp directory
+    let (check_file, _temp_dir) = if let Some(root) = ts_module_root {
+        let root_path = Path::new(root);
+        if root_path.exists() {
+            // Write directly to the module root so node_modules resolution works
+            let check_path = root_path.join("__polybench_check__.ts");
+            (check_path, None)
+        } else {
+            let temp = TempDir::new().ok()?;
+            let path = temp.path().join("check.ts");
+            (path, Some(temp))
+        }
+    } else {
+        let temp = TempDir::new().ok()?;
+        let path = temp.path().join("check.ts");
+        (path, Some(temp))
+    };
 
     fs::File::create(&check_file)
         .and_then(|mut f| f.write_all(code.as_bytes()))
@@ -234,6 +250,11 @@ fn run_tsc(tsc_cmd: &str, use_npx: bool, code: &str, ts_module_root: Option<&str
     } else {
         stderr.to_string()
     };
+
+    // Clean up the check file if we wrote it to the module root
+    if _temp_dir.is_none() {
+        let _ = fs::remove_file(&check_file);
+    }
 
     Some(error_output)
 }
@@ -345,7 +366,8 @@ fn parse_combined_errors(output: &str, mappings: &[SectionMapping]) -> Vec<Embed
     // check.ts:line:col - error TS####: message
     // ../../path/to/check.ts(line,col): error TS####: message (relative paths)
     // The key is matching any path ending in check.ts or snippet.ts
-    let error_re = Regex::new(r"[^\s]*(?:check|snippet)\.ts[:\(](\d+)[,:](\d+)\)?[:\s\-]+(?:error|warning)\s+TS\d+:\s*(.+)").unwrap();
+    // Match various tsc error formats including our check file names
+    let error_re = Regex::new(r"[^\s]*(?:check|snippet|__polybench_check__)\.ts[:\(](\d+)[,:](\d+)\)?[:\s\-]+(?:error|warning)\s+TS\d+:\s*(.+)").unwrap();
 
     eprintln!("[ts-combined-parse] Parsing errors, {} mappings:", mappings.len());
     for (i, m) in mappings.iter().enumerate() {
@@ -495,7 +517,8 @@ fn parse_ts_errors(
     // TSC error format: file.ts(line,col): error TS####: message
     // Also handles: file.ts:line:col - error TS####: message
     // Also handles relative paths like ../../check.ts(line,col): ...
-    let error_re = Regex::new(r"[^\s]*(?:check|snippet)\.ts[:\(](\d+)[,:](\d+)\)?[:\s\-]+(?:error|warning)\s+TS\d+:\s*(.+)").unwrap();
+    // Match various tsc error formats including our check file names
+    let error_re = Regex::new(r"[^\s]*(?:check|snippet|__polybench_check__)\.ts[:\(](\d+)[,:](\d+)\)?[:\s\-]+(?:error|warning)\s+TS\d+:\s*(.+)").unwrap();
     let lines: Vec<&str> = block.code.split('\n').collect();
 
     for cap in error_re.captures_iter(output) {
