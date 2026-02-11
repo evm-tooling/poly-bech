@@ -8,32 +8,74 @@ use std::fmt::Write;
 
 const INDENT: &str = "    ";
 
-/// Normalize embedded code: strip minimum leading indent, then convert remaining
-/// relative indent to consistent 4-space units (each 4 spaces = 1 level).
+/// Normalize embedded code: strip minimum leading indent, then re-normalize remaining
+/// relative indentation using smart heuristics to fix broken source indentation.
 fn normalize_embedded_code(code: &str) -> Vec<String> {
     let lines: Vec<&str> = code.lines().collect();
     if lines.is_empty() {
         return Vec::new();
     }
+    
+    // Find minimum indent among non-empty lines
     let min_indent = lines
         .iter()
         .filter(|l| !l.trim().is_empty())
         .map(|l| l.len() - l.trim_start().len())
         .min()
         .unwrap_or(0);
-    let indent_unit = 4; // assume 4-space indent in source
-    lines
-        .iter()
-        .map(|l| {
-            let leading = l.chars().take_while(|c| c.is_whitespace()).count();
-            let trim_len = min_indent.min(leading);
-            let rest: String = l.chars().skip(trim_len).collect();
-            let extra_spaces = leading.saturating_sub(trim_len);
-            let levels = extra_spaces / indent_unit;
-            let pad = INDENT.repeat(levels);
-            format!("{}{}", pad, rest.trim_start())
-        })
-        .collect()
+    
+    // First pass: calculate raw indent levels for each line
+    let mut raw_levels: Vec<(usize, &str)> = Vec::new();
+    for l in &lines {
+        if l.trim().is_empty() {
+            raw_levels.push((0, ""));
+        } else {
+            let leading = l.len() - l.trim_start().len();
+            let extra_spaces = leading.saturating_sub(min_indent);
+            // Use any 4+ spaces as one indent level
+            let level = extra_spaces / 4;
+            raw_levels.push((level, l.trim_start()));
+        }
+    }
+    
+    // Second pass: apply smart normalization based on code structure
+    // Use closing brace detection to determine indent level
+    let mut result = Vec::new();
+    let mut current_depth = 0usize;
+    
+    for (_, content) in raw_levels.iter() {
+        if content.is_empty() {
+            result.push(String::new());
+            continue;
+        }
+        
+        // Check if this line starts with a closing brace/bracket
+        let starts_with_close = content.starts_with('}') || 
+                                 content.starts_with(')') || 
+                                 content.starts_with(']');
+        
+        // Decrease depth before this line if it starts with closing brace
+        if starts_with_close && current_depth > 0 {
+            current_depth -= 1;
+        }
+        
+        let pad = INDENT.repeat(current_depth);
+        result.push(format!("{}{}", pad, content));
+        
+        // Count braces to adjust depth for next line
+        let opens = content.chars().filter(|c| *c == '{' || *c == '(' || *c == '[').count();
+        let closes = content.chars().filter(|c| *c == '}' || *c == ')' || *c == ']').count();
+        
+        // Adjust depth for next line (not counting the starting close we already handled)
+        let effective_closes = if starts_with_close { closes - 1 } else { closes };
+        if opens > effective_closes {
+            current_depth += opens - effective_closes;
+        } else if effective_closes > opens && current_depth >= (effective_closes - opens) {
+            current_depth -= effective_closes - opens;
+        }
+    }
+    
+    result
 }
 
 /// Format an AST into a string with consistent indentation and style.
@@ -89,6 +131,12 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
         write!(out, "{}baseline: \"{}\"\n", inner, baseline.as_str()).unwrap();
     }
 
+    // Add blank line after properties if there are any setups, fixtures, or benchmarks
+    let has_content = !suite.setups.is_empty() || !suite.fixtures.is_empty() || !suite.benchmarks.is_empty();
+    if has_content {
+        out.push('\n');
+    }
+
     // Setups in canonical order: go, ts, rust, python
     let lang_order = [Lang::Go, Lang::TypeScript, Lang::Rust, Lang::Python];
     for lang in &lang_order {
@@ -116,6 +164,8 @@ fn format_setup(out: &mut String, lang: &Lang, setup: &StructuredSetup, indent_l
 
     write!(out, "{}setup {} {{\n", pad, lang.as_str()).unwrap();
 
+    let mut wrote_section = false;
+
     // Sections in canonical order: import, declare, init, helpers
     // Import: Go stores full "import ( ... )", TS stores inner content for "import { ... }"
     if let Some(ref imports) = setup.imports {
@@ -137,16 +187,28 @@ fn format_setup(out: &mut String, lang: &Lang, setup: &StructuredSetup, indent_l
                 }
                 write!(out, "{}}}\n", inner).unwrap();
             }
+            wrote_section = true;
         }
     }
     if let Some(ref decl) = setup.declarations {
+        if wrote_section {
+            out.push('\n');
+        }
         write_code_block(out, "declare", decl, &inner);
+        wrote_section = true;
     }
     if let Some(ref init) = setup.init {
+        if wrote_section {
+            out.push('\n');
+        }
         let kw = if setup.async_init { "async init" } else { "init" };
         write_code_block(out, kw, init, &inner);
+        wrote_section = true;
     }
     if let Some(ref helpers) = setup.helpers {
+        if wrote_section {
+            out.push('\n');
+        }
         write_code_block(out, "helpers", helpers, &inner);
     }
 
@@ -155,13 +217,18 @@ fn format_setup(out: &mut String, lang: &Lang, setup: &StructuredSetup, indent_l
 
 fn write_code_block(out: &mut String, keyword: &str, block: &CodeBlock, inner: &str) {
     let code = block.code.trim();
+    let content_indent = format!("{}{}", inner, INDENT); // One more level for content inside block
     if code.is_empty() {
         write!(out, "{}{} {{\n{}}}\n", inner, keyword, inner).unwrap();
     } else if block.is_multiline || code.contains('\n') {
         write!(out, "{}{} {{\n", inner, keyword).unwrap();
         let normalized = normalize_embedded_code(code);
         for line in &normalized {
-            write!(out, "{}{}\n", inner, line).unwrap();
+            if line.is_empty() {
+                out.push('\n');
+            } else {
+                write!(out, "{}{}\n", content_indent, line).unwrap();
+            }
         }
         write!(out, "{}}}\n", inner).unwrap();
     } else {

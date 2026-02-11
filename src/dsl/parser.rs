@@ -630,11 +630,11 @@ impl Parser {
     /// Parse a code block (braces required)
     fn parse_code_block(&mut self) -> Result<CodeBlock> {
         let open_brace = self.expect(TokenKind::LBrace)?;
-        let _start_pos = self.current;
+        let content_start = open_brace.span.end; // Start right after the opening brace
         
         // Find matching closing brace with brace counting
         let mut depth = 1;
-        let mut code_tokens = Vec::new();
+        let mut close_brace_span: Option<Span> = None;
         
         while depth > 0 && !self.is_at_end() {
             let token = self.advance().clone();
@@ -643,13 +643,11 @@ impl Parser {
                 TokenKind::RBrace => {
                     depth -= 1;
                     if depth == 0 {
+                        close_brace_span = Some(token.span.clone());
                         break;
                     }
                 }
                 _ => {}
-            }
-            if depth > 0 {
-                code_tokens.push(token);
             }
         }
 
@@ -659,30 +657,22 @@ impl Parser {
             }));
         }
 
-        // Reconstruct code from tokens (this is a simplification - in a real impl
-        // we'd preserve the original source)
-        let code = self.reconstruct_code(&code_tokens);
+        let close_brace = close_brace_span.unwrap();
+        let content_end = close_brace.start; // End right before the closing brace
 
-        // Compute the span covering the actual code content (not just the opening brace)
-        // The span should cover from after the opening brace to before the closing brace
-        let code_span = if code_tokens.is_empty() {
-            // Empty block - use span right after opening brace
-            Span {
-                start: open_brace.span.end,
-                end: open_brace.span.end,
-                line: open_brace.span.line,
-                col: open_brace.span.col + 1,
-            }
+        // Extract the raw source text between braces, preserving comments
+        let code = if content_end > content_start && content_end <= self.source.len() {
+            self.source[content_start..content_end].to_string()
         } else {
-            // Span from first token to last token
-            let first = &code_tokens[0];
-            let last = &code_tokens[code_tokens.len() - 1];
-            Span {
-                start: first.span.start,
-                end: last.span.end,
-                line: first.span.line,
-                col: first.span.col,
-            }
+            String::new()
+        };
+
+        // Compute the span covering the actual code content
+        let code_span = Span {
+            start: content_start,
+            end: content_end,
+            line: open_brace.span.line,
+            col: open_brace.span.col + 1,
         };
 
         Ok(CodeBlock::new(code, true, code_span))
