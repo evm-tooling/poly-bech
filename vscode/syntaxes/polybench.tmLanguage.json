@@ -72,6 +72,114 @@
               "name": "constant.numeric.bench"
             }
           }
+        },
+        {
+          "match": "\\b(timeout)\\s*:\\s*(\\d+)(ms|s|m)?",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.numeric.bench"
+            },
+            "3": {
+              "name": "keyword.other.unit.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(requires|tags)\\s*:\\s*",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(order)\\s*:\\s*(sequential|parallel|random)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.language.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(compare)\\s*:\\s*(true|false)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.language.boolean.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(baseline)\\s*:\\s*",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            }
+          }
+        },
+        {
+          "name": "string.quoted.double.bench",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.bench",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "meta.array.bench",
+          "begin": "\\[",
+          "end": "\\]",
+          "patterns": [
+            {
+              "name": "string.quoted.double.bench",
+              "begin": "\"",
+              "end": "\"",
+              "patterns": [
+                {
+                  "name": "constant.character.escape.bench",
+                  "match": "\\\\."
+                }
+              ]
+            },
+            {
+              "match": ",",
+              "name": "punctuation.separator.bench"
+            }
+          ]
+        }
+      ]
+    },
+    "setup-section-keywords": {
+      "patterns": [
+        {
+          "match": "^\\s*(import|declare|init|helpers)\\s*(\\{|\\()?",
+          "captures": {
+            "1": {
+              "name": "keyword.control.setup.bench"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(async)\\s+(init)\\s*\\{?",
+          "captures": {
+            "1": {
+              "name": "keyword.control.async.bench"
+            },
+            "2": {
+              "name": "keyword.control.setup.bench"
+            }
+          }
         }
       ]
     },
@@ -92,8 +200,10 @@
           "name": "punctuation.definition.block.end.bench"
         }
       },
-      "contentName": "source.go.embedded.bench",
       "patterns": [
+        {
+          "include": "#setup-section-keywords"
+        },
         {
           "include": "source.go"
         }
@@ -116,8 +226,10 @@
           "name": "punctuation.definition.block.end.bench"
         }
       },
-      "contentName": "source.ts.embedded.bench",
       "patterns": [
+        {
+          "include": "#setup-section-keywords"
+        },
         {
           "include": "source.ts"
         }
@@ -144,18 +256,13 @@
           "include": "#comment"
         },
         {
+          "include": "#fixture-attributes"
+        },
+        {
           "include": "#fixture-go-block"
         },
         {
           "include": "#fixture-ts-block"
-        },
-        {
-          "match": "\\b(hex)\\s*:\\s*",
-          "captures": {
-            "1": {
-              "name": "keyword.other.bench"
-            }
-          }
         },
         {
           "name": "string.quoted.double.bench",
@@ -167,6 +274,18 @@
               "name": "constant.other.hex.bench"
             }
           ]
+        }
+      ]
+    },
+    "fixture-attributes": {
+      "patterns": [
+        {
+          "match": "\\b(hex|description|shape)\\s*:\\s*",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            }
+          }
         }
       ]
     },
@@ -191,12 +310,10 @@
           "include": "#comment"
         },
         {
-          "match": "\\b(description)\\s*:\\s*",
-          "captures": {
-            "1": {
-              "name": "keyword.other.bench"
-            }
-          }
+          "include": "#bench-attributes"
+        },
+        {
+          "include": "#bench-hooks"
         },
         {
           "include": "#bench-go-block"
@@ -209,6 +326,110 @@
         },
         {
           "include": "#bench-ts-line"
+        }
+      ]
+    },
+    "bench-attributes": {
+      "patterns": [
+        {
+          "match": "\\b(description)\\s*:\\s*",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(iterations|warmup)\\s*:\\s*(\\d+)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.numeric.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(timeout)\\s*:\\s*(\\d+)(ms|s|m)?",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.numeric.bench"
+            },
+            "3": {
+              "name": "keyword.other.unit.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(tags)\\s*:\\s*",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            }
+          }
+        },
+        {
+          "name": "string.quoted.double.bench",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.bench",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "meta.array.bench",
+          "begin": "\\[",
+          "end": "\\]",
+          "patterns": [
+            {
+              "name": "string.quoted.double.bench",
+              "begin": "\"",
+              "end": "\"",
+              "patterns": [
+                {
+                  "name": "constant.character.escape.bench",
+                  "match": "\\\\."
+                }
+              ]
+            },
+            {
+              "match": ",",
+              "name": "punctuation.separator.bench"
+            }
+          ]
+        }
+      ]
+    },
+    "bench-hooks": {
+      "patterns": [
+        {
+          "match": "\\b(skip|validate)\\s+(go|ts)\\s*:",
+          "captures": {
+            "1": {
+              "name": "keyword.control.hook.bench"
+            },
+            "2": {
+              "name": "entity.name.language.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(before|after|each)\\s+(go|ts)\\s*:",
+          "captures": {
+            "1": {
+              "name": "keyword.control.hook.bench"
+            },
+            "2": {
+              "name": "entity.name.language.bench"
+            }
+          }
         }
       ]
     },

@@ -1,32 +1,48 @@
 # Example: Hash function benchmarks
 #
 # This example demonstrates benchmarking hash functions across Go and TypeScript.
-# It shows how to use fixtures for shared test data.
+# It shows how to use fixtures for shared test data and the new structured setup.
 
 suite hash {
     description: "Cryptographic hash function benchmarks"
     iterations: 5000
     warmup: 100
+    compare: true
+    baseline: "go"
+    requires: ["go", "ts"]
     
-    # Setup code for each language
     setup go {
-        import "crypto/sha256"
-        import "golang.org/x/crypto/s"
+        import (
+            "crypto/sha256"
+            "golang.org/x/crypto/sha3"
+        )
         
-        func keccak256(data []byte) []byte {
-            h := sha3.NewLegacyKeccak256()
-            h.Write(data)
-            return h.Sum(nil)
+        init {
+            // No initialization needed
         }
         
-        func sha256Hash(data []byte) []byte {
-            h := sha256.Sum256(data)
-            return h[:]
+        helpers {
+            func keccak256(data []byte) []byte {
+                h := sha3.NewLegacyKeccak256()
+                h.Write(data)
+                return h.Sum(nil)
+            }
+            
+            func sha256Hash(data []byte) []byte {
+                h := sha256.Sum256(data)
+                return h[:]
+            }
         }
     }
     
     setup ts {
-        import { keccak256, sha256 } from 'viem'
+        import {
+            import { keccak256, sha256 } from 'viem'
+        }
+        
+        init {
+            // No initialization needed
+        }
     }
     
     # Fixtures with portable hex format
@@ -55,6 +71,8 @@ suite hash {
     # Benchmarks
     bench keccak256_short {
         description: "Keccak256 on 11-byte input"
+        tags: ["keccak", "hash", "short"]
+        
         go:  keccak256(short_data)
         ts:  keccak256(short_data_hex)
     }
@@ -62,18 +80,24 @@ suite hash {
     bench keccak256_long {
         description: "Keccak256 on 1KB input"
         iterations: 10000
+        tags: ["keccak", "hash", "long"]
+        
         go:  keccak256(long_data)
-        ts:  keccak256a(long_data)
+        ts:  keccak256(long_data)
     }
     
     bench sha256_short {
         description: "SHA256 on 11-byte input"
+        tags: ["sha256", "hash", "short"]
+        
         go:  sha256Hash(short_data)
         ts:  sha256(short_data_hex)
     }
     
     bench sha256_long {
         description: "SHA256 on 1KB input"
+        tags: ["sha256", "hash", "long"]
+        
         go:  sha256Hash(long_data)
         ts:  sha256(long_data)
     }

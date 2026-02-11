@@ -1,33 +1,54 @@
 {
   "name": "poly-bench",
   "displayName": "poly-bench",
-  "description": "Syntax highlighting and diagnostics for .bench files with embedded Go and TypeScript",
-  "version": "0.2.8",
+  "description": "Language support for .bench files with embedded Go and TypeScript - powered by poly-bench-lsp",
+  "version": "0.4.3",
   "publisher": "evm-tooling",
   "repository": {
     "type": "git",
     "url": "https://github.com/evm-tooling/poly-bench"
   },
-  "engines": { "vscode": "^1.74.0" },
-  "categories": ["Programming Languages"],
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
   "main": "./out/extension.js",
-  "activationEvents": ["onLanguage:polybench"],
+  "activationEvents": [
+    "onLanguage:polybench"
+  ],
   "contributes": {
     "configuration": {
       "title": "Poly Bench",
       "properties": {
-        "poly-bench.goModuleRoot": {
+        "poly-bench.lspPath": {
           "type": "string",
-          "default": ".polybench/runtime-env/go",
-          "description": "Path to directory containing go.mod for import checks. Relative to workspace folder or absolute (e.g. /path/to/benchmakers)."
+          "default": "",
+          "description": "Path to poly-bench-lsp binary. If empty, uses bundled binary or searches PATH."
+        },
+        "poly-bench.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the language server."
         }
       }
     },
     "languages": [
       {
         "id": "polybench",
-        "aliases": ["poly-bench", "bench"],
-        "extensions": [".bench"],
+        "aliases": [
+          "poly-bench",
+          "bench"
+        ],
+        "extensions": [
+          ".bench"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -45,13 +66,15 @@
   },
   "scripts": {
     "compile": "tsc -p .",
-    "watch": "tsc -p . -w"
+    "watch": "tsc -p . -w",
+    "lint": "eslint src --ext ts"
   },
   "dependencies": {
-    "typescript": "^5.3.0"
+    "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@types/vscode": "^1.74.0"
+    "@types/vscode": "^1.74.0",
+    "typescript": "^5.3.0"
   }
 }
