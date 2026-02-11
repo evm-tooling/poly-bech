@@ -16,8 +16,7 @@ version = "1.21"
 
 [go.dependencies]
 "github.com/ethereum/go-ethereum" = "latest"
-"golang.org/x/crypto/sha3" = "latest"
-"github.com/ChefBingbong/viem-go" = "v0.0.31"
+"github.com/ChefBingbong/viem-go" = "latest"
 
 [ts]
 runtime = "node"

@@ -23,9 +23,10 @@ viem-simple/
 ├── polybench.toml       # Project configuration
 ├── benchmarks/          # Benchmark files (.bench)
 │   └── example.bench    # Example benchmark
-├── go.mod               # Go module
-├── package.json         # Node.js dependencies
 └── .polybench/          # Generated files (gitignored)
+    └── runtime-env/      # Per-runtime deps and harness
+        └── go/           # go.mod, deps.go, generated bench code
+        └── ts/           # package.json, node_modules, generated bench code
 ```
 
 ## Adding Dependencies
