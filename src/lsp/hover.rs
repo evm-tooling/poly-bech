@@ -1,13 +1,182 @@
 //! Hover provider for the LSP
 //!
 //! This module provides hover information for keywords and identifiers
-//! in poly-bench files.
+//! in poly-bench files, including embedded Go code via gopls.
 
-use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position};
+use poly_bench::dsl::Lang;
+use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position, Url};
 
 use super::document::ParsedDocument;
+use super::embedded::{extract_embedded_blocks, EmbeddedBlock, EmbeddedConfig};
+use super::gopls_client::init_gopls_client;
+use super::virtual_files::VirtualFileManager;
 
-/// Get hover information at a position
+/// Get hover information at a position (with embedded Go support)
+///
+/// This function first checks if the position is within a Go code block.
+/// If so, it delegates to gopls for rich type information.
+/// Otherwise, it falls back to keyword and AST hover.
+pub fn get_hover_with_gopls(
+    doc: &ParsedDocument,
+    position: Position,
+    config: &EmbeddedConfig,
+    uri: &Url,
+    virtual_file_manager: &VirtualFileManager,
+) -> Option<Hover> {
+    // Convert position to offset
+    let offset = match doc.position_to_offset(position) {
+        Some(o) => o,
+        None => {
+            eprintln!("[hover] Failed to convert position {:?} to offset", position);
+            return get_hover(doc, position);
+        }
+    };
+    
+    eprintln!("[hover] Position {:?} -> offset {}", position, offset);
+    
+    // Extract embedded blocks and check if we're in a Go block
+    let blocks = extract_embedded_blocks(doc);
+    let go_blocks: Vec<&EmbeddedBlock> = blocks.iter()
+        .filter(|b| b.lang == Lang::Go)
+        .collect();
+    
+    eprintln!("[hover] Found {} Go blocks", go_blocks.len());
+    for (i, block) in go_blocks.iter().enumerate() {
+        eprintln!("[hover]   Block {}: span {}..{} ({:?})", 
+            i, block.span.start, block.span.end, block.block_type);
+    }
+    
+    // Check if the offset is within a Go code block
+    if let Some(go_block) = find_go_block_at_offset(&go_blocks, offset) {
+        eprintln!("[hover] Offset {} is in Go block {:?} (span {}..{})", 
+            offset, go_block.block_type, go_block.span.start, go_block.span.end);
+        
+        // Try to get hover from gopls
+        if let Some(go_mod_root) = &config.go_mod_root {
+            eprintln!("[hover] go_mod_root: {}", go_mod_root);
+            if let Some(hover) = get_gopls_hover(
+                doc,
+                uri,
+                position,
+                offset,
+                &go_blocks,
+                go_mod_root,
+                virtual_file_manager,
+            ) {
+                return Some(hover);
+            }
+        } else {
+            eprintln!("[hover] No go_mod_root configured");
+        }
+    } else {
+        eprintln!("[hover] Offset {} is NOT in any Go block", offset);
+    }
+    
+    // Fall back to standard hover
+    get_hover(doc, position)
+}
+
+/// Find the Go block containing the given offset
+fn find_go_block_at_offset<'a>(blocks: &[&'a EmbeddedBlock], offset: usize) -> Option<&'a EmbeddedBlock> {
+    blocks.iter()
+        .find(|b| offset >= b.span.start && offset < b.span.end)
+        .copied()
+}
+
+/// Get hover information from gopls for embedded Go code
+fn get_gopls_hover(
+    doc: &ParsedDocument,
+    bench_uri: &Url,
+    _position: Position,
+    bench_offset: usize,
+    go_blocks: &[&EmbeddedBlock],
+    go_mod_root: &str,
+    virtual_file_manager: &VirtualFileManager,
+) -> Option<Hover> {
+    eprintln!("[gopls] get_gopls_hover called for offset {} in {}", bench_offset, bench_uri);
+    
+    // Initialize gopls client if needed
+    let client = match init_gopls_client(go_mod_root) {
+        Some(c) => c,
+        None => {
+            eprintln!("[gopls] Failed to initialize gopls client");
+            return None;
+        }
+    };
+    
+    // Get or create the virtual file
+    let bench_uri_str = bench_uri.as_str();
+    let bench_path = bench_uri.to_file_path().ok()?;
+    let bench_path_str = bench_path.to_string_lossy();
+    
+    eprintln!("[gopls] Creating virtual file from {} Go blocks", go_blocks.len());
+    
+    let virtual_file = virtual_file_manager.get_or_create(
+        bench_uri_str,
+        &bench_path_str,
+        go_mod_root,
+        go_blocks,
+        doc.version,
+    );
+    
+    eprintln!("[gopls] Virtual file: {}", virtual_file.path);
+    
+    // Translate position from .bench to virtual Go file
+    let go_position = match virtual_file.bench_to_go(bench_offset) {
+        Some(pos) => {
+            eprintln!("[gopls] Translated bench offset {} to Go position {}:{}", 
+                bench_offset, pos.line, pos.character);
+            pos
+        }
+        None => {
+            eprintln!("[gopls] Failed to translate bench offset {} to Go position", bench_offset);
+            return None;
+        }
+    };
+    
+    // Ensure the virtual file is synced with gopls
+    if let Err(e) = client.did_change(&virtual_file.uri, &virtual_file.content, virtual_file.version) {
+        eprintln!("[gopls] Failed to sync virtual file: {}", e);
+        return None;
+    }
+    
+    eprintln!("[gopls] Requesting hover at {}:{}", go_position.line, go_position.character);
+    
+    // Request hover from gopls
+    match client.hover(&virtual_file.uri, go_position.line, go_position.character) {
+        Ok(Some(mut hover)) => {
+            eprintln!("[gopls] Got hover response!");
+            // Translate the range back to .bench file if present
+            if let Some(ref go_range) = hover.range {
+                if let Some(bench_start_offset) = virtual_file.go_to_bench(
+                    go_range.start.line,
+                    go_range.start.character,
+                ) {
+                    if let Some(bench_end_offset) = virtual_file.go_to_bench(
+                        go_range.end.line,
+                        go_range.end.character,
+                    ) {
+                        hover.range = Some(tower_lsp::lsp_types::Range {
+                            start: doc.offset_to_position(bench_start_offset),
+                            end: doc.offset_to_position(bench_end_offset),
+                        });
+                    }
+                }
+            }
+            Some(hover)
+        }
+        Ok(None) => {
+            eprintln!("[gopls] Hover returned None");
+            None
+        }
+        Err(e) => {
+            eprintln!("[gopls] Hover request failed: {}", e);
+            None
+        }
+    }
+}
+
+/// Get hover information at a position (DSL keywords and AST only)
 pub fn get_hover(doc: &ParsedDocument, position: Position) -> Option<Hover> {
     let (word, range) = doc.word_at_position(position)?;
 

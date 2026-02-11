@@ -10,8 +10,10 @@ mod completion;
 mod diagnostics;
 mod document;
 mod embedded;
+mod gopls_client;
 mod hover;
 mod semantic_tokens;
+mod virtual_files;
 
 use backend::Backend;
 
