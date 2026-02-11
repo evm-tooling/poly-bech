@@ -1,4 +1,4 @@
-# simple
+# demo-project
 
 A poly-bench project for cross-language benchmarking.
 
@@ -19,13 +19,13 @@ poly-bench run
 ## Project Structure
 
 ```
-simple/
+demo-project/
 ├── polybench.toml       # Project configuration
 ├── benchmarks/          # Benchmark files (.bench)
 │   └── example.bench    # Example benchmark
 └── .polybench/          # Generated files (gitignored)
     └── runtime-env/      # Per-runtime deps and harness
-        └── go/           # go.mod, deps.go, generated bench code
+        └── go/           # go.mod, go.sum, generated bench code
         └── ts/           # package.json, node_modules, generated bench code
 ```
 

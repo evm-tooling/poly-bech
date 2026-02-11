@@ -9,6 +9,7 @@ use std::hash::{Hash, Hasher};
 use std::path::Path;
 
 use poly_bench::dsl::Span;
+use poly_bench::project::templates;
 use tower_lsp::lsp_types::Position;
 
 use super::embedded::{BlockType, EmbeddedBlock};
@@ -184,9 +185,11 @@ impl VirtualFileBuilder {
         bench_path.hash(&mut hasher);
         let hash = hasher.finish();
         
-        // Note: Don't start with underscore - Go ignores files starting with _
-        let filename = format!("polybench_virtual_{:016x}.go", hash);
-        let path = Path::new(go_mod_root).join(&filename);
+        // Put virtual files in a subdirectory to avoid conflicts with bench_standalone.go
+        // This way both can use "package main" without duplicate declaration errors
+        let subdir = Path::new(go_mod_root).join(".lsp_virtual");
+        let filename = format!("virtual_{:016x}.go", hash);
+        let path = subdir.join(&filename);
         let path_str = path.to_string_lossy().to_string();
         let uri = format!("file://{}", path_str);
         
@@ -358,6 +361,13 @@ impl VirtualFileManager {
             blocks,
             version,
         );
+
+        // Ensure the .lsp_virtual subdirectory exists
+        if let Some(parent) = Path::new(&virtual_file.path).parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                eprintln!("[gopls] Failed to create virtual file directory {}: {}", parent.display(), e);
+            }
+        }
 
         // Write the virtual file to disk so gopls can access it
         if let Err(e) = std::fs::write(&virtual_file.path, &virtual_file.content) {
@@ -718,23 +728,7 @@ impl VirtualTsFileManager {
         let tsconfig_path = Path::new(ts_module_root).join("tsconfig.json");
         
         if !tsconfig_path.exists() {
-            let tsconfig_content = r#"{
-  "compilerOptions": {
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "esModuleInterop": true,
-    "strict": true,
-    "skipLibCheck": true,
-    "noEmit": true,
-    "resolveJsonModule": true,
-    "allowSyntheticDefaultImports": true,
-    "forceConsistentCasingInFileNames": true
-  },
-  "include": ["*.ts", "**/*.ts"],
-  "exclude": ["node_modules"]
-}
-"#;
+            let tsconfig_content = templates::tsconfig_json();
             match std::fs::write(&tsconfig_path, tsconfig_content) {
                 Ok(()) => eprintln!("[tsserver] Created tsconfig.json at {}", tsconfig_path.display()),
                 Err(e) => eprintln!("[tsserver] Failed to create tsconfig.json: {}", e),

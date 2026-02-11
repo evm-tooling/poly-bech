@@ -113,10 +113,9 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         let go_mod_content = templates::go_mod(&project_name, go_version);
         std::fs::write(go_env.join("go.mod"), go_mod_content)
             .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
-        let deps_content = templates::go_deps_file(&[]);
-        std::fs::write(go_env.join(templates::GO_DEPS_FILENAME), deps_content)
-            .map_err(|e| miette::miette!("Failed to write deps.go: {}", e))?;
-        println!("{} Created .polybench/runtime-env/go/ (go.mod, deps.go)", "✓".green().bold());
+        // Note: No .go file created yet - bench_standalone.go is generated when running benchmarks.
+        // This keeps deps in go.mod since `go mod tidy` won't run until bench code exists.
+        println!("{} Created .polybench/runtime-env/go/ (go.mod)", "✓".green().bold());
     }
 
     if has_ts {
@@ -126,7 +125,40 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         let package_json_content = templates::package_json_pretty(&project_name);
         std::fs::write(ts_env.join("package.json"), package_json_content)
             .map_err(|e| miette::miette!("Failed to write package.json: {}", e))?;
-        println!("{} Created .polybench/runtime-env/ts/ (package.json)", "✓".green().bold());
+        let tsconfig_content = templates::tsconfig_json();
+        std::fs::write(ts_env.join("tsconfig.json"), tsconfig_content)
+            .map_err(|e| miette::miette!("Failed to write tsconfig.json: {}", e))?;
+        println!("{} Created .polybench/runtime-env/ts/ (package.json, tsconfig.json)", "✓".green().bold());
+        
+        // Run npm install to install dev dependencies (@types/node, typescript)
+        println!("{} Installing TypeScript dependencies...", "→".blue().bold());
+        let npm_result = std::process::Command::new("npm")
+            .arg("install")
+            .current_dir(&ts_env)
+            .output();
+        
+        match npm_result {
+            Ok(output) if output.status.success() => {
+                println!("{} Installed TypeScript dependencies", "✓".green().bold());
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                eprintln!(
+                    "{} npm install failed: {}",
+                    "⚠".yellow().bold(),
+                    stderr.trim()
+                );
+                eprintln!("  Run 'npm install' manually in .polybench/runtime-env/ts/");
+            }
+            Err(e) => {
+                eprintln!(
+                    "{} Could not run npm: {}",
+                    "⚠".yellow().bold(),
+                    e
+                );
+                eprintln!("  Run 'npm install' manually in .polybench/runtime-env/ts/");
+            }
+        }
     }
 
     // Create .gitignore
@@ -247,8 +279,9 @@ mod tests {
         assert!(project_path.join(BENCHMARKS_DIR).exists());
         assert!(project_path.join(BENCHMARKS_DIR).join("example.bench").exists());
         assert!(crate::project::runtime_env_go(&project_path).join("go.mod").exists());
-        assert!(crate::project::runtime_env_go(&project_path).join(templates::GO_DEPS_FILENAME).exists());
+        // Note: bench_standalone.go is NOT created on init - only when running benchmarks
         assert!(crate::project::runtime_env_ts(&project_path).join("package.json").exists());
+        assert!(crate::project::runtime_env_ts(&project_path).join("tsconfig.json").exists());
         assert!(project_path.join(".gitignore").exists());
         assert!(project_path.join("README.md").exists());
     }

@@ -1,5 +1,5 @@
 [project]
-name = "simple"
+name = "demo-project"
 version = "0.1.0"
 
 [defaults]
@@ -11,18 +11,11 @@ languages = [
 ]
 
 [go]
-module = "simple"
+module = "demo-project"
 version = "1.21"
-
-[go.dependencies]
-"github.com/ChefBingbong/viem-go" = "latest"
-"github.com/ethereum/go-ethereum" = "latest"
 
 [ts]
 runtime = "node"
-
-[ts.dependencies]
-viem = "latest"
 
 [output]
 report_formats = []
