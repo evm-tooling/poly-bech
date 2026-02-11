@@ -31,8 +31,12 @@ const FIXTURE_RE = /^\s*(fixture)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\{\s*$/;
 const BENCH_RE = /^\s*(bench)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\{\s*$/;
 const GO_BLOCK_RE = /^\s*(go)\s*:\s*\{\s*$/;
 const TS_BLOCK_RE = /^\s*(ts)\s*:\s*\{\s*$/;
-const CLOSE_2_4_RE = /^(\s{2,4})\}\s*$/;
-const CLOSE_4_8_RE = /^(\s{4,8})\}\s*$/;
+/** True when line is only a closing } with indent exactly equal to the block's opening indent. */
+function isBlockClosingLine(line: string, blockIndent: string): boolean {
+  if (!/^\s*\}\s*$/.test(line)) return false;
+  const leading = line.slice(0, line.length - line.trimStart().length);
+  return leading === blockIndent;
+}
 
 function findUnescapedBraces(line: string): { open: number[]; close: number[] } {
   const open: number[] = [];
@@ -90,7 +94,7 @@ export function parseBench(content: string): BenchParseResult {
         continue;
       }
       if (top.kind === 'setup-go' || top.kind === 'setup-ts') {
-        if (CLOSE_2_4_RE.test(line)) {
+        if (isBlockClosingLine(line, top.indent)) {
           const startLine = top.line;
           const startOffset = docOffset(startLine, 0);
           const endOffset = docOffset(i, 0);
@@ -109,7 +113,7 @@ export function parseBench(content: string): BenchParseResult {
         continue;
       }
       if (top.kind === 'fixture-go' || top.kind === 'fixture-ts') {
-        if (CLOSE_4_8_RE.test(line)) {
+        if (isBlockClosingLine(line, top.indent)) {
           const startLine = top.line;
           const startOffset = docOffset(startLine, 0);
           const endOffset = docOffset(i, 0);
@@ -123,6 +127,13 @@ export function parseBench(content: string): BenchParseResult {
             endOffset,
             code,
           });
+          stack.pop();
+        }
+        continue;
+      }
+      // Inner block of bench (ts: { ... } or go: { ... }) closes with same indent as opening
+      if (top.kind === 'bench-go' || top.kind === 'bench-ts') {
+        if (isBlockClosingLine(line, top.indent)) {
           stack.pop();
         }
         continue;
@@ -176,11 +187,15 @@ export function parseBench(content: string): BenchParseResult {
     if (GO_BLOCK_RE.test(line)) {
       if (stack.length > 0 && stack[stack.length - 1].kind === 'fixture')
         stack.push({ kind: 'fixture-go', line: i + 1, indent });
+      else if (stack.length > 0 && stack[stack.length - 1].kind === 'bench')
+        stack.push({ kind: 'bench-go', line: i + 1, indent });
       continue;
     }
     if (TS_BLOCK_RE.test(line)) {
       if (stack.length > 0 && stack[stack.length - 1].kind === 'fixture')
         stack.push({ kind: 'fixture-ts', line: i + 1, indent });
+      else if (stack.length > 0 && stack[stack.length - 1].kind === 'bench')
+        stack.push({ kind: 'bench-ts', line: i + 1, indent });
       continue;
     }
   }

@@ -2,7 +2,7 @@
   "name": "poly-bench",
   "displayName": "poly-bench",
   "description": "Syntax highlighting and diagnostics for .bench files with embedded Go and TypeScript",
-  "version": "0.1.0",
+  "version": "0.2.8",
   "publisher": "evm-tooling",
   "repository": {
     "type": "git",
@@ -13,6 +13,16 @@
   "main": "./out/extension.js",
   "activationEvents": ["onLanguage:polybench"],
   "contributes": {
+    "configuration": {
+      "title": "Poly Bench",
+      "properties": {
+        "poly-bench.goModuleRoot": {
+          "type": "string",
+          "default": ".polybench/runtime-env/go",
+          "description": "Path to directory containing go.mod for import checks. Relative to workspace folder or absolute (e.g. /path/to/benchmakers)."
+        }
+      }
+    },
     "languages": [
       {
         "id": "polybench",

@@ -65,7 +65,18 @@ function isLibFile(name: string): boolean {
 const FIXTURE_WRAP_PREFIX = 'function __fixture(): unknown {\n';
 const FIXTURE_WRAP_SUFFIX = '\n}';
 
-export function checkTSBlock(block: EmbeddedBlock): TSDiagnostic[] {
+const POLYBENCH_SNIPPET_NAME = '_polybench_snippet.ts';
+
+function isUnderRoot(filePath: string, rootDir: string): boolean {
+  const normalized = path.isAbsolute(filePath) ? filePath : path.resolve(rootDir, filePath);
+  const rel = path.relative(rootDir, normalized);
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+/**
+ * @param tsModuleRoot - If set, module resolution runs from this dir (e.g. .polybench/runtime-env/ts) so imports like 'viem' resolve from node_modules.
+ */
+export function checkTSBlock(block: EmbeddedBlock, tsModuleRoot: string | null = null): TSDiagnostic[] {
   const diagnostics: TSDiagnostic[] = [];
   const code = block.code.trim();
   if (!code) return diagnostics;
@@ -74,7 +85,8 @@ export function checkTSBlock(block: EmbeddedBlock): TSDiagnostic[] {
   const codeToCheck = isFixture ? FIXTURE_WRAP_PREFIX + code + FIXTURE_WRAP_SUFFIX : code;
   const wrapPrefixLen = isFixture ? FIXTURE_WRAP_PREFIX.length : 0;
 
-  const fileName = 'snippet.ts';
+  const useModuleRoot = tsModuleRoot != null && tsModuleRoot.length > 0 && fs.existsSync(tsModuleRoot);
+  const fileName = useModuleRoot ? path.join(tsModuleRoot, POLYBENCH_SNIPPET_NAME) : 'snippet.ts';
   const source = ts.createSourceFile(
     fileName,
     codeToCheck,
@@ -87,6 +99,8 @@ export function checkTSBlock(block: EmbeddedBlock): TSDiagnostic[] {
     noEmit: true,
     target: ts.ScriptTarget.ES2020,
     lib: ['es2020'],
+    module: ts.ModuleKind.NodeNext,
+    moduleResolution: ts.ModuleResolutionKind.NodeNext,
   };
   const libDir = getTypescriptLibDir();
   const rootFiles = [fileName];
@@ -103,17 +117,70 @@ export function checkTSBlock(block: EmbeddedBlock): TSDiagnostic[] {
         if (!content) return undefined;
         return ts.createSourceFile(name, content, ts.ScriptTarget.Latest, true);
       }
+      if (useModuleRoot && isUnderRoot(name, tsModuleRoot)) {
+        try {
+          const full = path.isAbsolute(name) ? name : path.resolve(tsModuleRoot, name);
+          if (fs.existsSync(full)) {
+            const content = fs.readFileSync(full, 'utf8');
+            return ts.createSourceFile(full, content, ts.ScriptTarget.Latest, true);
+          }
+        } catch {
+          // ignore
+        }
+      }
       return undefined;
     },
     getDefaultLibFileName: () => defaultLibFileName,
-    getCurrentDirectory: () => '',
-    getDirectories: () => [],
-    getCanonicalFileName: (f) => f,
-    useCaseSensitiveFileNames: () => true,
+    getCurrentDirectory: () => (useModuleRoot ? tsModuleRoot : ''),
+    getDirectories: (d) => {
+      if (!useModuleRoot) return [];
+      const full = path.isAbsolute(d) ? d : path.resolve(tsModuleRoot, d);
+      if (!isUnderRoot(full, tsModuleRoot)) return [];
+      try {
+        return fs.readdirSync(full, { withFileTypes: true })
+          .filter((e) => e.isDirectory())
+          .map((e) => e.name);
+      } catch {
+        return [];
+      }
+    },
+    getCanonicalFileName: (f) => path.normalize(f),
+    useCaseSensitiveFileNames: () => process.platform !== 'win32',
     getNewLine: () => '\n',
-    fileExists: (f) => f === fileName || isLibFile(f),
-    readFile: (f) => (isLibFile(f) ? readLibFile(f) : undefined),
-    readDirectory: () => [],
+    fileExists: (f) => {
+      if (f === fileName) return true;
+      if (isLibFile(f)) return true;
+      if (useModuleRoot) {
+        const full = path.isAbsolute(f) ? f : path.resolve(tsModuleRoot, f);
+        if (isUnderRoot(full, tsModuleRoot)) return fs.existsSync(full);
+      }
+      return false;
+    },
+    readFile: (f) => {
+      if (f === fileName) return codeToCheck;
+      if (isLibFile(f)) return readLibFile(f);
+      if (useModuleRoot) {
+        const full = path.isAbsolute(f) ? f : path.resolve(tsModuleRoot, f);
+        if (isUnderRoot(full, tsModuleRoot) && fs.existsSync(full)) {
+          try {
+            return fs.readFileSync(full, 'utf8');
+          } catch {
+            // ignore
+          }
+        }
+      }
+      return undefined;
+    },
+    readDirectory: (d) => {
+      if (!useModuleRoot) return [];
+      const full = path.isAbsolute(d) ? d : path.resolve(tsModuleRoot, d);
+      if (!isUnderRoot(full, tsModuleRoot)) return [];
+      try {
+        return fs.readdirSync(full);
+      } catch {
+        return [];
+      }
+    },
     writeFile: () => {},
   };
   const program = ts.createProgram(rootFiles, compilerOptions, host);
@@ -135,6 +202,8 @@ export function checkTSBlock(block: EmbeddedBlock): TSDiagnostic[] {
 
   for (const d of allDiagnostics) {
     if (d.file !== source) continue;
+    const msg = ts.flattenDiagnosticMessageText(d.messageText, '\n');
+    if (/Cannot find module 'node:/.test(msg)) continue;
     const start = d.start ?? 0;
     const length = d.length ?? 0;
     const { line: relLine, column: relCol } = offsetToLineColInSource(start);
@@ -149,7 +218,7 @@ export function checkTSBlock(block: EmbeddedBlock): TSDiagnostic[] {
       endOffset,
       startLine: docLine,
       startColumn: relCol,
-      message: ts.flattenDiagnosticMessageText(d.messageText, '\n'),
+      message: msg,
       severity: d.category === ts.DiagnosticCategory.Error ? 'error' : 'warning',
     });
   }

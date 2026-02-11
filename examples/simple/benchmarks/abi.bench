@@ -11,7 +11,7 @@ suite abi {
     setup go {
         import (
             "github.com/ethereum/go-ethereum/common"
-            "github.com/ChefBingbong/viem-go/ab"
+            "github.com/ChefBingbong/viem-go/abi"
         )
 
         // Mirror ../go/abi_bench_test.go setup
@@ -20,7 +20,7 @@ suite abi {
 
         func init() {
             var err error
-            benchERC20ABI, err = abi.Pars([]byte(`[
+            benchERC20ABI, err = abi.Parse([]byte(`[
                 {"name":"name","type":"function","inputs":[],"outputs":[{"type":"string"}],"stateMutability":"view"},
                 {"name":"symbol","type":"function","inputs":[],"outputs":[{"type":"string"}],"stateMutability":"view"},
                 {"name":"decimals","type":"function","inputs":[],"outputs":[{"type":"uint8"}],"stateMutability":"view"},

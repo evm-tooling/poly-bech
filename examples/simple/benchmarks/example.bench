@@ -8,11 +8,11 @@ suite example {
     }
 
     setup ts {
-        import { createHash } from 'crypto';
+        import { createHash } from 'node:crypto';
     }
 
     fixture data {
-        hex: "68656c6c6f20776f726c64"  // "hello world"
+        hex: "68656c6c6f20776f726c64"
     }
 
     bench sha256 {

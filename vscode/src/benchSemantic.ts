@@ -202,7 +202,7 @@ function collectFixturesAndBenchCalls(content: string): { fixtures: FixtureInfo[
   return { fixtures, calls };
 }
 
-type BlockContext = 'suite' | 'setup-go' | 'setup-ts' | 'fixture' | 'fixture-go' | 'fixture-ts' | 'bench';
+type BlockContext = 'suite' | 'setup-go' | 'setup-ts' | 'fixture' | 'fixture-go' | 'fixture-ts' | 'bench' | 'bench-go' | 'bench-ts';
 
 function collectKeyDiagnostics(content: string): SemanticDiagnostic[] {
   const diagnostics: SemanticDiagnostic[] = [];
@@ -210,6 +210,7 @@ function collectKeyDiagnostics(content: string): SemanticDiagnostic[] {
   const stack: BlockContext[] = [];
   let fixtureBraceDepth = 0;
   let benchBraceDepth = 0;
+  let benchEmbeddedDepth = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -260,6 +261,27 @@ function collectKeyDiagnostics(content: string): SemanticDiagnostic[] {
           if (c === '{') benchBraceDepth++;
           else if (c === '}') benchBraceDepth--;
         }
+        if (/^\s*go\s*:\s*\{\s*$/.test(line)) {
+          stack.push('bench-go');
+          benchEmbeddedDepth = 1;
+          continue;
+        }
+        if (/^\s*ts\s*:\s*\{\s*$/.test(line)) {
+          stack.push('bench-ts');
+          benchEmbeddedDepth = 1;
+          continue;
+        }
+      }
+      if (top === 'bench-go' || top === 'bench-ts') {
+        for (const c of line) {
+          if (c === '{') benchEmbeddedDepth++;
+          else if (c === '}') benchEmbeddedDepth--;
+        }
+        if (benchEmbeddedDepth <= 0) {
+          stack.pop();
+          benchEmbeddedDepth = 0;
+        }
+        continue;
       }
       if (top === 'setup-go' || top === 'setup-ts') {
         if (/^\s{2,4}\}\s*$/.test(line)) stack.pop();
@@ -281,7 +303,9 @@ function collectKeyDiagnostics(content: string): SemanticDiagnostic[] {
       stack[stack.length - 1] === 'setup-go' ||
       stack[stack.length - 1] === 'setup-ts' ||
       stack[stack.length - 1] === 'fixture-go' ||
-      stack[stack.length - 1] === 'fixture-ts'
+      stack[stack.length - 1] === 'fixture-ts' ||
+      stack[stack.length - 1] === 'bench-go' ||
+      stack[stack.length - 1] === 'bench-ts'
     );
     if (inEmbedded || !keyMatch) continue;
 
@@ -348,17 +372,22 @@ export function analyzeSemantics(content: string, parseResult: BenchParseResult)
         });
       } else usedGoFuncs.add(call.callee);
       for (const arg of call.args) {
-        if (!validGoArgs.has(arg)) {
-          const argOffset = call.expr.indexOf(arg);
-          const argCol = argOffset >= 0 ? call.exprStartColumn + argOffset : call.calleeColumn;
-          diagnostics.push({
-            line: call.line,
-            column: argCol,
-            endColumn: argCol + arg.length,
-            message: `Unknown fixture or variable '${arg}'. Available: ${[...validGoArgs].join(', ') || 'none'}`,
-            severity: 'error',
-          });
-        } else usedFixtures.add(arg);
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*(_hex)?$/.test(arg)) continue;
+        if (validGoArgs.has(arg)) {
+          usedFixtures.add(arg);
+          continue;
+        }
+        const suggestion = closestKey(arg, validGoArgs);
+        if (!suggestion) continue;
+        const argOffset = call.expr.indexOf(arg);
+        const argCol = argOffset >= 0 ? call.exprStartColumn + argOffset : call.calleeColumn;
+        diagnostics.push({
+          line: call.line,
+          column: argCol,
+          endColumn: argCol + arg.length,
+          message: `Unknown fixture '${arg}'. Did you mean '${suggestion}'?`,
+          severity: 'error',
+        });
       }
     } else {
       if (!tsSetupNames.has(call.callee)) {
@@ -373,19 +402,23 @@ export function analyzeSemantics(content: string, parseResult: BenchParseResult)
         });
       } else usedTsNames.add(call.callee);
       for (const arg of call.args) {
-        if (!validTsArgs.has(arg)) {
-          const argOffset = call.expr.indexOf(arg);
-          const argCol = argOffset >= 0 ? call.exprStartColumn + argOffset : call.calleeColumn;
-          diagnostics.push({
-            line: call.line,
-            column: argCol,
-            endColumn: argCol + arg.length,
-            message: `Unknown fixture or variable '${arg}'. Available: ${[...validTsArgs].join(', ') || 'none'}`,
-            severity: 'error',
-          });
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*(_hex)?$/.test(arg)) continue;
+        if (validTsArgs.has(arg)) {
+          if (arg.endsWith('_hex')) usedFixtures.add(arg.replace(/_hex$/, ''));
+          else usedFixtures.add(arg);
+          continue;
         }
-        if (arg.endsWith('_hex')) usedFixtures.add(arg.replace(/_hex$/, ''));
-        else usedFixtures.add(arg);
+        const suggestion = closestKey(arg, validTsArgs);
+        if (!suggestion) continue;
+        const argOffset = call.expr.indexOf(arg);
+        const argCol = argOffset >= 0 ? call.exprStartColumn + argOffset : call.calleeColumn;
+        diagnostics.push({
+          line: call.line,
+          column: argCol,
+          endColumn: argCol + arg.length,
+          message: `Unknown fixture '${arg}'. Did you mean '${suggestion}'?`,
+          severity: 'error',
+        });
       }
     }
   }

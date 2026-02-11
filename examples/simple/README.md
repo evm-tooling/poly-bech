@@ -1,4 +1,4 @@
-# viem-simple
+# simple
 
 A poly-bench project for cross-language benchmarking.
 
@@ -19,7 +19,7 @@ poly-bench run
 ## Project Structure
 
 ```
-viem-simple/
+simple/
 ├── polybench.toml       # Project configuration
 ├── benchmarks/          # Benchmark files (.bench)
 │   └── example.bench    # Example benchmark

@@ -11,7 +11,7 @@ suite hash {
     # Setup code for each language
     setup go {
         import "crypto/sha256"
-        import "golang.org/x/crypto/sha3"
+        import "golang.org/x/crypto/s"
         
         func keccak256(data []byte) []byte {
             h := sha3.NewLegacyKeccak256()

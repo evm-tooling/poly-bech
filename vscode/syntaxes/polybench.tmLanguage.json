@@ -172,7 +172,7 @@
     },
     "bench-block": {
       "begin": "\\b(bench)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
-      "end": "\\}",
+      "end": "^(\\s{4})\\}(\\s*)$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.bench"
@@ -191,10 +191,66 @@
           "include": "#comment"
         },
         {
+          "match": "\\b(description)\\s*:\\s*",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            }
+          }
+        },
+        {
+          "include": "#bench-go-block"
+        },
+        {
+          "include": "#bench-ts-block"
+        },
+        {
           "include": "#bench-go-line"
         },
         {
           "include": "#bench-ts-line"
+        }
+      ]
+    },
+    "bench-go-block": {
+      "name": "meta.block.bench.go.bench",
+      "begin": "\\b(go)\\s*:\\s*\\{\\s*$",
+      "end": "^(\\s{6,8})\\}(\\s*)$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "contentName": "source.go.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.go"
+        }
+      ]
+    },
+    "bench-ts-block": {
+      "name": "meta.block.bench.ts.bench",
+      "begin": "\\b(ts)\\s*:\\s*\\{\\s*$",
+      "end": "^(\\s{6,8})\\}(\\s*)$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "contentName": "source.ts.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.ts"
         }
       ]
     },

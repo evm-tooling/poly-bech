@@ -1,5 +1,5 @@
 [project]
-name = "viem-simple"
+name = "simple"
 version = "0.1.0"
 
 [defaults]
@@ -11,12 +11,12 @@ languages = [
 ]
 
 [go]
-module = "viem-simple"
+module = "simple"
 version = "1.21"
 
 [go.dependencies]
-"github.com/ethereum/go-ethereum" = "latest"
 "github.com/ChefBingbong/viem-go" = "latest"
+"github.com/ethereum/go-ethereum" = "latest"
 
 [ts]
 runtime = "node"
