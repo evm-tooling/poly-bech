@@ -109,11 +109,29 @@ func main() {}
 
 /// Generate code for a single suite
 fn generate_suite(code: &mut String, suite: &SuiteIR) -> Result<()> {
-    // Add setup body (imports already extracted to top of file)
-    if let Some(setup_body) = suite.setups.get(&Lang::Go) {
-        if !setup_body.trim().is_empty() {
-            code.push_str("// Suite setup\n");
-            code.push_str(setup_body);
+    // Add declarations
+    if let Some(declarations) = suite.declarations.get(&Lang::Go) {
+        if !declarations.trim().is_empty() {
+            code.push_str("// Declarations\n");
+            code.push_str(declarations);
+            code.push_str("\n\n");
+        }
+    }
+
+    // Add init function if present
+    if let Some(init_code) = suite.init_code.get(&Lang::Go) {
+        if !init_code.trim().is_empty() {
+            code.push_str("func init() {\n");
+            code.push_str(init_code);
+            code.push_str("\n}\n\n");
+        }
+    }
+
+    // Add helpers
+    if let Some(helpers) = suite.helpers.get(&Lang::Go) {
+        if !helpers.trim().is_empty() {
+            code.push_str("// Helpers\n");
+            code.push_str(helpers);
             code.push_str("\n\n");
         }
     }

@@ -235,12 +235,36 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
 }\n\n",
     );
 
-    // Add non-import setup body (vars, funcs, etc.)
-    // The body has already had imports extracted at IR lowering time
-    if let Some(setup_body) = suite.setups.get(&Lang::Go) {
-        if !setup_body.trim().is_empty() {
-            code.push_str(setup_body);
-            if !setup_body.ends_with('\n') {
+    // Phase 1: Add declarations section (package-level vars, types, consts)
+    if let Some(declarations) = suite.declarations.get(&Lang::Go) {
+        if !declarations.trim().is_empty() {
+            code.push_str("// Declarations\n");
+            code.push_str(declarations);
+            if !declarations.ends_with('\n') {
+                code.push('\n');
+            }
+            code.push('\n');
+        }
+    }
+
+    // Phase 1: Add init section as init() function
+    if let Some(init_code) = suite.init_code.get(&Lang::Go) {
+        if !init_code.trim().is_empty() {
+            code.push_str("func init() {\n");
+            code.push_str(init_code);
+            if !init_code.ends_with('\n') {
+                code.push('\n');
+            }
+            code.push_str("}\n\n");
+        }
+    }
+
+    // Phase 1: Add helper functions
+    if let Some(helpers) = suite.helpers.get(&Lang::Go) {
+        if !helpers.trim().is_empty() {
+            code.push_str("// Helpers\n");
+            code.push_str(helpers);
+            if !helpers.ends_with('\n') {
                 code.push('\n');
             }
             code.push('\n');
@@ -250,12 +274,12 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     // Add fixtures
     for fixture_name in &spec.fixture_refs {
         if let Some(fixture) = suite.get_fixture(fixture_name) {
-            if let Some(impl_code) = fixture.implementations.get(&Lang::Go) {
+            if let Some(fixture_impl) = fixture.implementations.get(&Lang::Go) {
                 // Wrap in IIFE if it contains multiple statements (has return)
-                if impl_code.contains("return") {
-                    code.push_str(&format!("var {} = func() []byte {{\n{}\n}}()\n", fixture_name, impl_code));
+                if fixture_impl.contains("return") {
+                    code.push_str(&format!("var {} = func() []byte {{\n{}\n}}()\n", fixture_name, fixture_impl));
                 } else {
-                    code.push_str(&format!("var {} = {}\n", fixture_name, impl_code));
+                    code.push_str(&format!("var {} = {}\n", fixture_name, fixture_impl));
                 }
             } else if !fixture.data.is_empty() {
                 code.push_str(&format!("var {} = {}\n", fixture_name, fixture.as_go_bytes()));
@@ -263,42 +287,77 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
         }
     }
 
+    // Phase 3: Get lifecycle hooks
+    let before_hook = spec.before_hooks.get(&Lang::Go);
+    let after_hook = spec.after_hooks.get(&Lang::Go);
+    let each_hook = spec.each_hooks.get(&Lang::Go);
+
     code.push_str(&format!(r#"
 func main() {{
 	iterations := {}
 	warmup := {}
 	samples := make([]uint64, iterations)
-	
-	// Warmup
-	for i := 0; i < warmup; i++ {{
-		_ = {}
-	}}
-	
-	// Timed run
-	var totalNanos uint64
-	for i := 0; i < iterations; i++ {{
-		start := time.Now()
-		_ = {}
-		elapsed := time.Since(start).Nanoseconds()
-		samples[i] = uint64(elapsed)
-		totalNanos += uint64(elapsed)
-	}}
-	
+"#, spec.iterations, spec.warmup));
+
+    // Phase 3: Before hook (runs once before benchmark)
+    if let Some(before) = before_hook {
+        code.push_str("\n\t// Before hook\n");
+        for line in before.lines() {
+            code.push_str(&format!("\t{}\n", line));
+        }
+    }
+
+    // Warmup loop
+    code.push_str("\n\t// Warmup\n");
+    code.push_str("\tfor i := 0; i < warmup; i++ {\n");
+    if let Some(each) = each_hook {
+        for line in each.lines() {
+            code.push_str(&format!("\t\t{}\n", line));
+        }
+    }
+    code.push_str(&format!("\t\t_ = {}\n", impl_code));
+    code.push_str("\t}\n");
+
+    // Timed run
+    code.push_str("\n\t// Timed run\n");
+    code.push_str("\tvar totalNanos uint64\n");
+    code.push_str("\tfor i := 0; i < iterations; i++ {\n");
+    if let Some(each) = each_hook {
+        for line in each.lines() {
+            code.push_str(&format!("\t\t{}\n", line));
+        }
+    }
+    code.push_str("\t\tstart := time.Now()\n");
+    code.push_str(&format!("\t\t_ = {}\n", impl_code));
+    code.push_str("\t\telapsed := time.Since(start).Nanoseconds()\n");
+    code.push_str("\t\tsamples[i] = uint64(elapsed)\n");
+    code.push_str("\t\ttotalNanos += uint64(elapsed)\n");
+    code.push_str("\t}\n");
+
+    // Phase 3: After hook (runs once after benchmark)
+    if let Some(after) = after_hook {
+        code.push_str("\n\t// After hook\n");
+        for line in after.lines() {
+            code.push_str(&format!("\t{}\n", line));
+        }
+    }
+
+    code.push_str(r#"
 	nanosPerOp := float64(totalNanos) / float64(iterations)
 	opsPerSec := 1e9 / nanosPerOp
 	
-	result := BenchResult{{
+	result := BenchResult{
 		Iterations:  uint64(iterations),
 		TotalNanos:  totalNanos,
 		NanosPerOp:  nanosPerOp,
 		OpsPerSec:   opsPerSec,
 		Samples:     samples,
-	}}
+	}
 	
 	jsonBytes, _ := json.Marshal(result)
 	fmt.Println(string(jsonBytes))
-}}
-"#, spec.iterations, spec.warmup, impl_code, impl_code));
+}
+"#);
 
     Ok(code)
 }
