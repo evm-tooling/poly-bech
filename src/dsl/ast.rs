@@ -83,6 +83,96 @@ impl CodeBlock {
     pub fn new(code: String, is_multiline: bool, span: Span) -> Self {
         Self { code, is_multiline, span }
     }
+
+    /// Create an empty code block
+    pub fn empty() -> Self {
+        Self {
+            code: String::new(),
+            is_multiline: false,
+            span: Span::dummy(),
+        }
+    }
+}
+
+/// Execution order for benchmarks within a suite
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ExecutionOrder {
+    /// Run benchmarks in definition order
+    Sequential,
+    /// Run benchmarks in parallel (where supported)
+    Parallel,
+    /// Randomize benchmark order
+    Random,
+}
+
+impl ExecutionOrder {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "sequential" => Some(ExecutionOrder::Sequential),
+            "parallel" => Some(ExecutionOrder::Parallel),
+            "random" => Some(ExecutionOrder::Random),
+            _ => None,
+        }
+    }
+}
+
+impl Default for ExecutionOrder {
+    fn default() -> Self {
+        ExecutionOrder::Sequential
+    }
+}
+
+/// Structured setup block with explicit sections (Phase 1)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StructuredSetup {
+    /// Import statements (extracted for codegen)
+    pub imports: Option<CodeBlock>,
+    /// Package-level declarations (vars, types, consts)
+    pub declarations: Option<CodeBlock>,
+    /// Init code (runs once before benchmarks)
+    pub init: Option<CodeBlock>,
+    /// Whether init is async (TypeScript only)
+    pub async_init: bool,
+    /// Helper functions (reusable across benchmarks)
+    pub helpers: Option<CodeBlock>,
+    /// Source span
+    pub span: Span,
+}
+
+impl StructuredSetup {
+    pub fn new(span: Span) -> Self {
+        Self {
+            imports: None,
+            declarations: None,
+            init: None,
+            async_init: false,
+            helpers: None,
+            span,
+        }
+    }
+
+    /// Check if any section is defined
+    pub fn is_empty(&self) -> bool {
+        self.imports.is_none()
+            && self.declarations.is_none()
+            && self.init.is_none()
+            && self.helpers.is_none()
+    }
+}
+
+/// Parameter definition for parameterized fixtures (Phase 5)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FixtureParam {
+    /// Parameter name
+    pub name: String,
+    /// Parameter type (e.g., "int", "string")
+    pub param_type: String,
+}
+
+impl FixtureParam {
+    pub fn new(name: String, param_type: String) -> Self {
+        Self { name, param_type }
+    }
 }
 
 /// A property value in the DSL
@@ -138,8 +228,21 @@ pub struct Suite {
     pub iterations: Option<u64>,
     /// Warmup iterations
     pub warmup: Option<u64>,
-    /// Per-language setup code blocks
-    pub setups: HashMap<Lang, CodeBlock>,
+    
+    // Phase 4: Suite configuration
+    /// Suite-level timeout in milliseconds
+    pub timeout: Option<u64>,
+    /// Required language implementations for all benchmarks
+    pub requires: Vec<Lang>,
+    /// Execution order for benchmarks
+    pub order: Option<ExecutionOrder>,
+    /// Whether to enable comparison tables
+    pub compare: bool,
+    /// Baseline language for comparison ratios
+    pub baseline: Option<Lang>,
+    
+    /// Per-language structured setup blocks (Phase 1)
+    pub setups: HashMap<Lang, StructuredSetup>,
     /// Named fixtures
     pub fixtures: Vec<Fixture>,
     /// Benchmark definitions
@@ -154,6 +257,11 @@ impl Suite {
             description: None,
             iterations: None,
             warmup: None,
+            timeout: None,
+            requires: Vec::new(),
+            order: None,
+            compare: false,
+            baseline: None,
             setups: HashMap::new(),
             fixtures: Vec::new(),
             benchmarks: Vec::new(),
@@ -176,6 +284,12 @@ pub struct Fixture {
     pub hex_file: Option<String>,
     /// Per-language implementations (alternative to hex)
     pub implementations: HashMap<Lang, CodeBlock>,
+    
+    // Phase 5: Enhanced fixture system
+    /// Shape annotation for documentation (JSON-like descriptor)
+    pub shape: Option<String>,
+    /// Parameters for parameterized fixtures
+    pub params: Vec<FixtureParam>,
 }
 
 impl Fixture {
@@ -187,7 +301,14 @@ impl Fixture {
             hex_data: None,
             hex_file: None,
             implementations: HashMap::new(),
+            shape: None,
+            params: Vec::new(),
         }
+    }
+
+    /// Check if this is a parameterized fixture
+    pub fn is_parameterized(&self) -> bool {
+        !self.params.is_empty()
     }
 }
 
@@ -202,6 +323,27 @@ pub struct Benchmark {
     pub description: Option<String>,
     /// Override iterations for this specific benchmark
     pub iterations: Option<u64>,
+    
+    // Phase 2: Benchmark configuration
+    /// Override warmup iterations for this benchmark
+    pub warmup: Option<u64>,
+    /// Timeout in milliseconds for this benchmark
+    pub timeout: Option<u64>,
+    /// Tags for filtering/grouping
+    pub tags: Vec<String>,
+    /// Per-language skip conditions
+    pub skip: HashMap<Lang, CodeBlock>,
+    /// Per-language result validation expressions
+    pub validate: HashMap<Lang, CodeBlock>,
+    
+    // Phase 3: Lifecycle hooks
+    /// Pre-benchmark hook (runs once before iterations)
+    pub before: HashMap<Lang, CodeBlock>,
+    /// Post-benchmark hook (runs once after iterations)
+    pub after: HashMap<Lang, CodeBlock>,
+    /// Per-iteration hook (runs before each iteration, outside timing)
+    pub each: HashMap<Lang, CodeBlock>,
+    
     /// Per-language implementations
     pub implementations: HashMap<Lang, CodeBlock>,
 }
@@ -213,7 +355,22 @@ impl Benchmark {
             span,
             description: None,
             iterations: None,
+            warmup: None,
+            timeout: None,
+            tags: Vec::new(),
+            skip: HashMap::new(),
+            validate: HashMap::new(),
+            before: HashMap::new(),
+            after: HashMap::new(),
+            each: HashMap::new(),
             implementations: HashMap::new(),
         }
+    }
+
+    /// Check if this benchmark has any lifecycle hooks for a language
+    pub fn has_hooks(&self, lang: Lang) -> bool {
+        self.before.contains_key(&lang)
+            || self.after.contains_key(&lang)
+            || self.each.contains_key(&lang)
     }
 }

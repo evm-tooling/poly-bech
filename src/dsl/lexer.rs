@@ -69,7 +69,10 @@ impl<'a> Lexer<'a> {
             '}' => (TokenKind::RBrace, "}".to_string()),
             '(' => (TokenKind::LParen, "(".to_string()),
             ')' => (TokenKind::RParen, ")".to_string()),
+            '[' => (TokenKind::LBracket, "[".to_string()),
+            ']' => (TokenKind::RBracket, "]".to_string()),
             ':' => (TokenKind::Colon, ":".to_string()),
+            ',' => (TokenKind::Comma, ",".to_string()),
             '@' => {
                 // Check for @file
                 if self.peek_str("file") {
@@ -81,11 +84,11 @@ impl<'a> Lexer<'a> {
             }
             '"' => self.scan_string()?,
             '\'' => self.scan_single_quote_string()?,
-            c if c.is_ascii_digit() => self.scan_number(pos)?,
+            c if c.is_ascii_digit() => self.scan_number_or_duration(pos)?,
             c if c.is_ascii_alphabetic() || c == '_' => self.scan_identifier(pos)?,
             // Code characters - treat as identifiers for inline code
-            '.' | ',' | '+' | '-' | '*' | '/' | '%' | '=' | '<' | '>' | '!' | '&' | '|' | 
-            '[' | ']' | ';' | '?' | '^' | '~' | '`' => {
+            '.' | '+' | '-' | '*' | '/' | '%' | '=' | '<' | '>' | '!' | '&' | '|' | 
+            ';' | '?' | '^' | '~' | '`' => {
                 // Scan the rest as a code expression
                 self.scan_code_expr(pos, ch)?
             }
@@ -202,8 +205,9 @@ impl<'a> Lexer<'a> {
         Ok((TokenKind::String(value.clone()), format!("\"{}\"", value)))
     }
 
-    /// Scan a number literal
-    fn scan_number(&mut self, start: usize) -> Result<(TokenKind, String), ParseError> {
+    /// Scan a number literal or duration (e.g., 30s, 500ms, 1m)
+    fn scan_number_or_duration(&mut self, start: usize) -> Result<(TokenKind, String), ParseError> {
+        // Scan digits
         while let Some(c) = self.peek() {
             if c.is_ascii_digit() || c == '_' {
                 self.advance();
@@ -212,13 +216,57 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        let lexeme = &self.source[start..self.current_pos];
-        let clean = lexeme.replace('_', "");
-        let value = clean.parse::<u64>().map_err(|_| ParseError::InvalidNumber {
-            span: Span::new(start, self.current_pos, self.line, self.col),
-        })?;
+        // Check for duration suffix (s, ms, m)
+        let has_suffix = if let Some(c) = self.peek() {
+            if c == 'm' {
+                self.advance();
+                // Check for 'ms' vs just 'm' (minutes)
+                if self.peek() == Some('s') {
+                    self.advance();
+                    true
+                } else {
+                    true // 'm' for minutes
+                }
+            } else if c == 's' {
+                self.advance();
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
 
-        Ok((TokenKind::Number(value), lexeme.to_string()))
+        let lexeme = &self.source[start..self.current_pos];
+
+        if has_suffix {
+            // Parse as duration
+            let ms = Self::parse_duration_to_ms(lexeme).map_err(|_| ParseError::InvalidNumber {
+                span: Span::new(start, self.current_pos, self.line, self.col),
+            })?;
+            Ok((TokenKind::Duration(ms), lexeme.to_string()))
+        } else {
+            // Parse as regular number
+            let clean = lexeme.replace('_', "");
+            let value = clean.parse::<u64>().map_err(|_| ParseError::InvalidNumber {
+                span: Span::new(start, self.current_pos, self.line, self.col),
+            })?;
+            Ok((TokenKind::Number(value), lexeme.to_string()))
+        }
+    }
+
+    /// Parse a duration string to milliseconds
+    fn parse_duration_to_ms(s: &str) -> Result<u64, ()> {
+        let s = s.replace('_', "");
+        if let Some(num) = s.strip_suffix("ms") {
+            num.parse::<u64>().map_err(|_| ())
+        } else if let Some(num) = s.strip_suffix('s') {
+            num.parse::<u64>().map(|n| n * 1000).map_err(|_| ())
+        } else if let Some(num) = s.strip_suffix('m') {
+            num.parse::<u64>().map(|n| n * 60 * 1000).map_err(|_| ())
+        } else {
+            Err(())
+        }
     }
 
     /// Scan an identifier or keyword
@@ -361,5 +409,70 @@ mod tests {
         assert_eq!(tokens[1].kind, TokenKind::LParen);
         assert!(matches!(&tokens[2].kind, TokenKind::String(s) if s == "path.hex"));
         assert_eq!(tokens[3].kind, TokenKind::RParen);
+    }
+
+    #[test]
+    fn test_brackets_and_comma() {
+        let source = r#"["foo", "bar"]"#;
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        
+        assert_eq!(tokens[0].kind, TokenKind::LBracket);
+        assert!(matches!(&tokens[1].kind, TokenKind::String(s) if s == "foo"));
+        assert_eq!(tokens[2].kind, TokenKind::Comma);
+        assert!(matches!(&tokens[3].kind, TokenKind::String(s) if s == "bar"));
+        assert_eq!(tokens[4].kind, TokenKind::RBracket);
+    }
+
+    #[test]
+    fn test_duration_seconds() {
+        let source = "30s";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        
+        assert!(matches!(tokens[0].kind, TokenKind::Duration(30000))); // 30 seconds = 30000ms
+    }
+
+    #[test]
+    fn test_duration_milliseconds() {
+        let source = "500ms";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        
+        assert!(matches!(tokens[0].kind, TokenKind::Duration(500)));
+    }
+
+    #[test]
+    fn test_duration_minutes() {
+        let source = "2m";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        
+        assert!(matches!(tokens[0].kind, TokenKind::Duration(120000))); // 2 minutes = 120000ms
+    }
+
+    #[test]
+    fn test_new_keywords() {
+        let source = "declare init helpers import timeout tags skip validate before after each requires order compare baseline shape async";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        
+        assert_eq!(tokens[0].kind, TokenKind::Declare);
+        assert_eq!(tokens[1].kind, TokenKind::Init);
+        assert_eq!(tokens[2].kind, TokenKind::Helpers);
+        assert_eq!(tokens[3].kind, TokenKind::Import);
+        assert_eq!(tokens[4].kind, TokenKind::Timeout);
+        assert_eq!(tokens[5].kind, TokenKind::Tags);
+        assert_eq!(tokens[6].kind, TokenKind::Skip);
+        assert_eq!(tokens[7].kind, TokenKind::Validate);
+        assert_eq!(tokens[8].kind, TokenKind::Before);
+        assert_eq!(tokens[9].kind, TokenKind::After);
+        assert_eq!(tokens[10].kind, TokenKind::Each);
+        assert_eq!(tokens[11].kind, TokenKind::Requires);
+        assert_eq!(tokens[12].kind, TokenKind::Order);
+        assert_eq!(tokens[13].kind, TokenKind::Compare);
+        assert_eq!(tokens[14].kind, TokenKind::Baseline);
+        assert_eq!(tokens[15].kind, TokenKind::Shape);
+        assert_eq!(tokens[16].kind, TokenKind::Async);
     }
 }
