@@ -2,8 +2,8 @@
 //!
 //! Transforms the parsed AST into a normalized IR suitable for execution.
 
-use crate::dsl::{File, Suite, Fixture, Benchmark, Lang};
-use crate::ir::{BenchmarkIR, SuiteIR, FixtureIR, BenchmarkSpec};
+use crate::dsl::{File, Suite, Fixture, Benchmark, Lang, ExecutionOrder};
+use crate::ir::{BenchmarkIR, SuiteIR, FixtureIR, FixtureParamIR, BenchmarkSpec};
 use crate::ir::fixtures::{decode_hex, load_hex_file, extract_fixture_refs};
 use crate::ir::imports::{extract_go_imports, extract_ts_imports, ParsedSetup};
 use miette::{Result, miette};
@@ -28,17 +28,42 @@ fn lower_suite(suite: &Suite, base_dir: Option<&Path>) -> Result<SuiteIR> {
     ir.description = suite.description.clone();
     ir.default_iterations = suite.iterations.unwrap_or(1000);
     ir.default_warmup = suite.warmup.unwrap_or(100);
+    
+    // Phase 4: Suite-level configuration
+    ir.timeout = suite.timeout;
+    ir.requires = suite.requires.clone();
+    ir.order = suite.order.unwrap_or(ExecutionOrder::Sequential);
+    ir.compare = suite.compare;
+    ir.baseline = suite.baseline;
 
-    // Extract imports from setup blocks and separate from body
-    for (lang, code_block) in &suite.setups {
-        let parsed = match lang {
-            Lang::Go => extract_go_imports(&code_block.code),
-            Lang::TypeScript => extract_ts_imports(&code_block.code),
-            // For other languages, pass through as-is
-            _ => ParsedSetup::passthrough(&code_block.code),
-        };
-        ir.imports.insert(*lang, parsed.imports);
-        ir.setups.insert(*lang, parsed.body);
+    // Phase 1: Extract structured setup sections
+    for (lang, structured_setup) in &suite.setups {
+        // Handle imports - extract from import section or parse from code
+        if let Some(ref import_block) = structured_setup.imports {
+            // For structured setups, imports are already in the import block
+            let parsed = match lang {
+                Lang::Go => extract_go_imports(&import_block.code),
+                Lang::TypeScript => extract_ts_imports(&import_block.code),
+                _ => ParsedSetup::passthrough(&import_block.code),
+            };
+            ir.imports.insert(*lang, parsed.imports);
+        }
+        
+        // Handle declarations
+        if let Some(ref decl_block) = structured_setup.declarations {
+            ir.declarations.insert(*lang, decl_block.code.clone());
+        }
+        
+        // Handle init code
+        if let Some(ref init_block) = structured_setup.init {
+            ir.init_code.insert(*lang, init_block.code.clone());
+            ir.async_init.insert(*lang, structured_setup.async_init);
+        }
+        
+        // Handle helpers
+        if let Some(ref helpers_block) = structured_setup.helpers {
+            ir.helpers.insert(*lang, helpers_block.code.clone());
+        }
     }
 
     // Lower fixtures
@@ -71,6 +96,9 @@ fn lower_fixture(fixture: &Fixture, base_dir: Option<&Path>) -> Result<FixtureIR
         // Has language-specific implementations but no portable hex
         // Use empty data and rely on implementations
         Vec::new()
+    } else if !fixture.params.is_empty() {
+        // Parameterized fixture - no static data
+        Vec::new()
     } else {
         return Err(miette!(
             "Fixture '{}' has no hex data or implementations",
@@ -80,6 +108,15 @@ fn lower_fixture(fixture: &Fixture, base_dir: Option<&Path>) -> Result<FixtureIR
 
     let mut ir = FixtureIR::new(fixture.name.clone(), data);
     ir.description = fixture.description.clone();
+    ir.shape = fixture.shape.clone();
+    
+    // Copy parameters for parameterized fixtures
+    ir.params = fixture.params.iter()
+        .map(|p| FixtureParamIR {
+            name: p.name.clone(),
+            param_type: p.param_type.clone(),
+        })
+        .collect();
 
     // Copy language-specific implementations
     for (lang, code_block) in &fixture.implementations {
@@ -97,7 +134,7 @@ fn lower_benchmark(
     fixture_names: &[String],
 ) -> Result<BenchmarkSpec> {
     let iterations = benchmark.iterations.unwrap_or(suite_ir.default_iterations);
-    let warmup = suite_ir.default_warmup;
+    let warmup = benchmark.warmup.unwrap_or(suite_ir.default_warmup);
 
     let mut spec = BenchmarkSpec::new(
         benchmark.name.clone(),
@@ -107,6 +144,33 @@ fn lower_benchmark(
     );
 
     spec.description = benchmark.description.clone();
+    
+    // Phase 2: Benchmark configuration
+    spec.timeout = benchmark.timeout;
+    spec.tags = benchmark.tags.clone();
+    
+    // Copy skip conditions
+    for (lang, code_block) in &benchmark.skip {
+        spec.skip_conditions.insert(*lang, code_block.code.clone());
+    }
+    
+    // Copy validations
+    for (lang, code_block) in &benchmark.validate {
+        spec.validations.insert(*lang, code_block.code.clone());
+    }
+    
+    // Phase 3: Lifecycle hooks
+    for (lang, code_block) in &benchmark.before {
+        spec.before_hooks.insert(*lang, code_block.code.clone());
+    }
+    
+    for (lang, code_block) in &benchmark.after {
+        spec.after_hooks.insert(*lang, code_block.code.clone());
+    }
+    
+    for (lang, code_block) in &benchmark.each {
+        spec.each_hooks.insert(*lang, code_block.code.clone());
+    }
 
     // Copy implementations and extract fixture references
     for (lang, code_block) in &benchmark.implementations {
