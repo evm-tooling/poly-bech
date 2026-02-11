@@ -128,6 +128,17 @@ enum Commands {
         #[arg(long)]
         skip_install: bool,
     },
+
+    /// Format .bench files
+    Fmt {
+        /// Paths to .bench files (default: all in benchmarks/)
+        #[arg(value_name = "FILES")]
+        files: Vec<PathBuf>,
+
+        /// Write formatted output to files instead of stdout
+        #[arg(long, short)]
+        write: bool,
+    },
 }
 
 #[tokio::main]
@@ -170,6 +181,9 @@ async fn main() -> Result<()> {
         }
         Commands::Build { force, skip_install } => {
             cmd_build(force, skip_install)?;
+        }
+        Commands::Fmt { files, write } => {
+            cmd_fmt(files, write).await?;
         }
     }
 
@@ -502,4 +516,49 @@ fn cmd_build(force: bool, skip_install: bool) -> Result<()> {
         skip_install,
     };
     project::build::build_project(&options)
+}
+
+async fn cmd_fmt(files: Vec<PathBuf>, write: bool) -> Result<()> {
+    use colored::Colorize;
+
+    let files = if files.is_empty() {
+        let current_dir = std::env::current_dir()
+            .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+        let project_root = project::find_project_root(&current_dir).ok_or_else(|| {
+            miette::miette!(
+                "No poly-bench project found. Specify files: poly-bench fmt <file.bench> ..."
+            )
+        })?;
+        project::find_bench_files(&project_root)?
+    } else {
+        files
+    };
+
+    if files.is_empty() {
+        return Err(miette::miette!("No .bench files to format"));
+    }
+
+    for file in &files {
+        let source = std::fs::read_to_string(file)
+            .map_err(|e| miette::miette!("Failed to read {}: {}", file.display(), e))?;
+        let filename = file
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+        match dsl::parse(&source, filename) {
+            Ok(ast) => {
+                let formatted = dsl::format_file(&ast);
+                if write {
+                    std::fs::write(file, &formatted)
+                        .map_err(|e| miette::miette!("Failed to write {}: {}", file.display(), e))?;
+                    println!("{} {}", "✓".green().bold(), file.display());
+                } else {
+                    print!("{}", formatted);
+                }
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    Ok(())
 }

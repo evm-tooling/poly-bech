@@ -8,8 +8,10 @@ use std::sync::RwLock;
 
 use dashmap::DashMap;
 use tower_lsp::jsonrpc::Result;
-use tower_lsp::lsp_types::*;
+use tower_lsp::lsp_types::{OneOf, *};
 use tower_lsp::{Client, LanguageServer};
+
+use poly_bench::dsl::format_file;
 
 use super::completion::get_completions;
 use super::diagnostics::compute_diagnostics_with_config;
@@ -246,6 +248,8 @@ impl LanguageServer for Backend {
                         },
                     ),
                 ),
+                // Document formatting support
+                document_formatting_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -344,6 +348,42 @@ impl LanguageServer for Backend {
                 result_id: None,
                 data: tokens,
             })))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
+        let uri = &params.text_document.uri;
+
+        if let Some(doc) = self.documents.get(uri) {
+            let Some(ref ast) = doc.ast else {
+                return Ok(None);
+            };
+
+            let formatted = format_file(ast);
+
+            // Return a single edit replacing the entire document
+            let line_count = doc.rope.len_lines();
+            let last_line = (line_count.saturating_sub(1)) as u32;
+            let last_line_len = if line_count > 0 {
+                doc.rope.line(line_count - 1).len_chars() as u32
+            } else {
+                0
+            };
+
+            let range = Range {
+                start: Position { line: 0, character: 0 },
+                end: Position {
+                    line: last_line,
+                    character: last_line_len,
+                },
+            };
+
+            Ok(Some(vec![TextEdit {
+                range,
+                new_text: formatted,
+            }]))
         } else {
             Ok(None)
         }
