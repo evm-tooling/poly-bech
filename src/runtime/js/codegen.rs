@@ -127,11 +127,38 @@ fn generate_suite(code: &mut String, suite: &SuiteIR) -> Result<()> {
     }
     code.push_str("\n");
 
-    // Add setup body (imports already extracted to top of file)
-    if let Some(setup_body) = suite.setups.get(&Lang::TypeScript) {
-        if !setup_body.trim().is_empty() {
-            code.push_str("// Setup\n");
-            code.push_str(setup_body);
+    // Add declarations
+    if let Some(declarations) = suite.declarations.get(&Lang::TypeScript) {
+        if !declarations.trim().is_empty() {
+            code.push_str("// Declarations\n");
+            code.push_str(declarations);
+            code.push_str("\n\n");
+        }
+    }
+
+    // Add init code (wrapped in IIFE)
+    if let Some(init_code) = suite.init_code.get(&Lang::TypeScript) {
+        if !init_code.trim().is_empty() {
+            let is_async = suite.has_async_init(Lang::TypeScript);
+            if is_async {
+                code.push_str("// Async init\n");
+                code.push_str("await (async () => {\n");
+                code.push_str(init_code);
+                code.push_str("\n})();\n\n");
+            } else {
+                code.push_str("// Init\n");
+                code.push_str("(() => {\n");
+                code.push_str(init_code);
+                code.push_str("\n})();\n\n");
+            }
+        }
+    }
+
+    // Add helpers
+    if let Some(helpers) = suite.helpers.get(&Lang::TypeScript) {
+        if !helpers.trim().is_empty() {
+            code.push_str("// Helpers\n");
+            code.push_str(helpers);
             code.push_str("\n\n");
         }
     }

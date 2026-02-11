@@ -173,12 +173,38 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
     script.push_str(builtins::BENCHMARK_HARNESS);
     script.push_str("\n\n");
 
-    // Add setup body (imports already extracted)
-    if let Some(setup_body) = suite.setups.get(&Lang::TypeScript) {
-        if !setup_body.trim().is_empty() {
-            script.push_str("// Setup\n");
-            // Strip TypeScript syntax from setup body
-            script.push_str(&strip_typescript_syntax(setup_body));
+    // Phase 1: Add declarations section
+    if let Some(declarations) = suite.declarations.get(&Lang::TypeScript) {
+        if !declarations.trim().is_empty() {
+            script.push_str("// Declarations\n");
+            script.push_str(&strip_typescript_syntax(declarations));
+            script.push_str("\n\n");
+        }
+    }
+
+    // Phase 1: Add init section (with async support)
+    if let Some(init_code) = suite.init_code.get(&Lang::TypeScript) {
+        if !init_code.trim().is_empty() {
+            let is_async = suite.has_async_init(Lang::TypeScript);
+            if is_async {
+                script.push_str("// Async init\n");
+                script.push_str("await (async () => {\n");
+                script.push_str(&strip_typescript_syntax(init_code));
+                script.push_str("\n})();\n\n");
+            } else {
+                script.push_str("// Init\n");
+                script.push_str("(() => {\n");
+                script.push_str(&strip_typescript_syntax(init_code));
+                script.push_str("\n})();\n\n");
+            }
+        }
+    }
+
+    // Phase 1: Add helper functions
+    if let Some(helpers) = suite.helpers.get(&Lang::TypeScript) {
+        if !helpers.trim().is_empty() {
+            script.push_str("// Helpers\n");
+            script.push_str(&strip_typescript_syntax(helpers));
             script.push_str("\n\n");
         }
     }
@@ -201,13 +227,61 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
     }
     script.push_str("\n");
 
-    // Add benchmark execution and output result
-    script.push_str("const __result = __polybench.runBenchmark(function() {\n");
-    script.push_str("    ");
-    script.push_str(impl_code);
-    script.push_str(";\n");
-    script.push_str(&format!("}}, {}, {});\n", spec.iterations, spec.warmup));
-    script.push_str("console.log(JSON.stringify(__result));\n");
+    // Phase 3: Get lifecycle hooks
+    let before_hook = spec.before_hooks.get(&Lang::TypeScript);
+    let after_hook = spec.after_hooks.get(&Lang::TypeScript);
+    let each_hook = spec.each_hooks.get(&Lang::TypeScript);
+
+    // Phase 3: Before hook (runs once before benchmark)
+    if let Some(before) = before_hook {
+        script.push_str("// Before hook\n");
+        let stripped = strip_typescript_syntax(before);
+        if stripped.contains("await") {
+            script.push_str(&format!("await (async () => {{ {} }})();\n", stripped));
+        } else {
+            script.push_str(&format!("{};\n", stripped));
+        }
+        script.push_str("\n");
+    }
+
+    // Generate benchmark execution with hooks
+    if each_hook.is_some() {
+        // Custom benchmark loop with each hook
+        script.push_str(&format!("const __result = __polybench.runBenchmarkWithHook(\n"));
+        script.push_str("    function() {\n");
+        script.push_str("        ");
+        script.push_str(impl_code);
+        script.push_str(";\n");
+        script.push_str("    },\n");
+        script.push_str("    function() {\n");
+        let each = each_hook.unwrap();
+        script.push_str("        ");
+        script.push_str(&strip_typescript_syntax(each));
+        script.push_str(";\n");
+        script.push_str("    },\n");
+        script.push_str(&format!("    {}, {}\n", spec.iterations, spec.warmup));
+        script.push_str(");\n");
+    } else {
+        // Standard benchmark execution
+        script.push_str("const __result = __polybench.runBenchmark(function() {\n");
+        script.push_str("    ");
+        script.push_str(impl_code);
+        script.push_str(";\n");
+        script.push_str(&format!("}}, {}, {});\n", spec.iterations, spec.warmup));
+    }
+
+    // Phase 3: After hook (runs once after benchmark)
+    if let Some(after) = after_hook {
+        script.push_str("\n// After hook\n");
+        let stripped = strip_typescript_syntax(after);
+        if stripped.contains("await") {
+            script.push_str(&format!("await (async () => {{ {} }})();\n", stripped));
+        } else {
+            script.push_str(&format!("{};\n", stripped));
+        }
+    }
+
+    script.push_str("\nconsole.log(JSON.stringify(__result));\n");
 
     Ok(script)
 }
