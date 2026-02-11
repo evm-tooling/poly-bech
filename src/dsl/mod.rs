@@ -7,9 +7,11 @@ mod lexer;
 mod parser;
 mod ast;
 mod error;
+mod formatter;
 pub mod validate;
 
 pub use ast::*;
+pub use formatter::format_file;
 pub use error::ParseError;
 pub use validate::{validate_suite, ValidationResult, ValidationError, ValidationWarning};
 

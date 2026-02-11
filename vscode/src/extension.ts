@@ -9,11 +9,19 @@
  * - Hover information for keywords and identifiers
  * - Code completion
  * - Semantic tokens for enhanced highlighting
+ * - Document formatting
  */
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { workspace, ExtensionContext, window } from 'vscode';
+import {
+  workspace,
+  ExtensionContext,
+  window,
+  WorkspaceEdit,
+  Range,
+  TextEdit,
+} from 'vscode';
 
 import {
   LanguageClient,
@@ -108,6 +116,53 @@ export function activate(context: ExtensionContext): void {
 
   // Start the client (this also starts the server)
   client.start();
+
+  // Format on save when poly-bench.formatOnSave is enabled
+  context.subscriptions.push(
+    workspace.onWillSaveTextDocument((e) => {
+      if (e.document.languageId !== 'polybench') return;
+      const formatOnSave = workspace
+        .getConfiguration('poly-bench')
+        .get<boolean>('formatOnSave');
+      if (!formatOnSave || !client) return;
+
+      e.waitUntil(
+        client
+          .sendRequest<
+            | {
+                range: {
+                  start: { line: number; character: number };
+                  end: { line: number; character: number };
+                };
+                newText: string;
+              }[]
+            | null
+          >('textDocument/formatting', {
+            textDocument: { uri: e.document.uri.toString() },
+            options: { tabSize: 4, insertSpaces: true },
+          })
+          .then((edits) => {
+            if (edits && edits.length > 0) {
+              const we = new WorkspaceEdit();
+              const vscodeEdits = edits.map(
+                (edit) =>
+                  new TextEdit(
+                    new Range(
+                      edit.range.start.line,
+                      edit.range.start.character,
+                      edit.range.end.line,
+                      edit.range.end.character
+                    ),
+                    edit.newText
+                  )
+              );
+              we.set(e.document.uri, vscodeEdits);
+              return workspace.applyEdit(we);
+            }
+          })
+      );
+    })
+  );
 
   context.subscriptions.push({
     dispose: () => {

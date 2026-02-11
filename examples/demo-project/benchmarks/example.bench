@@ -4,19 +4,16 @@ suite example {
     warmup: 100
     compare: true
     baseline: "go"
-
     setup go {
         import (
-            "crypto/sha256"
+        "crypto/sha256"
         )
-
         init {
         }
-
         helpers {
-            func sha256SumGo(data []byte) [32]byte {
-                return sha256.Sum256(data)
-            }
+        func sha256SumGo(data []byte) [32]byte {
+                                return sha256.Sum256(data)
+                            }
         }
     }
 
@@ -24,14 +21,12 @@ suite example {
         import {
             import { createHash } from 'node:crypto';
         }
-
         init {
         }
-
         helpers {
-            function sha256SumTs(data: Uint8Array): Buffer {
-                return createHash('sha256').update(Buffer.from(data)).digest()
-            }
+        function sha256SumTs(data: Uint8Array): Buffer {
+                            return createHash('sha256').update(Buffer.from(data)).digest()
+                            }
         }
     }
 
@@ -43,4 +38,5 @@ suite example {
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
     }
+
 }
