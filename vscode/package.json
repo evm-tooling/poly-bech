@@ -3,7 +3,11 @@
   "displayName": "poly-bench",
   "description": "Syntax highlighting and diagnostics for .bench files with embedded Go and TypeScript",
   "version": "0.1.0",
-  "publisher": "poly-bench",
+  "publisher": "evm-tooling",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/evm-tooling/poly-bench"
+  },
   "engines": { "vscode": "^1.74.0" },
   "categories": ["Programming Languages"],
   "main": "./out/extension.js",

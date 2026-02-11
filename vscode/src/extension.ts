@@ -4,12 +4,16 @@ import { checkGoBlock } from './goChecker';
 import { checkTSBlock } from './tsChecker';
 import { analyzeSemantics } from './benchSemantic';
 
+const isBenchFile = (doc: vscode.TextDocument) =>
+  doc.uri.scheme === 'file' && doc.fileName.endsWith('.bench');
+
 export function activate(context: vscode.ExtensionContext): void {
   const collection = vscode.languages.createDiagnosticCollection('polybench');
-  context.subscriptions.push(collection);
+  const output = vscode.window.createOutputChannel('Poly Bench');
+  context.subscriptions.push(collection, output);
 
   function updateDiagnostics(doc: vscode.TextDocument): void {
-    if (doc.languageId !== 'polybench') {
+    if (!isBenchFile(doc)) {
       collection.delete(doc.uri);
       return;
     }
@@ -44,20 +48,26 @@ export function activate(context: vscode.ExtensionContext): void {
               )
             );
           }
-        } catch {
-          // Go not installed or other runtime error; skip Go diagnostics
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          output.appendLine(`Go check skipped (install Go and ensure 'go' is on PATH): ${msg}`);
         }
       } else {
-        for (const d of checkTSBlock(block)) {
-          const startPos = doc.positionAt(d.startOffset);
-          const endPos = doc.positionAt(d.endOffset);
-          diagnostics.push(
-            new vscode.Diagnostic(
-              new vscode.Range(startPos, endPos),
-              d.message,
-              d.severity === 'error' ? vscode.DiagnosticSeverity.Error : vscode.DiagnosticSeverity.Warning
-            )
-          );
+        try {
+          for (const d of checkTSBlock(block)) {
+            const startPos = doc.positionAt(d.startOffset);
+            const endPos = doc.positionAt(d.endOffset);
+            diagnostics.push(
+              new vscode.Diagnostic(
+                new vscode.Range(startPos, endPos),
+                d.message,
+                d.severity === 'error' ? vscode.DiagnosticSeverity.Error : vscode.DiagnosticSeverity.Warning
+              )
+            );
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          output.appendLine(`TypeScript check failed: ${msg}`);
         }
       }
     }
@@ -84,12 +94,12 @@ export function activate(context: vscode.ExtensionContext): void {
   }
 
   const trigger = (doc: vscode.TextDocument) => {
-    if (doc.uri.scheme === 'file' && doc.fileName.endsWith('.bench')) updateDiagnostics(doc);
+    if (isBenchFile(doc)) updateDiagnostics(doc);
   };
 
   for (const doc of vscode.workspace.textDocuments) trigger(doc);
   context.subscriptions.push(
-    vscode.workspace.onDidChangeTextDocument((e) => { if (e.document.uri.scheme === 'file') trigger(e.document); }),
+    vscode.workspace.onDidChangeTextDocument((e) => trigger(e.document)),
     vscode.workspace.onDidOpenTextDocument(trigger)
   );
 }

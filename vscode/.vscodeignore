@@ -6,3 +6,6 @@ tsconfig.json
 *.ts
 !syntaxes/**/*.json
 hash.bench
+.vscode/
+Untitled
+*.vsix
