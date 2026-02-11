@@ -71,6 +71,11 @@ pub fn get_hover_with_gopls(
         } else {
             eprintln!("[hover] No go_mod_root configured");
         }
+        
+        // Fallback: check for stdlib symbols when gopls returns None
+        if let Some(hover) = get_stdlib_symbol_hover(doc, position) {
+            return Some(hover);
+        }
     }
     
     // Check if the offset is within a TypeScript code block
@@ -93,6 +98,11 @@ pub fn get_hover_with_gopls(
             }
         } else {
             eprintln!("[hover] No ts_module_root configured");
+        }
+        
+        // Fallback: check for stdlib symbols when tsserver returns None
+        if let Some(hover) = get_stdlib_symbol_hover(doc, position) {
+            return Some(hover);
         }
     }
     
@@ -640,6 +650,41 @@ fn stdlib_module_docs(module: &str) -> Option<&'static str> {
         ),
         _ => None,
     }
+}
+
+/// Get documentation for stdlib symbols (constants, functions, etc.)
+fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
+    match symbol {
+        "std_PI" => Some(
+            "```go\nconst std_PI float64 = 3.14159265358979323846\n```\n\n\
+            **Pi (π)** - The ratio of a circle's circumference to its diameter.\n\n\
+            *From `std::constants`*"
+        ),
+        "std_E" => Some(
+            "```go\nconst std_E float64 = 2.71828182845904523536\n```\n\n\
+            **Euler's number (e)** - The base of natural logarithms.\n\n\
+            *From `std::constants`*"
+        ),
+        _ => None,
+    }
+}
+
+/// Get hover information for stdlib symbols in embedded code blocks
+fn get_stdlib_symbol_hover(doc: &ParsedDocument, position: Position) -> Option<Hover> {
+    let (word, range) = doc.word_at_position(position)?;
+    
+    if let Some(docs) = stdlib_symbol_docs(&word) {
+        eprintln!("[hover] Found stdlib symbol: {}", word);
+        return Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: docs.to_string(),
+            }),
+            range: Some(range),
+        });
+    }
+    
+    None
 }
 
 /// Get documentation for a language identifier

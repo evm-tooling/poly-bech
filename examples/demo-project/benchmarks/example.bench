@@ -9,6 +9,7 @@ suite example {
 
     setup go {
         import (
+            "fmt"
             "crypto/sha256"
         )
 
@@ -22,6 +23,9 @@ suite example {
 
         helpers {
             func sha256SumGo(data []byte) [32]byte {
+                var y float64
+                y = 2 * x
+                fmt.Println(y)
                 return sha256.Sum256(data)
             }
         }
