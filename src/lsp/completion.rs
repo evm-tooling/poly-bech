@@ -43,6 +43,9 @@ pub fn get_completions(doc: &ParsedDocument, position: Position) -> Vec<Completi
         Context::AfterColon(keyword) => {
             items.extend(after_colon_completions(&keyword));
         }
+        Context::UseStdModule => {
+            items.extend(stdlib_module_completions());
+        }
         Context::Unknown => {
             // Provide all keywords as fallback
             items.extend(all_keyword_completions());
@@ -60,11 +63,19 @@ enum Context {
     InsideBench,
     InsideFixture,
     AfterColon(String),
+    /// After typing "use std::" - suggests stdlib modules
+    UseStdModule,
     Unknown,
 }
 
 /// Determine the completion context based on cursor position
 fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) -> Context {
+    // Check for "use std::" pattern - suggesting stdlib modules
+    let trimmed = line_text.trim();
+    if trimmed == "use std::" || trimmed.starts_with("use std::") {
+        return Context::UseStdModule;
+    }
+    
     // Check if we're after a colon
     if line_text.ends_with(':') || line_text.contains(": ") {
         if let Some(keyword) = extract_keyword_before_colon(line_text) {
@@ -144,12 +155,20 @@ fn extract_keyword_before_colon(line_text: &str) -> Option<String> {
 }
 
 fn top_level_completions() -> Vec<CompletionItem> {
-    vec![completion_item(
-        "suite",
-        "suite ${1:name} {\n    $0\n}",
-        "Top-level benchmark suite",
-        CompletionItemKind::KEYWORD,
-    )]
+    vec![
+        completion_item(
+            "suite",
+            "suite ${1:name} {\n    $0\n}",
+            "Top-level benchmark suite",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "use std::",
+            "use std::${1|constants|}",
+            "Import from standard library",
+            CompletionItemKind::KEYWORD,
+        ),
+    ]
 }
 
 fn suite_body_completions() -> Vec<CompletionItem> {
@@ -402,6 +421,27 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
     items.extend(setup_section_completions());
     items.extend(bench_body_completions());
     items
+}
+
+/// Completions for stdlib module names after "use std::"
+fn stdlib_module_completions() -> Vec<CompletionItem> {
+    vec![
+        CompletionItem {
+            label: "constants".to_string(),
+            kind: Some(CompletionItemKind::MODULE),
+            detail: Some("Mathematical constants (std_PI, std_E)".to_string()),
+            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                tower_lsp::lsp_types::MarkupContent {
+                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                    value: "**std::constants**\n\nProvides mathematical constants:\n- `std_PI` - Pi (π ≈ 3.14159)\n- `std_E` - Euler's number (e ≈ 2.71828)".to_string(),
+                }
+            )),
+            ..Default::default()
+        },
+        // Future modules can be added here
+        // CompletionItem { label: "math".to_string(), ... },
+        // CompletionItem { label: "chart".to_string(), ... },
+    ]
 }
 
 fn completion_item(
