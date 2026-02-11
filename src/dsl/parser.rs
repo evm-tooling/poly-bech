@@ -90,9 +90,40 @@ impl Parser {
                 let value = self.expect_number()?;
                 suite.warmup = Some(value);
             }
+            // Phase 4: Suite-level configuration
+            TokenKind::Timeout => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_duration()?;
+                suite.timeout = Some(value);
+            }
+            TokenKind::Requires => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let langs = self.parse_lang_array()?;
+                suite.requires = langs;
+            }
+            TokenKind::Order => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let order = self.expect_execution_order()?;
+                suite.order = Some(order);
+            }
+            TokenKind::Compare => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_bool()?;
+                suite.compare = value;
+            }
+            TokenKind::Baseline => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let lang = self.expect_lang_from_string()?;
+                suite.baseline = Some(lang);
+            }
             TokenKind::Setup => {
-                let (lang, code) = self.parse_setup()?;
-                suite.setups.insert(lang, code);
+                let (lang, setup) = self.parse_structured_setup()?;
+                suite.setups.insert(lang, setup);
             }
             TokenKind::Fixture => {
                 let fixture = self.parse_fixture()?;
@@ -127,14 +158,124 @@ impl Parser {
         Ok(())
     }
 
-    /// Parse a setup block
-    fn parse_setup(&mut self) -> Result<(Lang, CodeBlock)> {
-        self.expect_keyword(TokenKind::Setup)?;
-
+    /// Parse a structured setup block with import/declare/init/helpers sections
+    fn parse_structured_setup(&mut self) -> Result<(Lang, StructuredSetup)> {
+        let setup_token = self.expect_keyword(TokenKind::Setup)?;
         let lang = self.expect_lang()?;
-        let code = self.parse_code_block()?;
+        
+        self.expect(TokenKind::LBrace)?;
+        
+        let mut setup = StructuredSetup::new(setup_token.span.clone());
+        
+        // Parse setup sections in any order
+        while !self.check(TokenKind::RBrace) && !self.is_at_end() {
+            let token = self.peek().clone();
+            
+            match &token.kind {
+                TokenKind::Import => {
+                    self.advance();
+                    // Parse import block - can be { ... } or ( ... ) for Go
+                    let code = self.parse_import_block()?;
+                    setup.imports = Some(code);
+                }
+                TokenKind::Declare => {
+                    self.advance();
+                    let code = self.parse_code_block()?;
+                    setup.declarations = Some(code);
+                }
+                TokenKind::Async => {
+                    // async init { ... }
+                    self.advance();
+                    self.expect_keyword(TokenKind::Init)?;
+                    let code = self.parse_code_block()?;
+                    setup.init = Some(code);
+                    setup.async_init = true;
+                }
+                TokenKind::Init => {
+                    self.advance();
+                    let code = self.parse_code_block()?;
+                    setup.init = Some(code);
+                }
+                TokenKind::Helpers => {
+                    self.advance();
+                    let code = self.parse_code_block()?;
+                    setup.helpers = Some(code);
+                }
+                _ => {
+                    return Err(self.make_error(ParseError::ExpectedToken {
+                        expected: "setup section (import, declare, init, helpers)".to_string(),
+                        found: format!("{:?}", token.kind),
+                        span: token.span.clone(),
+                    }));
+                }
+            }
+        }
+        
+        self.expect(TokenKind::RBrace)?;
+        
+        Ok((lang, setup))
+    }
 
-        Ok((lang, code))
+    /// Parse an import block - handles both { ... } and ( ... ) for Go-style imports
+    fn parse_import_block(&mut self) -> Result<CodeBlock> {
+        let start_token = self.peek().clone();
+        
+        // Check if it's ( for Go grouped imports or { for general block
+        if self.check(TokenKind::LParen) {
+            // Go-style grouped import: import ( "pkg1" "pkg2" )
+            let open_paren = self.advance().clone();
+            let mut code_tokens = Vec::new();
+            let mut depth = 1;
+            
+            while depth > 0 && !self.is_at_end() {
+                let token = self.advance().clone();
+                match token.kind {
+                    TokenKind::LParen => depth += 1,
+                    TokenKind::RParen => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                if depth > 0 {
+                    code_tokens.push(token);
+                }
+            }
+            
+            let code = self.reconstruct_code(&code_tokens);
+            // Wrap in import ( ... ) for the code
+            let full_code = format!("import (\n{}\n)", code.trim());
+            Ok(CodeBlock::new(full_code, true, open_paren.span))
+        } else if self.check(TokenKind::LBrace) {
+            // Block-style imports: import { ... } from 'pkg' for TS
+            self.parse_code_block()
+        } else {
+            // Single line import - consume until next section keyword or brace
+            let mut code_tokens = Vec::new();
+            
+            while !self.is_at_end() {
+                let token = self.peek();
+                
+                // Stop at section keywords or closing brace
+                if matches!(token.kind,
+                    TokenKind::RBrace |
+                    TokenKind::Import |
+                    TokenKind::Declare |
+                    TokenKind::Init |
+                    TokenKind::Helpers |
+                    TokenKind::Async
+                ) {
+                    break;
+                }
+                
+                code_tokens.push(self.advance().clone());
+            }
+            
+            let code = self.reconstruct_code(&code_tokens);
+            Ok(CodeBlock::new(code.trim().to_string(), false, start_token.span))
+        }
     }
 
     /// Parse a fixture definition
@@ -147,9 +288,16 @@ impl Parser {
             _ => unreachable!(),
         };
 
-        self.expect(TokenKind::LBrace)?;
-
         let mut fixture = Fixture::new(name, name_token.span.clone());
+
+        // Check for parameterized fixture: fixture name(param: type, ...)
+        if self.check(TokenKind::LParen) {
+            self.advance();
+            fixture.params = self.parse_fixture_params()?;
+            self.expect(TokenKind::RParen)?;
+        }
+
+        self.expect(TokenKind::LBrace)?;
 
         while !self.check(TokenKind::RBrace) && !self.is_at_end() {
             self.parse_fixture_item(&mut fixture)?;
@@ -158,6 +306,36 @@ impl Parser {
         self.expect(TokenKind::RBrace)?;
 
         Ok(fixture)
+    }
+
+    /// Parse fixture parameters: (name: type, name2: type2)
+    fn parse_fixture_params(&mut self) -> Result<Vec<FixtureParam>> {
+        let mut params = Vec::new();
+        
+        while !self.check(TokenKind::RParen) && !self.is_at_end() {
+            let name_token = self.expect_identifier()?;
+            let name = match &name_token.kind {
+                TokenKind::Identifier(s) => s.clone(),
+                _ => unreachable!(),
+            };
+            
+            self.expect(TokenKind::Colon)?;
+            
+            let type_token = self.expect_identifier()?;
+            let param_type = match &type_token.kind {
+                TokenKind::Identifier(s) => s.clone(),
+                _ => unreachable!(),
+            };
+            
+            params.push(FixtureParam::new(name, param_type));
+            
+            // Check for comma
+            if !self.check(TokenKind::RParen) {
+                self.expect(TokenKind::Comma)?;
+            }
+        }
+        
+        Ok(params)
     }
 
     /// Parse a single item within a fixture
@@ -187,6 +365,13 @@ impl Parser {
                     fixture.hex_data = Some(value);
                 }
             }
+            // Phase 5: Shape annotation
+            TokenKind::Shape => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let shape_code = self.parse_code_block()?;
+                fixture.shape = Some(shape_code.code);
+            }
             // Language-specific implementation
             TokenKind::Go | TokenKind::Ts | TokenKind::TypeScript | TokenKind::Rust | TokenKind::Python => {
                 let lang = self.expect_lang()?;
@@ -210,7 +395,7 @@ impl Parser {
             }
             _ => {
                 return Err(self.make_error(ParseError::ExpectedToken {
-                    expected: "fixture property (hex, description) or language".to_string(),
+                    expected: "fixture property (hex, description, shape) or language".to_string(),
                     found: format!("{:?}", token.kind),
                     span: token.span.clone(),
                 }));
@@ -260,6 +445,56 @@ impl Parser {
                 let value = self.expect_number()?;
                 benchmark.iterations = Some(value);
             }
+            // Phase 2: Benchmark configuration
+            TokenKind::Warmup => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_number()?;
+                benchmark.warmup = Some(value);
+            }
+            TokenKind::Timeout => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_duration()?;
+                benchmark.timeout = Some(value);
+            }
+            TokenKind::Tags => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let tags = self.parse_string_array()?;
+                benchmark.tags = tags;
+            }
+            TokenKind::Skip => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let skip_map = self.parse_lang_code_map()?;
+                benchmark.skip = skip_map;
+            }
+            TokenKind::Validate => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let validate_map = self.parse_lang_code_map()?;
+                benchmark.validate = validate_map;
+            }
+            // Phase 3: Lifecycle hooks
+            TokenKind::Before => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let before_map = self.parse_lang_code_map()?;
+                benchmark.before = before_map;
+            }
+            TokenKind::After => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let after_map = self.parse_lang_code_map()?;
+                benchmark.after = after_map;
+            }
+            TokenKind::Each => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let each_map = self.parse_lang_code_map()?;
+                benchmark.each = each_map;
+            }
             // Language-specific implementation
             TokenKind::Go | TokenKind::Ts | TokenKind::TypeScript | TokenKind::Rust | TokenKind::Python => {
                 let lang = self.expect_lang()?;
@@ -283,7 +518,7 @@ impl Parser {
             }
             _ => {
                 return Err(self.make_error(ParseError::ExpectedToken {
-                    expected: "benchmark property (iterations, description) or language implementation".to_string(),
+                    expected: "benchmark property (iterations, warmup, timeout, tags, skip, validate, before, after, each) or language implementation".to_string(),
                     found: format!("{:?}", token.kind),
                     span: token.span.clone(),
                 }));
@@ -291,6 +526,64 @@ impl Parser {
         }
 
         Ok(())
+    }
+
+    /// Parse a language-to-code map: { go: CODE, ts: CODE }
+    fn parse_lang_code_map(&mut self) -> Result<HashMap<Lang, CodeBlock>> {
+        let mut map = HashMap::new();
+        
+        self.expect(TokenKind::LBrace)?;
+        
+        while !self.check(TokenKind::RBrace) && !self.is_at_end() {
+            let lang = self.expect_lang()?;
+            self.expect(TokenKind::Colon)?;
+            let code = self.parse_inline_or_block_code_in_map()?;
+            map.insert(lang, code);
+        }
+        
+        self.expect(TokenKind::RBrace)?;
+        
+        Ok(map)
+    }
+
+    /// Parse inline or block code within a lang code map
+    /// Similar to parse_inline_or_block_code but stops at lang keywords too
+    fn parse_inline_or_block_code_in_map(&mut self) -> Result<CodeBlock> {
+        if self.check(TokenKind::LBrace) {
+            self.parse_code_block()
+        } else {
+            let start_token = self.peek().clone();
+            let mut code_tokens = Vec::new();
+
+            while !self.is_at_end() {
+                let token = self.peek();
+                
+                // Stop conditions for inline code in a map
+                if matches!(token.kind, 
+                    TokenKind::RBrace |
+                    TokenKind::Go |
+                    TokenKind::Ts |
+                    TokenKind::TypeScript |
+                    TokenKind::Rust |
+                    TokenKind::Python
+                ) {
+                    break;
+                }
+
+                // Check if identifier might be a language
+                if let TokenKind::Identifier(s) = &token.kind {
+                    if Lang::from_str(s).is_some() {
+                        break;
+                    }
+                }
+
+                code_tokens.push(self.advance().clone());
+            }
+
+            let code = self.reconstruct_code(&code_tokens);
+
+            Ok(CodeBlock::new(code.trim().to_string(), false, start_token.span))
+        }
     }
 
     /// Parse a code block (braces required)
@@ -346,7 +639,7 @@ impl Parser {
             while !self.is_at_end() {
                 let token = self.peek();
                 
-                // Stop conditions for inline code
+                // Stop conditions for inline code - all keywords that could follow
                 if matches!(token.kind, 
                     TokenKind::RBrace |
                     TokenKind::Go |
@@ -357,7 +650,15 @@ impl Parser {
                     TokenKind::Description |
                     TokenKind::Iterations |
                     TokenKind::Warmup |
+                    TokenKind::Timeout |
+                    TokenKind::Tags |
+                    TokenKind::Skip |
+                    TokenKind::Validate |
+                    TokenKind::Before |
+                    TokenKind::After |
+                    TokenKind::Each |
                     TokenKind::Hex |
+                    TokenKind::Shape |
                     TokenKind::Bench |
                     TokenKind::Setup |
                     TokenKind::Fixture
@@ -518,6 +819,142 @@ impl Parser {
         }
     }
 
+    /// Parse a lang from a string literal (for baseline: "go")
+    fn expect_lang_from_string(&mut self) -> Result<Lang> {
+        let s = self.expect_string()?;
+        Lang::from_str(&s).ok_or_else(|| {
+            self.make_error(ParseError::UnknownLang {
+                lang: s.clone(),
+                span: self.previous().span.clone(),
+            })
+        })
+    }
+
+    /// Expect a duration token and return milliseconds
+    fn expect_duration(&mut self) -> Result<u64> {
+        let token = self.peek().clone();
+        match token.kind {
+            TokenKind::Duration(ms) => {
+                self.advance();
+                Ok(ms)
+            }
+            TokenKind::Number(n) => {
+                // Allow plain numbers (interpreted as ms)
+                self.advance();
+                Ok(n)
+            }
+            _ => {
+                Err(self.make_error(ParseError::ExpectedToken {
+                    expected: "duration (e.g., 30s, 500ms, 1m)".to_string(),
+                    found: format!("{:?}", token.kind),
+                    span: token.span,
+                }))
+            }
+        }
+    }
+
+    /// Expect a boolean value (true/false as identifiers)
+    fn expect_bool(&mut self) -> Result<bool> {
+        let token = self.peek().clone();
+        match &token.kind {
+            TokenKind::Identifier(s) => {
+                let result = match s.as_str() {
+                    "true" => Ok(true),
+                    "false" => Ok(false),
+                    _ => Err(self.make_error(ParseError::ExpectedToken {
+                        expected: "boolean (true/false)".to_string(),
+                        found: s.clone(),
+                        span: token.span.clone(),
+                    })),
+                };
+                if result.is_ok() {
+                    self.advance();
+                }
+                result
+            }
+            _ => {
+                Err(self.make_error(ParseError::ExpectedToken {
+                    expected: "boolean (true/false)".to_string(),
+                    found: format!("{:?}", token.kind),
+                    span: token.span,
+                }))
+            }
+        }
+    }
+
+    /// Expect an execution order identifier
+    fn expect_execution_order(&mut self) -> Result<ExecutionOrder> {
+        let token = self.peek().clone();
+        match &token.kind {
+            TokenKind::Identifier(s) => {
+                ExecutionOrder::from_str(s).map(|order| {
+                    self.advance();
+                    order
+                }).ok_or_else(|| {
+                    self.make_error(ParseError::ExpectedToken {
+                        expected: "execution order (sequential, parallel, random)".to_string(),
+                        found: s.clone(),
+                        span: token.span.clone(),
+                    })
+                })
+            }
+            _ => {
+                Err(self.make_error(ParseError::ExpectedToken {
+                    expected: "execution order (sequential, parallel, random)".to_string(),
+                    found: format!("{:?}", token.kind),
+                    span: token.span,
+                }))
+            }
+        }
+    }
+
+    /// Parse a string array: ["foo", "bar"]
+    fn parse_string_array(&mut self) -> Result<Vec<String>> {
+        self.expect(TokenKind::LBracket)?;
+        let mut items = Vec::new();
+        
+        while !self.check(TokenKind::RBracket) && !self.is_at_end() {
+            items.push(self.expect_string()?);
+            
+            // Optional comma
+            if !self.check(TokenKind::RBracket) {
+                if self.check(TokenKind::Comma) {
+                    self.advance();
+                }
+            }
+        }
+        
+        self.expect(TokenKind::RBracket)?;
+        Ok(items)
+    }
+
+    /// Parse a language array: ["go", "ts"]
+    fn parse_lang_array(&mut self) -> Result<Vec<Lang>> {
+        self.expect(TokenKind::LBracket)?;
+        let mut items = Vec::new();
+        
+        while !self.check(TokenKind::RBracket) && !self.is_at_end() {
+            let s = self.expect_string()?;
+            let lang = Lang::from_str(&s).ok_or_else(|| {
+                self.make_error(ParseError::UnknownLang {
+                    lang: s.clone(),
+                    span: self.previous().span.clone(),
+                })
+            })?;
+            items.push(lang);
+            
+            // Optional comma
+            if !self.check(TokenKind::RBracket) {
+                if self.check(TokenKind::Comma) {
+                    self.advance();
+                }
+            }
+        }
+        
+        self.expect(TokenKind::RBracket)?;
+        Ok(items)
+    }
+
     fn make_error(&self, error: ParseError) -> Report {
         Report::new(error)
             .with_source_code(NamedSource::new(
@@ -601,11 +1038,23 @@ suite test {
         let source = r#"
 suite test {
     setup go {
-        import "testing"
+        import (
+            "testing"
+        )
+        
+        init {
+            // setup code
+        }
     }
     
     setup ts {
-        import { foo } from 'bar'
+        import {
+            import { foo } from 'bar'
+        }
+        
+        init {
+            // ts setup
+        }
     }
     
     bench foo {
@@ -620,5 +1069,138 @@ suite test {
         let suite = &file.suites[0];
         assert!(suite.setups.contains_key(&Lang::Go));
         assert!(suite.setups.contains_key(&Lang::TypeScript));
+        
+        // Verify structured setup was parsed
+        let go_setup = suite.setups.get(&Lang::Go).unwrap();
+        assert!(go_setup.imports.is_some());
+        assert!(go_setup.init.is_some());
+        
+        let ts_setup = suite.setups.get(&Lang::TypeScript).unwrap();
+        assert!(ts_setup.imports.is_some());
+        assert!(ts_setup.init.is_some());
+    }
+
+    #[test]
+    fn test_parse_structured_setup_all_sections() {
+        let source = r#"
+suite test {
+    setup go {
+        import (
+            "fmt"
+            "github.com/pkg/errors"
+        )
+        
+        declare {
+            var globalState *State
+        }
+        
+        init {
+            globalState = NewState()
+        }
+        
+        helpers {
+            func doSomething() {
+                // helper
+            }
+        }
+    }
+    
+    bench foo {
+        go: doSomething()
+    }
+}
+"#;
+        let result = parse(source, "test.bench");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+        
+        let file = result.unwrap();
+        let suite = &file.suites[0];
+        let go_setup = suite.setups.get(&Lang::Go).unwrap();
+        
+        assert!(go_setup.imports.is_some());
+        assert!(go_setup.declarations.is_some());
+        assert!(go_setup.init.is_some());
+        assert!(go_setup.helpers.is_some());
+    }
+
+    #[test]
+    fn test_parse_benchmark_with_hooks() {
+        let source = r#"
+suite test {
+    setup go {
+        import ("fmt")
+        init {}
+    }
+    
+    bench with_hooks {
+        iterations: 100
+        warmup: 10
+        timeout: 30s
+        tags: ["performance", "critical"]
+        
+        before: {
+            go: resetState()
+        }
+        
+        after: {
+            go: cleanup()
+        }
+        
+        each: {
+            go: prepareIteration()
+        }
+        
+        go: runBenchmark()
+    }
+}
+"#;
+        let result = parse(source, "test.bench");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+        
+        let file = result.unwrap();
+        let bench = &file.suites[0].benchmarks[0];
+        
+        assert_eq!(bench.iterations, Some(100));
+        assert_eq!(bench.warmup, Some(10));
+        assert_eq!(bench.timeout, Some(30000)); // 30s in ms
+        assert_eq!(bench.tags, vec!["performance", "critical"]);
+        assert!(bench.before.contains_key(&Lang::Go));
+        assert!(bench.after.contains_key(&Lang::Go));
+        assert!(bench.each.contains_key(&Lang::Go));
+    }
+
+    #[test]
+    fn test_parse_suite_config() {
+        let source = r#"
+suite test {
+    description: "Test suite"
+    iterations: 1000
+    warmup: 100
+    timeout: 60s
+    requires: ["go", "ts"]
+    order: sequential
+    compare: true
+    baseline: "go"
+    
+    setup go {
+        import ("fmt")
+        init {}
+    }
+    
+    bench foo {
+        go: test()
+    }
+}
+"#;
+        let result = parse(source, "test.bench");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+        
+        let file = result.unwrap();
+        let suite = &file.suites[0];
+        
+        assert_eq!(suite.timeout, Some(60000)); // 60s in ms
+        assert_eq!(suite.requires.len(), 2);
+        assert!(suite.compare);
+        assert_eq!(suite.baseline, Some(Lang::Go));
     }
 }
