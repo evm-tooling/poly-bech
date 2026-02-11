@@ -44,6 +44,9 @@ pub enum TokenKind {
     // Phase 8: Async keyword
     Async,       // async
 
+    // Standard library keywords
+    Use,         // use
+
     // Language keywords
     Go,
     Ts,
@@ -66,6 +69,7 @@ pub enum TokenKind {
     LBracket,    // [
     RBracket,    // ]
     Colon,       // :
+    DoubleColon, // ::
     Comma,       // ,
     At,          // @
 
@@ -106,6 +110,7 @@ impl TokenKind {
                 | TokenKind::Baseline
                 | TokenKind::Shape
                 | TokenKind::Async
+                | TokenKind::Use
         )
     }
 
@@ -188,6 +193,9 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         
         // Phase 8: Async keyword
         "async" => Some(TokenKind::Async),
+        
+        // Standard library keywords
+        "use" => Some(TokenKind::Use),
         
         // Language keywords
         "go" => Some(TokenKind::Go),

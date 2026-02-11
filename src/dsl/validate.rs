@@ -3,7 +3,8 @@
 //! This module provides validation logic that runs after parsing
 //! to catch semantic errors and generate warnings.
 
-use crate::dsl::{Suite, Benchmark, Lang, StructuredSetup};
+use crate::dsl::{Suite, Benchmark, Lang, StructuredSetup, UseStd, File};
+use crate::stdlib;
 use std::collections::HashSet;
 
 /// A validation warning (non-fatal issue)
@@ -74,6 +75,53 @@ impl ValidationResult {
 
     fn add_warning(&mut self, warning: ValidationWarning) {
         self.warnings.push(warning);
+    }
+}
+
+/// Validate a complete file and return any errors or warnings
+pub fn validate_file(file: &File) -> ValidationResult {
+    let mut result = ValidationResult::new();
+
+    // Validate: use statements reference valid stdlib modules
+    validate_use_stds(&file.use_stds, &mut result);
+
+    // Validate each suite
+    for suite in &file.suites {
+        let suite_result = validate_suite(suite);
+        result.errors.extend(suite_result.errors);
+        result.warnings.extend(suite_result.warnings);
+    }
+
+    result
+}
+
+/// Validate use std::module statements
+fn validate_use_stds(use_stds: &[UseStd], result: &mut ValidationResult) {
+    for use_std in use_stds {
+        if !stdlib::is_valid_module(&use_std.module) {
+            result.add_error(
+                ValidationError::new(format!(
+                    "Unknown stdlib module: std::{}. Valid modules are: {}",
+                    use_std.module,
+                    stdlib::VALID_MODULES.join(", ")
+                ))
+                .with_location(format!("line {}", use_std.span.line)),
+            );
+        }
+    }
+
+    // Check for duplicate imports
+    let mut seen = HashSet::new();
+    for use_std in use_stds {
+        if !seen.insert(&use_std.module) {
+            result.add_warning(
+                ValidationWarning::new(format!(
+                    "Duplicate import of std::{}",
+                    use_std.module
+                ))
+                .with_location(format!("line {}", use_std.span.line)),
+            );
+        }
     }
 }
 
@@ -330,5 +378,61 @@ suite test {
         
         assert!(!result.is_ok());
         assert!(result.errors.iter().any(|e| e.message.contains("no language implementations")));
+    }
+
+    #[test]
+    fn test_validate_valid_stdlib_import() {
+        let source = r#"
+use std::constants
+
+suite test {
+    bench pi_test {
+        go: compute(std_PI)
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let result = validate_file(&ast);
+        
+        // Should not have errors related to stdlib
+        assert!(!result.errors.iter().any(|e| e.message.contains("Unknown stdlib module")));
+    }
+
+    #[test]
+    fn test_validate_invalid_stdlib_import() {
+        let source = r#"
+use std::nonexistent
+
+suite test {
+    bench test {
+        go: test()
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let result = validate_file(&ast);
+        
+        assert!(!result.is_ok());
+        assert!(result.errors.iter().any(|e| e.message.contains("Unknown stdlib module")));
+        assert!(result.errors.iter().any(|e| e.message.contains("nonexistent")));
+    }
+
+    #[test]
+    fn test_validate_duplicate_stdlib_import() {
+        let source = r#"
+use std::constants
+use std::constants
+
+suite test {
+    bench test {
+        go: compute(std_PI)
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let result = validate_file(&ast);
+        
+        assert!(result.has_warnings());
+        assert!(result.warnings.iter().any(|w| w.message.contains("Duplicate import")));
     }
 }

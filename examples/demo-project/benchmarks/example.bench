@@ -1,3 +1,5 @@
+use std::constants
+
 suite example {
     description: "Example benchmark to get you started"
     iterations: 50
@@ -10,7 +12,12 @@ suite example {
             "crypto/sha256"
         )
 
+        declare {
+            var x float64 = std_PI
+        }
+
         init {
+            
         }
 
         helpers {
