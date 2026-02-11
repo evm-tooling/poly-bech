@@ -52,7 +52,7 @@ suite abi {
     
     setup ts {
         import {
-            import { encodeFunctionData, parseAbi } from 'viem';
+            import { encodeFunctionData, parseAbi } from "viem";
         }
 
         declare {

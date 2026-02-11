@@ -695,13 +695,53 @@ impl VirtualTsFileBuilder {
 pub struct VirtualTsFileManager {
     /// Virtual files indexed by .bench URI
     files: dashmap::DashMap<String, VirtualTsFile>,
+    /// Track which ts_module_roots we've already ensured have tsconfig.json
+    initialized_roots: dashmap::DashMap<String, ()>,
 }
 
 impl VirtualTsFileManager {
     pub fn new() -> Self {
         Self {
             files: dashmap::DashMap::new(),
+            initialized_roots: dashmap::DashMap::new(),
         }
+    }
+
+    /// Ensure a tsconfig.json exists in the TypeScript module root
+    /// This is needed for typescript-language-server to resolve modules correctly
+    fn ensure_tsconfig(&self, ts_module_root: &str) {
+        // Only do this once per root
+        if self.initialized_roots.contains_key(ts_module_root) {
+            return;
+        }
+
+        let tsconfig_path = Path::new(ts_module_root).join("tsconfig.json");
+        
+        if !tsconfig_path.exists() {
+            let tsconfig_content = r#"{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["*.ts", "**/*.ts"],
+  "exclude": ["node_modules"]
+}
+"#;
+            match std::fs::write(&tsconfig_path, tsconfig_content) {
+                Ok(()) => eprintln!("[tsserver] Created tsconfig.json at {}", tsconfig_path.display()),
+                Err(e) => eprintln!("[tsserver] Failed to create tsconfig.json: {}", e),
+            }
+        }
+
+        self.initialized_roots.insert(ts_module_root.to_string(), ());
     }
 
     /// Get or create a virtual file for a .bench document
@@ -715,6 +755,9 @@ impl VirtualTsFileManager {
         blocks: &[&EmbeddedBlock],
         version: i32,
     ) -> VirtualTsFile {
+        // Ensure tsconfig.json exists for proper module resolution
+        self.ensure_tsconfig(ts_module_root);
+
         // Check if we have an up-to-date version
         if let Some(existing) = self.files.get(bench_uri) {
             if existing.version >= version {
