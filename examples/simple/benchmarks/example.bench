@@ -1,14 +1,34 @@
+# Example benchmark demonstrating the structured setup syntax
+
 suite example {
+    description: "Example benchmark to get you started"
     iterations: 1000
     warmup: 100
-    description: "Example benchmark to get you started"
 
     setup go {
-        import "crypto/sha256"
+        import (
+            "crypto/sha256"
+        )
+
+        init {
+            // No initialization needed
+        }
+
+        helpers {
+            func sha256Sum(data []byte) [32]byte {
+                return sha256.Sum256(data)
+            }
+        }
     }
 
     setup ts {
-        import { createHash } from 'node:crypto';
+        import {
+            import { createHash } from 'node:crypto';
+        }
+
+        init {
+            // No initialization needed
+        }
     }
 
     fixture data {
@@ -16,7 +36,10 @@ suite example {
     }
 
     bench sha256 {
-        go: sha256.Sum256(data)
+        description: "SHA256 hash computation"
+        tags: ["hash", "crypto"]
+        
+        go: sha256Sum(data)
         ts: createHash('sha256').update(Buffer.from(data)).digest()
     }
 }

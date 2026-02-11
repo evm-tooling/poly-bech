@@ -1,12 +1,14 @@
 # Example: ABI encoding benchmarks
 #
 # This example demonstrates benchmarking Ethereum ABI encoding/decoding
-# across Go and TypeScript implementations.
+# across Go and TypeScript implementations using the new structured setup syntax.
 
 suite abi {
     description: "Ethereum ABI encoding and decoding benchmarks"
-    iterations: 5000
+    iterations: 50
     warmup: 100
+    compare: true
+    baseline: "go"
     
     setup go {
         import (
@@ -14,11 +16,12 @@ suite abi {
             "github.com/ChefBingbong/viem-go/abi"
         )
 
-        // Mirror ../go/abi_bench_test.go setup
-        var benchERC20ABI *abi.ABI
-        var balanceOfAddr = common.HexToAddress("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
+        declare {
+            var benchERC20ABI *abi.ABI
+            var balanceOfAddr = common.HexToAddress("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
+        }
 
-        func init() {
+        init {
             var err error
             benchERC20ABI, err = abi.Parse([]byte(`[
                 {"name":"name","type":"function","inputs":[],"outputs":[{"type":"string"}],"stateMutability":"view"},
@@ -36,43 +39,49 @@ suite abi {
             }
         }
 
-        // Helper matching BenchmarkAbi_EncodeSimple semantics
-        func mustEncodeBalanceOf(addr common.Address) []byte {
-            data, err := benchERC20ABI.EncodeFunctionData("balanceOf", addr)
-            if err != nil {
-                panic(err)
+        helpers {
+            func mustEncodeBalanceOf(addr common.Address) []byte {
+                data, err := benchERC20ABI.EncodeFunctionData("balanceOf", addr)
+                if err != nil {
+                    panic(err)
+                }
+                return data
             }
-            return data
         }
     }
     
     setup ts {
         import {
-            encodeFunctionData,
-            parseAbi,
-        } from 'viem'
+            import { encodeFunctionData, parseAbi } from 'viem';
+        }
 
-        // Mirror benchmarks/typescript/abi.bench.ts setup
-        const erc20Abi = parseAbi([
-            'function name() view returns (string)',
-            'function symbol() view returns (string)',
-            'function decimals() view returns (uint8)',
-            'function totalSupply() view returns (uint256)',
-            'function balanceOf(address owner) view returns (uint256)',
-            'function allowance(address owner, address spender) view returns (uint256)',
-            'function transfer(address to, uint256 amount) returns (bool)',
-            'function approve(address spender, uint256 amount) returns (bool)',
-            'function transferFrom(address from, address to, uint256 amount) returns (bool)',
-        ])
+        declare {
+            const erc20Abi = parseAbi([
+                'function name() view returns (string)',
+                'function symbol() view returns (string)',
+                'function decimals() view returns (uint8)',
+                'function totalSupply() view returns (uint256)',
+                'function balanceOf(address owner) view returns (uint256)',
+                'function allowance(address owner, address spender) view returns (uint256)',
+                'function transfer(address to, uint256 amount) returns (bool)',
+                'function approve(address spender, uint256 amount) returns (bool)',
+                'function transferFrom(address from, address to, uint256 amount) returns (bool)',
+            ])
 
-        const VITALIK = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045' as const
+            const VITALIK = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
+        }
+
+        init {
+        }
     }
     
     # First benchmark: exact match of
     # - Go: BenchmarkAbi_EncodeSimple
     # - TS: viem-ts: abi 
     bench encode_simple_balanceOf {
-        description: "encodeFunctionData"
+        description: "encodeFunctionData with address argument"
+        tags: ["abi", "encoding"]
+        
         go:  mustEncodeBalanceOf(balanceOfAddr)
         ts:  {
             encodeFunctionData({
