@@ -413,6 +413,389 @@ impl Default for VirtualFileManager {
     }
 }
 
+// =============================================================================
+// TypeScript Virtual File Support
+// =============================================================================
+
+/// A virtual TypeScript file generated from embedded blocks
+#[derive(Debug)]
+pub struct VirtualTsFile {
+    /// URI for the virtual file (file:///path/to/polybench_virtual_XXX.ts)
+    pub uri: String,
+    /// Full path to the virtual file
+    pub path: String,
+    /// The generated TypeScript source code
+    pub content: String,
+    /// File version (for LSP synchronization)
+    pub version: i32,
+    /// Mappings from virtual file sections to .bench file spans
+    pub section_mappings: Vec<SectionMapping>,
+    /// URI of the original .bench file
+    pub bench_uri: String,
+}
+
+impl VirtualTsFile {
+    /// Create a new virtual TypeScript file from embedded blocks
+    pub fn from_blocks(
+        bench_uri: &str,
+        bench_path: &str,
+        ts_module_root: &str,
+        blocks: &[&EmbeddedBlock],
+        version: i32,
+    ) -> Self {
+        let mut builder = VirtualTsFileBuilder::new(bench_uri, bench_path, ts_module_root, version);
+        builder.build(blocks);
+        builder.finish()
+    }
+
+    /// Translate a position in the .bench file to a position in the virtual TS file
+    ///
+    /// Returns None if the position is not within a TypeScript code block
+    pub fn bench_to_ts(&self, bench_offset: usize) -> Option<Position> {
+        for mapping in &self.section_mappings {
+            let span = &mapping.bench_span;
+            
+            // Check if offset falls within this block's span
+            if bench_offset >= span.start && bench_offset < span.end {
+                // Calculate relative position within the code block
+                let relative_offset = bench_offset - span.start;
+                
+                // Convert relative offset to line/column within the code
+                let code_bytes = mapping.code.as_bytes();
+                let mut line_in_block: u32 = 0;
+                let mut col: u32 = 0;
+                let mut current_offset = 0;
+                
+                for &byte in code_bytes.iter().take(relative_offset) {
+                    if byte == b'\n' {
+                        line_in_block += 1;
+                        col = 0;
+                    } else {
+                        col += 1;
+                    }
+                    current_offset += 1;
+                }
+                
+                // Handle case where relative_offset is at exact boundary
+                if current_offset < relative_offset && relative_offset <= code_bytes.len() {
+                    col += (relative_offset - current_offset) as u32;
+                }
+                
+                // Translate to virtual file position
+                let virtual_line = mapping.virtual_start_line + line_in_block;
+                
+                return Some(Position {
+                    line: virtual_line,
+                    character: col,
+                });
+            }
+        }
+        
+        None
+    }
+
+    /// Translate a position in the virtual TS file back to an offset in the .bench file
+    ///
+    /// Returns None if the position is in the wrapper code (not in original block)
+    pub fn ts_to_bench(&self, line: u32, character: u32) -> Option<usize> {
+        for mapping in &self.section_mappings {
+            // Check if line falls within this section
+            let section_end_line = mapping.virtual_start_line + mapping.line_count;
+            
+            if line >= mapping.virtual_start_line && line < section_end_line {
+                // Calculate relative line within the block
+                let line_in_block = line - mapping.virtual_start_line;
+                
+                // Convert to offset within the code
+                let mut offset_in_code = 0usize;
+                let mut current_line = 0u32;
+                
+                for (i, byte) in mapping.code.bytes().enumerate() {
+                    if current_line == line_in_block {
+                        // Found the line, now add column offset
+                        offset_in_code = i + character as usize;
+                        break;
+                    }
+                    if byte == b'\n' {
+                        current_line += 1;
+                    }
+                }
+                
+                // If we're on the last line and didn't find it via newline
+                if current_line < line_in_block {
+                    // Position is past the content
+                    return None;
+                }
+                
+                // Clamp offset to code length
+                offset_in_code = offset_in_code.min(mapping.code.len());
+                
+                // Translate back to .bench offset
+                let bench_offset = mapping.bench_span.start + offset_in_code;
+                
+                return Some(bench_offset);
+            }
+        }
+        
+        None
+    }
+
+    /// Check if a .bench file offset is within a TypeScript code block
+    pub fn contains_offset(&self, bench_offset: usize) -> bool {
+        self.section_mappings.iter().any(|m| {
+            bench_offset >= m.bench_span.start && bench_offset < m.bench_span.end
+        })
+    }
+
+    /// Find the block containing a .bench file offset
+    pub fn block_at_offset(&self, bench_offset: usize) -> Option<&SectionMapping> {
+        self.section_mappings.iter().find(|m| {
+            bench_offset >= m.bench_span.start && bench_offset < m.bench_span.end
+        })
+    }
+}
+
+/// Builder for constructing virtual TypeScript files
+struct VirtualTsFileBuilder {
+    bench_uri: String,
+    uri: String,
+    path: String,
+    content: String,
+    version: i32,
+    current_line: u32,
+    section_mappings: Vec<SectionMapping>,
+}
+
+impl VirtualTsFileBuilder {
+    fn new(bench_uri: &str, bench_path: &str, ts_module_root: &str, version: i32) -> Self {
+        // Generate a unique filename based on the bench file path
+        let mut hasher = DefaultHasher::new();
+        bench_path.hash(&mut hasher);
+        let hash = hasher.finish();
+        
+        let filename = format!("polybench_virtual_{:016x}.ts", hash);
+        let path = Path::new(ts_module_root).join(&filename);
+        let path_str = path.to_string_lossy().to_string();
+        let uri = format!("file://{}", path_str);
+        
+        Self {
+            bench_uri: bench_uri.to_string(),
+            uri,
+            path: path_str,
+            content: String::new(),
+            version,
+            current_line: 0,
+            section_mappings: Vec::new(),
+        }
+    }
+
+    fn build(&mut self, blocks: &[&EmbeddedBlock]) {
+        // Separate blocks by type
+        let imports: Vec<_> = blocks.iter()
+            .filter(|b| b.block_type == BlockType::SetupImport)
+            .collect();
+        let declares: Vec<_> = blocks.iter()
+            .filter(|b| b.block_type == BlockType::SetupDeclare)
+            .collect();
+        let helpers: Vec<_> = blocks.iter()
+            .filter(|b| b.block_type == BlockType::SetupHelpers)
+            .collect();
+        let inits: Vec<_> = blocks.iter()
+            .filter(|b| b.block_type == BlockType::SetupInit)
+            .collect();
+        let other: Vec<_> = blocks.iter()
+            .filter(|b| !matches!(b.block_type, 
+                BlockType::SetupImport | BlockType::SetupDeclare | 
+                BlockType::SetupHelpers | BlockType::SetupInit))
+            .collect();
+
+        // Write imports - TypeScript imports are already complete statements
+        for block in &imports {
+            self.add_block_content(block);
+            self.write_line("");
+        }
+
+        // Write declarations (types, interfaces, etc.)
+        for block in &declares {
+            self.add_block_content(block);
+            self.write_line("");
+        }
+
+        // Write helpers (functions, constants, etc.)
+        for block in &helpers {
+            self.add_block_content(block);
+            self.write_line("");
+        }
+
+        // Write init code - in TypeScript, this is just top-level code
+        for block in &inits {
+            self.add_block_content(block);
+            self.write_line("");
+        }
+
+        // Write other blocks (fixtures, benchmarks, etc.) wrapped in functions
+        for (i, block) in other.iter().enumerate() {
+            let func_name = match block.block_type {
+                BlockType::Fixture => format!("__polybench_fixture_{}", i),
+                BlockType::Benchmark => format!("__polybench_bench_{}", i),
+                BlockType::Hook => format!("__polybench_hook_{}", i),
+                BlockType::Skip => format!("__polybench_skip_{}", i),
+                BlockType::Validate => format!("__polybench_validate_{}", i),
+                _ => format!("__polybench_block_{}", i),
+            };
+            
+            self.write_line(&format!("function {}() {{", func_name));
+            self.add_block_content(block);
+            self.write_line("}");
+            self.write_line("");
+        }
+    }
+
+    fn write_line(&mut self, line: &str) {
+        self.content.push_str(line);
+        self.content.push('\n');
+        self.current_line += 1;
+    }
+
+    fn add_block_content(&mut self, block: &EmbeddedBlock) {
+        let code = &block.code;
+        let line_count = code.lines().count().max(1) as u32;
+        
+        // Record the mapping
+        self.section_mappings.push(SectionMapping {
+            virtual_start_line: self.current_line,
+            line_count,
+            bench_span: block.span.clone(),
+            block_type: block.block_type,
+            code: code.clone(),
+        });
+
+        // Write the code
+        self.content.push_str(code);
+        if !code.ends_with('\n') {
+            self.content.push('\n');
+        }
+        
+        self.current_line += line_count;
+    }
+
+    fn finish(self) -> VirtualTsFile {
+        VirtualTsFile {
+            uri: self.uri,
+            path: self.path,
+            content: self.content,
+            version: self.version,
+            section_mappings: self.section_mappings,
+            bench_uri: self.bench_uri,
+        }
+    }
+}
+
+/// Manager for virtual TypeScript files
+pub struct VirtualTsFileManager {
+    /// Virtual files indexed by .bench URI
+    files: dashmap::DashMap<String, VirtualTsFile>,
+}
+
+impl VirtualTsFileManager {
+    pub fn new() -> Self {
+        Self {
+            files: dashmap::DashMap::new(),
+        }
+    }
+
+    /// Get or create a virtual file for a .bench document
+    /// 
+    /// This also writes the virtual file to disk so the language server can access it.
+    pub fn get_or_create(
+        &self,
+        bench_uri: &str,
+        bench_path: &str,
+        ts_module_root: &str,
+        blocks: &[&EmbeddedBlock],
+        version: i32,
+    ) -> VirtualTsFile {
+        // Check if we have an up-to-date version
+        if let Some(existing) = self.files.get(bench_uri) {
+            if existing.version >= version {
+                // Clone the virtual file data we need
+                return VirtualTsFile {
+                    uri: existing.uri.clone(),
+                    path: existing.path.clone(),
+                    content: existing.content.clone(),
+                    version: existing.version,
+                    section_mappings: existing.section_mappings.clone(),
+                    bench_uri: existing.bench_uri.clone(),
+                };
+            }
+        }
+
+        // Create new virtual file
+        let virtual_file = VirtualTsFile::from_blocks(
+            bench_uri,
+            bench_path,
+            ts_module_root,
+            blocks,
+            version,
+        );
+
+        eprintln!("[tsserver] Creating virtual file from {} TS blocks", blocks.len());
+
+        // Write the virtual file to disk so the language server can access it
+        if let Err(e) = std::fs::write(&virtual_file.path, &virtual_file.content) {
+            eprintln!("[tsserver] Failed to write virtual file {}: {}", virtual_file.path, e);
+        } else {
+            eprintln!("[tsserver] Wrote virtual file: {} ({} bytes)", virtual_file.path, virtual_file.content.len());
+        }
+
+        // Store it (we need to clone since we're returning ownership)
+        let result = VirtualTsFile {
+            uri: virtual_file.uri.clone(),
+            path: virtual_file.path.clone(),
+            content: virtual_file.content.clone(),
+            version: virtual_file.version,
+            section_mappings: virtual_file.section_mappings.clone(),
+            bench_uri: virtual_file.bench_uri.clone(),
+        };
+        
+        self.files.insert(bench_uri.to_string(), virtual_file);
+        
+        result
+    }
+
+    /// Remove a virtual file when the .bench file is closed
+    pub fn remove(&self, bench_uri: &str) {
+        if let Some((_, vf)) = self.files.remove(bench_uri) {
+            // Also delete the file from disk
+            if let Err(e) = std::fs::remove_file(&vf.path) {
+                // Don't warn if file doesn't exist
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    eprintln!("[tsserver] Failed to remove virtual file {}: {}", vf.path, e);
+                }
+            }
+        }
+    }
+
+    /// Get a virtual file if it exists
+    #[allow(dead_code)]
+    pub fn get(&self, bench_uri: &str) -> Option<VirtualTsFile> {
+        self.files.get(bench_uri).map(|r| VirtualTsFile {
+            uri: r.uri.clone(),
+            path: r.path.clone(),
+            content: r.content.clone(),
+            version: r.version,
+            section_mappings: r.section_mappings.clone(),
+            bench_uri: r.bench_uri.clone(),
+        })
+    }
+}
+
+impl Default for VirtualTsFileManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

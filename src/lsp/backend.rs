@@ -17,7 +17,7 @@ use super::document::ParsedDocument;
 use super::embedded::EmbeddedConfig;
 use super::hover::{get_hover, get_hover_with_gopls};
 use super::semantic_tokens::{get_semantic_tokens, LEGEND};
-use super::virtual_files::VirtualFileManager;
+use super::virtual_files::{VirtualFileManager, VirtualTsFileManager};
 
 /// The LSP backend holding all state
 pub struct Backend {
@@ -31,6 +31,8 @@ pub struct Backend {
     embedded_configs: DashMap<Url, EmbeddedConfig>,
     /// Virtual file manager for gopls integration
     virtual_file_manager: VirtualFileManager,
+    /// Virtual file manager for tsserver integration
+    virtual_ts_file_manager: VirtualTsFileManager,
 }
 
 impl Backend {
@@ -41,6 +43,7 @@ impl Backend {
             workspace_roots: RwLock::new(Vec::new()),
             embedded_configs: DashMap::new(),
             virtual_file_manager: VirtualFileManager::new(),
+            virtual_ts_file_manager: VirtualTsFileManager::new(),
         }
     }
 
@@ -289,6 +292,7 @@ impl LanguageServer for Backend {
         self.documents.remove(uri);
         self.embedded_configs.remove(uri);
         self.virtual_file_manager.remove(uri.as_str());
+        self.virtual_ts_file_manager.remove(uri.as_str());
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -296,7 +300,7 @@ impl LanguageServer for Backend {
         let position = params.text_document_position_params.position;
 
         if let Some(doc) = self.documents.get(uri) {
-            // Try to get hover with gopls integration for Go code
+            // Try to get hover with embedded language integration (Go/TypeScript)
             if let Some(config) = self.embedded_configs.get(uri) {
                 let hover = get_hover_with_gopls(
                     &doc,
@@ -304,6 +308,7 @@ impl LanguageServer for Backend {
                     &config,
                     uri,
                     &self.virtual_file_manager,
+                    &self.virtual_ts_file_manager,
                 );
                 Ok(hover)
             } else {

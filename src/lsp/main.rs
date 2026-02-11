@@ -13,6 +13,7 @@ mod embedded;
 mod gopls_client;
 mod hover;
 mod semantic_tokens;
+mod tsserver_client;
 mod virtual_files;
 
 use backend::Backend;
