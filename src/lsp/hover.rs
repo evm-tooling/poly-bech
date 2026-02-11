@@ -1,7 +1,8 @@
 //! Hover provider for the LSP
 //!
 //! This module provides hover information for keywords and identifiers
-//! in poly-bench files, including embedded Go code via gopls.
+//! in poly-bench files, including embedded Go code via gopls and
+//! TypeScript code via typescript-language-server.
 
 use poly_bench::dsl::Lang;
 use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position, Url};
@@ -9,12 +10,13 @@ use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Posi
 use super::document::ParsedDocument;
 use super::embedded::{extract_embedded_blocks, EmbeddedBlock, EmbeddedConfig};
 use super::gopls_client::init_gopls_client;
-use super::virtual_files::VirtualFileManager;
+use super::tsserver_client::init_tsserver_client;
+use super::virtual_files::{VirtualFileManager, VirtualTsFileManager};
 
-/// Get hover information at a position (with embedded Go support)
+/// Get hover information at a position (with embedded language support)
 ///
-/// This function first checks if the position is within a Go code block.
-/// If so, it delegates to gopls for rich type information.
+/// This function first checks if the position is within a Go or TypeScript code block.
+/// If so, it delegates to the appropriate language server for rich type information.
 /// Otherwise, it falls back to keyword and AST hover.
 pub fn get_hover_with_gopls(
     doc: &ParsedDocument,
@@ -22,6 +24,7 @@ pub fn get_hover_with_gopls(
     config: &EmbeddedConfig,
     uri: &Url,
     virtual_file_manager: &VirtualFileManager,
+    virtual_ts_file_manager: &VirtualTsFileManager,
 ) -> Option<Hover> {
     // Convert position to offset
     let offset = match doc.position_to_offset(position) {
@@ -34,20 +37,21 @@ pub fn get_hover_with_gopls(
     
     eprintln!("[hover] Position {:?} -> offset {}", position, offset);
     
-    // Extract embedded blocks and check if we're in a Go block
+    // Extract embedded blocks
     let blocks = extract_embedded_blocks(doc);
+    
+    // Separate Go and TypeScript blocks
     let go_blocks: Vec<&EmbeddedBlock> = blocks.iter()
         .filter(|b| b.lang == Lang::Go)
         .collect();
+    let ts_blocks: Vec<&EmbeddedBlock> = blocks.iter()
+        .filter(|b| b.lang == Lang::TypeScript)
+        .collect();
     
-    eprintln!("[hover] Found {} Go blocks", go_blocks.len());
-    for (i, block) in go_blocks.iter().enumerate() {
-        eprintln!("[hover]   Block {}: span {}..{} ({:?})", 
-            i, block.span.start, block.span.end, block.block_type);
-    }
+    eprintln!("[hover] Found {} Go blocks, {} TS blocks", go_blocks.len(), ts_blocks.len());
     
     // Check if the offset is within a Go code block
-    if let Some(go_block) = find_go_block_at_offset(&go_blocks, offset) {
+    if let Some(go_block) = find_block_at_offset(&go_blocks, offset) {
         eprintln!("[hover] Offset {} is in Go block {:?} (span {}..{})", 
             offset, go_block.block_type, go_block.span.start, go_block.span.end);
         
@@ -57,7 +61,6 @@ pub fn get_hover_with_gopls(
             if let Some(hover) = get_gopls_hover(
                 doc,
                 uri,
-                position,
                 offset,
                 &go_blocks,
                 go_mod_root,
@@ -68,16 +71,43 @@ pub fn get_hover_with_gopls(
         } else {
             eprintln!("[hover] No go_mod_root configured");
         }
+    }
+    
+    // Check if the offset is within a TypeScript code block
+    if let Some(ts_block) = find_block_at_offset(&ts_blocks, offset) {
+        eprintln!("[hover] Offset {} is in TS block {:?} (span {}..{})", 
+            offset, ts_block.block_type, ts_block.span.start, ts_block.span.end);
+        
+        // Try to get hover from tsserver
+        if let Some(ts_module_root) = &config.ts_module_root {
+            eprintln!("[hover] ts_module_root: {}", ts_module_root);
+            if let Some(hover) = get_tsserver_hover(
+                doc,
+                uri,
+                offset,
+                &ts_blocks,
+                ts_module_root,
+                virtual_ts_file_manager,
+            ) {
+                return Some(hover);
+            }
+        } else {
+            eprintln!("[hover] No ts_module_root configured");
+        }
+    }
+    
+    if go_blocks.is_empty() && ts_blocks.is_empty() {
+        eprintln!("[hover] No embedded language blocks found");
     } else {
-        eprintln!("[hover] Offset {} is NOT in any Go block", offset);
+        eprintln!("[hover] Offset {} is NOT in any embedded block", offset);
     }
     
     // Fall back to standard hover
     get_hover(doc, position)
 }
 
-/// Find the Go block containing the given offset
-fn find_go_block_at_offset<'a>(blocks: &[&'a EmbeddedBlock], offset: usize) -> Option<&'a EmbeddedBlock> {
+/// Find the block containing the given offset
+fn find_block_at_offset<'a>(blocks: &[&'a EmbeddedBlock], offset: usize) -> Option<&'a EmbeddedBlock> {
     blocks.iter()
         .find(|b| offset >= b.span.start && offset < b.span.end)
         .copied()
@@ -87,7 +117,6 @@ fn find_go_block_at_offset<'a>(blocks: &[&'a EmbeddedBlock], offset: usize) -> O
 fn get_gopls_hover(
     doc: &ParsedDocument,
     bench_uri: &Url,
-    _position: Position,
     bench_offset: usize,
     go_blocks: &[&EmbeddedBlock],
     go_mod_root: &str,
@@ -171,6 +200,96 @@ fn get_gopls_hover(
         }
         Err(e) => {
             eprintln!("[gopls] Hover request failed: {}", e);
+            None
+        }
+    }
+}
+
+/// Get hover information from tsserver for embedded TypeScript code
+fn get_tsserver_hover(
+    doc: &ParsedDocument,
+    bench_uri: &Url,
+    bench_offset: usize,
+    ts_blocks: &[&EmbeddedBlock],
+    ts_module_root: &str,
+    virtual_ts_file_manager: &VirtualTsFileManager,
+) -> Option<Hover> {
+    eprintln!("[tsserver] get_tsserver_hover called for offset {} in {}", bench_offset, bench_uri);
+    
+    // Initialize tsserver client if needed
+    let client = match init_tsserver_client(ts_module_root) {
+        Some(c) => c,
+        None => {
+            eprintln!("[tsserver] Failed to initialize tsserver client");
+            return None;
+        }
+    };
+    
+    // Get or create the virtual file
+    let bench_uri_str = bench_uri.as_str();
+    let bench_path = bench_uri.to_file_path().ok()?;
+    let bench_path_str = bench_path.to_string_lossy();
+    
+    let virtual_file = virtual_ts_file_manager.get_or_create(
+        bench_uri_str,
+        &bench_path_str,
+        ts_module_root,
+        ts_blocks,
+        doc.version,
+    );
+    
+    eprintln!("[tsserver] Virtual file: {}", virtual_file.path);
+    
+    // Translate position from .bench to virtual TS file
+    let ts_position = match virtual_file.bench_to_ts(bench_offset) {
+        Some(pos) => {
+            eprintln!("[tsserver] Translated bench offset {} to TS position {}:{}", 
+                bench_offset, pos.line, pos.character);
+            pos
+        }
+        None => {
+            eprintln!("[tsserver] Failed to translate bench offset {} to TS position", bench_offset);
+            return None;
+        }
+    };
+    
+    // Ensure the virtual file is synced with tsserver
+    if let Err(e) = client.did_change(&virtual_file.uri, &virtual_file.content, virtual_file.version) {
+        eprintln!("[tsserver] Failed to sync virtual file: {}", e);
+        return None;
+    }
+    
+    eprintln!("[tsserver] Requesting hover at {}:{}", ts_position.line, ts_position.character);
+    
+    // Request hover from tsserver
+    match client.hover(&virtual_file.uri, ts_position.line, ts_position.character) {
+        Ok(Some(mut hover)) => {
+            eprintln!("[tsserver] Got hover response!");
+            // Translate the range back to .bench file if present
+            if let Some(ref ts_range) = hover.range {
+                if let Some(bench_start_offset) = virtual_file.ts_to_bench(
+                    ts_range.start.line,
+                    ts_range.start.character,
+                ) {
+                    if let Some(bench_end_offset) = virtual_file.ts_to_bench(
+                        ts_range.end.line,
+                        ts_range.end.character,
+                    ) {
+                        hover.range = Some(tower_lsp::lsp_types::Range {
+                            start: doc.offset_to_position(bench_start_offset),
+                            end: doc.offset_to_position(bench_end_offset),
+                        });
+                    }
+                }
+            }
+            Some(hover)
+        }
+        Ok(None) => {
+            eprintln!("[tsserver] Hover returned None");
+            None
+        }
+        Err(e) => {
+            eprintln!("[tsserver] Hover request failed: {}", e);
             None
         }
     }
