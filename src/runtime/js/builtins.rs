@@ -42,6 +42,39 @@ pub const BENCHMARK_HARNESS: &str = r#"
         };
     }
 
+    // Run a benchmark function with an each-iteration hook
+    function runBenchmarkWithHook(fn, eachHook, iterations, warmup) {
+        const samples = new Array(iterations);
+        
+        // Warmup phase with hook
+        for (let i = 0; i < warmup; i++) {
+            eachHook();
+            fn();
+        }
+        
+        // Timed phase with hook (hook runs outside timing)
+        let totalNanos = 0;
+        for (let i = 0; i < iterations; i++) {
+            eachHook();
+            const start = now();
+            fn();
+            const elapsed = now() - start;
+            samples[i] = elapsed;
+            totalNanos += elapsed;
+        }
+        
+        const nanosPerOp = totalNanos / iterations;
+        const opsPerSec = 1e9 / nanosPerOp;
+        
+        return {
+            iterations: iterations,
+            totalNanos: totalNanos,
+            nanosPerOp: nanosPerOp,
+            opsPerSec: opsPerSec,
+            samples: samples,
+        };
+    }
+
     // Fixture helpers
     function hexToBytes(hex) {
         hex = hex.replace(/^0x/, '');
@@ -62,6 +95,7 @@ pub const BENCHMARK_HARNESS: &str = r#"
     globalThis.__polybench = {
         now: now,
         runBenchmark: runBenchmark,
+        runBenchmarkWithHook: runBenchmarkWithHook,
         hexToBytes: hexToBytes,
         bytesToHex: bytesToHex,
     };
