@@ -218,12 +218,10 @@ impl Parser {
 
     /// Parse an import block - handles both { ... } and ( ... ) for Go-style imports
     fn parse_import_block(&mut self) -> Result<CodeBlock> {
-        let start_token = self.peek().clone();
-        
         // Check if it's ( for Go grouped imports or { for general block
         if self.check(TokenKind::LParen) {
             // Go-style grouped import: import ( "pkg1" "pkg2" )
-            let open_paren = self.advance().clone();
+            let _open_paren = self.advance().clone();
             let mut code_tokens = Vec::new();
             let mut depth = 1;
             
@@ -247,7 +245,22 @@ impl Parser {
             let code = self.reconstruct_code(&code_tokens);
             // Wrap in import ( ... ) for the code
             let full_code = format!("import (\n{}\n)", code.trim());
-            Ok(CodeBlock::new(full_code, true, open_paren.span))
+            
+            // Compute span covering the import content
+            let code_span = if code_tokens.is_empty() {
+                Span::dummy()
+            } else {
+                let first = &code_tokens[0];
+                let last = &code_tokens[code_tokens.len() - 1];
+                Span {
+                    start: first.span.start,
+                    end: last.span.end,
+                    line: first.span.line,
+                    col: first.span.col,
+                }
+            };
+            
+            Ok(CodeBlock::new(full_code, true, code_span))
         } else if self.check(TokenKind::LBrace) {
             // Block-style imports: import { ... } from 'pkg' for TS
             self.parse_code_block()
@@ -274,7 +287,22 @@ impl Parser {
             }
             
             let code = self.reconstruct_code(&code_tokens);
-            Ok(CodeBlock::new(code.trim().to_string(), false, start_token.span))
+            
+            // Compute span covering all collected tokens
+            let code_span = if code_tokens.is_empty() {
+                Span::dummy()
+            } else {
+                let first = &code_tokens[0];
+                let last = &code_tokens[code_tokens.len() - 1];
+                Span {
+                    start: first.span.start,
+                    end: last.span.end,
+                    line: first.span.line,
+                    col: first.span.col,
+                }
+            };
+            
+            Ok(CodeBlock::new(code.trim().to_string(), false, code_span))
         }
     }
 
@@ -552,7 +580,6 @@ impl Parser {
         if self.check(TokenKind::LBrace) {
             self.parse_code_block()
         } else {
-            let start_token = self.peek().clone();
             let mut code_tokens = Vec::new();
 
             while !self.is_at_end() {
@@ -582,14 +609,28 @@ impl Parser {
 
             let code = self.reconstruct_code(&code_tokens);
 
-            Ok(CodeBlock::new(code.trim().to_string(), false, start_token.span))
+            // Compute span covering all collected tokens
+            let code_span = if code_tokens.is_empty() {
+                Span::dummy()
+            } else {
+                let first = &code_tokens[0];
+                let last = &code_tokens[code_tokens.len() - 1];
+                Span {
+                    start: first.span.start,
+                    end: last.span.end,
+                    line: first.span.line,
+                    col: first.span.col,
+                }
+            };
+
+            Ok(CodeBlock::new(code.trim().to_string(), false, code_span))
         }
     }
 
     /// Parse a code block (braces required)
     fn parse_code_block(&mut self) -> Result<CodeBlock> {
         let open_brace = self.expect(TokenKind::LBrace)?;
-        let start_pos = self.current;
+        let _start_pos = self.current;
         
         // Find matching closing brace with brace counting
         let mut depth = 1;
@@ -622,7 +663,29 @@ impl Parser {
         // we'd preserve the original source)
         let code = self.reconstruct_code(&code_tokens);
 
-        Ok(CodeBlock::new(code, true, open_brace.span))
+        // Compute the span covering the actual code content (not just the opening brace)
+        // The span should cover from after the opening brace to before the closing brace
+        let code_span = if code_tokens.is_empty() {
+            // Empty block - use span right after opening brace
+            Span {
+                start: open_brace.span.end,
+                end: open_brace.span.end,
+                line: open_brace.span.line,
+                col: open_brace.span.col + 1,
+            }
+        } else {
+            // Span from first token to last token
+            let first = &code_tokens[0];
+            let last = &code_tokens[code_tokens.len() - 1];
+            Span {
+                start: first.span.start,
+                end: last.span.end,
+                line: first.span.line,
+                col: first.span.col,
+            }
+        };
+
+        Ok(CodeBlock::new(code, true, code_span))
     }
 
     /// Parse inline code (single line) or block code
@@ -633,7 +696,6 @@ impl Parser {
             // Single line - collect tokens until we hit a newline-ish boundary
             // For simplicity, we'll collect until we see a language keyword, 
             // closing brace, or known property keyword
-            let start_token = self.peek().clone();
             let mut code_tokens = Vec::new();
 
             while !self.is_at_end() {
@@ -678,7 +740,21 @@ impl Parser {
 
             let code = self.reconstruct_code(&code_tokens);
 
-            Ok(CodeBlock::new(code.trim().to_string(), false, start_token.span))
+            // Compute span covering all collected tokens
+            let code_span = if code_tokens.is_empty() {
+                Span::dummy()
+            } else {
+                let first = &code_tokens[0];
+                let last = &code_tokens[code_tokens.len() - 1];
+                Span {
+                    start: first.span.start,
+                    end: last.span.end,
+                    line: first.span.line,
+                    col: first.span.col,
+                }
+            };
+
+            Ok(CodeBlock::new(code.trim().to_string(), false, code_span))
         }
     }
 

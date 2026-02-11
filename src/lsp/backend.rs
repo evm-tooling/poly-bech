@@ -15,8 +15,9 @@ use super::completion::get_completions;
 use super::diagnostics::compute_diagnostics_with_config;
 use super::document::ParsedDocument;
 use super::embedded::EmbeddedConfig;
-use super::hover::get_hover;
+use super::hover::{get_hover, get_hover_with_gopls};
 use super::semantic_tokens::{get_semantic_tokens, LEGEND};
+use super::virtual_files::VirtualFileManager;
 
 /// The LSP backend holding all state
 pub struct Backend {
@@ -26,6 +27,10 @@ pub struct Backend {
     documents: DashMap<Url, ParsedDocument>,
     /// Workspace root folders
     workspace_roots: RwLock<Vec<String>>,
+    /// Embedded language config cache per document
+    embedded_configs: DashMap<Url, EmbeddedConfig>,
+    /// Virtual file manager for gopls integration
+    virtual_file_manager: VirtualFileManager,
 }
 
 impl Backend {
@@ -34,6 +39,8 @@ impl Backend {
             client,
             documents: DashMap::new(),
             workspace_roots: RwLock::new(Vec::new()),
+            embedded_configs: DashMap::new(),
+            virtual_file_manager: VirtualFileManager::new(),
         }
     }
 
@@ -111,6 +118,9 @@ impl Backend {
         }
 
         self.documents.insert(uri.clone(), doc);
+        
+        // Cache the embedded config for hover requests
+        self.embedded_configs.insert(uri.clone(), config);
 
         self.client
             .publish_diagnostics(uri, result.diagnostics, Some(version))
@@ -275,7 +285,10 @@ impl LanguageServer for Backend {
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        self.documents.remove(&params.text_document.uri);
+        let uri = &params.text_document.uri;
+        self.documents.remove(uri);
+        self.embedded_configs.remove(uri);
+        self.virtual_file_manager.remove(uri.as_str());
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -283,7 +296,20 @@ impl LanguageServer for Backend {
         let position = params.text_document_position_params.position;
 
         if let Some(doc) = self.documents.get(uri) {
-            Ok(get_hover(&doc, position))
+            // Try to get hover with gopls integration for Go code
+            if let Some(config) = self.embedded_configs.get(uri) {
+                let hover = get_hover_with_gopls(
+                    &doc,
+                    position,
+                    &config,
+                    uri,
+                    &self.virtual_file_manager,
+                );
+                Ok(hover)
+            } else {
+                // Fall back to standard hover if no config
+                Ok(get_hover(&doc, position))
+            }
         } else {
             Ok(None)
         }
