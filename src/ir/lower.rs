@@ -7,10 +7,17 @@ use crate::ir::{BenchmarkIR, SuiteIR, FixtureIR, FixtureParamIR, BenchmarkSpec};
 use crate::ir::fixtures::{decode_hex, load_hex_file, extract_fixture_refs};
 use crate::ir::imports::{extract_go_imports, extract_ts_imports, ParsedSetup};
 use miette::{Result, miette};
+use std::collections::HashSet;
 use std::path::Path;
 
 /// Lower an AST File to BenchmarkIR
 pub fn lower(ast: &File, base_dir: Option<&Path>) -> Result<BenchmarkIR> {
+    // Collect stdlib imports from use statements
+    let stdlib_imports: HashSet<String> = ast.use_stds
+        .iter()
+        .map(|u| u.module.clone())
+        .collect();
+
     let mut suites = Vec::new();
 
     for suite in &ast.suites {
@@ -18,7 +25,7 @@ pub fn lower(ast: &File, base_dir: Option<&Path>) -> Result<BenchmarkIR> {
         suites.push(suite_ir);
     }
 
-    Ok(BenchmarkIR::new(suites))
+    Ok(BenchmarkIR::with_stdlib(stdlib_imports, suites))
 }
 
 /// Lower a single Suite to SuiteIR
@@ -230,5 +237,66 @@ suite hash {
         assert_eq!(bench.iterations, 5000);
         assert!(bench.has_lang(Lang::Go));
         assert!(bench.has_lang(Lang::TypeScript));
+    }
+
+    #[test]
+    fn test_lower_with_stdlib_imports() {
+        let source = r#"
+use std::constants
+
+suite math {
+    iterations: 100
+    
+    bench pi_calc {
+        go: compute(std_PI)
+        ts: compute(std_PI)
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let ir = lower(&ast, None).unwrap();
+        
+        assert!(ir.has_stdlib("constants"));
+        assert!(!ir.has_stdlib("nonexistent"));
+        assert_eq!(ir.stdlib_imports.len(), 1);
+    }
+
+    #[test]
+    fn test_lower_with_multiple_stdlib_imports() {
+        let source = r#"
+use std::constants
+use std::math
+
+suite test {
+    bench foo {
+        go: test()
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let ir = lower(&ast, None).unwrap();
+        
+        assert_eq!(ir.stdlib_imports.len(), 2);
+        assert!(ir.has_stdlib("constants"));
+        assert!(ir.has_stdlib("math"));
+    }
+
+    #[test]
+    fn test_lower_without_stdlib() {
+        let source = r#"
+suite test {
+    fixture data {
+        hex: "deadbeef"
+    }
+    
+    bench foo {
+        go: test(data)
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let ir = lower(&ast, None).unwrap();
+        
+        assert!(ir.stdlib_imports.is_empty());
     }
 }

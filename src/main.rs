@@ -10,6 +10,7 @@ mod runtime;
 mod executor;
 mod reporter;
 mod project;
+mod stdlib;
 
 #[derive(Parser)]
 #[command(name = "poly-bench")]

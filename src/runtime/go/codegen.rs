@@ -2,6 +2,7 @@
 
 use crate::dsl::Lang;
 use crate::ir::{BenchmarkIR, SuiteIR, BenchmarkSpec, FixtureIR};
+use crate::stdlib;
 use miette::{Result, miette};
 
 /// Generate Go plugin source code from IR
@@ -29,6 +30,13 @@ pub fn generate(ir: &BenchmarkIR) -> Result<String> {
         code.push_str(&format!("\t{}\n", import_spec));
     }
     code.push_str(")\n\n");
+
+    // Inject stdlib code if any modules are imported
+    let stdlib_code = stdlib::get_stdlib_code(&ir.stdlib_imports, Lang::Go);
+    if !stdlib_code.is_empty() {
+        code.push_str(&stdlib_code);
+        code.push_str("\n");
+    }
 
     // BenchResult type
     code.push_str(r#"// BenchResult holds the benchmark measurement results
@@ -246,5 +254,53 @@ suite hash {
         assert!(code.contains("package main"));
         assert!(code.contains("func bench_hash_keccak256"));
         assert!(code.contains("var data = []byte{0xde, 0xad, 0xbe, 0xef}"));
+    }
+
+    #[test]
+    fn test_generate_with_stdlib_constants() {
+        let source = r#"
+use std::constants
+
+suite math {
+    iterations: 100
+    
+    bench pi_calc {
+        go: compute(std_PI)
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let ir = lower(&ast, None).unwrap();
+        let code = generate(&ir).unwrap();
+        
+        // Verify stdlib constants are injected
+        assert!(code.contains("std_PI"));
+        assert!(code.contains("std_E"));
+        assert!(code.contains("float64"));
+        assert!(code.contains("3.14159"));
+    }
+
+    #[test]
+    fn test_generate_without_stdlib() {
+        let source = r#"
+suite test {
+    iterations: 100
+    
+    fixture data {
+        hex: "deadbeef"
+    }
+    
+    bench simple {
+        go: test(data)
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let ir = lower(&ast, None).unwrap();
+        let code = generate(&ir).unwrap();
+        
+        // Should not contain stdlib constants
+        assert!(!code.contains("std_PI"));
+        assert!(!code.contains("std_E"));
     }
 }

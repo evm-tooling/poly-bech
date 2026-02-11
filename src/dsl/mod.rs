@@ -13,7 +13,7 @@ pub mod validate;
 pub use ast::*;
 pub use formatter::format_file;
 pub use error::ParseError;
-pub use validate::{validate_suite, ValidationResult, ValidationError, ValidationWarning};
+pub use validate::{validate_suite, validate_file, ValidationResult, ValidationError, ValidationWarning};
 
 use miette::Result;
 

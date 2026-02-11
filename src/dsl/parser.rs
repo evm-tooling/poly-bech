@@ -29,14 +29,53 @@ impl Parser {
 
     /// Parse the entire file
     pub fn parse_file(&mut self) -> Result<File> {
+        let mut use_stds = Vec::new();
         let mut suites = Vec::new();
 
+        // Parse top-level use statements first
+        while self.check(TokenKind::Use) {
+            use_stds.push(self.parse_use_std()?);
+        }
+
+        // Parse suites
         while !self.is_at_end() {
             let suite = self.parse_suite()?;
             suites.push(suite);
         }
 
-        Ok(File::new(suites))
+        Ok(File::with_use_stds(use_stds, suites))
+    }
+
+    /// Parse a use std::module statement
+    fn parse_use_std(&mut self) -> Result<UseStd> {
+        let use_token = self.expect_keyword(TokenKind::Use)?;
+        
+        // Expect "std" identifier
+        let std_token = self.expect_identifier()?;
+        let std_name = match &std_token.kind {
+            TokenKind::Identifier(s) => s.clone(),
+            _ => unreachable!(),
+        };
+        
+        if std_name != "std" {
+            return Err(self.make_error(ParseError::ExpectedToken {
+                expected: "std".to_string(),
+                found: std_name,
+                span: std_token.span.clone(),
+            }));
+        }
+        
+        // Expect "::"
+        self.expect(TokenKind::DoubleColon)?;
+        
+        // Expect module name
+        let module_token = self.expect_identifier()?;
+        let module = match &module_token.kind {
+            TokenKind::Identifier(s) => s.clone(),
+            _ => unreachable!(),
+        };
+        
+        Ok(UseStd::new(module, use_token.span))
     }
 
     /// Parse a suite definition
@@ -1268,5 +1307,71 @@ suite test {
         assert_eq!(suite.requires.len(), 2);
         assert!(suite.compare);
         assert_eq!(suite.baseline, Some(Lang::Go));
+    }
+
+    #[test]
+    fn test_parse_use_std() {
+        let source = r#"
+use std::constants
+
+suite test {
+    bench foo {
+        go: compute(std_PI)
+    }
+}
+"#;
+        let result = parse(source, "test.bench");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+        
+        let file = result.unwrap();
+        assert_eq!(file.use_stds.len(), 1);
+        assert_eq!(file.use_stds[0].module, "constants");
+        assert_eq!(file.suites.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_multiple_use_stds() {
+        let source = r#"
+use std::constants
+use std::math
+
+suite test {
+    bench foo {
+        go: compute(std_PI)
+    }
+}
+"#;
+        let result = parse(source, "test.bench");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+        
+        let file = result.unwrap();
+        assert_eq!(file.use_stds.len(), 2);
+        assert_eq!(file.use_stds[0].module, "constants");
+        assert_eq!(file.use_stds[1].module, "math");
+    }
+
+    #[test]
+    fn test_parse_use_std_with_multiple_suites() {
+        let source = r#"
+use std::constants
+
+suite test1 {
+    bench foo {
+        go: compute(std_PI)
+    }
+}
+
+suite test2 {
+    bench bar {
+        go: compute(std_E)
+    }
+}
+"#;
+        let result = parse(source, "test.bench");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+        
+        let file = result.unwrap();
+        assert_eq!(file.use_stds.len(), 1);
+        assert_eq!(file.suites.len(), 2);
     }
 }

@@ -203,15 +203,37 @@ impl Value {
     }
 }
 
+/// A standard library import: use std::module
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UseStd {
+    /// The module name (e.g., "constants", "math", "chart")
+    pub module: String,
+    /// Source location
+    pub span: Span,
+}
+
+impl UseStd {
+    pub fn new(module: String, span: Span) -> Self {
+        Self { module, span }
+    }
+}
+
 /// Top-level file containing one or more suites
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct File {
+    /// Standard library imports (use std::module)
+    pub use_stds: Vec<UseStd>,
+    /// Benchmark suites
     pub suites: Vec<Suite>,
 }
 
 impl File {
     pub fn new(suites: Vec<Suite>) -> Self {
-        Self { suites }
+        Self { use_stds: Vec::new(), suites }
+    }
+
+    pub fn with_use_stds(use_stds: Vec<UseStd>, suites: Vec<Suite>) -> Self {
+        Self { use_stds, suites }
     }
 }
 

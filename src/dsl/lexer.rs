@@ -71,7 +71,15 @@ impl<'a> Lexer<'a> {
             ')' => (TokenKind::RParen, ")".to_string()),
             '[' => (TokenKind::LBracket, "[".to_string()),
             ']' => (TokenKind::RBracket, "]".to_string()),
-            ':' => (TokenKind::Colon, ":".to_string()),
+            ':' => {
+                // Check for ::
+                if self.peek() == Some(':') {
+                    self.advance();
+                    (TokenKind::DoubleColon, "::".to_string())
+                } else {
+                    (TokenKind::Colon, ":".to_string())
+                }
+            }
             ',' => (TokenKind::Comma, ",".to_string()),
             '@' => {
                 // Check for @file
@@ -474,5 +482,51 @@ mod tests {
         assert_eq!(tokens[14].kind, TokenKind::Baseline);
         assert_eq!(tokens[15].kind, TokenKind::Shape);
         assert_eq!(tokens[16].kind, TokenKind::Async);
+    }
+
+    #[test]
+    fn test_use_keyword() {
+        let source = "use";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        
+        assert_eq!(tokens[0].kind, TokenKind::Use);
+    }
+
+    #[test]
+    fn test_double_colon() {
+        let source = "std::constants";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        
+        assert!(matches!(tokens[0].kind, TokenKind::Identifier(ref s) if s == "std"));
+        assert_eq!(tokens[1].kind, TokenKind::DoubleColon);
+        assert!(matches!(tokens[2].kind, TokenKind::Identifier(ref s) if s == "constants"));
+    }
+
+    #[test]
+    fn test_use_std_statement() {
+        let source = "use std::constants";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        
+        assert_eq!(tokens[0].kind, TokenKind::Use);
+        assert!(matches!(tokens[1].kind, TokenKind::Identifier(ref s) if s == "std"));
+        assert_eq!(tokens[2].kind, TokenKind::DoubleColon);
+        assert!(matches!(tokens[3].kind, TokenKind::Identifier(ref s) if s == "constants"));
+        assert_eq!(tokens[4].kind, TokenKind::Eof);
+    }
+
+    #[test]
+    fn test_colon_vs_double_colon() {
+        let source = "foo: bar::baz";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        
+        assert!(matches!(tokens[0].kind, TokenKind::Identifier(ref s) if s == "foo"));
+        assert_eq!(tokens[1].kind, TokenKind::Colon);
+        assert!(matches!(tokens[2].kind, TokenKind::Identifier(ref s) if s == "bar"));
+        assert_eq!(tokens[3].kind, TokenKind::DoubleColon);
+        assert!(matches!(tokens[4].kind, TokenKind::Identifier(ref s) if s == "baz"));
     }
 }

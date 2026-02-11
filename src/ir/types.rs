@@ -2,18 +2,24 @@
 
 use crate::dsl::{Lang, ExecutionOrder};
 use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// A complete benchmark IR with all suites
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BenchmarkIR {
+    /// Standard library modules imported (e.g., "constants", "math")
+    pub stdlib_imports: HashSet<String>,
     /// All benchmark suites
     pub suites: Vec<SuiteIR>,
 }
 
 impl BenchmarkIR {
     pub fn new(suites: Vec<SuiteIR>) -> Self {
-        Self { suites }
+        Self { stdlib_imports: HashSet::new(), suites }
+    }
+
+    pub fn with_stdlib(stdlib_imports: HashSet<String>, suites: Vec<SuiteIR>) -> Self {
+        Self { stdlib_imports, suites }
     }
 
     /// Get all benchmarks across all suites
@@ -21,6 +27,11 @@ impl BenchmarkIR {
         self.suites.iter().flat_map(|suite| {
             suite.benchmarks.iter().map(move |bench| (suite, bench))
         })
+    }
+
+    /// Check if a stdlib module is imported
+    pub fn has_stdlib(&self, module: &str) -> bool {
+        self.stdlib_imports.contains(module)
     }
 }
 
