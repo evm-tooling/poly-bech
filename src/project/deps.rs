@@ -26,7 +26,7 @@ fn resolve_ts_root(project_root: &Path) -> std::path::PathBuf {
     }
 }
 
-/// Ensure go.mod and deps.go exist in go_root (for add when runtime-env exists but empty)
+/// Ensure go.mod exists in go_root (for add when runtime-env exists but empty)
 fn ensure_go_env(go_root: &Path, go_config: &manifest::GoConfig) -> Result<()> {
     std::fs::create_dir_all(go_root)
         .map_err(|e| miette::miette!("Failed to create Go env dir: {}", e))?;
@@ -35,10 +35,6 @@ fn ensure_go_env(go_root: &Path, go_config: &manifest::GoConfig) -> Result<()> {
         std::fs::write(go_root.join("go.mod"), content)
             .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
     }
-    let import_paths: Vec<String> = go_config.dependencies.keys().cloned().collect();
-    let deps_content = templates::go_deps_file(&import_paths);
-    std::fs::write(go_root.join(templates::GO_DEPS_FILENAME), deps_content)
-        .map_err(|e| miette::miette!("Failed to write deps.go: {}", e))?;
     Ok(())
 }
 
@@ -121,8 +117,10 @@ pub fn add_go_dependency(spec: &str) -> Result<()> {
         return Err(miette::miette!("go get failed"));
     }
 
-    // Do not run go mod tidy: it can remove deps (no packages in root) or fail for
-    // modules that have no root package (e.g. viem-go). go get already updated go.mod/go.sum.
+    // Note: We intentionally skip `go mod tidy` here.
+    // Running tidy without a .go file that imports the deps would remove them.
+    // Tidy will run automatically when `poly-bench run` generates bench code.
+
     println!("{} Go dependency installed successfully", "✓".green().bold());
 
     Ok(())
@@ -268,15 +266,8 @@ fn install_go_deps(project_root: &Path, go_config: &manifest::GoConfig) -> Resul
         println!("  {} Installed {}", "✓".green(), package);
     }
 
-    // Generate deps.go so the module has a buildable main that blank-imports each dep.
-    if !go_config.dependencies.is_empty() {
-        let import_paths: Vec<String> = go_config.dependencies.keys().cloned().collect();
-        let deps_content = templates::go_deps_file(&import_paths);
-        let deps_path = go_root.join(templates::GO_DEPS_FILENAME);
-        std::fs::write(&deps_path, deps_content)
-            .map_err(|e| miette::miette!("Failed to write {}: {}", deps_path.display(), e))?;
-        println!("  {} Created {}", "✓".green(), templates::GO_DEPS_FILENAME);
-    }
+    // Note: We skip `go mod tidy` here - it would remove deps since there's no .go file yet.
+    // Tidy runs automatically when `poly-bench run` generates the benchmark code.
 
     println!("  {} Go dependencies ready", "✓".green());
 

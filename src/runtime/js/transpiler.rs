@@ -124,7 +124,7 @@ impl Transpiler {
 
 /// Simple type annotation stripping for when no transpiler is available
 /// This is a very basic implementation that handles common patterns
-fn strip_type_annotations(ts_code: &str) -> String {
+pub fn strip_type_annotations(ts_code: &str) -> String {
     let mut result = String::new();
     let mut in_type_annotation = false;
     let mut depth = 0;

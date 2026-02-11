@@ -117,6 +117,17 @@ enum Commands {
 
     /// Install dependencies from polybench.toml
     Install,
+
+    /// Build/regenerate the .polybench runtime environment
+    Build {
+        /// Force regenerate all files even if they exist
+        #[arg(long, short)]
+        force: bool,
+
+        /// Skip running npm install / go get
+        #[arg(long)]
+        skip_install: bool,
+    },
 }
 
 #[tokio::main]
@@ -156,6 +167,9 @@ async fn main() -> Result<()> {
         }
         Commands::Install => {
             cmd_install()?;
+        }
+        Commands::Build { force, skip_install } => {
+            cmd_build(force, skip_install)?;
         }
     }
 
@@ -480,4 +494,12 @@ fn cmd_add(go: Option<String>, ts: Option<String>) -> Result<()> {
 
 fn cmd_install() -> Result<()> {
     project::deps::install_all()
+}
+
+fn cmd_build(force: bool, skip_install: bool) -> Result<()> {
+    let options = project::build::BuildOptions {
+        force,
+        skip_install,
+    };
+    project::build::build_project(&options)
 }

@@ -10,6 +10,7 @@ pub mod manifest;
 pub mod templates;
 pub mod init;
 pub mod deps;
+pub mod build;
 
 use std::path::{Path, PathBuf};
 use miette::Result;
@@ -24,7 +25,7 @@ pub const BENCHMARKS_DIR: &str = "benchmarks";
 
 /// Directory under .polybench for per-runtime env (go.mod, package.json, deps, harness)
 pub const RUNTIME_ENV_DIR: &str = ".polybench/runtime-env";
-/// Go runtime env subdir (go.mod, go.sum, deps.go, generated bench code)
+/// Go runtime env subdir (go.mod, go.sum, generated bench code)
 pub const RUNTIME_ENV_GO: &str = "go";
 /// TypeScript/Node runtime env subdir (package.json, node_modules, generated bench code)
 pub const RUNTIME_ENV_TS: &str = "ts";

@@ -6,7 +6,7 @@
 
 use crate::dsl::Lang;
 use crate::ir::{BenchmarkSpec, SuiteIR};
-use crate::runtime::js::{codegen, builtins};
+use crate::runtime::js::{codegen, builtins, transpiler};
 use crate::runtime::measurement::Measurement;
 use crate::runtime::traits::Runtime;
 use async_trait::async_trait;
@@ -130,25 +130,9 @@ impl Runtime for JsRuntime {
 }
 
 /// Strip TypeScript-specific syntax that Node.js can't handle
+/// Delegates to the more robust implementation in transpiler module
 fn strip_typescript_syntax(code: &str) -> String {
-    // Remove `as const`, `as Type`, type assertions
-    let result = regex::Regex::new(r"\s+as\s+const\b")
-        .unwrap()
-        .replace_all(code, "");
-    
-    // Remove `as SomeType` patterns (but preserve `as` in destructuring like `import { x as y }`)
-    // Only remove when followed by a type identifier (capitalized or common type names)
-    let result = regex::Regex::new(r"\s+as\s+([A-Z][a-zA-Z0-9]*|string|number|boolean|any|unknown|never|void)\b")
-        .unwrap()
-        .replace_all(&result, "");
-    
-    // Remove type annotations after colons in variable declarations (simplified)
-    // This handles: const x: Type = ... and let x: Type = ...
-    let result = regex::Regex::new(r"(const|let|var)\s+(\w+)\s*:\s*[^=]+\s*=")
-        .unwrap()
-        .replace_all(&result, "$1 $2 =");
-    
-    result.to_string()
+    transpiler::strip_type_annotations(code)
 }
 
 /// Generate a standalone JavaScript benchmark script

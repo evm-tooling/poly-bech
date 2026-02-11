@@ -1,9 +1,9 @@
-# Example benchmark demonstrating the structured setup syntax
-
 suite example {
     description: "Example benchmark to get you started"
-    iterations: 1000
+    iterations: 50
     warmup: 100
+    compare: true
+    baseline: "go"
 
     setup go {
         import (
@@ -11,11 +11,10 @@ suite example {
         )
 
         init {
-            // No initialization needed
         }
 
         helpers {
-            func sha256Sum(data []byte) [32]byte {
+            func sha256SumGo(data []byte) [32]byte {
                 return sha256.Sum256(data)
             }
         }
@@ -27,7 +26,12 @@ suite example {
         }
 
         init {
-            // No initialization needed
+        }
+
+        helpers {
+            function sha256SumTs(data: Uint8Array): Buffer {
+                return createHash('sha256').update(Buffer.from(data)).digest()
+            }
         }
     }
 
@@ -35,11 +39,8 @@ suite example {
         hex: "68656c6c6f20776f726c64"
     }
 
-    bench sha256 {
-        description: "SHA256 hash computation"
-        tags: ["hash", "crypto"]
-        
-        go: sha256Sum(data)
-        ts: createHash('sha256').update(Buffer.from(data)).digest()
+    bench sha256Bench {
+        go: sha256SumGo(data)
+        ts: sha256SumTs(data)
     }
 }
