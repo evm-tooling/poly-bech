@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use poly_bench_dsl as dsl;
 use poly_bench_stdlib as stdlib;
-mod ir;
+use poly_bench_ir as ir;
 mod runtime;
 mod executor;
 mod reporter;

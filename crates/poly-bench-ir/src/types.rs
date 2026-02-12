@@ -1,6 +1,6 @@
 //! IR types - normalized benchmark specifications
 
-use crate::dsl::{Lang, ExecutionOrder};
+use poly_bench_dsl::{Lang, ExecutionOrder};
 use serde::{Serialize, Deserialize};
 use std::collections::{HashMap, HashSet};
 
