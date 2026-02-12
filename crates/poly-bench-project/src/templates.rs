@@ -66,6 +66,19 @@ pub fn example_bench(has_go: bool, has_ts: bool) -> String {
         content.push_str("        ts: sha256SumTs(data)\n");
     }
     content.push_str("    }\n");
+    content.push('\n');
+
+    // Charting example (commented out)
+    if has_go && has_ts {
+        content.push_str("    # Generate a bar chart after benchmarks complete:\n");
+        content.push_str("    # after {\n");
+        content.push_str("    #     charting.drawBarChart(\n");
+        content.push_str("    #         title: \"SHA256 Performance\",\n");
+        content.push_str("    #         xlabel: \"Time (ns)\",\n");
+        content.push_str("    #         ylabel: \"Benchmark\"\n");
+        content.push_str("    #     )\n");
+        content.push_str("    # }\n");
+    }
 
     content.push_str("}\n");
 
@@ -215,6 +228,7 @@ pub fn tsconfig_json() -> String {
 /// Generate .gitignore content
 pub fn gitignore() -> &'static str {
     r#"# poly-bench generated files
+out/
 .polybench/
 
 # Go
@@ -267,7 +281,10 @@ pub fn readme(name: &str, has_go: bool, has_ts: bool) -> String {
     content.push_str("├── polybench.toml       # Project configuration\n");
     content.push_str("├── benchmarks/          # Benchmark files (.bench)\n");
     content.push_str("│   └── example.bench    # Example benchmark\n");
-    content.push_str("└── .polybench/          # Generated files (gitignored)\n");
+    content.push_str("├── out/                 # Results and charts (gitignored)\n");
+    content.push_str("│   ├── results.json     # Benchmark results\n");
+    content.push_str("│   └── *.svg            # Generated charts\n");
+    content.push_str("└── .polybench/          # Runtime environment (gitignored)\n");
     content.push_str("    └── runtime-env/      # Per-runtime deps and harness\n");
     if has_go {
         content.push_str("        └── go/           # go.mod, go.sum, generated bench code\n");

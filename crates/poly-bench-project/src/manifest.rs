@@ -117,15 +117,37 @@ fn default_ts_runtime() -> String {
 }
 
 /// Output configuration
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutputConfig {
     /// Report formats to generate
     #[serde(default)]
     pub report_formats: Vec<String>,
 
-    /// Output directory for reports
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_dir: Option<String>,
+    /// Output directory for reports and charts
+    #[serde(default = "default_output_dir")]
+    pub output_dir: String,
+    
+    /// Whether to auto-save benchmark results to JSON
+    #[serde(default = "default_auto_save")]
+    pub auto_save_results: bool,
+}
+
+fn default_output_dir() -> String {
+    "out".to_string()
+}
+
+fn default_auto_save() -> bool {
+    true
+}
+
+impl Default for OutputConfig {
+    fn default() -> Self {
+        Self {
+            report_formats: Vec::new(),
+            output_dir: default_output_dir(),
+            auto_save_results: default_auto_save(),
+        }
+    }
 }
 
 impl Manifest {
