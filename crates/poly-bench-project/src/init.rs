@@ -1,6 +1,6 @@
 //! Project initialization and benchmark file creation
 
-use crate::project::{
+use crate::{
     manifest::{self, Manifest},
     runtime_env_go, runtime_env_ts,
     templates, BENCHMARKS_DIR, MANIFEST_FILENAME,
@@ -211,13 +211,13 @@ pub fn new_benchmark(name: &str) -> Result<PathBuf> {
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
 
-    let project_root = crate::project::find_project_root(&current_dir)
+    let project_root = crate::find_project_root(&current_dir)
         .ok_or_else(|| miette::miette!(
             "Not in a poly-bench project. Run 'poly-bench init' first."
         ))?;
 
     // Load manifest to get enabled languages
-    let manifest = crate::project::load_manifest(&project_root)?;
+    let manifest = crate::load_manifest(&project_root)?;
     let has_go = manifest.has_go();
     let has_ts = manifest.has_ts();
 
@@ -278,10 +278,10 @@ mod tests {
         assert!(project_path.join(MANIFEST_FILENAME).exists());
         assert!(project_path.join(BENCHMARKS_DIR).exists());
         assert!(project_path.join(BENCHMARKS_DIR).join("example.bench").exists());
-        assert!(crate::project::runtime_env_go(&project_path).join("go.mod").exists());
+        assert!(crate::runtime_env_go(&project_path).join("go.mod").exists());
         // Note: bench_standalone.go is NOT created on init - only when running benchmarks
-        assert!(crate::project::runtime_env_ts(&project_path).join("package.json").exists());
-        assert!(crate::project::runtime_env_ts(&project_path).join("tsconfig.json").exists());
+        assert!(crate::runtime_env_ts(&project_path).join("package.json").exists());
+        assert!(crate::runtime_env_ts(&project_path).join("tsconfig.json").exists());
         assert!(project_path.join(".gitignore").exists());
         assert!(project_path.join("README.md").exists());
     }
@@ -300,8 +300,8 @@ mod tests {
         let result = init_project(&options);
         assert!(result.is_ok());
 
-        assert!(crate::project::runtime_env_go(&project_path).join("go.mod").exists());
-        assert!(!crate::project::runtime_env_ts(&project_path).join("package.json").exists());
+        assert!(crate::runtime_env_go(&project_path).join("go.mod").exists());
+        assert!(!crate::runtime_env_ts(&project_path).join("package.json").exists());
     }
 
     #[test]
