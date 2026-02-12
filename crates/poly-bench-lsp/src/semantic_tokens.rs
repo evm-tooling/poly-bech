@@ -211,21 +211,31 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
 
             // Handle comments
             if c == '#' {
-                // Find end of line
-                let remaining: String = doc.source[i..].chars().take_while(|&x| x != '\n').collect();
-                tokens.push(SemanticToken {
-                    delta_line: line - prev_line,
-                    delta_start: if line == prev_line {
-                        char_pos - prev_char
+                // Skip out-of-order tokens to prevent underflow
+                if line < prev_line || (line == prev_line && char_pos < prev_char) {
+                    // Skip this comment token
+                } else {
+                    // Find end of line
+                    let remaining: String = doc.source[i..].chars().take_while(|&x| x != '\n').collect();
+
+                    // Use saturating_sub as a safety net
+                    let delta_line = line.saturating_sub(prev_line);
+                    let delta_start = if delta_line == 0 {
+                        char_pos.saturating_sub(prev_char)
                     } else {
                         char_pos
-                    },
-                    length: remaining.len() as u32,
-                    token_type: 7, // COMMENT
-                    token_modifiers_bitset: 0,
-                });
-                prev_line = line;
-                prev_char = char_pos;
+                    };
+
+                    tokens.push(SemanticToken {
+                        delta_line,
+                        delta_start,
+                        length: remaining.len() as u32,
+                        token_type: 7, // COMMENT
+                        token_modifiers_bitset: 0,
+                    });
+                    prev_line = line;
+                    prev_char = char_pos;
+                }
             }
         }
 
@@ -280,13 +290,22 @@ fn emit_word_token(
     };
 
     if let Some(tt) = token_type {
+        // Skip out-of-order tokens to prevent underflow
+        if line < *prev_line || (line == *prev_line && char_pos < *prev_char) {
+            return;
+        }
+
+        // Use saturating_sub as a safety net
+        let delta_line = line.saturating_sub(*prev_line);
+        let delta_start = if delta_line == 0 {
+            char_pos.saturating_sub(*prev_char)
+        } else {
+            char_pos
+        };
+
         tokens.push(SemanticToken {
-            delta_line: line - *prev_line,
-            delta_start: if line == *prev_line {
-                char_pos - *prev_char
-            } else {
-                char_pos
-            },
+            delta_line,
+            delta_start,
             length: word.len() as u32,
             token_type: tt,
             token_modifiers_bitset: 0,
@@ -315,12 +334,24 @@ fn add_token(
     token_type: u32,
     modifiers: u32,
 ) {
+    // Validate span bounds to prevent overflow
+    if span.end < span.start {
+        return;
+    }
+
     let pos = doc.offset_to_position(span.start);
     let length = (span.end - span.start) as u32;
 
-    let delta_line = pos.line - *prev_line;
+    // Skip out-of-order tokens to prevent underflow
+    // Tokens must be in document order for LSP semantic tokens protocol
+    if pos.line < *prev_line || (pos.line == *prev_line && pos.character < *prev_char) {
+        return;
+    }
+
+    // Use saturating_sub as a safety net even though we've validated above
+    let delta_line = pos.line.saturating_sub(*prev_line);
     let delta_start = if delta_line == 0 {
-        pos.character - *prev_char
+        pos.character.saturating_sub(*prev_char)
     } else {
         pos.character
     };
