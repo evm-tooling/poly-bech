@@ -305,6 +305,9 @@ pub struct Suite {
     /// Baseline language for comparison ratios
     pub baseline: Option<Lang>,
     
+    /// Global setup block for suite-level initialization (runs once before all benchmarks)
+    pub global_setup: Option<GlobalSetup>,
+    
     /// Per-language structured setup blocks (Phase 1)
     pub setups: HashMap<Lang, StructuredSetup>,
     /// Named fixtures
@@ -326,6 +329,7 @@ impl Suite {
             order: None,
             compare: false,
             baseline: None,
+            global_setup: None,
             setups: HashMap::new(),
             fixtures: Vec::new(),
             benchmarks: Vec::new(),
