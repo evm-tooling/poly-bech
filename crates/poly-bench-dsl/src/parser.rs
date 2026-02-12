@@ -2,10 +2,10 @@
 //!
 //! Parses a stream of tokens into an AST.
 
-use crate::dsl::ast::*;
-use crate::dsl::error::{ParseError, NamedSource};
-use crate::dsl::lexer::Lexer;
-use crate::dsl::tokens::{Token, TokenKind};
+use crate::ast::*;
+use crate::error::{ParseError, NamedSource};
+use crate::lexer::Lexer;
+use crate::tokens::{Token, TokenKind};
 use miette::{Report, Result};
 use std::collections::HashMap;
 

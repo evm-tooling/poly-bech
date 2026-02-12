@@ -1,10 +1,12 @@
 //! Semantic validation for poly-bench DSL
 //!
-//! This module provides validation logic that runs after parsing
+//! This module provides core validation logic that runs after parsing
 //! to catch semantic errors and generate warnings.
+//!
+//! Note: Stdlib-specific validation (e.g., validating use std::module names)
+//! is handled by higher-level crates that depend on both dsl and stdlib.
 
-use crate::dsl::{Suite, Benchmark, Lang, StructuredSetup, UseStd, File};
-use crate::stdlib;
+use crate::{Suite, Benchmark, Lang, StructuredSetup, UseStd, File};
 use std::collections::HashSet;
 
 /// A validation warning (non-fatal issue)
@@ -69,48 +71,42 @@ impl ValidationResult {
         !self.warnings.is_empty()
     }
 
-    fn add_error(&mut self, error: ValidationError) {
+    pub fn add_error(&mut self, error: ValidationError) {
         self.errors.push(error);
     }
 
-    fn add_warning(&mut self, warning: ValidationWarning) {
+    pub fn add_warning(&mut self, warning: ValidationWarning) {
         self.warnings.push(warning);
+    }
+
+    /// Merge another result into this one
+    pub fn merge(&mut self, other: ValidationResult) {
+        self.errors.extend(other.errors);
+        self.warnings.extend(other.warnings);
     }
 }
 
-/// Validate a complete file and return any errors or warnings
+/// Validate a complete file and return any errors or warnings.
+/// 
+/// Note: This performs core DSL validation only. Stdlib module validation
+/// should be done by crates that have access to the stdlib definitions.
 pub fn validate_file(file: &File) -> ValidationResult {
     let mut result = ValidationResult::new();
 
-    // Validate: use statements reference valid stdlib modules
-    validate_use_stds(&file.use_stds, &mut result);
+    // Check for duplicate use statements
+    validate_use_stds_duplicates(&file.use_stds, &mut result);
 
     // Validate each suite
     for suite in &file.suites {
         let suite_result = validate_suite(suite);
-        result.errors.extend(suite_result.errors);
-        result.warnings.extend(suite_result.warnings);
+        result.merge(suite_result);
     }
 
     result
 }
 
-/// Validate use std::module statements
-fn validate_use_stds(use_stds: &[UseStd], result: &mut ValidationResult) {
-    for use_std in use_stds {
-        if !stdlib::is_valid_module(&use_std.module) {
-            result.add_error(
-                ValidationError::new(format!(
-                    "Unknown stdlib module: std::{}. Valid modules are: {}",
-                    use_std.module,
-                    stdlib::VALID_MODULES.join(", ")
-                ))
-                .with_location(format!("line {}", use_std.span.line)),
-            );
-        }
-    }
-
-    // Check for duplicate imports
+/// Check for duplicate use statements (core validation, no stdlib check)
+fn validate_use_stds_duplicates(use_stds: &[UseStd], result: &mut ValidationResult) {
     let mut seen = HashSet::new();
     for use_std in use_stds {
         if !seen.insert(&use_std.module) {
@@ -285,19 +281,6 @@ fn validate_benchmark(benchmark: &Benchmark, suite: &Suite, result: &mut Validat
 
 /// Validate that fixtures referenced in benchmarks exist
 fn validate_fixture_references(suite: &Suite, result: &mut ValidationResult) {
-    let fixture_names: HashSet<&str> = suite.fixtures.iter().map(|f| f.name.as_str()).collect();
-
-    for benchmark in &suite.benchmarks {
-        for (lang, code_block) in &benchmark.implementations {
-            // Simple check: look for fixture names in the code
-            for fixture in &suite.fixtures {
-                // Skip - we'd need proper AST analysis to do this accurately
-                // For now, just validate that fixture definitions are valid
-                let _ = (lang, code_block, fixture);
-            }
-        }
-    }
-
     // Validate fixture definitions
     for fixture in &suite.fixtures {
         let has_data = fixture.hex_data.is_some() || fixture.hex_file.is_some();
@@ -340,7 +323,7 @@ fn validate_baseline(suite: &Suite, result: &mut ValidationResult) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::parse;
+    use crate::parse;
 
     #[test]
     fn test_validate_missing_required_lang() {
@@ -381,44 +364,7 @@ suite test {
     }
 
     #[test]
-    fn test_validate_valid_stdlib_import() {
-        let source = r#"
-use std::constants
-
-suite test {
-    bench pi_test {
-        go: compute(std_PI)
-    }
-}
-"#;
-        let ast = parse(source, "test.bench").unwrap();
-        let result = validate_file(&ast);
-        
-        // Should not have errors related to stdlib
-        assert!(!result.errors.iter().any(|e| e.message.contains("Unknown stdlib module")));
-    }
-
-    #[test]
-    fn test_validate_invalid_stdlib_import() {
-        let source = r#"
-use std::nonexistent
-
-suite test {
-    bench test {
-        go: test()
-    }
-}
-"#;
-        let ast = parse(source, "test.bench").unwrap();
-        let result = validate_file(&ast);
-        
-        assert!(!result.is_ok());
-        assert!(result.errors.iter().any(|e| e.message.contains("Unknown stdlib module")));
-        assert!(result.errors.iter().any(|e| e.message.contains("nonexistent")));
-    }
-
-    #[test]
-    fn test_validate_duplicate_stdlib_import() {
+    fn test_validate_duplicate_use_stds() {
         let source = r#"
 use std::constants
 use std::constants

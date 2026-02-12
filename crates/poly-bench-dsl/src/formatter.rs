@@ -9,7 +9,7 @@
 //! - Suite-level `globalSetup` blocks
 //! - Comments (when using `format_file_preserving_comments`)
 
-use crate::dsl::ast::*;
+use crate::ast::*;
 use std::fmt::Write;
 
 const INDENT: &str = "    ";
@@ -529,7 +529,7 @@ fn escape_string(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::parse;
+    use crate::parse;
 
     #[test]
     fn test_format_roundtrip() {

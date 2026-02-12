@@ -1,6 +1,6 @@
-//! DSL parsing module
+//! DSL parsing module for poly-bench
 //!
-//! This module provides the lexer, parser, and AST types for the poly-bench DSL.
+//! This crate provides the lexer, parser, and AST types for the poly-bench DSL.
 
 mod tokens;
 mod lexer;
@@ -12,8 +12,8 @@ pub mod validate;
 
 pub use ast::*;
 pub use formatter::{format_file, format_file_with_source};
-pub use error::ParseError;
-pub use validate::{validate_suite, validate_file, ValidationResult, ValidationError, ValidationWarning};
+pub use error::{ParseError, NamedSource};
+pub use validate::{ValidationResult, ValidationError, ValidationWarning, validate_file, validate_suite};
 
 use miette::Result;
 

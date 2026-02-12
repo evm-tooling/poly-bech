@@ -1,0 +1,13 @@
+[package]
+name = "poly-bench-dsl"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "DSL parser and AST types for poly-bench"
+
+[dependencies]
+miette.workspace = true
+thiserror.workspace = true
+serde.workspace = true

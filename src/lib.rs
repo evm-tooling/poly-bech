@@ -7,7 +7,9 @@
 //! - Unified measurement and comparison across languages
 //! - Project scaffolding and dependency management
 
-pub mod dsl;
+// Re-export from the dsl crate for backwards compatibility
+pub use poly_bench_dsl as dsl;
+
 pub mod ir;
 pub mod runtime;
 pub mod executor;

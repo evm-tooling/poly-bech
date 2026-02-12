@@ -2,9 +2,9 @@
 //!
 //! Converts source text into a stream of tokens.
 
-use crate::dsl::ast::Span;
-use crate::dsl::tokens::{Token, TokenKind, keyword_from_str};
-use crate::dsl::error::ParseError;
+use crate::ast::Span;
+use crate::tokens::{Token, TokenKind, keyword_from_str};
+use crate::error::ParseError;
 
 /// Lexer state
 pub struct Lexer<'a> {
