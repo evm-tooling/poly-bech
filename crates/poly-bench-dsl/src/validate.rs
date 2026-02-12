@@ -6,7 +6,7 @@
 //! Note: Stdlib-specific validation (e.g., validating use std::module names)
 //! is handled by higher-level crates that depend on both dsl and stdlib.
 
-use crate::{Suite, Benchmark, Lang, StructuredSetup, UseStd, File};
+use crate::{Suite, Benchmark, Lang, StructuredSetup, UseStd, File, CodeBlock};
 use std::collections::HashSet;
 
 /// A validation warning (non-fatal issue)
@@ -141,6 +141,9 @@ pub fn validate_suite(suite: &Suite) -> ValidationResult {
 
     // Validate: baseline language is valid
     validate_baseline(suite, &mut result);
+
+    // Validate: spawnAnvil only allowed in globalSetup
+    validate_spawn_anvil_restrictions(suite, &mut result);
 
     result
 }
@@ -317,6 +320,145 @@ fn validate_baseline(suite: &Suite, result: &mut ValidationResult) {
                 .with_location(format!("suite.{}", suite.name)),
             );
         }
+    }
+}
+
+/// Validate that spawnAnvil() is only called in globalSetup blocks
+fn validate_spawn_anvil_restrictions(suite: &Suite, result: &mut ValidationResult) {
+    // Check setup blocks (init, helpers, declarations, imports)
+    for (lang, setup) in &suite.setups {
+        check_code_block_for_spawn_anvil(
+            &setup.init,
+            &format!("setup {} init", lang),
+            &suite.name,
+            result,
+        );
+        check_code_block_for_spawn_anvil(
+            &setup.helpers,
+            &format!("setup {} helpers", lang),
+            &suite.name,
+            result,
+        );
+        check_code_block_for_spawn_anvil(
+            &setup.declarations,
+            &format!("setup {} declarations", lang),
+            &suite.name,
+            result,
+        );
+        check_code_block_for_spawn_anvil(
+            &setup.imports,
+            &format!("setup {} imports", lang),
+            &suite.name,
+            result,
+        );
+    }
+
+    // Check benchmark blocks
+    for benchmark in &suite.benchmarks {
+        let bench_loc = format!("bench {}", benchmark.name);
+
+        // Check implementations (go:, ts:)
+        for (lang, code) in &benchmark.implementations {
+            check_code_block_for_spawn_anvil_ref(
+                code,
+                &format!("{} {} implementation", bench_loc, lang),
+                &suite.name,
+                result,
+            );
+        }
+
+        // Check before hooks
+        for (lang, code) in &benchmark.before {
+            check_code_block_for_spawn_anvil_ref(
+                code,
+                &format!("{} {} before hook", bench_loc, lang),
+                &suite.name,
+                result,
+            );
+        }
+
+        // Check after hooks
+        for (lang, code) in &benchmark.after {
+            check_code_block_for_spawn_anvil_ref(
+                code,
+                &format!("{} {} after hook", bench_loc, lang),
+                &suite.name,
+                result,
+            );
+        }
+
+        // Check each hooks
+        for (lang, code) in &benchmark.each {
+            check_code_block_for_spawn_anvil_ref(
+                code,
+                &format!("{} {} each hook", bench_loc, lang),
+                &suite.name,
+                result,
+            );
+        }
+
+        // Check skip conditions
+        for (lang, code) in &benchmark.skip {
+            check_code_block_for_spawn_anvil_ref(
+                code,
+                &format!("{} {} skip condition", bench_loc, lang),
+                &suite.name,
+                result,
+            );
+        }
+
+        // Check validate blocks
+        for (lang, code) in &benchmark.validate {
+            check_code_block_for_spawn_anvil_ref(
+                code,
+                &format!("{} {} validate block", bench_loc, lang),
+                &suite.name,
+                result,
+            );
+        }
+    }
+
+    // Check fixture blocks
+    for fixture in &suite.fixtures {
+        for (lang, code) in &fixture.implementations {
+            check_code_block_for_spawn_anvil_ref(
+                code,
+                &format!("fixture {} {} implementation", fixture.name, lang),
+                &suite.name,
+                result,
+            );
+        }
+    }
+}
+
+/// Check an optional code block for spawnAnvil calls
+fn check_code_block_for_spawn_anvil(
+    block: &Option<CodeBlock>,
+    context: &str,
+    suite_name: &str,
+    result: &mut ValidationResult,
+) {
+    if let Some(code) = block {
+        check_code_block_for_spawn_anvil_ref(code, context, suite_name, result);
+    }
+}
+
+/// Check a code block reference for spawnAnvil calls
+fn check_code_block_for_spawn_anvil_ref(
+    code: &CodeBlock,
+    context: &str,
+    suite_name: &str,
+    result: &mut ValidationResult,
+) {
+    // Check for both forms: spawnAnvil( and anvil.spawnAnvil(
+    if code.code.contains("spawnAnvil(") {
+        result.add_error(
+            ValidationError::new(format!(
+                "spawnAnvil() can only be called in globalSetup blocks, found in {}",
+                context
+            ))
+            .with_location(format!("suite.{}", suite_name)),
+        );
     }
 }
 
