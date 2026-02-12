@@ -365,6 +365,28 @@ pub fn get_hover(doc: &ParsedDocument, position: Position) -> Option<Hover> {
         });
     }
 
+    // Check if it's a stdlib module name (anvil, constants) used in code
+    if let Some(docs) = stdlib_module_docs(&word) {
+        return Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: docs.to_string(),
+            }),
+            range: Some(range),
+        });
+    }
+    
+    // Check if it's a stdlib symbol (spawnAnvil, ANVIL_RPC_URL, PI, E)
+    if let Some(docs) = stdlib_symbol_docs(&word) {
+        return Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: docs.to_string(),
+            }),
+            range: Some(range),
+        });
+    }
+
     // Check if it's a language identifier
     if let Some(docs) = lang_docs(&word) {
         return Some(Hover {

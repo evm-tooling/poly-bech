@@ -232,6 +232,7 @@ impl LanguageServer for Backend {
                     resolve_provider: Some(false),
                     trigger_characters: Some(vec![
                         ":".to_string(),
+                        ".".to_string(),  // For module.member access (anvil.spawnAnvil)
                         " ".to_string(),
                         "{".to_string(),
                     ]),
