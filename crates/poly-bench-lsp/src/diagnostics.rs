@@ -64,42 +64,41 @@ pub fn compute_diagnostics_with_config(
         };
     }
 
-    // Run validation on each suite
+    // Run validation on the AST
     if let Some(ref ast) = doc.ast {
-        for suite in &ast.suites {
-            let result = dsl::validate_suite(suite);
+        // Run file-level validation (includes charting import checks)
+        let file_result = dsl::validate_file(ast);
+        
+        // Add file-level validation errors
+        for error in file_result.errors {
+            let range = file_location_to_range(doc, &error.location, ast);
+            diagnostics.push(Diagnostic {
+                range,
+                severity: Some(DiagnosticSeverity::ERROR),
+                code: None,
+                code_description: None,
+                source: Some("poly-bench".to_string()),
+                message: error.message,
+                related_information: None,
+                tags: None,
+                data: None,
+            });
+        }
 
-            // Add validation errors
-            for error in result.errors {
-                let range = location_to_range(doc, &error.location, suite);
-                diagnostics.push(Diagnostic {
-                    range,
-                    severity: Some(DiagnosticSeverity::ERROR),
-                    code: None,
-                    code_description: None,
-                    source: Some("poly-bench".to_string()),
-                    message: error.message,
-                    related_information: None,
-                    tags: None,
-                    data: None,
-                });
-            }
-
-            // Add validation warnings
-            for warning in result.warnings {
-                let range = location_to_range(doc, &warning.location, suite);
-                diagnostics.push(Diagnostic {
-                    range,
-                    severity: Some(DiagnosticSeverity::WARNING),
-                    code: None,
-                    code_description: None,
-                    source: Some("poly-bench".to_string()),
-                    message: warning.message,
-                    related_information: None,
-                    tags: None,
-                    data: None,
-                });
-            }
+        // Add file-level validation warnings
+        for warning in file_result.warnings {
+            let range = file_location_to_range(doc, &warning.location, ast);
+            diagnostics.push(Diagnostic {
+                range,
+                severity: Some(DiagnosticSeverity::WARNING),
+                code: None,
+                code_description: None,
+                source: Some("poly-bench".to_string()),
+                message: warning.message,
+                related_information: None,
+                tags: None,
+                data: None,
+            });
         }
     }
 
@@ -111,6 +110,42 @@ pub fn compute_diagnostics_with_config(
     DiagnosticsResult {
         diagnostics,
         embedded_debug: Some(embedded_result),
+    }
+}
+
+/// Convert a validation location string to an LSP Range (file-level)
+fn file_location_to_range(
+    doc: &ParsedDocument,
+    location: &Option<String>,
+    ast: &dsl::File,
+) -> Range {
+    if let Some(ref loc) = location {
+        // Parse location format: "suite.name" or "suite.name.bench.benchmark_name"
+        let parts: Vec<&str> = loc.split('.').collect();
+        
+        // Find the suite by name
+        if parts.len() >= 2 && parts[0] == "suite" {
+            let suite_name = parts[1];
+            if let Some(suite) = ast.suites.iter().find(|s| s.name == suite_name) {
+                return location_to_range(doc, location, suite);
+            }
+        }
+        
+        // Parse location format: "line N"
+        if loc.starts_with("line ") {
+            if let Ok(line) = loc[5..].parse::<u32>() {
+                return Range {
+                    start: Position { line: line.saturating_sub(1), character: 0 },
+                    end: Position { line: line.saturating_sub(1), character: 100 },
+                };
+            }
+        }
+    }
+    
+    // Default to start of file
+    Range {
+        start: Position { line: 0, character: 0 },
+        end: Position { line: 0, character: 1 },
     }
 }
 
