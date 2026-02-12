@@ -25,7 +25,7 @@ suite example {
                 return sha256.Sum256(data)
             }
 
-             func sha256SumGo1(data float64) float64 {
+            func sha256SumGo1(data float64) float64 {
                 return data * x
             }
         }
@@ -43,7 +43,6 @@ suite example {
             function sha256SumTs(data: Uint8Array): Buffer {
                 return createHash('sha256').update(Buffer.from(data)).digest()
             }
-            
         }
     }
 
@@ -56,6 +55,20 @@ suite example {
         ts: sha256SumTs(data)
     }
 
+    bench sha256Bench2 {
+        go: sha256SumGo(data)
+        ts: sha256SumTs(data)
+    }
+
+        bench sha256Bench3 {
+        go: sha256SumGo(data)
+        ts: sha256SumTs(data)
+    }
+
+    bench sha256Bench4 {
+        go: sha256SumGo(data)
+        ts: sha256SumTs(data)
+    }
 
     after {
         charting.drawBarChart(
@@ -69,20 +82,28 @@ suite example {
             sortBy: "speedup",
             sortOrder: "desc"
         )
-        
+
         charting.drawLineChart(
             title: "Performance Trends",
             description: "Go vs TypeScript over benchmarks",
             xlabel: "Benchmark",
             ylabel: "Time",
             showStats: true,
+            showConfig: true,
+            showWinCounts: true,
+            showGeoMean: true,
+            showDistribution: true,
             timeUnit: "auto"
         )
-        
+
         charting.drawPieChart(
             title: "Time Distribution",
             description: "Relative time spent in each benchmark",
             showStats: true,
+            showConfig: true,
+            showWinCounts: true,
+            showGeoMean: true,
+            showDistribution: true,
             showTotalTime: true
         )
     }

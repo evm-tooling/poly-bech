@@ -10,6 +10,7 @@
 //! - Comments (when using `format_file_preserving_comments`)
 
 use crate::ast::*;
+use crate::ChartType;
 use std::fmt::Write;
 
 const INDENT: &str = "    ";
@@ -302,6 +303,11 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
         format_benchmark(out, bench, indent_level + 1);
     }
 
+    // Chart directives (in after { } block)
+    if !suite.chart_directives.is_empty() {
+        format_chart_directives(out, &suite.chart_directives, indent_level + 1);
+    }
+
     write!(out, "{}}}\n", pad).unwrap();
 }
 
@@ -518,6 +524,151 @@ fn format_code_block_inline(out: &mut String, block: &CodeBlock) {
     }
 }
 
+/// Format chart directives inside an after { } block
+fn format_chart_directives(out: &mut String, directives: &[ChartDirective], indent_level: usize) {
+    let pad = INDENT.repeat(indent_level);
+    let inner = INDENT.repeat(indent_level + 1);
+    let inner2 = INDENT.repeat(indent_level + 2);
+
+    writeln!(out, "{}after {{", pad).unwrap();
+
+    for (i, directive) in directives.iter().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        
+        // Determine function name based on chart type
+        let func_name = match directive.chart_type {
+            ChartType::BarChart => "drawBarChart",
+            ChartType::PieChart => "drawPieChart",
+            ChartType::LineChart => "drawLineChart",
+        };
+        
+        // Collect all the parameters to output
+        let mut params: Vec<String> = Vec::new();
+        
+        // Title and description
+        if let Some(ref title) = directive.title {
+            params.push(format!("{}title: \"{}\"", inner2, escape_string(title)));
+        }
+        if let Some(ref desc) = directive.description {
+            params.push(format!("{}description: \"{}\"", inner2, escape_string(desc)));
+        }
+        
+        // Axis labels (for line/bar charts)
+        if let Some(ref xlabel) = directive.x_label {
+            params.push(format!("{}xlabel: \"{}\"", inner2, escape_string(xlabel)));
+        }
+        if let Some(ref ylabel) = directive.y_label {
+            params.push(format!("{}ylabel: \"{}\"", inner2, escape_string(ylabel)));
+        }
+        
+        // Output file
+        if let Some(ref output) = directive.output_file {
+            params.push(format!("{}output: \"{}\"", inner2, escape_string(output)));
+        }
+        
+        // Display toggles - only output non-default values
+        // Defaults: showStats=true, showConfig=true, showWinCounts=true, showGeoMean=true,
+        //           showDistribution=true, showMemory=false, showTotalTime=false, compact=false
+        if !directive.show_stats {
+            params.push(format!("{}showStats: false", inner2));
+        }
+        if !directive.show_config {
+            params.push(format!("{}showConfig: false", inner2));
+        }
+        if !directive.show_win_counts {
+            params.push(format!("{}showWinCounts: false", inner2));
+        }
+        if !directive.show_geo_mean {
+            params.push(format!("{}showGeoMean: false", inner2));
+        }
+        if !directive.show_distribution {
+            params.push(format!("{}showDistribution: false", inner2));
+        }
+        if directive.show_memory {
+            params.push(format!("{}showMemory: true", inner2));
+        }
+        if directive.show_total_time {
+            params.push(format!("{}showTotalTime: true", inner2));
+        }
+        if directive.compact {
+            params.push(format!("{}compact: true", inner2));
+        }
+        
+        // Filtering
+        if let Some(min_speedup) = directive.min_speedup {
+            params.push(format!("{}minSpeedup: {}", inner2, min_speedup));
+        }
+        if let Some(ref filter_winner) = directive.filter_winner {
+            params.push(format!("{}filterWinner: \"{}\"", inner2, escape_string(filter_winner)));
+        }
+        if !directive.include_benchmarks.is_empty() {
+            let items: Vec<_> = directive.include_benchmarks.iter()
+                .map(|s| format!("\"{}\"", escape_string(s)))
+                .collect();
+            params.push(format!("{}includeBenchmarks: [{}]", inner2, items.join(", ")));
+        }
+        if !directive.exclude_benchmarks.is_empty() {
+            let items: Vec<_> = directive.exclude_benchmarks.iter()
+                .map(|s| format!("\"{}\"", escape_string(s)))
+                .collect();
+            params.push(format!("{}excludeBenchmarks: [{}]", inner2, items.join(", ")));
+        }
+        if let Some(limit) = directive.limit {
+            params.push(format!("{}limit: {}", inner2, limit));
+        }
+        
+        // Sorting
+        if let Some(ref sort_by) = directive.sort_by {
+            params.push(format!("{}sortBy: \"{}\"", inner2, escape_string(sort_by)));
+        }
+        if let Some(ref sort_order) = directive.sort_order {
+            params.push(format!("{}sortOrder: \"{}\"", inner2, escape_string(sort_order)));
+        }
+        
+        // Layout
+        if let Some(width) = directive.width {
+            params.push(format!("{}width: {}", inner2, width));
+        }
+        if let Some(bar_height) = directive.bar_height {
+            params.push(format!("{}barHeight: {}", inner2, bar_height));
+        }
+        if let Some(bar_gap) = directive.bar_gap {
+            params.push(format!("{}barGap: {}", inner2, bar_gap));
+        }
+        if let Some(margin_left) = directive.margin_left {
+            params.push(format!("{}marginLeft: {}", inner2, margin_left));
+        }
+        
+        // Data display
+        if let Some(precision) = directive.precision {
+            params.push(format!("{}precision: {}", inner2, precision));
+        }
+        if let Some(ref time_unit) = directive.time_unit {
+            params.push(format!("{}timeUnit: \"{}\"", inner2, escape_string(time_unit)));
+        }
+        
+        // Output the directive
+        if params.is_empty() {
+            writeln!(out, "{}charting.{}()", inner, func_name).unwrap();
+        } else {
+            writeln!(out, "{}charting.{}(", inner, func_name).unwrap();
+            for (j, param) in params.iter().enumerate() {
+                if j < params.len() - 1 {
+                    writeln!(out, "{},", param).unwrap();
+                } else {
+                    writeln!(out, "{}", param).unwrap();
+                }
+            }
+            writeln!(out, "{})", inner).unwrap();
+        }
+    }
+
+    writeln!(out, "{}}}", pad).unwrap();
+    out.push('\n');
+}
+
 fn escape_string(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
@@ -530,6 +681,45 @@ fn escape_string(s: &str) -> String {
 mod tests {
     use super::*;
     use crate::parse;
+
+    #[test]
+    fn test_format_chart_directives() {
+        let input = r#"use std::charting
+
+suite example {
+    bench sha256Bench {
+        go: sha256SumGo(data)
+    }
+
+    after {
+        charting.drawBarChart(
+            title: "Performance Comparison",
+            sortBy: "speedup"
+        )
+        
+        charting.drawLineChart(
+            title: "Performance Trends"
+        )
+        
+        charting.drawPieChart(
+            title: "Time Distribution",
+            showTotalTime: true
+        )
+    }
+}"#;
+        let ast = parse(input, "test.bench").unwrap();
+        assert_eq!(ast.suites.len(), 1);
+        assert_eq!(ast.suites[0].chart_directives.len(), 3, "Expected 3 chart directives");
+        
+        let formatted = format_file(&ast);
+        assert!(formatted.contains("after {"), "Expected 'after {{' block in output");
+        assert!(formatted.contains("charting.drawBarChart"), "Expected drawBarChart call in output");
+        assert!(formatted.contains("charting.drawLineChart"), "Expected drawLineChart call in output");
+        assert!(formatted.contains("charting.drawPieChart"), "Expected drawPieChart call in output");
+        // Verify non-default values are preserved
+        assert!(formatted.contains("sortBy: \"speedup\""), "Expected sortBy parameter");
+        assert!(formatted.contains("showTotalTime: true"), "Expected showTotalTime parameter");
+    }
 
     #[test]
     fn test_format_roundtrip() {

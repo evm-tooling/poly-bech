@@ -106,7 +106,12 @@ pub fn generate(
 
     // Draw X axis labels
     for (i, name) in bench_names.iter().enumerate() {
-        let x = (i as f64 / (num_points - 1).max(1) as f64 * chart_width as f64) as i32;
+        // Center single points, otherwise distribute evenly
+        let x = if num_points == 1 {
+            chart_width / 2
+        } else {
+            (i as f64 / (num_points - 1) as f64 * chart_width as f64) as i32
+        };
         svg.push_str(&format!(
             "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"10\" fill=\"{}\">{}</text>\n",
             x, chart_height + 16, TEXT_MUTED, escape_xml(name)
@@ -142,13 +147,22 @@ pub fn generate(
 
         let num_points = bench_names.len();
         
+        // Helper to calculate X position - centers single points
+        let calc_x = |i: usize| -> i32 {
+            if num_points == 1 {
+                chart_width / 2
+            } else {
+                (i as f64 / (num_points - 1) as f64 * chart_width as f64) as i32
+            }
+        };
+        
         // Build path
         let mut path_data = String::new();
         let mut first = true;
         
         for (i, name) in bench_names.iter().enumerate() {
             if let Some((_, value, _)) = points.iter().find(|(n, _, _)| n == name) {
-                let x = (i as f64 / (num_points - 1).max(1) as f64 * chart_width as f64) as i32;
+                let x = calc_x(i);
                 let y = chart_height - (value / max_value * chart_height as f64) as i32;
                 
                 if first {
@@ -169,7 +183,7 @@ pub fn generate(
         // Draw points with optional stats tooltips
         for (i, name) in bench_names.iter().enumerate() {
             if let Some((_, value, ops)) = points.iter().find(|(n, _, _)| n == name) {
-                let x = (i as f64 / (num_points - 1).max(1) as f64 * chart_width as f64) as i32;
+                let x = calc_x(i);
                 let y = chart_height - (value / max_value * chart_height as f64) as i32;
                 
                 // Add title (tooltip) with stats if enabled

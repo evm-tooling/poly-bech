@@ -1,4 +1,4 @@
-//! Bar chart generator for benchmark results
+//! Bar chart generator - individual vertical bar chart per benchmark with Go vs TS comparison
 
 use poly_bench_dsl::Lang;
 use poly_bench_executor::BenchmarkResults;
@@ -10,18 +10,20 @@ use super::{
     escape_xml, svg_header, svg_title,
     filter_benchmarks, sort_benchmarks, count_wins, calculate_geo_mean,
     format_duration_with_unit, format_ops_per_sec,
-    DEFAULT_WIDTH, DEFAULT_MARGIN_TOP, DEFAULT_MARGIN_BOTTOM,
-    DEFAULT_MARGIN_LEFT, DEFAULT_MARGIN_RIGHT,
+    DEFAULT_MARGIN_TOP, DEFAULT_MARGIN_BOTTOM,
     GO_COLOR, TS_COLOR, TEXT_COLOR, TEXT_SECONDARY, TEXT_MUTED, BORDER_COLOR,
 };
 
-const BAR_HEIGHT: i32 = 26;
-const BAR_GAP: i32 = 5;
-const STATS_PANEL_HEIGHT: i32 = 14;
-const LEGEND_HEIGHT: i32 = 30;
-const CONFIG_HEIGHT: i32 = 24;
+// Layout constants for individual bar chart groups
+const BAR_WIDTH: i32 = 40;
+const BAR_GAP: i32 = 8;           // Gap between Go and TS bars within a benchmark
+const CHART_HEIGHT: i32 = 180;    // Height of each mini chart area
+const CHART_SPACING_X: i32 = 160; // Horizontal spacing between chart centers
+const CHARTS_PER_ROW: i32 = 4;    // Max charts per row before wrapping
+const CHART_SPACING_Y: i32 = 220; // Vertical spacing between chart rows
 const STATS_BOX_HEIGHT: i32 = 80;
-const STATS_BOX_PADDING: i32 = 12;
+const LEGEND_HEIGHT: i32 = 40;
+const MIN_STATS_WIDTH: i32 = 520; // Minimum width to fit stats text
 
 /// Suite configuration for display
 pub struct SuiteConfig {
@@ -31,7 +33,7 @@ pub struct SuiteConfig {
     pub order: Option<String>,
 }
 
-/// Generate a bar chart SVG from benchmark results
+/// Generate a bar chart SVG with individual charts per benchmark
 pub fn generate(
     results: &BenchmarkResults,
     directive: &ChartDirectiveIR,
@@ -60,42 +62,43 @@ pub fn generate(
     }
 
     // Extract directive parameters with defaults
-    let width = directive.width.unwrap_or(DEFAULT_WIDTH);
-    let bar_height = directive.bar_height.unwrap_or(BAR_HEIGHT);
+    let bar_width = directive.bar_height.unwrap_or(BAR_WIDTH);
     let bar_gap = directive.bar_gap.unwrap_or(BAR_GAP);
-    let margin_left = directive.margin_left.unwrap_or(DEFAULT_MARGIN_LEFT);
     let time_unit = directive.time_unit.as_deref();
     let precision = directive.precision;
     let compact = directive.compact;
     
-    // Calculate dimensions
-    let row_height = if directive.show_stats && !compact {
-        bar_height + STATS_PANEL_HEIGHT + bar_gap
-    } else {
-        bar_height + bar_gap
-    };
-    let content_height = (filtered.len() as i32) * row_height;
+    // Calculate dynamic dimensions based on number of benchmarks
+    let num_benchmarks = filtered.len() as i32;
+    let charts_per_row = directive.width.map(|w| (w / CHART_SPACING_X).max(1)).unwrap_or(CHARTS_PER_ROW);
+    let num_rows = (num_benchmarks + charts_per_row - 1) / charts_per_row;
     
-    // Additional height for legend, stats box, and config
-    let legend_space = if directive.show_win_counts || directive.show_geo_mean { LEGEND_HEIGHT } else { 0 };
-    let config_space = if directive.show_config && suite_config.is_some() && !compact { CONFIG_HEIGHT } else { 0 };
-    let stats_box_space = if (directive.show_stats || directive.show_distribution || directive.show_geo_mean) && !compact { STATS_BOX_HEIGHT } else { 0 };
+    // Calculate width - ensure it's wide enough for stats
+    let actual_charts_in_first_row = num_benchmarks.min(charts_per_row);
+    let margin_x = 60;
+    let content_width = actual_charts_in_first_row * CHART_SPACING_X;
     
-    let height = content_height + DEFAULT_MARGIN_TOP + DEFAULT_MARGIN_BOTTOM + legend_space + stats_box_space + config_space;
-    let chart_width = width - margin_left - DEFAULT_MARGIN_RIGHT;
-
-    // Find max speedup for scale
-    let max_speedup: f64 = filtered.iter()
-        .filter_map(|b| b.comparison.as_ref())
-        .map(|c| c.speedup)
-        .fold(1.0, f64::max);
-
-    let log_ceil = (max_speedup * 1.2).log10().ceil() as i32;
-    let log_ceil = log_ceil.max(1);
-
+    // Stats box needs minimum width to avoid overflow
+    let stats_box_needed = (directive.show_stats || directive.show_distribution || directive.show_geo_mean) && !compact;
+    let min_width = if stats_box_needed { MIN_STATS_WIDTH } else { 300 };
+    let width = directive.width.unwrap_or(content_width + margin_x * 2).max(min_width);
+    
     // Calculate summary stats for legend
     let (go_wins, ts_wins, ties) = count_wins(&filtered);
     let geo_mean = calculate_geo_mean(&filtered);
+    
+    // Height calculation
+    let legend_space = LEGEND_HEIGHT;
+    let stats_box_space = if stats_box_needed { STATS_BOX_HEIGHT } else { 0 };
+    let config_space = if directive.show_config && suite_config.is_some() && !compact { 24 } else { 0 };
+    let chart_area_height = num_rows * CHART_SPACING_Y;
+    let height = DEFAULT_MARGIN_TOP + chart_area_height + legend_space + stats_box_space + config_space + DEFAULT_MARGIN_BOTTOM;
+
+    // Find max total time for scale (using total_nanos from measurements)
+    let max_total_nanos: f64 = filtered.iter()
+        .filter_map(|b| b.comparison.as_ref())
+        .flat_map(|c| [c.first.total_nanos as f64, c.second.total_nanos as f64])
+        .fold(1.0, f64::max);
 
     // Build subtitle
     let subtitle = directive.description.clone().unwrap_or_else(|| {
@@ -114,146 +117,151 @@ pub fn generate(
     // Title
     svg.push_str(&svg_title(width, &title, Some(&subtitle)));
 
-    // Chart group
-    svg.push_str(&format!("<g transform=\"translate({},{})\">\n", margin_left, DEFAULT_MARGIN_TOP));
-
-    // Grid lines
-    for exp in 0..=log_ceil {
-        let val = 10.0_f64.powi(exp);
-        let x = (exp as f64 / log_ceil as f64) * chart_width as f64;
-        
-        svg.push_str(&format!(
-            "  <line x1=\"{:.1}\" y1=\"0\" x2=\"{:.1}\" y2=\"{}\" stroke=\"#E5E7EB\"/>\n",
-            x, x, content_height
-        ));
-        svg.push_str(&format!(
-            "  <text x=\"{:.1}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"10\" fill=\"{}\">{}x</text>\n",
-            x, content_height + 16, TEXT_MUTED, val as i32
-        ));
-    }
-
-    // Bars and stats
-    let mut y: i32 = 0;
-    for bench in &filtered {
+    // Draw individual bar chart for each benchmark
+    let start_y = DEFAULT_MARGIN_TOP + 20;
+    
+    for (i, bench) in filtered.iter().enumerate() {
         if let Some(ref cmp) = bench.comparison {
-            let bar_width = if cmp.speedup <= 1.0 {
-                3.0
-            } else {
-                (cmp.speedup.log10() / log_ceil as f64) * chart_width as f64
-            };
-            let bar_width = bar_width.max(3.0);
-
-            let fill = match cmp.winner {
-                ComparisonWinner::First => "url(#goGrad)",
-                ComparisonWinner::Second => "url(#tsGrad)",
-                ComparisonWinner::Tie => "#9CA3AF",
-            };
-
-            // Benchmark name label
-            svg.push_str(&format!(
-                "  <text x=\"-10\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
-                y + bar_height / 2 + 4, TEXT_COLOR, escape_xml(&bench.name)
-            ));
-
-            // Bar
-            svg.push_str(&format!(
-                "  <rect x=\"0\" y=\"{}\" width=\"{:.1}\" height=\"{}\" fill=\"{}\" rx=\"4\"/>\n",
-                y, bar_width, bar_height, fill
-            ));
-
-            // Speedup value
-            let val_str = if cmp.speedup >= 10.0 {
-                format!("{:.0}x", cmp.speedup)
-            } else {
-                format!("{:.1}x", cmp.speedup)
-            };
+            let row = i as i32 / charts_per_row;
+            let col = i as i32 % charts_per_row;
             
-            let val_color = match cmp.winner {
-                ComparisonWinner::First => "#0E7490",
-                ComparisonWinner::Second => "#1E40AF",
-                ComparisonWinner::Tie => "#6B7280",
+            // Calculate center position for this chart
+            // For single benchmark, center in the available width
+            let center_x = if num_benchmarks == 1 {
+                width / 2
+            } else {
+                margin_x + (col * CHART_SPACING_X) + CHART_SPACING_X / 2
             };
+            let chart_bottom_y = start_y + (row * CHART_SPACING_Y) + CHART_HEIGHT;
+            
+            // Calculate bar heights based on total time (linear scale)
+            let go_total_nanos = cmp.first.total_nanos as f64;
+            let ts_total_nanos = cmp.second.total_nanos as f64;
+            
+            let go_bar_height = (go_total_nanos / max_total_nanos * CHART_HEIGHT as f64).max(3.0);
+            let ts_bar_height = (ts_total_nanos / max_total_nanos * CHART_HEIGHT as f64).max(3.0);
 
+            let go_winner = cmp.winner == ComparisonWinner::First;
+            let ts_winner = cmp.winner == ComparisonWinner::Second;
+            
+            // Width of the bar group
+            let group_width = bar_width * 2 + bar_gap;
+            let group_start_x = center_x - group_width / 2;
+            
+            // Draw chart group
+            svg.push_str(&format!("<g transform=\"translate({},{})\">\n", group_start_x, chart_bottom_y));
+            
+            // Baseline
             svg.push_str(&format!(
-                "  <text x=\"{:.1}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"11\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
-                bar_width + 8.0, y + bar_height / 2 + 4, val_color, val_str
+                "  <line x1=\"-10\" y1=\"0\" x2=\"{}\" y2=\"0\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+                group_width + 10, BORDER_COLOR
+            ));
+            
+            // Go bar
+            svg.push_str(&format!(
+                "  <rect x=\"0\" y=\"{:.1}\" width=\"{}\" height=\"{:.1}\" fill=\"url(#goGrad)\" rx=\"3\"/>\n",
+                -go_bar_height, bar_width, go_bar_height
+            ));
+            
+            // Go value label (above bar)
+            let go_total_str = format_duration_with_unit(go_total_nanos, time_unit, precision);
+            if go_bar_height > 15.0 || num_benchmarks == 1 {
+                svg.push_str(&format!(
+                    "  <text x=\"{}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"{}\" fill=\"{}\">{}</text>\n",
+                    bar_width / 2, -go_bar_height - 4.0,
+                    if go_winner { "600" } else { "400" },
+                    if go_winner { "#0E7490" } else { TEXT_MUTED },
+                    go_total_str
+                ));
+            }
+            
+            // Go label below bar
+            svg.push_str(&format!(
+                "  <text x=\"{}\" y=\"16\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"500\" fill=\"{}\">Go</text>\n",
+                bar_width / 2, GO_COLOR
             ));
 
-            // Stats panel (below bar) - show timing and ops/sec info
-            if directive.show_stats && !compact {
-                let go_time = format_duration_with_unit(cmp.first.nanos_per_op, time_unit, precision);
-                let ts_time = format_duration_with_unit(cmp.second.nanos_per_op, time_unit, precision);
-                let go_ops = format_ops_per_sec(cmp.first.ops_per_sec);
-                let ts_ops = format_ops_per_sec(cmp.second.ops_per_sec);
-                
-                let stats_str = format!(
-                    "Go: {} ({} ops/s)  |  TS: {} ({} ops/s)",
-                    go_time, go_ops, ts_time, ts_ops
-                );
-                
+            // TypeScript bar
+            let ts_x = bar_width + bar_gap;
+            svg.push_str(&format!(
+                "  <rect x=\"{}\" y=\"{:.1}\" width=\"{}\" height=\"{:.1}\" fill=\"url(#tsGrad)\" rx=\"3\"/>\n",
+                ts_x, -ts_bar_height, bar_width, ts_bar_height
+            ));
+            
+            // TS value label (above bar)
+            let ts_total_str = format_duration_with_unit(ts_total_nanos, time_unit, precision);
+            if ts_bar_height > 15.0 || num_benchmarks == 1 {
                 svg.push_str(&format!(
-                    "  <text x=\"0\" y=\"{}\" font-family=\"monospace\" font-size=\"9\" fill=\"{}\">{}</text>\n",
-                    y + bar_height + STATS_PANEL_HEIGHT, TEXT_SECONDARY, escape_xml(&stats_str)
+                    "  <text x=\"{}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"{}\" fill=\"{}\">{}</text>\n",
+                    ts_x + bar_width / 2, -ts_bar_height - 4.0,
+                    if ts_winner { "600" } else { "400" },
+                    if ts_winner { "#1E40AF" } else { TEXT_MUTED },
+                    ts_total_str
                 ));
-                
-                // Show distribution (p50/p99) if enabled
-                if directive.show_distribution {
-                    let p50_go = cmp.first.p50_nanos.map(|n| format_duration_with_unit(n as f64, time_unit, precision)).unwrap_or("-".to_string());
-                    let p99_go = cmp.first.p99_nanos.map(|n| format_duration_with_unit(n as f64, time_unit, precision)).unwrap_or("-".to_string());
-                    let p50_ts = cmp.second.p50_nanos.map(|n| format_duration_with_unit(n as f64, time_unit, precision)).unwrap_or("-".to_string());
-                    let p99_ts = cmp.second.p99_nanos.map(|n| format_duration_with_unit(n as f64, time_unit, precision)).unwrap_or("-".to_string());
-                    
-                    // Add distribution info on new line
-                    y += STATS_PANEL_HEIGHT;
-                    let dist_str = format!(
-                        "p50: {} / {}  |  p99: {} / {}",
-                        p50_go, p50_ts, p99_go, p99_ts
-                    );
-                    svg.push_str(&format!(
-                        "  <text x=\"0\" y=\"{}\" font-family=\"monospace\" font-size=\"9\" fill=\"{}\">{}</text>\n",
-                        y + bar_height + STATS_PANEL_HEIGHT, TEXT_MUTED, escape_xml(&dist_str)
-                    ));
-                }
             }
+            
+            // TS label below bar
+            svg.push_str(&format!(
+                "  <text x=\"{}\" y=\"16\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"500\" fill=\"{}\">TS</text>\n",
+                ts_x + bar_width / 2, TS_COLOR
+            ));
 
-            y += row_height;
+            // Benchmark name below (horizontal, centered)
+            svg.push_str(&format!(
+                "  <text x=\"{}\" y=\"34\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"10\" font-weight=\"500\" fill=\"{}\">{}</text>\n",
+                group_width / 2, TEXT_COLOR, escape_xml(&bench.name)
+            ));
+
+            // Winner indicator (speedup text below benchmark name)
+            if !compact && (go_winner || ts_winner) {
+                let winner_color = if go_winner { GO_COLOR } else { TS_COLOR };
+                let speedup = if go_winner {
+                    ts_total_nanos / go_total_nanos
+                } else {
+                    go_total_nanos / ts_total_nanos
+                };
+                svg.push_str(&format!(
+                    "  <text x=\"{}\" y=\"48\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"8\" font-weight=\"600\" fill=\"{}\">{:.1}x faster</text>\n",
+                    group_width / 2, winner_color, speedup
+                ));
+            }
+            
+            svg.push_str("</g>\n");
         }
     }
 
-    svg.push_str("</g>\n");
-
-    // Enhanced Legend with win counts
-    let legend_y = DEFAULT_MARGIN_TOP + content_height + 30;
+    // Legend
+    let legend_y = start_y + (num_rows * CHART_SPACING_Y) + 20;
     svg.push_str(&format!("<g transform=\"translate({},{})\">\n", width / 2, legend_y));
     
-    // Go wins indicator
+    // Go indicator
     let go_label = if directive.show_win_counts {
-        format!("Go faster ({} wins)", go_wins)
+        format!("Go ({} wins)", go_wins)
     } else {
-        "Go faster".to_string()
+        "Go".to_string()
     };
     svg.push_str(&format!(
-        "  <rect x=\"-180\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
-         <text x=\"-162\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
+        "  <rect x=\"-140\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
+         <text x=\"-122\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
         GO_COLOR, TEXT_COLOR, escape_xml(&go_label)
     ));
     
-    // TS wins indicator
+    // TS indicator
     let ts_label = if directive.show_win_counts {
-        format!("TS faster ({} wins)", ts_wins)
+        format!("TypeScript ({} wins)", ts_wins)
     } else {
-        "TS faster".to_string()
+        "TypeScript".to_string()
     };
     svg.push_str(&format!(
-        "  <rect x=\"10\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
-         <text x=\"28\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
+        "  <rect x=\"30\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
+         <text x=\"48\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
         TS_COLOR, TEXT_COLOR, escape_xml(&ts_label)
     ));
     
     // Ties indicator
     if ties > 0 && directive.show_win_counts {
         svg.push_str(&format!(
-            "  <text x=\"200\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">Ties: {}</text>\n",
+            "  <text x=\"180\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">Ties: {}</text>\n",
             TEXT_MUTED, ties
         ));
     }
@@ -261,10 +269,11 @@ pub fn generate(
     svg.push_str("</g>\n");
 
     // Stats box below legend
-    if (directive.show_stats || directive.show_distribution || directive.show_geo_mean) && !compact {
+    if stats_box_needed {
         let box_y = legend_y + LEGEND_HEIGHT;
-        let box_width = width - 80;
-        let box_x = 40;
+        let box_margin = 40;
+        let box_width = width - box_margin * 2;
+        let box_x = box_margin;
         
         // Box background with border
         svg.push_str(&format!(
@@ -273,7 +282,7 @@ pub fn generate(
         ));
         
         // Stats content
-        let stats_x = box_x + STATS_BOX_PADDING;
+        let stats_x = box_x + 12;
         let mut stats_y = box_y + 18;
         
         // Header row
@@ -299,7 +308,6 @@ pub fn generate(
         
         // Distribution stats (aggregate)
         if directive.show_distribution {
-            // Calculate aggregate p50/p99 across all benchmarks
             let go_p50_avg: f64 = filtered.iter()
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.first.p50_nanos)

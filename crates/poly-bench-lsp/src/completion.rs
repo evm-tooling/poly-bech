@@ -403,18 +403,20 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
     // Analyze the block stack to determine context
     // Check if we're inside an embedded code block (init, helpers, import, declare)
     // or inside a suite-level after block (for charting)
-    for (keyword, _) in block_stack.iter().rev() {
+    for (keyword, block_depth) in block_stack.iter().rev() {
         match keyword.as_str() {
             "init" => return Context::InsideEmbeddedInit,
             "helpers" => return Context::InsideEmbeddedHelpers,
             "import" | "declare" => return Context::InsideEmbeddedDeclarations,
             // Suite-level "after" block (not "after go:" or "after ts:" which are hooks)
-            // This is detected by being directly inside suite at depth 2
+            // This is detected by being at depth 2 inside a suite
             "after" => {
                 // Check if this is a suite-level after block (depth 2, inside suite)
                 // by checking if the block before it is "suite"
                 let in_suite = block_stack.iter().any(|(kw, _)| kw == "suite");
-                if in_suite {
+                // Also check that this after block is at the right depth (directly inside suite)
+                // For suite-level after, the after block is at depth 2 (suite is at depth 1)
+                if in_suite && *block_depth == 2 {
                     return Context::InsideAfterBlock;
                 }
             }
@@ -422,14 +424,14 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
         }
     }
 
-    // Get the most recent structural keyword (suite, setup, bench, fixture, globalSetup)
+    // Get the most recent structural keyword (suite, setup, bench, fixture, globalSetup, after)
     let last_structural = block_stack
         .iter()
         .rev()
         .find(|(kw, _)| {
             matches!(
                 kw.as_str(),
-                "suite" | "setup" | "bench" | "fixture" | "globalSetup" | "go" | "ts"
+                "suite" | "setup" | "bench" | "fixture" | "globalSetup" | "go" | "ts" | "after"
             )
         })
         .map(|(kw, _)| kw.as_str());
@@ -445,12 +447,16 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
             }
         }
         2 => {
-            // Inside a nested block (setup, bench, fixture)
+            // Inside a nested block (setup, bench, fixture, after)
             match last_structural {
                 Some("setup") | Some("go") | Some("ts") => Context::InsideSetup,
                 Some("bench") => Context::InsideBench,
                 Some("fixture") => Context::InsideFixture,
                 Some("globalSetup") => Context::InsideGlobalSetup,
+                Some("after") => {
+                    // Suite-level after block - only charting allowed
+                    Context::InsideAfterBlock
+                }
                 _ => Context::InsideSuite,
             }
         }
@@ -464,6 +470,10 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
                     Context::InsideSetup
                 }
                 Some("bench") => Context::InsideBench,
+                Some("after") => {
+                    // Still inside an after block (maybe with charting function args)
+                    Context::InsideAfterBlock
+                }
                 _ => Context::Unknown,
             }
         }
