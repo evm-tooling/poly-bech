@@ -1,0 +1,15 @@
+[package]
+name = "poly-bench-ir"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Intermediate representation for poly-bench benchmarks"
+
+[dependencies]
+poly-bench-dsl.workspace = true
+miette.workspace = true
+serde.workspace = true
+hex.workspace = true
+regex.workspace = true

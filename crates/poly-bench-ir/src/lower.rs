@@ -2,10 +2,10 @@
 //!
 //! Transforms the parsed AST into a normalized IR suitable for execution.
 
-use crate::dsl::{File, Suite, Fixture, Benchmark, Lang, ExecutionOrder};
-use crate::ir::{BenchmarkIR, SuiteIR, FixtureIR, FixtureParamIR, BenchmarkSpec, AnvilConfigIR};
-use crate::ir::fixtures::{decode_hex, load_hex_file, extract_fixture_refs};
-use crate::ir::imports::{extract_go_imports, extract_ts_imports, ParsedSetup};
+use poly_bench_dsl::{File, Suite, Fixture, Benchmark, Lang, ExecutionOrder};
+use crate::{BenchmarkIR, SuiteIR, FixtureIR, FixtureParamIR, BenchmarkSpec, AnvilConfigIR};
+use crate::fixtures::{decode_hex, load_hex_file, extract_fixture_refs};
+use crate::imports::{extract_go_imports, extract_ts_imports, ParsedSetup};
 use miette::{Result, miette};
 use std::collections::HashSet;
 use std::path::Path;
@@ -219,7 +219,7 @@ fn lower_benchmark(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::parse;
+    use poly_bench_dsl::parse;
 
     #[test]
     fn test_lower_simple() {
