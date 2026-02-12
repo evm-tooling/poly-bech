@@ -209,8 +209,11 @@ enum Context {
 /// Determine the completion context based on cursor position
 fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) -> Context {
     // Check for "use std::" pattern - suggesting stdlib modules
+    // Handle various patterns: "use std::", "use::", "use:", "use ::", etc.
     let trimmed = line_text.trim();
-    if trimmed == "use std::" || trimmed.starts_with("use std::") {
+    
+    // Check for use statement completion patterns
+    if is_use_statement_pattern(trimmed) {
         return Context::UseStdModule;
     }
     
@@ -292,23 +295,72 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
     }
 }
 
-/// Extract module name if the line ends with "module." pattern
-fn extract_module_before_dot(line_text: &str) -> Option<String> {
-    // Check if line ends with a dot
-    if !line_text.ends_with('.') {
+/// Check if the line is a use statement pattern where we should suggest stdlib modules
+/// Handles: "use:", "use::", "use std:", "use std::", "use ::", etc.
+fn is_use_statement_pattern(line_text: &str) -> bool {
+    let trimmed = line_text.trim();
+    
+    // Pattern: "use std::" or "use std::mod"
+    if trimmed.starts_with("use std::") {
+        return true;
+    }
+    
+    // Pattern: "use std:" (incomplete)
+    if trimmed == "use std:" {
+        return true;
+    }
+    
+    // Pattern: ends with "use" followed by colon variants at end of line
+    // e.g., user typed "use" and is about to type "::"
+    if trimmed == "use" {
+        return false;  // Don't trigger yet, wait for colons
+    }
+    
+    false
+}
+
+/// Extract module name if the line contains or ends with "module." pattern
+/// Returns the module name if the cursor is positioned after "module."
+fn extract_module_before_dot(_line_text: &str) -> Option<String> {
+    let line_text = _line_text.trim();
+
+    // Check if line contains a dot
+    if !line_text.contains('.') {
         return None;
     }
     
-    // Get the word before the dot
-    let without_dot = line_text.trim_end_matches('.');
-    let words: Vec<&str> = without_dot.split_whitespace().collect();
+    // Known stdlib module names
+    let known_modules = ["anvil", "constants"];
     
-    if let Some(last_word) = words.last() {
-        // Also handle cases like "anvil.spawn" where we want "anvil"
-        // but in this case we're checking for "anvil." so just return the word
-        let word = last_word.trim();
-        if !word.is_empty() && word.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            return Some(word.to_string());
+    // Check for pattern: "module." at the end (user just typed the dot)
+    if line_text.ends_with('.') {
+        let without_dot = line_text.trim_end_matches('.');
+        let words: Vec<&str> = without_dot.split_whitespace().collect();
+        
+        if let Some(last_word) = words.last() {
+            let word = last_word.trim();
+            if known_modules.contains(&word) {
+                return Some(word.to_string());
+            }
+        }
+    }
+    
+    // Check for pattern: "module.partial" where user is typing after the dot
+    // e.g., "anvil.spawn" while typing "spawnAnvil"
+    for module in known_modules {
+        let pattern = format!("{}.", module);
+        if line_text.contains(&pattern) {
+            // Check if the pattern is at a word boundary
+            // e.g., "  anvil." or "anvil.sp"
+            let trimmed = line_text.trim();
+            
+            // Find where module. appears
+            if let Some(pos) = trimmed.rfind(&pattern) {
+                // Check that before the module name is either start of line or whitespace
+                if pos == 0 || trimmed[..pos].ends_with(char::is_whitespace) {
+                    return Some(module.to_string());
+                }
+            }
         }
     }
     
