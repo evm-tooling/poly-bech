@@ -89,3 +89,25 @@ size: build release
 	@echo "📊 Binary sizes:"
 	@ls -lh target/debug/poly-bench-lsp | awk '{print "  Debug:   " $$5}'
 	@ls -lh target/release/poly-bench-lsp | awk '{print "  Release: " $$5}'
+
+# ============================================================================
+# Quick PR Workflow
+# ============================================================================
+# Creates a PR from staged files, squash-merges it, and pulls changes.
+# Your editor stays on main the entire time.
+#
+# Usage: make pr TITLE="your-pr-title"
+#
+# Requirements:
+# - Must be on main branch
+# - Must have staged files (git add <files> first)
+# - gh CLI must be installed and authenticated
+# ============================================================================
+
+.PHONY: pr
+
+pr:
+ifndef TITLE
+	$(error Usage: make pr TITLE="your-pr-title")
+endif
+	@./scripts/quick-pr.sh "$(TITLE)"
