@@ -18,4 +18,9 @@ version = "1.21"
 runtime = "node"
 
 [output]
+# Output directory for charts and results (default: "out")
+output_dir = "out"
+# Auto-save benchmark results to JSON (default: true)
+auto_save_results = true
+# Report formats to generate
 report_formats = []

@@ -277,6 +277,7 @@ async fn cmd_run(
 
     // Run each benchmark file
     let mut all_results = Vec::new();
+    let mut all_chart_directives = Vec::new();
     
     for bench_file in &files {
         // Parse the DSL file
@@ -291,6 +292,9 @@ async fn cmd_run(
 
         // Lower to IR
         let ir = ir::lower(&ast, bench_file.parent())?;
+        
+        // Collect chart directives
+        all_chart_directives.extend(ir.chart_directives.clone());
 
         // Resolve project roots for module resolution
         let project_roots = resolve_project_roots(go_project.clone(), ts_project.clone(), bench_file)?;
@@ -309,6 +313,39 @@ async fn cmd_run(
         // Merge multiple results into one
         merge_results(all_results)
     };
+    
+    // Default output directory for auto-saved results
+    let default_output_dir = PathBuf::from("out");
+    
+    // Auto-save results to .polybench/results.json
+    {
+        std::fs::create_dir_all(&default_output_dir)
+            .map_err(|e| miette::miette!("Failed to create output directory: {}", e))?;
+        
+        let json = reporter::json::report(&results)?;
+        let results_path = default_output_dir.join("results.json");
+        std::fs::write(&results_path, &json)
+            .map_err(|e| miette::miette!("Failed to save results: {}", e))?;
+        
+        println!("\n{} Results saved to {}", "💾".cyan(), results_path.display());
+    }
+    
+    // Execute chart directives if any
+    if !all_chart_directives.is_empty() {
+        let chart_output_dir = output.clone().unwrap_or_else(|| default_output_dir.clone());
+        
+        println!("{} Generating {} chart(s)...", "📊".cyan(), all_chart_directives.len());
+        
+        let generated_charts = reporter::execute_chart_directives(
+            &all_chart_directives,
+            &results,
+            &chart_output_dir,
+        )?;
+        
+        for chart in &generated_charts {
+            println!("  {} Generated: {}", "✓".green(), chart.path);
+        }
+    }
 
     // Generate reports
     match report_format {
