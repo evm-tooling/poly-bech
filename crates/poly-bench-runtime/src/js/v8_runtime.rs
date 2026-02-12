@@ -4,12 +4,12 @@
 //! requires significant setup. This provides a working implementation that
 //! can be upgraded to embedded V8 later.
 
-use crate::dsl::Lang;
-use crate::ir::{BenchmarkSpec, SuiteIR};
-use crate::runtime::js::{codegen, builtins, transpiler};
-use crate::runtime::measurement::Measurement;
-use crate::runtime::traits::Runtime;
-use crate::stdlib;
+use poly_bench_dsl::Lang;
+use poly_bench_ir::{BenchmarkSpec, SuiteIR};
+use crate::js::{codegen, builtins, transpiler};
+use crate::measurement::Measurement;
+use crate::traits::Runtime;
+use poly_bench_stdlib as stdlib;
 use async_trait::async_trait;
 use miette::{Result, miette};
 use std::path::PathBuf;
@@ -76,7 +76,7 @@ impl Runtime for JsRuntime {
             .map_err(|e| miette!("Failed to create temp directory: {}", e))?;
 
         // Generate TypeScript code for the suite
-        let ir = crate::ir::BenchmarkIR::new(vec![suite.clone()]);
+        let ir = poly_bench_ir::BenchmarkIR::new(vec![suite.clone()]);
         let code = codegen::generate(&ir)?;
 
         self.generated_code = Some(code);

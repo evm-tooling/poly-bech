@@ -1,0 +1,22 @@
+[package]
+name = "poly-bench-runtime"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Runtime execution for poly-bench benchmarks"
+
+[dependencies]
+poly-bench-dsl.workspace = true
+poly-bench-ir.workspace = true
+poly-bench-stdlib.workspace = true
+miette.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+tempfile.workspace = true
+which.workspace = true
+libloading.workspace = true
+regex.workspace = true

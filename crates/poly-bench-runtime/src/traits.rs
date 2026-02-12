@@ -1,8 +1,8 @@
 //! Runtime trait definition
 
-use crate::dsl::Lang;
-use crate::ir::{BenchmarkSpec, SuiteIR};
-use crate::runtime::Measurement;
+use poly_bench_dsl::Lang;
+use poly_bench_ir::{BenchmarkSpec, SuiteIR};
+use crate::Measurement;
 use async_trait::async_trait;
 use miette::Result;
 
