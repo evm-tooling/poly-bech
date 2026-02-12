@@ -5,9 +5,11 @@ use crate::ir::{BenchmarkSpec, SuiteIR};
 use crate::runtime::go::{codegen, compiler::GoCompiler};
 use crate::runtime::measurement::Measurement;
 use crate::runtime::traits::Runtime;
+use crate::stdlib;
 use async_trait::async_trait;
 use libloading::{Library, Symbol};
 use miette::{Result, miette};
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 /// Go runtime using plugin system
@@ -20,6 +22,8 @@ pub struct GoRuntime {
     compiler: Option<GoCompiler>,
     /// Go module root directory (where go.mod exists)
     module_root: Option<PathBuf>,
+    /// Anvil RPC URL if std::anvil is enabled
+    anvil_rpc_url: Option<String>,
 }
 
 impl GoRuntime {
@@ -29,12 +33,18 @@ impl GoRuntime {
             plugin_path: None,
             compiler: None,
             module_root: None,
+            anvil_rpc_url: None,
         }
     }
 
     /// Set the Go module root directory where go.mod is located
     pub fn set_module_root(&mut self, path: Option<PathBuf>) {
         self.module_root = path;
+    }
+    
+    /// Set the Anvil RPC URL to pass to subprocess
+    pub fn set_anvil_rpc_url(&mut self, url: String) {
+        self.anvil_rpc_url = Some(url);
     }
 }
 
@@ -146,10 +156,16 @@ impl GoRuntime {
         let go_binary = which::which("go")
             .map_err(|_| miette!("Go not found in PATH"))?;
         
-        let output = tokio::process::Command::new(&go_binary)
-            .args(["run", src_path.to_str().unwrap()])
-            .current_dir(&working_dir)
-            .output()
+        let mut cmd = tokio::process::Command::new(&go_binary);
+        cmd.args(["run", src_path.to_str().unwrap()])
+            .current_dir(&working_dir);
+        
+        // Pass Anvil RPC URL if available
+        if let Some(ref url) = self.anvil_rpc_url {
+            cmd.env("ANVIL_RPC_URL", url);
+        }
+        
+        let output = cmd.output()
             .await
             .map_err(|e| miette!("Failed to run Go benchmark: {}", e))?;
         
@@ -207,18 +223,32 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     // Start with package
     code.push_str("package main\n\n");
 
-    // Emit unified import block: standard libs + user imports (pre-extracted at IR lowering)
-    code.push_str("import (\n");
-    code.push_str("\t\"encoding/json\"\n");
-    code.push_str("\t\"fmt\"\n");
-    code.push_str("\t\"time\"\n");
+    // Collect stdlib imports
+    let stdlib_imports = stdlib::get_stdlib_imports(&suite.stdlib_imports, Lang::Go);
+    
+    // Emit unified import block with deduplication
+    let mut all_imports: HashSet<&str> = HashSet::new();
+    all_imports.insert("\"encoding/json\"");
+    all_imports.insert("\"fmt\"");
+    all_imports.insert("\"time\"");
     
     // Add user imports from the pre-extracted imports in SuiteIR
     if let Some(user_imports) = suite.imports.get(&Lang::Go) {
         for import_spec in user_imports {
-            // import_spec is already formatted (e.g., "pkg" or alias "pkg")
-            code.push_str(&format!("\t{}\n", import_spec));
+            all_imports.insert(import_spec);
         }
+    }
+    
+    // Add stdlib imports
+    for import_spec in &stdlib_imports {
+        all_imports.insert(import_spec);
+    }
+    
+    code.push_str("import (\n");
+    let mut sorted_imports: Vec<_> = all_imports.into_iter().collect();
+    sorted_imports.sort();
+    for import_spec in sorted_imports {
+        code.push_str(&format!("\t{}\n", import_spec));
     }
     code.push_str(")\n\n");
 
@@ -234,6 +264,13 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
 \tSamples     []uint64 `json:\"samples\"`\n\
 }\n\n",
     );
+
+    // Inject stdlib code (e.g., AnvilInstance, spawn_anvil, constants)
+    let stdlib_code = stdlib::get_stdlib_code(&suite.stdlib_imports, Lang::Go);
+    if !stdlib_code.is_empty() {
+        code.push_str(&stdlib_code);
+        code.push_str("\n");
+    }
 
     // Phase 1: Add declarations section (package-level vars, types, consts)
     if let Some(declarations) = suite.declarations.get(&Lang::Go) {

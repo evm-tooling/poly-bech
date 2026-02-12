@@ -7,7 +7,7 @@ use crate::runtime::js::JsRuntime;
 use crate::runtime::measurement::Measurement;
 use crate::runtime::traits::Runtime;
 use crate::executor::comparison::{BenchmarkResults, SuiteResults, BenchmarkResult};
-use super::ProjectRoots;
+use super::{ProjectRoots, AnvilService, AnvilConfig};
 use colored::Colorize;
 use miette::Result;
 use std::collections::HashMap;
@@ -20,6 +20,38 @@ pub async fn run(
     project_roots: &ProjectRoots,
 ) -> Result<BenchmarkResults> {
     let mut suite_results = Vec::new();
+    
+    // Check if globalSetup has spawnAnvil() and spawn Anvil if needed
+    let anvil_service = if let Some(ref anvil_ir) = ir.anvil_config {
+        println!("{} Starting Anvil node...", "⚡".yellow());
+        
+        // Build config from IR
+        let config = AnvilConfig {
+            fork_url: anvil_ir.fork_url.clone(),
+            fork_block: None,
+        };
+        
+        match AnvilService::spawn(&config) {
+            Ok(service) => {
+                if anvil_ir.fork_url.is_some() {
+                    println!("  {} Anvil ready at {} (forking)", "✓".green(), service.rpc_url);
+                } else {
+                    println!("  {} Anvil ready at {}", "✓".green(), service.rpc_url);
+                }
+                Some(service)
+            }
+            Err(e) => {
+                eprintln!("  {} Failed to start Anvil: {}", "✗".red(), e);
+                eprintln!("  {} Make sure Anvil is installed: curl -L https://foundry.paradigm.xyz | bash", "ℹ".blue());
+                None
+            }
+        }
+    } else {
+        None
+    };
+    
+    // Get the Anvil RPC URL if available
+    let anvil_rpc_url = anvil_service.as_ref().map(|s| s.rpc_url.clone());
 
     for suite in &ir.suites {
         println!("\n{} Suite: {}", "▶".blue().bold(), suite.name.bold());
@@ -36,6 +68,9 @@ pub async fn run(
         if langs.contains(&Lang::Go) {
             let mut rt = GoRuntime::new();
             rt.set_module_root(project_roots.go_root.clone());
+            if let Some(ref url) = anvil_rpc_url {
+                rt.set_anvil_rpc_url(url.clone());
+            }
             if let Err(e) = rt.initialize(suite).await {
                 eprintln!("  {} Go runtime initialization failed: {}", "⚠".yellow(), e);
             } else {
@@ -47,6 +82,9 @@ pub async fn run(
             match JsRuntime::new() {
                 Ok(mut rt) => {
                     rt.set_project_root(project_roots.node_root.clone());
+                    if let Some(ref url) = anvil_rpc_url {
+                        rt.set_anvil_rpc_url(url.clone());
+                    }
                     if let Err(e) = rt.initialize(suite).await {
                         eprintln!("  {} JS runtime initialization failed: {}", "⚠".yellow(), e);
                     } else {

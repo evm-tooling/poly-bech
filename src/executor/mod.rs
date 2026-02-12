@@ -1,9 +1,12 @@
 //! Benchmark execution orchestration
 
+mod anvil;
 mod scheduler;
 mod comparison;
 
 use std::path::PathBuf;
+
+pub use anvil::{AnvilService, AnvilConfig};
 
 /// Project roots for different languages
 #[derive(Debug, Clone, Default)]

@@ -46,6 +46,9 @@ pub fn get_completions(doc: &ParsedDocument, position: Position) -> Vec<Completi
         Context::UseStdModule => {
             items.extend(stdlib_module_completions());
         }
+        Context::InsideGlobalSetup => {
+            items.extend(global_setup_completions());
+        }
         Context::Unknown => {
             // Provide all keywords as fallback
             items.extend(all_keyword_completions());
@@ -62,6 +65,7 @@ enum Context {
     InsideSetup,
     InsideBench,
     InsideFixture,
+    InsideGlobalSetup,
     AfterColon(String),
     /// After typing "use std::" - suggests stdlib modules
     UseStdModule,
@@ -122,9 +126,10 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
     match depth {
         0 => Context::TopLevel,
         1 => {
-            // Inside a top-level block (suite)
+            // Inside a top-level block (suite or globalSetup)
             match last_keyword.as_deref() {
                 Some("suite") => Context::InsideSuite,
+                Some("globalSetup") => Context::InsideGlobalSetup,
                 _ => Context::InsideSuite,
             }
         }
@@ -164,9 +169,32 @@ fn top_level_completions() -> Vec<CompletionItem> {
         ),
         completion_item(
             "use std::",
-            "use std::${1|constants|}",
+            "use std::${1|constants,anvil|}",
             "Import from standard library",
             CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "globalSetup",
+            "globalSetup {\n    spawnAnvil()$0\n}",
+            "Global setup block for spawning Anvil",
+            CompletionItemKind::KEYWORD,
+        ),
+    ]
+}
+
+fn global_setup_completions() -> Vec<CompletionItem> {
+    vec![
+        completion_item(
+            "spawnAnvil",
+            "spawnAnvil()",
+            "Spawn a local Anvil Ethereum node",
+            CompletionItemKind::FUNCTION,
+        ),
+        completion_item(
+            "spawnAnvil with fork",
+            "spawnAnvil(fork: \"${1:https://eth-mainnet.g.alchemy.com/v2/...}\")",
+            "Spawn Anvil with chain forking",
+            CompletionItemKind::FUNCTION,
         ),
     ]
 }
@@ -427,6 +455,18 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
 fn stdlib_module_completions() -> Vec<CompletionItem> {
     vec![
         CompletionItem {
+            label: "anvil".to_string(),
+            kind: Some(CompletionItemKind::MODULE),
+            detail: Some("Anvil Ethereum node (ANVIL_RPC_URL)".to_string()),
+            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                tower_lsp::lsp_types::MarkupContent {
+                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                    value: "**std::anvil**\n\nAutomatically spawns a local Anvil node:\n- `ANVIL_RPC_URL` - RPC endpoint URL\n\nAnvil starts when benchmarks begin and stops when they complete.".to_string(),
+                }
+            )),
+            ..Default::default()
+        },
+        CompletionItem {
             label: "constants".to_string(),
             kind: Some(CompletionItemKind::MODULE),
             detail: Some("Mathematical constants (std_PI, std_E)".to_string()),
@@ -438,9 +478,6 @@ fn stdlib_module_completions() -> Vec<CompletionItem> {
             )),
             ..Default::default()
         },
-        // Future modules can be added here
-        // CompletionItem { label: "math".to_string(), ... },
-        // CompletionItem { label: "chart".to_string(), ... },
     ]
 }
 

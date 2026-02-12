@@ -1,0 +1,54 @@
+use std::anvil
+
+globalSetup {
+    spawnAnvil()
+}
+
+suite evmBench {
+    description: "EVM benchmark demonstrating Anvil integration"
+    iterations: 10
+    warmup: 5
+    compare: true
+    baseline: "go"
+
+    setup go {
+        import (
+            "bytes"
+            "encoding/json"
+            "net/http"
+        )
+
+        init {
+            
+        }
+        helpers {
+            func callAnvil(method string, params []interface{}) error {
+                payload := map[string]interface{}{
+                    "jsonrpc": "2.0",
+                    "method":  method,
+                    "params":  params,
+                    "id":      1,
+                }
+                body, _ := json.Marshal(payload)
+                
+                resp, err := http.Post(ANVIL_RPC_URL, "application/json", bytes.NewReader(body))
+                if resp != nil {
+                    defer resp.Body.Close()
+                }
+                return err
+            }
+        }
+    }
+
+    bench getBlockNumber {
+        description: "Get the current block number via RPC"
+        
+        go: callAnvil("eth_blockNumber", nil)
+    }
+
+    bench getChainId {
+        description: "Get the chain ID via RPC"
+        
+        go: callAnvil("eth_chainId", nil)
+    }
+}

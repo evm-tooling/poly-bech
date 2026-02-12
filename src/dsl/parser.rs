@@ -30,11 +30,17 @@ impl Parser {
     /// Parse the entire file
     pub fn parse_file(&mut self) -> Result<File> {
         let mut use_stds = Vec::new();
+        let mut global_setup = None;
         let mut suites = Vec::new();
 
         // Parse top-level use statements first
         while self.check(TokenKind::Use) {
             use_stds.push(self.parse_use_std()?);
+        }
+
+        // Parse optional globalSetup block
+        if self.check(TokenKind::GlobalSetup) {
+            global_setup = Some(self.parse_global_setup()?);
         }
 
         // Parse suites
@@ -43,7 +49,7 @@ impl Parser {
             suites.push(suite);
         }
 
-        Ok(File::with_use_stds(use_stds, suites))
+        Ok(File::with_global_setup(use_stds, global_setup, suites))
     }
 
     /// Parse a use std::module statement
@@ -87,6 +93,66 @@ impl Parser {
         );
         
         Ok(UseStd::new(module, full_span, use_span, std_span, module_span))
+    }
+
+    /// Parse a globalSetup block
+    /// 
+    /// Syntax:
+    /// ```text
+    /// globalSetup {
+    ///     spawnAnvil()
+    ///     spawnAnvil(fork: "https://...")
+    /// }
+    /// ```
+    fn parse_global_setup(&mut self) -> Result<GlobalSetup> {
+        let start_token = self.expect_keyword(TokenKind::GlobalSetup)?;
+        let start_span = start_token.span.clone();
+        
+        self.expect(TokenKind::LBrace)?;
+        
+        let mut anvil_config = None;
+        
+        // Parse statements inside globalSetup
+        while !self.check(TokenKind::RBrace) && !self.is_at_end() {
+            // Look for spawnAnvil() calls
+            if self.check_identifier("spawnAnvil") {
+                let anvil_span = self.advance().span.clone();
+                
+                self.expect(TokenKind::LParen)?;
+                
+                let mut fork_url = None;
+                
+                // Check for optional arguments: fork: "url"
+                if !self.check(TokenKind::RParen) {
+                    // Expect "fork" identifier
+                    if self.check_identifier("fork") {
+                        self.advance(); // consume "fork"
+                        self.expect(TokenKind::Colon)?;
+                        
+                        // Expect string value
+                        fork_url = Some(self.expect_string()?);
+                    }
+                }
+                
+                self.expect(TokenKind::RParen)?;
+                
+                anvil_config = Some(AnvilSetupConfig::new(fork_url, anvil_span));
+            } else {
+                // Skip unknown statements for now
+                self.advance();
+            }
+        }
+        
+        let end_token = self.expect(TokenKind::RBrace)?;
+        
+        let full_span = Span::new(
+            start_span.start,
+            end_token.span.end,
+            start_span.line,
+            start_span.col,
+        );
+        
+        Ok(GlobalSetup::new(anvil_config, full_span))
     }
 
     /// Parse a suite definition
@@ -851,6 +917,14 @@ impl Parser {
             return false;
         }
         std::mem::discriminant(&self.peek().kind) == std::mem::discriminant(&kind)
+    }
+
+    /// Check if current token is an identifier with a specific name
+    fn check_identifier(&self, name: &str) -> bool {
+        if self.is_at_end() {
+            return false;
+        }
+        matches!(&self.peek().kind, TokenKind::Identifier(s) if s == name)
     }
 
     fn expect(&mut self, expected: TokenKind) -> Result<Token> {

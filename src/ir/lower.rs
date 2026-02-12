@@ -3,7 +3,7 @@
 //! Transforms the parsed AST into a normalized IR suitable for execution.
 
 use crate::dsl::{File, Suite, Fixture, Benchmark, Lang, ExecutionOrder};
-use crate::ir::{BenchmarkIR, SuiteIR, FixtureIR, FixtureParamIR, BenchmarkSpec};
+use crate::ir::{BenchmarkIR, SuiteIR, FixtureIR, FixtureParamIR, BenchmarkSpec, AnvilConfigIR};
 use crate::ir::fixtures::{decode_hex, load_hex_file, extract_fixture_refs};
 use crate::ir::imports::{extract_go_imports, extract_ts_imports, ParsedSetup};
 use miette::{Result, miette};
@@ -18,18 +18,23 @@ pub fn lower(ast: &File, base_dir: Option<&Path>) -> Result<BenchmarkIR> {
         .map(|u| u.module.clone())
         .collect();
 
+    // Lower globalSetup -> anvil_config
+    let anvil_config = ast.global_setup.as_ref()
+        .and_then(|gs| gs.anvil_config.as_ref())
+        .map(|cfg| AnvilConfigIR::new(cfg.fork_url.clone()));
+
     let mut suites = Vec::new();
 
     for suite in &ast.suites {
-        let suite_ir = lower_suite(suite, base_dir)?;
+        let suite_ir = lower_suite(suite, base_dir, &stdlib_imports)?;
         suites.push(suite_ir);
     }
 
-    Ok(BenchmarkIR::with_stdlib(stdlib_imports, suites))
+    Ok(BenchmarkIR::with_anvil(stdlib_imports, anvil_config, suites))
 }
 
 /// Lower a single Suite to SuiteIR
-fn lower_suite(suite: &Suite, base_dir: Option<&Path>) -> Result<SuiteIR> {
+fn lower_suite(suite: &Suite, base_dir: Option<&Path>, stdlib_imports: &HashSet<String>) -> Result<SuiteIR> {
     let mut ir = SuiteIR::new(suite.name.clone());
     
     ir.description = suite.description.clone();
@@ -42,6 +47,9 @@ fn lower_suite(suite: &Suite, base_dir: Option<&Path>) -> Result<SuiteIR> {
     ir.order = suite.order.unwrap_or(ExecutionOrder::Sequential);
     ir.compare = suite.compare;
     ir.baseline = suite.baseline;
+    
+    // Copy stdlib imports to suite
+    ir.stdlib_imports = stdlib_imports.clone();
 
     // Phase 1: Extract structured setup sections
     for (lang, structured_setup) in &suite.setups {
