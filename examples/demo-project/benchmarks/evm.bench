@@ -40,14 +40,39 @@ suite evmBench {
         }
     }
 
+    setup ts {
+        init {
+        }
+
+        helpers {
+            async function callAnvil(method: string, params: any[]): Promise<any> {
+                const payload = {
+                    jsonrpc: "2.0",
+                    method: method,
+                    params: params,
+                    id: 1,
+                };
+
+                const resp = await fetch(ANVIL_RPC_URL, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                    });
+                return resp.json();
+            }
+        }
+    }
+
     bench getBlockNumber {
         description: "Get the current block number via RPC"
         go: callAnvil("eth_blockNumber", nil)
+        ts: await callAnvil("eth_blockNumber", [])
     }
 
     bench getChainId {
         description: "Get the chain ID via RPC"
         go: callAnvil("eth_chainId", nil)
+        ts: await callAnvil("eth_chainId", [])
     }
 
 }
