@@ -123,29 +123,81 @@ impl Transpiler {
 }
 
 /// Simple type annotation stripping for when no transpiler is available
-/// This is a very basic implementation that handles common patterns
+/// This is a more careful implementation that preserves object literal colons
 pub fn strip_type_annotations(ts_code: &str) -> String {
     let mut result = String::new();
     let mut in_type_annotation = false;
-    let mut depth = 0;
+    let mut type_depth = 0; // Depth of generic type parameters
     let mut chars = ts_code.chars().peekable();
     let mut paren_depth: usize = 0; // Track if we're inside function parameters
+    let mut brace_depth: usize = 0; // Track if we're inside braces (object literals, function bodies)
+    let mut bracket_depth: usize = 0; // Track if we're inside brackets (arrays)
 
     while let Some(c) = chars.next() {
         match c {
             '(' => {
-                paren_depth += 1;
+                if !in_type_annotation {
+                    paren_depth += 1;
+                    result.push(c);
+                }
+            }
+            ')' => {
+                if in_type_annotation && type_depth == 0 {
+                    // End of type annotation at closing paren
+                    in_type_annotation = false;
+                    paren_depth = paren_depth.saturating_sub(1);
+                    result.push(c);
+                } else if !in_type_annotation {
+                    paren_depth = paren_depth.saturating_sub(1);
+                    result.push(c);
+                }
+                // If in_type_annotation with type_depth > 0, skip the character
+            }
+            '{' => {
+                if in_type_annotation && type_depth == 0 {
+                    // End of type annotation at opening brace (function body or object)
+                    in_type_annotation = false;
+                }
+                brace_depth += 1;
                 result.push(c);
             }
-            ')' if !in_type_annotation => {
-                paren_depth = paren_depth.saturating_sub(1);
+            '}' => {
+                brace_depth = brace_depth.saturating_sub(1);
                 result.push(c);
+            }
+            '[' => {
+                if !in_type_annotation {
+                    bracket_depth += 1;
+                    result.push(c);
+                }
+            }
+            ']' => {
+                if !in_type_annotation {
+                    bracket_depth = bracket_depth.saturating_sub(1);
+                    result.push(c);
+                }
             }
             ':' if !in_type_annotation => {
                 // Check if this starts a type annotation
                 // Type annotations follow: function params, variable declarations, function return types
-                // NOT: object literal properties (key: value)
-                let rest: String = chars.clone().take(30).collect();
+                // NOT: object literal properties (key: value), ternary operators, or inside object braces
+                
+                // If we're inside braces but not in parens, this is likely an object literal
+                // Objects can be: { key: value } or function bodies { ... }
+                // Inside objects, ALL colons should be preserved
+                if brace_depth > 0 && paren_depth == 0 {
+                    // Inside an object literal or function body - preserve the colon
+                    result.push(c);
+                    continue;
+                }
+                
+                // If inside an array, preserve the colon (for objects inside arrays)
+                if bracket_depth > 0 {
+                    result.push(c);
+                    continue;
+                }
+                
+                let rest: String = chars.clone().take(50).collect();
                 let trimmed_rest = rest.trim_start();
                 
                 // Check what's before the colon (ignoring whitespace)
@@ -157,42 +209,93 @@ pub fn strip_type_annotations(ts_code: &str) -> String {
                 // Parameter type annotation: paramName: TypeName (inside parens)
                 let is_after_param_name = last_non_ws.is_alphanumeric() || last_non_ws == '_' || last_non_ws == '?';
                 
-                // Type annotations start with: type name, { (for object types), [ (for array types), ( (for function types)
-                // But we should only strip if we're in a type annotation context, not object literal
-                let looks_like_type = trimmed_rest.starts_with(|c: char| c.is_alphabetic())
-                    || trimmed_rest.starts_with("Array<")
-                    || trimmed_rest.starts_with("Promise<")
-                    || trimmed_rest.starts_with("Record<")
-                    || trimmed_rest.starts_with("{")
-                    || trimmed_rest.starts_with("[")
-                    || trimmed_rest.starts_with("(");
+                // Check if what follows looks like a type name
+                // Type names: start with uppercase and are followed by space, comma, close paren, equals, or generic bracket
+                // NOT: things like JSON.stringify() which are function calls
+                let is_type_name = {
+                    // Get the first word after the colon
+                    let first_word: String = trimmed_rest.chars()
+                        .take_while(|c| c.is_alphanumeric() || *c == '_')
+                        .collect();
+                    
+                    // Check what follows the first word
+                    let rest_after_word = &trimmed_rest[first_word.len()..].trim_start();
+                    let has_dot_after = rest_after_word.starts_with('.');
+                    let has_open_brace_after = rest_after_word.starts_with('{');
+                    
+                    // Common built-in JavaScript objects that are function calls, NOT types
+                    // These should only be excluded when followed by a dot (method call)
+                    let is_method_call = has_dot_after && (
+                        first_word == "JSON" 
+                        || first_word == "Math" 
+                        || first_word == "Object" 
+                        || first_word == "Array"
+                        || first_word == "Date"
+                        || first_word == "console"
+                        || first_word == "window"
+                        || first_word == "document"
+                        || first_word == "Buffer"
+                        || first_word == "Error"
+                    );
+                    
+                    // It's a type if:
+                    // - It's a known primitive type
+                    // - OR it starts with uppercase AND is NOT a method call
+                    // - OR it's a generic type
+                    let is_primitive = first_word == "string" 
+                        || first_word == "number" 
+                        || first_word == "boolean"
+                        || first_word == "void"
+                        || first_word == "any"
+                        || first_word == "never"
+                        || first_word == "null"
+                        || first_word == "undefined";
+                    
+                    let is_generic_type = trimmed_rest.starts_with("Array<")
+                        || trimmed_rest.starts_with("Promise<")
+                        || trimmed_rest.starts_with("Record<")
+                        || trimmed_rest.starts_with("Partial<")
+                        || trimmed_rest.starts_with("Readonly<")
+                        || trimmed_rest.starts_with("Map<")
+                        || trimmed_rest.starts_with("Set<")
+                        || trimmed_rest.starts_with("Buffer");
+                    
+                    // After return type `):`
+                    // Types end at: { (function body), [ (array type), | (union), & (intersection), , (next param)
+                    let is_return_type_context = is_return_type && (
+                        has_open_brace_after ||
+                        first_word.chars().next().map_or(false, |c| c.is_uppercase())
+                    );
+                    
+                    is_primitive || is_generic_type || is_return_type_context ||
+                    (first_word.chars().next().map_or(false, |c| c.is_uppercase()) && !is_method_call)
+                };
+                
+                let looks_like_type_name = is_type_name;
                 
                 // Variable declaration: const x: Type = value
-                // Check if we're after a variable name (identifier followed by colon)
-                let is_var_decl = is_after_param_name && paren_depth == 0 && !is_return_type;
+                // Only strip if we're at top level (not inside objects) and it looks like a type
+                let is_var_decl_context = is_after_param_name && paren_depth == 0 && !is_return_type && brace_depth == 0;
                 
                 // Strip type if:
-                // 1. We're in function params (paren_depth > 0) and after a param name
-                // 2. We're after closing paren (return type)
-                // 3. We're in a variable declaration context
-                if ((paren_depth > 0 && is_after_param_name) || is_return_type || is_var_decl) && looks_like_type {
-                    in_type_annotation = true;
-                    continue;
+                // 1. We're in function params (paren_depth > 0) and after a param name, and it looks like a type
+                // 2. We're after closing paren (return type) and it looks like a type
+                // 3. We're in a variable declaration context and it looks like a type
+                if looks_like_type_name {
+                    if (paren_depth > 0 && is_after_param_name) || is_return_type || is_var_decl_context {
+                        in_type_annotation = true;
+                        continue;
+                    }
                 }
                 result.push(c);
             }
             '<' if in_type_annotation => {
-                depth += 1;
+                type_depth += 1;
             }
-            '>' if in_type_annotation && depth > 0 => {
-                depth -= 1;
+            '>' if in_type_annotation && type_depth > 0 => {
+                type_depth -= 1;
             }
-            ')' if in_type_annotation && depth == 0 => {
-                in_type_annotation = false;
-                paren_depth = paren_depth.saturating_sub(1);
-                result.push(c);
-            }
-            '=' | ',' | '{' | ';' | '\n' if in_type_annotation && depth == 0 => {
+            '=' | ',' | ';' | '\n' if in_type_annotation && type_depth == 0 => {
                 in_type_annotation = false;
                 result.push(c);
             }
@@ -209,21 +312,21 @@ pub fn strip_type_annotations(ts_code: &str) -> String {
     let lines: Vec<&str> = result.lines().collect();
     let mut filtered = Vec::new();
     let mut in_interface = false;
-    let mut brace_depth = 0;
+    let mut interface_brace_depth = 0;
 
     for line in lines {
         let trimmed = line.trim();
         
-        if trimmed.starts_with("interface ") || trimmed.starts_with("type ") {
+        if trimmed.starts_with("interface ") || trimmed.starts_with("type ") && trimmed.contains("=") {
             in_interface = true;
-            brace_depth = 0;
+            interface_brace_depth = 0;
         }
 
         if in_interface {
-            brace_depth += line.chars().filter(|&c| c == '{').count();
-            brace_depth = brace_depth.saturating_sub(line.chars().filter(|&c| c == '}').count());
+            interface_brace_depth += line.chars().filter(|&c| c == '{').count();
+            interface_brace_depth = interface_brace_depth.saturating_sub(line.chars().filter(|&c| c == '}').count());
             
-            if brace_depth == 0 && line.contains('}') {
+            if interface_brace_depth == 0 && (line.contains('}') || line.contains(';')) {
                 in_interface = false;
             }
             continue;
@@ -276,6 +379,33 @@ mod tests {
         // Object literal colons should be preserved
         assert!(js.contains("key: 'value'"), "Object literal colon stripped: {}", js);
         assert!(js.contains("num: 42"), "Object literal colon stripped: {}", js);
+    }
+
+    #[test]
+    fn test_preserve_nested_object_literal() {
+        let ts = r#"const resp = await fetch(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });"#;
+        let js = strip_type_annotations(ts);
+        // All object literal colons should be preserved
+        assert!(js.contains("method: \"POST\""), "method colon stripped: {}", js);
+        assert!(js.contains("headers: {"), "headers colon stripped: {}", js);
+        assert!(js.contains("\"Content-Type\": \"application/json\""), "Content-Type colon stripped: {}", js);
+        assert!(js.contains("body: JSON.stringify(payload)"), "body colon stripped: {}", js);
+    }
+
+    #[test]
+    fn test_strip_async_function_types() {
+        let ts = "async function callAnvil(method: string, params: any[]): Promise<any> { return null; }";
+        let js = strip_type_annotations(ts);
+        // Type annotations should be stripped
+        assert!(!js.contains(": string"), "Param type not stripped: {}", js);
+        assert!(!js.contains(": any[]"), "Param type not stripped: {}", js);
+        assert!(!js.contains(": Promise<any>"), "Return type not stripped: {}", js);
+        // Function should be preserved
+        assert!(js.contains("async function callAnvil(method, params)"), "Function signature mangled: {}", js);
     }
 
     #[test]

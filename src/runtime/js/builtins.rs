@@ -42,6 +42,37 @@ pub const BENCHMARK_HARNESS: &str = r#"
         };
     }
 
+    // Run an async benchmark function
+    async function runBenchmarkAsync(fn, iterations, warmup) {
+        const samples = new Array(iterations);
+        
+        // Warmup phase
+        for (let i = 0; i < warmup; i++) {
+            await fn();
+        }
+        
+        // Timed phase
+        let totalNanos = 0;
+        for (let i = 0; i < iterations; i++) {
+            const start = now();
+            await fn();
+            const elapsed = now() - start;
+            samples[i] = elapsed;
+            totalNanos += elapsed;
+        }
+        
+        const nanosPerOp = totalNanos / iterations;
+        const opsPerSec = 1e9 / nanosPerOp;
+        
+        return {
+            iterations: iterations,
+            totalNanos: totalNanos,
+            nanosPerOp: nanosPerOp,
+            opsPerSec: opsPerSec,
+            samples: samples,
+        };
+    }
+
     // Run a benchmark function with an each-iteration hook
     function runBenchmarkWithHook(fn, eachHook, iterations, warmup) {
         const samples = new Array(iterations);
@@ -58,6 +89,39 @@ pub const BENCHMARK_HARNESS: &str = r#"
             eachHook();
             const start = now();
             fn();
+            const elapsed = now() - start;
+            samples[i] = elapsed;
+            totalNanos += elapsed;
+        }
+        
+        const nanosPerOp = totalNanos / iterations;
+        const opsPerSec = 1e9 / nanosPerOp;
+        
+        return {
+            iterations: iterations,
+            totalNanos: totalNanos,
+            nanosPerOp: nanosPerOp,
+            opsPerSec: opsPerSec,
+            samples: samples,
+        };
+    }
+
+    // Run an async benchmark function with an each-iteration hook
+    async function runBenchmarkWithHookAsync(fn, eachHook, iterations, warmup) {
+        const samples = new Array(iterations);
+        
+        // Warmup phase with hook
+        for (let i = 0; i < warmup; i++) {
+            await eachHook();
+            await fn();
+        }
+        
+        // Timed phase with hook (hook runs outside timing)
+        let totalNanos = 0;
+        for (let i = 0; i < iterations; i++) {
+            await eachHook();
+            const start = now();
+            await fn();
             const elapsed = now() - start;
             samples[i] = elapsed;
             totalNanos += elapsed;
@@ -95,7 +159,9 @@ pub const BENCHMARK_HARNESS: &str = r#"
     globalThis.__polybench = {
         now: now,
         runBenchmark: runBenchmark,
+        runBenchmarkAsync: runBenchmarkAsync,
         runBenchmarkWithHook: runBenchmarkWithHook,
+        runBenchmarkWithHookAsync: runBenchmarkWithHookAsync,
         hexToBytes: hexToBytes,
         bytesToHex: bytesToHex,
     };
