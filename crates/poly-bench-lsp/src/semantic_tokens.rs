@@ -301,7 +301,7 @@ fn add_keyword_tokens(
     tokens: &mut Vec<SemanticToken>,
     prev_line: &mut u32,
     prev_char: &mut u32,
-    span: &poly_bench::dsl::Span,
+    span: &poly_bench_dsl::Span,
 ) {
     add_token(doc, tokens, prev_line, prev_char, span, 0, 0);
 }
@@ -311,7 +311,7 @@ fn add_token(
     tokens: &mut Vec<SemanticToken>,
     prev_line: &mut u32,
     prev_char: &mut u32,
-    span: &poly_bench::dsl::Span,
+    span: &poly_bench_dsl::Span,
     token_type: u32,
     modifiers: u32,
 ) {

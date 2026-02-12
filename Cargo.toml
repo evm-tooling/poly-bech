@@ -18,6 +18,7 @@ poly-bench-project = { path = "crates/poly-bench-project" }
 poly-bench-runtime = { path = "crates/poly-bench-runtime" }
 poly-bench-executor = { path = "crates/poly-bench-executor" }
 poly-bench-reporter = { path = "crates/poly-bench-reporter" }
+poly-bench-lsp = { path = "crates/poly-bench-lsp" }
 
 # Shared dependencies
 miette = { version = "7", features = ["fancy"] }
@@ -62,6 +63,7 @@ poly-bench-project.workspace = true
 poly-bench-runtime.workspace = true
 poly-bench-executor.workspace = true
 poly-bench-reporter.workspace = true
+poly-bench-lsp.workspace = true
 
 # CLI
 clap.workspace = true
@@ -108,7 +110,7 @@ path = "src/main.rs"
 
 [[bin]]
 name = "poly-bench-lsp"
-path = "src/lsp/main.rs"
+path = "src/lsp_main.rs"
 
 [profile.release]
 opt-level = 3

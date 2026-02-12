@@ -4,7 +4,7 @@
 //! in poly-bench files, including embedded Go code via gopls and
 //! TypeScript code via typescript-language-server.
 
-use poly_bench::dsl::Lang;
+use poly_bench_dsl::Lang;
 use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position, Url};
 
 use super::document::ParsedDocument;

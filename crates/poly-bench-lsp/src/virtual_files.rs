@@ -8,8 +8,8 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 
-use poly_bench::dsl::Span;
-use poly_bench::project::templates;
+use poly_bench_dsl::Span;
+use poly_bench_project::templates;
 use tower_lsp::lsp_types::Position;
 
 use super::embedded::{BlockType, EmbeddedBlock};
@@ -836,7 +836,7 @@ impl Default for VirtualTsFileManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use poly_bench::dsl::Lang;
+    use poly_bench_dsl::Lang;
 
     fn make_block(code: &str, block_type: BlockType, start: usize) -> EmbeddedBlock {
         let end = start + code.len();
