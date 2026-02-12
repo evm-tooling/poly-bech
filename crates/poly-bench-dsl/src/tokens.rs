@@ -57,10 +57,15 @@ pub enum TokenKind {
     Rust,
     Python,
 
+    // Boolean literals
+    True,            // true
+    False,           // false
+
     // Literals
     Identifier(String),
     String(String),
     Number(u64),
+    Float(f64),      // Floating point number
     Duration(u64),   // Duration in milliseconds (30s, 500ms, 1m)
     HexLiteral(String),
 
@@ -211,6 +216,10 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         "typescript" => Some(TokenKind::TypeScript),
         "rust" => Some(TokenKind::Rust),
         "python" => Some(TokenKind::Python),
+        
+        // Boolean literals
+        "true" => Some(TokenKind::True),
+        "false" => Some(TokenKind::False),
         
         _ => None,
     }
