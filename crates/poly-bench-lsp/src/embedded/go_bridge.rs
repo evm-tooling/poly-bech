@@ -135,7 +135,10 @@ fn run_go_build(go_cmd: &str, code: &str, go_mod_root: Option<&str>) -> Option<(
         .unwrap_or(false);
 
     let (_temp_dir_guard, work_dir, is_in_mod_root) = if use_mod_root {
-        let mod_root = go_mod_root.unwrap();
+        // Safe: use_mod_root is only true if go_mod_root is Some
+        let Some(mod_root) = go_mod_root else {
+            return None;
+        };
         let temp_name = format!("_polybench_lint_{}", std::process::id());
         let temp_path = Path::new(mod_root).join(&temp_name);
         if fs::create_dir_all(&temp_path).is_err() {
@@ -324,9 +327,14 @@ fn parse_combined_errors(output: &str, mappings: &[SectionMapping]) -> Vec<Embed
     }
 
     for cap in error_re.captures_iter(output) {
-        let error_line: usize = cap[1].parse().unwrap_or(1);
-        let error_col: usize = cap[2].parse().unwrap_or(1);
-        let message = cap[3].to_string();
+        // Use safe access for regex captures
+        let Some(line_match) = cap.get(1) else { continue };
+        let Some(col_match) = cap.get(2) else { continue };
+        let Some(msg_match) = cap.get(3) else { continue };
+        
+        let error_line: usize = line_match.as_str().parse().unwrap_or(1);
+        let error_col: usize = col_match.as_str().parse().unwrap_or(1);
+        let message = msg_match.as_str().to_string();
 
         eprintln!("[go-combined-parse] Error at line {}, col {}: {}", error_line, error_col, &message[..message.len().min(60)]);
 
@@ -493,9 +501,14 @@ fn parse_go_errors(
     eprintln!("[go-parse] Looking for errors in {} bytes, header_lines={}", output.len(), header_lines);
 
     for cap in error_re.captures_iter(output) {
-        let line_num: usize = cap[1].parse().unwrap_or(1);
-        let col_num: usize = cap[2].parse().unwrap_or(1);
-        let message = cap[3].to_string();
+        // Use safe access for regex captures
+        let Some(line_match) = cap.get(1) else { continue };
+        let Some(col_match) = cap.get(2) else { continue };
+        let Some(msg_match) = cap.get(3) else { continue };
+        
+        let line_num: usize = line_match.as_str().parse().unwrap_or(1);
+        let col_num: usize = col_match.as_str().parse().unwrap_or(1);
+        let message = msg_match.as_str().to_string();
         
         eprintln!("[go-parse] Found error: line={}, col={}, msg={}", line_num, col_num, &message[..message.len().min(80)]);
 
@@ -542,8 +555,15 @@ fn parse_go_errors(
             .trim();
 
         if let Some(sanitized) = sanitize_go_message(summary) {
+            // Use char_indices for safe string truncation (handles multi-byte chars)
             let truncated = if sanitized.len() > 120 {
-                format!("{}...", &sanitized[..117])
+                let truncate_at = sanitized
+                    .char_indices()
+                    .take(117)
+                    .last()
+                    .map(|(i, c)| i + c.len_utf8())
+                    .unwrap_or(sanitized.len());
+                format!("{}...", &sanitized[..truncate_at])
             } else {
                 sanitized
             };
