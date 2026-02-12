@@ -1,0 +1,11 @@
+[package]
+name = "poly-bench-stdlib"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Standard library modules for poly-bench DSL"
+
+[dependencies]
+poly-bench-dsl.workspace = true

@@ -7,12 +7,12 @@
 //! - Unified measurement and comparison across languages
 //! - Project scaffolding and dependency management
 
-// Re-export from the dsl crate for backwards compatibility
+// Re-export from crates for backwards compatibility
 pub use poly_bench_dsl as dsl;
+pub use poly_bench_stdlib as stdlib;
 
 pub mod ir;
 pub mod runtime;
 pub mod executor;
 pub mod reporter;
 pub mod project;
-pub mod stdlib;
