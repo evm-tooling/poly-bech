@@ -19,9 +19,22 @@ pub fn lower(ast: &File, base_dir: Option<&Path>) -> Result<BenchmarkIR> {
         .collect();
 
     // Lower globalSetup -> anvil_config
-    let anvil_config = ast.global_setup.as_ref()
+    // First check file-level globalSetup, then check suite-level globalSetup
+    let mut anvil_config = ast.global_setup.as_ref()
         .and_then(|gs| gs.anvil_config.as_ref())
         .map(|cfg| AnvilConfigIR::new(cfg.fork_url.clone()));
+    
+    // If no file-level globalSetup, check suite-level globalSetup
+    if anvil_config.is_none() {
+        for suite in &ast.suites {
+            if let Some(ref gs) = suite.global_setup {
+                if let Some(ref cfg) = gs.anvil_config {
+                    anvil_config = Some(AnvilConfigIR::new(cfg.fork_url.clone()));
+                    break;
+                }
+            }
+        }
+    }
 
     let mut suites = Vec::new();
 
@@ -287,6 +300,30 @@ suite test {
         assert_eq!(ir.stdlib_imports.len(), 2);
         assert!(ir.has_stdlib("constants"));
         assert!(ir.has_stdlib("math"));
+    }
+
+    #[test]
+    fn test_lower_suite_level_global_setup() {
+        let source = r#"
+use std::anvil
+
+suite evm {
+    globalSetup {
+        anvil.spawnAnvil()
+    }
+    
+    bench test {
+        go: test()
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let ir = lower(&ast, None).unwrap();
+        
+        // Suite-level globalSetup should be captured as anvil_config
+        assert!(ir.anvil_config.is_some(), "anvil_config should be set from suite-level globalSetup");
+        let anvil_cfg = ir.anvil_config.as_ref().unwrap();
+        assert!(anvil_cfg.fork_url.is_none(), "spawnAnvil() without args should have no fork_url");
     }
 
     #[test]

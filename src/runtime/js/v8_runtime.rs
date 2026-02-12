@@ -9,6 +9,7 @@ use crate::ir::{BenchmarkSpec, SuiteIR};
 use crate::runtime::js::{codegen, builtins, transpiler};
 use crate::runtime::measurement::Measurement;
 use crate::runtime::traits::Runtime;
+use crate::stdlib;
 use async_trait::async_trait;
 use miette::{Result, miette};
 use std::path::PathBuf;
@@ -171,6 +172,15 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
     script.push_str(builtins::BENCHMARK_HARNESS);
     script.push_str("\n\n");
 
+    // Add stdlib code (e.g., ANVIL_RPC_URL for std::anvil)
+    let stdlib_code = stdlib::get_stdlib_code(&suite.stdlib_imports, Lang::TypeScript);
+    if !stdlib_code.is_empty() {
+        script.push_str("// stdlib imports\n");
+        // Strip TypeScript type annotations from stdlib code
+        script.push_str(&strip_typescript_syntax(&stdlib_code));
+        script.push_str("\n\n");
+    }
+
     // Phase 1: Add declarations section
     if let Some(declarations) = suite.declarations.get(&Lang::TypeScript) {
         if !declarations.trim().is_empty() {
@@ -243,16 +253,36 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
     }
 
     // Generate benchmark execution with hooks
+    // Check if the implementation code contains await (needs async function)
+    let impl_is_async = impl_code.contains("await");
+    
     if each_hook.is_some() {
         // Custom benchmark loop with each hook
-        script.push_str(&format!("const __result = __polybench.runBenchmarkWithHook(\n"));
-        script.push_str("    function() {\n");
+        let each = each_hook.unwrap();
+        let each_is_async = each.contains("await");
+        let needs_async = impl_is_async || each_is_async;
+        
+        if needs_async {
+            script.push_str("const __result = await __polybench.runBenchmarkWithHookAsync(\n");
+        } else {
+            script.push_str("const __result = __polybench.runBenchmarkWithHook(\n");
+        }
+        
+        if impl_is_async {
+            script.push_str("    async function() {\n");
+        } else {
+            script.push_str("    function() {\n");
+        }
         script.push_str("        ");
         script.push_str(impl_code);
         script.push_str(";\n");
         script.push_str("    },\n");
-        script.push_str("    function() {\n");
-        let each = each_hook.unwrap();
+        
+        if each_is_async {
+            script.push_str("    async function() {\n");
+        } else {
+            script.push_str("    function() {\n");
+        }
         script.push_str("        ");
         script.push_str(&strip_typescript_syntax(each));
         script.push_str(";\n");
@@ -261,7 +291,11 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         script.push_str(");\n");
     } else {
         // Standard benchmark execution
-        script.push_str("const __result = __polybench.runBenchmark(function() {\n");
+        if impl_is_async {
+            script.push_str("const __result = await __polybench.runBenchmarkAsync(async function() {\n");
+        } else {
+            script.push_str("const __result = __polybench.runBenchmark(function() {\n");
+        }
         script.push_str("    ");
         script.push_str(impl_code);
         script.push_str(";\n");
