@@ -335,7 +335,7 @@ impl Parser {
     }
 
     /// Parse a chart directive: charting.drawBarChart(title: "...", ...)
-    fn parse_chart_directive(&mut self, block_span: &Span) -> Result<ChartDirective> {
+    fn parse_chart_directive(&mut self, _block_span: &Span) -> Result<ChartDirective> {
         let start_span = self.peek().span.clone();
         
         // Expect "charting" identifier
@@ -374,14 +374,14 @@ impl Parser {
         
         let mut directive = ChartDirective::new(chart_type, start_span);
         
-        // Parse optional named parameters: title: "...", xlabel: "...", etc.
-        // Note: Some parameter names (like "description") may be DSL keywords,
-        // so we need to handle both identifiers and specific keyword tokens.
+        // Parse optional named parameters with various types
         while !self.check(TokenKind::RParen) && !self.is_at_end() {
             let param_token = self.advance().clone();
             let param_name = match &param_token.kind {
                 TokenKind::Identifier(s) => s.clone(),
                 TokenKind::Description => "description".to_string(),
+                TokenKind::Order => "order".to_string(),
+                TokenKind::Timeout => "timeout".to_string(),
                 _ => {
                     return Err(self.make_error(ParseError::ExpectedIdentifier {
                         span: param_token.span.clone(),
@@ -390,17 +390,48 @@ impl Parser {
             };
             
             self.expect(TokenKind::Colon)?;
-            let value = self.expect_string()?;
             
+            // Parse value based on expected type for each parameter
             match param_name.as_str() {
-                "title" => directive.title = Some(value),
-                "description" => directive.description = Some(value),
-                "xlabel" => directive.x_label = Some(value),
-                "ylabel" => directive.y_label = Some(value),
-                "output" => directive.output_file = Some(value),
+                // String parameters
+                "title" => directive.title = Some(self.expect_string()?),
+                "description" => directive.description = Some(self.expect_string()?),
+                "xlabel" => directive.x_label = Some(self.expect_string()?),
+                "ylabel" => directive.y_label = Some(self.expect_string()?),
+                "output" => directive.output_file = Some(self.expect_string()?),
+                "filterWinner" => directive.filter_winner = Some(self.expect_string()?),
+                "sortBy" => directive.sort_by = Some(self.expect_string()?),
+                "sortOrder" => directive.sort_order = Some(self.expect_string()?),
+                "timeUnit" => directive.time_unit = Some(self.expect_string()?),
+                
+                // Boolean parameters
+                "showStats" => directive.show_stats = self.expect_bool()?,
+                "showConfig" => directive.show_config = self.expect_bool()?,
+                "showWinCounts" => directive.show_win_counts = self.expect_bool()?,
+                "showGeoMean" => directive.show_geo_mean = self.expect_bool()?,
+                "showDistribution" => directive.show_distribution = self.expect_bool()?,
+                "showMemory" => directive.show_memory = self.expect_bool()?,
+                "showTotalTime" => directive.show_total_time = self.expect_bool()?,
+                "compact" => directive.compact = self.expect_bool()?,
+                
+                // Integer parameters
+                "limit" => directive.limit = Some(self.expect_number()? as u32),
+                "width" => directive.width = Some(self.expect_number()? as i32),
+                "barHeight" => directive.bar_height = Some(self.expect_number()? as i32),
+                "barGap" => directive.bar_gap = Some(self.expect_number()? as i32),
+                "marginLeft" => directive.margin_left = Some(self.expect_number()? as i32),
+                "precision" => directive.precision = Some(self.expect_number()? as u32),
+                
+                // Float parameters
+                "minSpeedup" => directive.min_speedup = Some(self.expect_float()?),
+                
+                // Array parameters
+                "includeBenchmarks" => directive.include_benchmarks = self.expect_string_array()?,
+                "excludeBenchmarks" => directive.exclude_benchmarks = self.expect_string_array()?,
+                
                 _ => {
                     return Err(self.make_error(ParseError::InvalidProperty {
-                        name: format!("Unknown chart parameter '{}'. Valid parameters: title, description, xlabel, ylabel, output", param_name),
+                        name: format!("Unknown chart parameter '{}'", param_name),
                         span: param_token.span.clone(),
                     }));
                 }
@@ -426,6 +457,65 @@ impl Parser {
         };
         
         Ok(directive)
+    }
+    
+    /// Expect and parse a boolean value (true/false)
+    fn expect_bool(&mut self) -> Result<bool> {
+        let token = self.advance().clone();
+        match token.kind {
+            TokenKind::True => Ok(true),
+            TokenKind::False => Ok(false),
+            _ => Err(self.make_error(ParseError::InvalidProperty {
+                name: "Expected 'true' or 'false'".to_string(),
+                span: token.span,
+            })),
+        }
+    }
+    
+    /// Expect and parse a number (integer)
+    fn expect_number(&mut self) -> Result<u64> {
+        let token = self.advance().clone();
+        match token.kind {
+            TokenKind::Number(n) => Ok(n),
+            _ => Err(self.make_error(ParseError::InvalidProperty {
+                name: "Expected a number".to_string(),
+                span: token.span,
+            })),
+        }
+    }
+    
+    /// Expect and parse a float (or integer as float)
+    fn expect_float(&mut self) -> Result<f64> {
+        let token = self.advance().clone();
+        match token.kind {
+            TokenKind::Float(f) => Ok(f),
+            TokenKind::Number(n) => Ok(n as f64),
+            _ => Err(self.make_error(ParseError::InvalidProperty {
+                name: "Expected a number".to_string(),
+                span: token.span,
+            })),
+        }
+    }
+    
+    /// Expect and parse a string array: ["item1", "item2"]
+    fn expect_string_array(&mut self) -> Result<Vec<String>> {
+        self.expect(TokenKind::LBracket)?;
+        
+        let mut items = Vec::new();
+        
+        while !self.check(TokenKind::RBracket) && !self.is_at_end() {
+            let value = self.expect_string()?;
+            items.push(value);
+            
+            if !self.check(TokenKind::RBracket) {
+                if self.check(TokenKind::Comma) {
+                    self.advance();
+                }
+            }
+        }
+        
+        self.expect(TokenKind::RBracket)?;
+        Ok(items)
     }
 
     /// Parse a structured setup block with import/declare/init/helpers sections
@@ -1124,20 +1214,6 @@ impl Parser {
         }
     }
 
-    fn expect_number(&mut self) -> Result<u64> {
-        let token = self.peek().clone();
-        if let TokenKind::Number(n) = token.kind {
-            self.advance();
-            Ok(n)
-        } else {
-            Err(self.make_error(ParseError::ExpectedToken {
-                expected: "number".to_string(),
-                found: format!("{:?}", token.kind),
-                span: token.span,
-            }))
-        }
-    }
-
     fn expect_lang(&mut self) -> Result<Lang> {
         let token = self.peek().clone();
         let lang = match &token.kind {
@@ -1190,35 +1266,6 @@ impl Parser {
             _ => {
                 Err(self.make_error(ParseError::ExpectedToken {
                     expected: "duration (e.g., 30s, 500ms, 1m)".to_string(),
-                    found: format!("{:?}", token.kind),
-                    span: token.span,
-                }))
-            }
-        }
-    }
-
-    /// Expect a boolean value (true/false as identifiers)
-    fn expect_bool(&mut self) -> Result<bool> {
-        let token = self.peek().clone();
-        match &token.kind {
-            TokenKind::Identifier(s) => {
-                let result = match s.as_str() {
-                    "true" => Ok(true),
-                    "false" => Ok(false),
-                    _ => Err(self.make_error(ParseError::ExpectedToken {
-                        expected: "boolean (true/false)".to_string(),
-                        found: s.clone(),
-                        span: token.span.clone(),
-                    })),
-                };
-                if result.is_ok() {
-                    self.advance();
-                }
-                result
-            }
-            _ => {
-                Err(self.make_error(ParseError::ExpectedToken {
-                    expected: "boolean (true/false)".to_string(),
                     found: format!("{:?}", token.kind),
                     span: token.span,
                 }))

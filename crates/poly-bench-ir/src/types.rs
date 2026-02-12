@@ -319,6 +319,58 @@ pub struct ChartDirectiveIR {
     pub output_file: String,
     /// Suite name this directive belongs to (for scoping results)
     pub suite_name: Option<String>,
+    
+    // Display toggles
+    /// Show ops/sec and time per op stats
+    pub show_stats: bool,
+    /// Show iterations, warmup, timeout config
+    pub show_config: bool,
+    /// Show "Go: 5 wins" in legend
+    pub show_win_counts: bool,
+    /// Show geometric mean speedup
+    pub show_geo_mean: bool,
+    /// Show min/max/p50/p99 distribution
+    pub show_distribution: bool,
+    /// Show bytes/allocs memory stats
+    pub show_memory: bool,
+    /// Show total execution time
+    pub show_total_time: bool,
+    /// Minimal chart mode
+    pub compact: bool,
+    
+    // Filtering
+    /// Only show benchmarks with speedup >= N
+    pub min_speedup: Option<f64>,
+    /// Filter by winner: "go", "ts", or "all"
+    pub filter_winner: Option<String>,
+    /// Only include these benchmark names
+    pub include_benchmarks: Vec<String>,
+    /// Exclude these benchmark names
+    pub exclude_benchmarks: Vec<String>,
+    /// Max benchmarks to show
+    pub limit: Option<u32>,
+    
+    // Sorting
+    /// Sort by: "speedup", "name", "time", "ops"
+    pub sort_by: Option<String>,
+    /// Sort order: "asc" or "desc"
+    pub sort_order: Option<String>,
+    
+    // Layout
+    /// Chart width in pixels
+    pub width: Option<i32>,
+    /// Height of each bar in pixels
+    pub bar_height: Option<i32>,
+    /// Gap between bars in pixels
+    pub bar_gap: Option<i32>,
+    /// Left margin for labels in pixels
+    pub margin_left: Option<i32>,
+    
+    // Data display
+    /// Decimal places for numbers
+    pub precision: Option<u32>,
+    /// Time unit: "auto", "ns", "us", "ms", "s"
+    pub time_unit: Option<String>,
 }
 
 impl ChartDirectiveIR {
@@ -331,6 +383,32 @@ impl ChartDirectiveIR {
             y_label: None,
             output_file,
             suite_name: None,
+            // Display toggles - defaults
+            show_stats: true,
+            show_config: true,
+            show_win_counts: true,
+            show_geo_mean: true,
+            show_distribution: true,  // Show distribution stats by default
+            show_memory: false,
+            show_total_time: false,
+            compact: false,
+            // Filtering
+            min_speedup: None,
+            filter_winner: None,
+            include_benchmarks: Vec::new(),
+            exclude_benchmarks: Vec::new(),
+            limit: None,
+            // Sorting
+            sort_by: None,
+            sort_order: None,
+            // Layout
+            width: None,
+            bar_height: None,
+            bar_gap: None,
+            margin_left: None,
+            // Data display
+            precision: None,
+            time_unit: None,
         }
     }
 

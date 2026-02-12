@@ -235,6 +235,37 @@ fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -
     ir.y_label = directive.y_label.clone();
     ir.suite_name = suite_name.map(|s| s.to_string());
     
+    // Display toggles
+    ir.show_stats = directive.show_stats;
+    ir.show_config = directive.show_config;
+    ir.show_win_counts = directive.show_win_counts;
+    ir.show_geo_mean = directive.show_geo_mean;
+    ir.show_distribution = directive.show_distribution;
+    ir.show_memory = directive.show_memory;
+    ir.show_total_time = directive.show_total_time;
+    ir.compact = directive.compact;
+    
+    // Filtering
+    ir.min_speedup = directive.min_speedup;
+    ir.filter_winner = directive.filter_winner.clone();
+    ir.include_benchmarks = directive.include_benchmarks.clone();
+    ir.exclude_benchmarks = directive.exclude_benchmarks.clone();
+    ir.limit = directive.limit;
+    
+    // Sorting
+    ir.sort_by = directive.sort_by.clone();
+    ir.sort_order = directive.sort_order.clone();
+    
+    // Layout
+    ir.width = directive.width;
+    ir.bar_height = directive.bar_height;
+    ir.bar_gap = directive.bar_gap;
+    ir.margin_left = directive.margin_left;
+    
+    // Data display
+    ir.precision = directive.precision;
+    ir.time_unit = directive.time_unit.clone();
+    
     ir
 }
 

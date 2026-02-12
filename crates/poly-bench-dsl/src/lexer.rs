@@ -143,6 +143,11 @@ impl<'a> Lexer<'a> {
     fn peek(&mut self) -> Option<char> {
         self.chars.peek().map(|(_, ch)| *ch)
     }
+    
+    /// Peek at the character after next
+    fn peek_next(&self) -> Option<char> {
+        self.source[self.current_pos..].chars().nth(1)
+    }
 
     /// Check if the next characters match a string
     fn peek_str(&self, s: &str) -> bool {
@@ -224,21 +229,50 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
+        
+        // Check for decimal point (floating point number)
+        let is_float = if self.peek() == Some('.') {
+            // Peek ahead to make sure it's followed by a digit (not a method call)
+            if let Some(next) = self.peek_next() {
+                if next.is_ascii_digit() {
+                    self.advance(); // consume '.'
+                    // Scan fractional part
+                    while let Some(c) = self.peek() {
+                        if c.is_ascii_digit() || c == '_' {
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        };
 
-        // Check for duration suffix (s, ms, m)
-        let has_suffix = if let Some(c) = self.peek() {
-            if c == 'm' {
-                self.advance();
-                // Check for 'ms' vs just 'm' (minutes)
-                if self.peek() == Some('s') {
+        // Check for duration suffix (s, ms, m) - only for integers
+        let has_suffix = if !is_float {
+            if let Some(c) = self.peek() {
+                if c == 'm' {
+                    self.advance();
+                    // Check for 'ms' vs just 'm' (minutes)
+                    if self.peek() == Some('s') {
+                        self.advance();
+                        true
+                    } else {
+                        true // 'm' for minutes
+                    }
+                } else if c == 's' {
                     self.advance();
                     true
                 } else {
-                    true // 'm' for minutes
+                    false
                 }
-            } else if c == 's' {
-                self.advance();
-                true
             } else {
                 false
             }
@@ -254,8 +288,15 @@ impl<'a> Lexer<'a> {
                 span: Span::new(start, self.current_pos, self.line, self.col),
             })?;
             Ok((TokenKind::Duration(ms), lexeme.to_string()))
+        } else if is_float {
+            // Parse as floating point number
+            let clean = lexeme.replace('_', "");
+            let value = clean.parse::<f64>().map_err(|_| ParseError::InvalidNumber {
+                span: Span::new(start, self.current_pos, self.line, self.col),
+            })?;
+            Ok((TokenKind::Float(value), lexeme.to_string()))
         } else {
-            // Parse as regular number
+            // Parse as regular integer
             let clean = lexeme.replace('_', "");
             let value = clean.parse::<u64>().map_err(|_| ParseError::InvalidNumber {
                 span: Span::new(start, self.current_pos, self.line, self.col),
