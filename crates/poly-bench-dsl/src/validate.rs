@@ -96,6 +96,10 @@ pub fn validate_file(file: &File) -> ValidationResult {
     // Check for duplicate use statements
     validate_use_stds_duplicates(&file.use_stds, &mut result);
 
+    // Validate charting imports
+    let charting_result = validate_charting_imports(file);
+    result.merge(charting_result);
+
     // Validate each suite
     for suite in &file.suites {
         let suite_result = validate_suite(suite);
@@ -145,6 +149,29 @@ pub fn validate_suite(suite: &Suite) -> ValidationResult {
     // Validate: spawnAnvil only allowed in globalSetup
     validate_spawn_anvil_restrictions(suite, &mut result);
 
+    result
+}
+
+/// Validate charting directives: check that std::charting is imported when charting is used
+pub fn validate_charting_imports(file: &File) -> ValidationResult {
+    let mut result = ValidationResult::new();
+    
+    // Check if charting module is imported
+    let has_charting_import = file.use_stds.iter().any(|u| u.module == "charting");
+    
+    // Check each suite for chart directives
+    for suite in &file.suites {
+        if !suite.chart_directives.is_empty() && !has_charting_import {
+            result.add_error(
+                ValidationError::new(format!(
+                    "Suite '{}' uses charting functions but 'use std::charting' is missing",
+                    suite.name
+                ))
+                .with_location(format!("suite.{}", suite.name)),
+            );
+        }
+    }
+    
     result
 }
 
