@@ -24,24 +24,37 @@ pub fn get_completions(doc: &ParsedDocument, position: Position) -> Vec<Completi
     // Determine context and provide relevant completions
     let context = determine_context(doc, position, trimmed);
 
+    // Detect stdlib imports for stdlib-aware completions
+    let stdlib_imports = detect_stdlib_imports(doc);
+
     match context {
         Context::TopLevel => {
             items.extend(top_level_completions());
         }
         Context::InsideSuite => {
             items.extend(suite_body_completions());
+            // Add stdlib variables in suite context
+            items.extend(stdlib_variable_completions(&stdlib_imports));
         }
         Context::InsideSetup => {
             items.extend(setup_section_completions());
+            // Add stdlib variables in setup context
+            items.extend(stdlib_variable_completions(&stdlib_imports));
         }
         Context::InsideBench => {
             items.extend(bench_body_completions());
+            // Add stdlib variables in bench context (commonly used here)
+            items.extend(stdlib_variable_completions(&stdlib_imports));
         }
         Context::InsideFixture => {
             items.extend(fixture_body_completions());
+            // Add stdlib variables in fixture context
+            items.extend(stdlib_variable_completions(&stdlib_imports));
         }
         Context::AfterColon(keyword) => {
             items.extend(after_colon_completions(&keyword));
+            // Also add stdlib variables after colon (for expressions)
+            items.extend(stdlib_variable_completions(&stdlib_imports));
         }
         Context::UseStdModule => {
             items.extend(stdlib_module_completions());
@@ -52,9 +65,98 @@ pub fn get_completions(doc: &ParsedDocument, position: Position) -> Vec<Completi
         Context::Unknown => {
             // Provide all keywords as fallback
             items.extend(all_keyword_completions());
+            // Also add stdlib variables
+            items.extend(stdlib_variable_completions(&stdlib_imports));
         }
     }
 
+    items
+}
+
+/// Detect which stdlib modules are imported in the document
+fn detect_stdlib_imports(doc: &ParsedDocument) -> Vec<String> {
+    let mut imports = Vec::new();
+    
+    // First, try to get imports from the AST if available
+    if let Some(ref ast) = doc.ast {
+        for use_std in &ast.use_stds {
+            if !imports.contains(&use_std.module) {
+                imports.push(use_std.module.clone());
+            }
+        }
+    }
+    
+    // Also scan the source text for use statements (in case AST is incomplete)
+    // This ensures completions work even when the file has parse errors
+    for line in doc.source.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("use std::") {
+            // Extract module name: "use std::anvil" -> "anvil"
+            if let Some(module) = trimmed.strip_prefix("use std::") {
+                let module = module.trim();
+                if !module.is_empty() && !imports.contains(&module.to_string()) {
+                    imports.push(module.to_string());
+                }
+            }
+        }
+    }
+    
+    imports
+}
+
+/// Get completions for stdlib variables based on imported modules
+fn stdlib_variable_completions(imports: &[String]) -> Vec<CompletionItem> {
+    let mut items = Vec::new();
+    
+    for module in imports {
+        match module.as_str() {
+            "anvil" => {
+                items.push(CompletionItem {
+                    label: "ANVIL_RPC_URL".to_string(),
+                    kind: Some(CompletionItemKind::CONSTANT),
+                    detail: Some("Anvil RPC endpoint URL (from std::anvil)".to_string()),
+                    documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                        tower_lsp::lsp_types::MarkupContent {
+                            kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                            value: "**ANVIL_RPC_URL**\n\nThe RPC endpoint URL for the spawned Anvil node.\n\n**Example:**\n```go\nresp, err := http.Post(ANVIL_RPC_URL, \"application/json\", body)\n```\n\n```typescript\nfetch(ANVIL_RPC_URL, { method: 'POST', body })\n```".to_string(),
+                        }
+                    )),
+                    insert_text: Some("ANVIL_RPC_URL".to_string()),
+                    ..Default::default()
+                });
+            }
+            "constants" => {
+                items.push(CompletionItem {
+                    label: "std_PI".to_string(),
+                    kind: Some(CompletionItemKind::CONSTANT),
+                    detail: Some("Pi constant (≈ 3.14159) from std::constants".to_string()),
+                    documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                        tower_lsp::lsp_types::MarkupContent {
+                            kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                            value: "**std_PI**\n\nThe mathematical constant Pi (π ≈ 3.141592653589793).\n\n**Example:**\n```go\narea := std_PI * radius * radius\n```".to_string(),
+                        }
+                    )),
+                    insert_text: Some("std_PI".to_string()),
+                    ..Default::default()
+                });
+                items.push(CompletionItem {
+                    label: "std_E".to_string(),
+                    kind: Some(CompletionItemKind::CONSTANT),
+                    detail: Some("Euler's number (≈ 2.71828) from std::constants".to_string()),
+                    documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                        tower_lsp::lsp_types::MarkupContent {
+                            kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                            value: "**std_E**\n\nEuler's number (e ≈ 2.718281828459045).\n\n**Example:**\n```go\nresult := math.Pow(std_E, x)\n```".to_string(),
+                        }
+                    )),
+                    insert_text: Some("std_E".to_string()),
+                    ..Default::default()
+                });
+            }
+            _ => {}
+        }
+    }
+    
     items
 }
 
@@ -201,6 +303,13 @@ fn global_setup_completions() -> Vec<CompletionItem> {
 
 fn suite_body_completions() -> Vec<CompletionItem> {
     vec![
+        // Setup blocks
+        completion_item(
+            "setup",
+            "setup ${1|go,ts|} {\n    $0\n}",
+            "Language-specific setup block",
+            CompletionItemKind::KEYWORD,
+        ),
         completion_item(
             "setup go",
             "setup go {\n    import ($1)\n    init {\n        $0\n    }\n}",
@@ -213,6 +322,8 @@ fn suite_body_completions() -> Vec<CompletionItem> {
             "TypeScript setup block",
             CompletionItemKind::KEYWORD,
         ),
+        
+        // Fixture and bench
         completion_item(
             "fixture",
             "fixture ${1:name} {\n    $0\n}",
@@ -225,6 +336,22 @@ fn suite_body_completions() -> Vec<CompletionItem> {
             "Benchmark definition",
             CompletionItemKind::KEYWORD,
         ),
+        
+        // Suite-level lifecycle hooks
+        completion_item(
+            "before",
+            "before ${1|go,ts|}: {\n    $0\n}",
+            "Suite-level before hook",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "after",
+            "after ${1|go,ts|}: {\n    $0\n}",
+            "Suite-level after hook",
+            CompletionItemKind::KEYWORD,
+        ),
+        
+        // Configuration properties
         completion_item(
             "description",
             "description: \"$0\"",
@@ -273,15 +400,22 @@ fn suite_body_completions() -> Vec<CompletionItem> {
             "Baseline language for comparison",
             CompletionItemKind::PROPERTY,
         ),
+        completion_item(
+            "tags",
+            "tags: [\"$0\"]",
+            "Suite-level tags",
+            CompletionItemKind::PROPERTY,
+        ),
     ]
 }
 
 fn setup_section_completions() -> Vec<CompletionItem> {
     vec![
+        // Core setup section keywords
         completion_item(
             "import",
             "import {\n    $0\n}",
-            "Import statements",
+            "Import statements block",
             CompletionItemKind::KEYWORD,
         ),
         completion_item(
@@ -293,30 +427,59 @@ fn setup_section_completions() -> Vec<CompletionItem> {
         completion_item(
             "init",
             "init {\n    $0\n}",
-            "Initialization code",
+            "Initialization code block",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "async",
+            "async $0",
+            "Async modifier (for TypeScript init)",
             CompletionItemKind::KEYWORD,
         ),
         completion_item(
             "async init",
             "async init {\n    $0\n}",
-            "Async initialization (TypeScript)",
+            "Async initialization (TypeScript only)",
             CompletionItemKind::KEYWORD,
         ),
         completion_item(
             "helpers",
             "helpers {\n    $0\n}",
-            "Helper functions",
+            "Helper function definitions",
             CompletionItemKind::KEYWORD,
+        ),
+        
+        // Go-specific import syntax
+        completion_item(
+            "import (Go)",
+            "import (\n    \"$0\"\n)",
+            "Go import with parentheses",
+            CompletionItemKind::SNIPPET,
+        ),
+        
+        // TypeScript-specific import syntax
+        completion_item(
+            "import (TypeScript)",
+            "import {\n    $1 from \"$0\"\n}",
+            "TypeScript import block",
+            CompletionItemKind::SNIPPET,
         ),
     ]
 }
 
 fn bench_body_completions() -> Vec<CompletionItem> {
     vec![
+        // Language implementations
         completion_item(
             "go:",
             "go: $0",
             "Go implementation",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "go: (block)",
+            "go: {\n    $0\n}",
+            "Go implementation (multi-line)",
             CompletionItemKind::PROPERTY,
         ),
         completion_item(
@@ -325,6 +488,14 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "TypeScript implementation",
             CompletionItemKind::PROPERTY,
         ),
+        completion_item(
+            "ts: (block)",
+            "ts: {\n    $0\n}",
+            "TypeScript implementation (multi-line)",
+            CompletionItemKind::PROPERTY,
+        ),
+        
+        // Configuration properties
         completion_item(
             "description",
             "description: \"$0\"",
@@ -352,8 +523,22 @@ fn bench_body_completions() -> Vec<CompletionItem> {
         completion_item(
             "tags",
             "tags: [\"$0\"]",
-            "Benchmark tags",
+            "Benchmark tags for filtering",
             CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "validate",
+            "validate: $0",
+            "Validation expression",
+            CompletionItemKind::PROPERTY,
+        ),
+        
+        // Skip conditions
+        completion_item(
+            "skip",
+            "skip ${1|go,ts|}: $0",
+            "Skip condition for a language",
+            CompletionItemKind::KEYWORD,
         ),
         completion_item(
             "skip go",
@@ -367,10 +552,24 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "Skip condition for TypeScript",
             CompletionItemKind::KEYWORD,
         ),
+        
+        // Lifecycle hooks - Go
+        completion_item(
+            "before",
+            "before ${1|go,ts|}: {\n    $0\n}",
+            "Before hook (runs once before benchmark)",
+            CompletionItemKind::KEYWORD,
+        ),
         completion_item(
             "before go",
             "before go: {\n    $0\n}",
             "Before hook for Go",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "after",
+            "after ${1|go,ts|}: {\n    $0\n}",
+            "After hook (runs once after benchmark)",
             CompletionItemKind::KEYWORD,
         ),
         completion_item(
@@ -380,9 +579,35 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             CompletionItemKind::KEYWORD,
         ),
         completion_item(
+            "each",
+            "each ${1|go,ts|}: {\n    $0\n}",
+            "Each hook (runs per iteration)",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
             "each go",
             "each go: {\n    $0\n}",
             "Per-iteration hook for Go",
+            CompletionItemKind::KEYWORD,
+        ),
+        
+        // Lifecycle hooks - TypeScript
+        completion_item(
+            "before ts",
+            "before ts: {\n    $0\n}",
+            "Before hook for TypeScript",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "after ts",
+            "after ts: {\n    $0\n}",
+            "After hook for TypeScript",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "each ts",
+            "each ts: {\n    $0\n}",
+            "Per-iteration hook for TypeScript",
             CompletionItemKind::KEYWORD,
         ),
     ]
@@ -444,10 +669,220 @@ fn after_colon_completions(keyword: &str) -> Vec<CompletionItem> {
 
 fn all_keyword_completions() -> Vec<CompletionItem> {
     let mut items = Vec::new();
+    
+    // Top-level keywords
     items.extend(top_level_completions());
+    
+    // Suite body completions
     items.extend(suite_body_completions());
+    
+    // Setup section completions
     items.extend(setup_section_completions());
+    
+    // Bench body completions
     items.extend(bench_body_completions());
+    
+    // Fixture body completions
+    items.extend(fixture_body_completions());
+    
+    // Global setup completions
+    items.extend(global_setup_completions());
+    
+    // Add individual keyword completions that might be missing from context-specific functions
+    items.extend(vec![
+        // Core structure keywords
+        completion_item(
+            "suite",
+            "suite ${1:name} {\n    $0\n}",
+            "Top-level benchmark suite",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "bench",
+            "bench ${1:name} {\n    go: $2\n    ts: $0\n}",
+            "Benchmark definition",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "setup",
+            "setup ${1|go,ts|} {\n    $0\n}",
+            "Language-specific setup block",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "fixture",
+            "fixture ${1:name} {\n    $0\n}",
+            "Shared test data fixture",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "globalSetup",
+            "globalSetup {\n    $0\n}",
+            "Global setup block (runs once before all benchmarks)",
+            CompletionItemKind::KEYWORD,
+        ),
+        
+        // Setup section keywords
+        completion_item(
+            "init",
+            "init {\n    $0\n}",
+            "Initialization code block",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "declare",
+            "declare {\n    $0\n}",
+            "Package-level declarations",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "helpers",
+            "helpers {\n    $0\n}",
+            "Helper function definitions",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "import",
+            "import {\n    $0\n}",
+            "Import statements",
+            CompletionItemKind::KEYWORD,
+        ),
+        
+        // Language keywords
+        completion_item(
+            "go",
+            "go: $0",
+            "Go language implementation",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "ts",
+            "ts: $0",
+            "TypeScript language implementation",
+            CompletionItemKind::KEYWORD,
+        ),
+        
+        // Configuration properties
+        completion_item(
+            "description",
+            "description: \"$0\"",
+            "Description text",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "iterations",
+            "iterations: ${1:1000}",
+            "Number of benchmark iterations",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "warmup",
+            "warmup: ${1:100}",
+            "Number of warmup iterations",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "timeout",
+            "timeout: ${1:30s}",
+            "Benchmark timeout duration",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "tags",
+            "tags: [\"$0\"]",
+            "Benchmark tags for filtering",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "skip",
+            "skip ${1|go,ts|}: $0",
+            "Skip condition for a language",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "validate",
+            "validate: $0",
+            "Validation expression",
+            CompletionItemKind::PROPERTY,
+        ),
+        
+        // Lifecycle hooks
+        completion_item(
+            "before",
+            "before ${1|go,ts|}: {\n    $0\n}",
+            "Before hook (runs once before benchmark)",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "after",
+            "after ${1|go,ts|}: {\n    $0\n}",
+            "After hook (runs once after benchmark)",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "each",
+            "each ${1|go,ts|}: {\n    $0\n}",
+            "Each hook (runs per iteration)",
+            CompletionItemKind::KEYWORD,
+        ),
+        
+        // Suite configuration
+        completion_item(
+            "requires",
+            "requires: [\"${1:go}\", \"${2:ts}\"]",
+            "Required language implementations",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "order",
+            "order: ${1|sequential,parallel,random|}",
+            "Benchmark execution order",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "compare",
+            "compare: ${1|true,false|}",
+            "Enable cross-language comparison",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "baseline",
+            "baseline: \"${1|go,ts|}\"",
+            "Baseline language for comparison",
+            CompletionItemKind::PROPERTY,
+        ),
+        
+        // Fixture properties
+        completion_item(
+            "shape",
+            "shape: \"$0\"",
+            "Type shape annotation for fixture",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "hex",
+            "hex: \"$0\"",
+            "Hex-encoded data literal",
+            CompletionItemKind::PROPERTY,
+        ),
+        
+        // Async keyword
+        completion_item(
+            "async",
+            "async $0",
+            "Async modifier (for TypeScript)",
+            CompletionItemKind::KEYWORD,
+        ),
+        
+        // Use statement
+        completion_item(
+            "use",
+            "use std::${1|constants,anvil|}",
+            "Import from standard library",
+            CompletionItemKind::KEYWORD,
+        ),
+    ]);
+    
     items
 }
 

@@ -3,7 +3,7 @@ use std::constants
 
 suite example {
     description: "Example benchmark to get you started"
-    iterations: 50
+    iterations: 5000
     warmup: 100
     compare: true
     baseline: "go"

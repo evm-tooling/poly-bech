@@ -18,9 +18,9 @@ suite evmBench {
             "net/http"
         )
 
-        init {
-            
-        }
+      init {
+        
+      }
         helpers {
             func callAnvil(method string, params []interface{}) error {
                 payload := map[string]interface{}{
