@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="400" viewBox="0 0 880 400">
+<defs>
+<linearGradient id="goGrad" x1="0" y1="0" x2="1" y2="0">
+<stop offset="0%" stop-color="#00ADD8" stop-opacity="0.95"/>
+<stop offset="100%" stop-color="#0891B2" stop-opacity="0.85"/>
+</linearGradient>
+<linearGradient id="tsGrad" x1="0" y1="0" x2="1" y2="0">
+<stop offset="0%" stop-color="#3178C6" stop-opacity="0.95"/>
+<stop offset="100%" stop-color="#1D4ED8" stop-opacity="0.85"/>
+</linearGradient>
+</defs>
+<rect width="880" height="400" fill="#FAFAFA" rx="12"/>
+<rect x=".5" y=".5" width="879" height="399" fill="none" stroke="#E5E7EB" rx="12"/>
+<text x="440" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="700" fill="#111827">Performance Comparison</text>
+<text x="440" y="48" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#6B7280">Go vs TypeScript</text>
+<g transform="translate(200,60)">
+  <line x1="0" y1="260" x2="580" y2="260" stroke="#E5E7EB"/>
+  <text x="-10" y="264" text-anchor="end" font-family="sans-serif" font-size="10" fill="#9CA3AF">0ns</text>
+  <line x1="0" y1="208" x2="580" y2="208" stroke="#E5E7EB"/>
+  <text x="-10" y="212" text-anchor="end" font-family="sans-serif" font-size="10" fill="#9CA3AF">440ns</text>
+  <line x1="0" y1="156" x2="580" y2="156" stroke="#E5E7EB"/>
+  <text x="-10" y="160" text-anchor="end" font-family="sans-serif" font-size="10" fill="#9CA3AF">879ns</text>
+  <line x1="0" y1="104" x2="580" y2="104" stroke="#E5E7EB"/>
+  <text x="-10" y="108" text-anchor="end" font-family="sans-serif" font-size="10" fill="#9CA3AF">1.32µs</text>
+  <line x1="0" y1="52" x2="580" y2="52" stroke="#E5E7EB"/>
+  <text x="-10" y="56" text-anchor="end" font-family="sans-serif" font-size="10" fill="#9CA3AF">1.76µs</text>
+  <line x1="0" y1="0" x2="580" y2="0" stroke="#E5E7EB"/>
+  <text x="-10" y="4" text-anchor="end" font-family="sans-serif" font-size="10" fill="#9CA3AF">2.20µs</text>
+  <text x="0" y="276" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#9CA3AF">sha256Bench</text>
+  <line x1="0" y1="260" x2="580" y2="260" stroke="#4B5563" stroke-width="1"/>
+  <line x1="0" y1="0" x2="0" y2="260" stroke="#4B5563" stroke-width="1"/>
+  <path d="M0,251" fill="none" stroke="#00ADD8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="0" cy="251" r="4" fill="#00ADD8" stroke="white" stroke-width="2"/>
+  <path d="M0,0" fill="none" stroke="#3178C6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="0" cy="0" r="4" fill="#3178C6" stroke="white" stroke-width="2"/>
+  <text x="290" y="295" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#4B5563">Benchmark</text>
+  <text x="-40" y="130" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#4B5563" transform="rotate(-90,-40,130)">Time (ns)</text>
+</g>
+<g transform="translate(340,376)">
+  <rect x="0" width="14" height="14" fill="#00ADD8" rx="3"/>
+<text x="18" y="11" font-family="sans-serif" font-size="11" fill="#4B5563">Go</text>
+  <rect x="100" width="14" height="14" fill="#3178C6" rx="3"/>
+<text x="118" y="11" font-family="sans-serif" font-size="11" fill="#4B5563">TypeScript</text>
+</g>
+</svg>
