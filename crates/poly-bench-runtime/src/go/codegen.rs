@@ -1,8 +1,8 @@
 //! Go plugin source code generation
 
-use crate::dsl::Lang;
-use crate::ir::{BenchmarkIR, SuiteIR, BenchmarkSpec, FixtureIR};
-use crate::stdlib;
+use poly_bench_dsl::Lang;
+use poly_bench_ir::{BenchmarkIR, SuiteIR, BenchmarkSpec, FixtureIR};
+use poly_bench_stdlib as stdlib;
 use miette::{Result, miette};
 
 /// Generate Go plugin source code from IR
@@ -241,8 +241,8 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::parse;
-    use crate::ir::lower;
+    use poly_bench_dsl::parse;
+    use poly_bench_ir::lower;
 
     #[test]
     fn test_generate_simple() {

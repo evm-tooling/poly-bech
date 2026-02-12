@@ -1,11 +1,11 @@
 //! Go runtime executor
 
-use crate::dsl::Lang;
-use crate::ir::{BenchmarkSpec, SuiteIR};
-use crate::runtime::go::{codegen, compiler::GoCompiler};
-use crate::runtime::measurement::Measurement;
-use crate::runtime::traits::Runtime;
-use crate::stdlib;
+use poly_bench_dsl::Lang;
+use poly_bench_ir::{BenchmarkSpec, SuiteIR};
+use crate::go::{codegen, compiler::GoCompiler};
+use crate::measurement::Measurement;
+use crate::traits::Runtime;
+use poly_bench_stdlib as stdlib;
 use async_trait::async_trait;
 use libloading::{Library, Symbol};
 use miette::{Result, miette};

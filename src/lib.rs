@@ -12,7 +12,7 @@ pub use poly_bench_dsl as dsl;
 pub use poly_bench_stdlib as stdlib;
 pub use poly_bench_ir as ir;
 pub use poly_bench_project as project;
+pub use poly_bench_runtime as runtime;
 
-pub mod runtime;
 pub mod executor;
 pub mod reporter;

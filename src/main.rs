@@ -8,7 +8,7 @@ use poly_bench_dsl as dsl;
 use poly_bench_stdlib as stdlib;
 use poly_bench_ir as ir;
 use poly_bench_project as project;
-mod runtime;
+use poly_bench_runtime as runtime;
 mod executor;
 mod reporter;
 
