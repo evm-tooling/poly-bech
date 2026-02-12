@@ -843,40 +843,70 @@ fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
         ),
         // std::charting symbols
         "drawBarChart" => Some(
-            "**charting.drawBarChart** `(title?, description?, xlabel?, ylabel?, output?)`\n\n\
+            "**charting.drawBarChart** `(...params)`\n\n\
             Generate a bar chart comparing benchmark execution times.\n\n\
-            **Parameters:**\n\
-            - `title` - Chart title\n\
-            - `description` - Chart description\n\
-            - `xlabel` - X-axis label\n\
-            - `ylabel` - Y-axis label\n\
+            **Basic Parameters:**\n\
+            - `title` - Chart title (string)\n\
+            - `description` - Chart description (string)\n\
+            - `xlabel`, `ylabel` - Axis labels (string)\n\
             - `output` - Output filename (default: bar-chart.svg)\n\n\
+            **Display Toggles:** (default: true unless noted)\n\
+            - `showStats` - Show ops/sec and time per op\n\
+            - `showConfig` - Show iterations/warmup/timeout\n\
+            - `showWinCounts` - Show win counts in legend\n\
+            - `showGeoMean` - Show geometric mean speedup\n\
+            - `showDistribution` - Show p50/p99 (default: false)\n\
+            - `compact` - Minimal chart mode (default: false)\n\n\
+            **Filtering:**\n\
+            - `minSpeedup` - Only show benchmarks with speedup >= N (number)\n\
+            - `filterWinner` - Filter by winner: \"go\", \"ts\", \"all\"\n\
+            - `includeBenchmarks`, `excludeBenchmarks` - Filter by name (array)\n\
+            - `limit` - Max benchmarks to show (number)\n\n\
+            **Sorting:**\n\
+            - `sortBy` - \"speedup\", \"name\", \"time\", \"ops\"\n\
+            - `sortOrder` - \"asc\" or \"desc\"\n\n\
+            **Layout:**\n\
+            - `width`, `barHeight`, `barGap`, `marginLeft` (pixels)\n\n\
+            **Data Display:**\n\
+            - `precision` - Decimal places (default: 2)\n\
+            - `timeUnit` - \"auto\", \"ns\", \"us\", \"ms\", \"s\"\n\n\
             **Example:**\n\
-            ```\nafter {\n    charting.drawBarChart(\n        title: \"Performance Comparison\",\n        xlabel: \"Benchmark\",\n        ylabel: \"Time (ns)\"\n    )\n}\n```\n\n\
+            ```\nafter {\n    charting.drawBarChart(\n        title: \"Performance Comparison\",\n        sortBy: \"speedup\",\n        sortOrder: \"desc\",\n        limit: 10\n    )\n}\n```\n\n\
             *From `std::charting`*"
         ),
         "drawPieChart" => Some(
-            "**charting.drawPieChart** `(title?, description?, output?)`\n\n\
+            "**charting.drawPieChart** `(...params)`\n\n\
             Generate a pie chart showing time distribution across benchmarks.\n\n\
-            **Parameters:**\n\
-            - `title` - Chart title\n\
-            - `description` - Chart description\n\
+            **Basic Parameters:**\n\
+            - `title` - Chart title (string)\n\
+            - `description` - Chart description (string)\n\
             - `output` - Output filename (default: pie-chart.svg)\n\n\
+            **Display Toggles:**\n\
+            - `showStats` - Show timing info in legend (default: true)\n\
+            - `showTotalTime` - Show total time (default: false)\n\
+            - `compact` - Minimal mode (default: false)\n\n\
+            **Filtering:** Same as drawBarChart\n\n\
             **Example:**\n\
-            ```\nafter {\n    charting.drawPieChart(\n        title: \"Time Distribution\"\n    )\n}\n```\n\n\
+            ```\nafter {\n    charting.drawPieChart(\n        title: \"Time Distribution\",\n        showStats: true\n    )\n}\n```\n\n\
             *From `std::charting`*"
         ),
         "drawLineChart" => Some(
-            "**charting.drawLineChart** `(title?, description?, xlabel?, ylabel?, output?)`\n\n\
+            "**charting.drawLineChart** `(...params)`\n\n\
             Generate a line chart for trend visualization.\n\n\
-            **Parameters:**\n\
-            - `title` - Chart title\n\
-            - `description` - Chart description\n\
-            - `xlabel` - X-axis label\n\
-            - `ylabel` - Y-axis label\n\
+            **Basic Parameters:**\n\
+            - `title` - Chart title (string)\n\
+            - `description` - Chart description (string)\n\
+            - `xlabel`, `ylabel` - Axis labels (string)\n\
             - `output` - Output filename (default: line-chart.svg)\n\n\
+            **Display Toggles:**\n\
+            - `showStats` - Show timing tooltips on hover (default: true)\n\
+            - `compact` - Minimal mode (default: false)\n\n\
+            **Filtering & Sorting:** Same as drawBarChart\n\n\
+            **Data Display:**\n\
+            - `precision` - Decimal places (default: 2)\n\
+            - `timeUnit` - \"auto\", \"ns\", \"us\", \"ms\", \"s\"\n\n\
             **Example:**\n\
-            ```\nafter {\n    charting.drawLineChart(\n        title: \"Performance Trends\"\n    )\n}\n```\n\n\
+            ```\nafter {\n    charting.drawLineChart(\n        title: \"Performance Trends\",\n        sortBy: \"name\"\n    )\n}\n```\n\n\
             *From `std::charting`*"
         ),
         // Namespaced std::constants symbols (new preferred style)
