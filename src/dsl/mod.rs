@@ -11,7 +11,7 @@ mod formatter;
 pub mod validate;
 
 pub use ast::*;
-pub use formatter::format_file;
+pub use formatter::{format_file, format_file_with_source};
 pub use error::ParseError;
 pub use validate::{validate_suite, validate_file, ValidationResult, ValidationError, ValidationWarning};
 

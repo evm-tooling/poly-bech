@@ -73,6 +73,7 @@ pub enum TokenKind {
     RBracket,    // ]
     Colon,       // :
     DoubleColon, // ::
+    Dot,         // .
     Comma,       // ,
     At,          // @
 

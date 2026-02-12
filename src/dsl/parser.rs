@@ -38,14 +38,21 @@ impl Parser {
             use_stds.push(self.parse_use_std()?);
         }
 
-        // Parse optional globalSetup block
+        // Parse optional file-level globalSetup block (legacy, still supported)
         if self.check(TokenKind::GlobalSetup) {
             global_setup = Some(self.parse_global_setup()?);
         }
 
         // Parse suites
         while !self.is_at_end() {
-            let suite = self.parse_suite()?;
+            let mut suite = self.parse_suite()?;
+            
+            // If suite doesn't have its own globalSetup, inherit from file-level
+            // (for backward compatibility)
+            if suite.global_setup.is_none() && global_setup.is_some() {
+                suite.global_setup = global_setup.clone();
+            }
+            
             suites.push(suite);
         }
 
@@ -100,8 +107,9 @@ impl Parser {
     /// Syntax:
     /// ```text
     /// globalSetup {
-    ///     spawnAnvil()
-    ///     spawnAnvil(fork: "https://...")
+    ///     anvil.spawnAnvil()                    # namespaced (preferred)
+    ///     anvil.spawnAnvil(fork: "https://...")
+    ///     spawnAnvil()                          # legacy (still supported)
     /// }
     /// ```
     fn parse_global_setup(&mut self) -> Result<GlobalSetup> {
@@ -114,29 +122,30 @@ impl Parser {
         
         // Parse statements inside globalSetup
         while !self.check(TokenKind::RBrace) && !self.is_at_end() {
-            // Look for spawnAnvil() calls
-            if self.check_identifier("spawnAnvil") {
-                let anvil_span = self.advance().span.clone();
+            // Look for namespaced calls: anvil.spawnAnvil()
+            if self.check_identifier("anvil") {
+                let _module_span = self.advance().span.clone();
                 
-                self.expect(TokenKind::LParen)?;
-                
-                let mut fork_url = None;
-                
-                // Check for optional arguments: fork: "url"
-                if !self.check(TokenKind::RParen) {
-                    // Expect "fork" identifier
-                    if self.check_identifier("fork") {
-                        self.advance(); // consume "fork"
-                        self.expect(TokenKind::Colon)?;
-                        
-                        // Expect string value
-                        fork_url = Some(self.expect_string()?);
+                // Expect "."
+                if self.check(TokenKind::Dot) {
+                    self.advance(); // consume "."
+                    
+                    // Expect "spawnAnvil"
+                    if self.check_identifier("spawnAnvil") {
+                        let anvil_span = self.advance().span.clone();
+                        anvil_config = Some(self.parse_spawn_anvil_args(anvil_span)?);
+                    } else {
+                        // Unknown member
+                        self.advance();
                     }
+                } else {
+                    // Just "anvil" without dot - skip
                 }
-                
-                self.expect(TokenKind::RParen)?;
-                
-                anvil_config = Some(AnvilSetupConfig::new(fork_url, anvil_span));
+            }
+            // Legacy: Look for direct spawnAnvil() calls (backward compatibility)
+            else if self.check_identifier("spawnAnvil") {
+                let anvil_span = self.advance().span.clone();
+                anvil_config = Some(self.parse_spawn_anvil_args(anvil_span)?);
             } else {
                 // Skip unknown statements for now
                 self.advance();
@@ -153,6 +162,29 @@ impl Parser {
         );
         
         Ok(GlobalSetup::new(anvil_config, full_span))
+    }
+    
+    /// Parse the arguments for spawnAnvil()
+    fn parse_spawn_anvil_args(&mut self, anvil_span: Span) -> Result<AnvilSetupConfig> {
+        self.expect(TokenKind::LParen)?;
+        
+        let mut fork_url = None;
+        
+        // Check for optional arguments: fork: "url"
+        if !self.check(TokenKind::RParen) {
+            // Expect "fork" identifier
+            if self.check_identifier("fork") {
+                self.advance(); // consume "fork"
+                self.expect(TokenKind::Colon)?;
+                
+                // Expect string value
+                fork_url = Some(self.expect_string()?);
+            }
+        }
+        
+        self.expect(TokenKind::RParen)?;
+        
+        Ok(AnvilSetupConfig::new(fork_url, anvil_span))
     }
 
     /// Parse a suite definition
@@ -237,6 +269,11 @@ impl Parser {
                 let lang = self.expect_lang_from_string()?;
                 suite.baseline = Some(lang);
             }
+            // globalSetup can now be inside suite
+            TokenKind::GlobalSetup => {
+                let global_setup = self.parse_global_setup()?;
+                suite.global_setup = Some(global_setup);
+            }
             TokenKind::Setup => {
                 let (lang, setup) = self.parse_structured_setup()?;
                 suite.setups.insert(lang, setup);
@@ -264,7 +301,7 @@ impl Parser {
             }
             _ => {
                 return Err(self.make_error(ParseError::ExpectedToken {
-                    expected: "suite item (setup, fixture, bench, or property)".to_string(),
+                    expected: "suite item (globalSetup, setup, fixture, bench, or property)".to_string(),
                     found: format!("{:?}", token.kind),
                     span: token.span.clone(),
                 }));
@@ -1436,6 +1473,56 @@ suite test {
     }
 
     #[test]
+    fn test_parse_namespaced_global_setup() {
+        let source = r#"
+use std::anvil
+
+globalSetup {
+    anvil.spawnAnvil()
+}
+
+suite test {
+    bench foo {
+        go: test()
+    }
+}
+"#;
+        let result = parse(source, "test.bench");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+        
+        let file = result.unwrap();
+        assert!(file.global_setup.is_some());
+        let gs = file.global_setup.unwrap();
+        assert!(gs.anvil_config.is_some());
+    }
+
+    #[test]
+    fn test_parse_namespaced_global_setup_with_fork() {
+        let source = r#"
+use std::anvil
+
+globalSetup {
+    anvil.spawnAnvil(fork: "https://eth.example.com")
+}
+
+suite test {
+    bench foo {
+        go: test()
+    }
+}
+"#;
+        let result = parse(source, "test.bench");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+        
+        let file = result.unwrap();
+        assert!(file.global_setup.is_some());
+        let gs = file.global_setup.unwrap();
+        assert!(gs.anvil_config.is_some());
+        let anvil = gs.anvil_config.unwrap();
+        assert_eq!(anvil.fork_url, Some("https://eth.example.com".to_string()));
+    }
+
+    #[test]
     fn test_parse_use_std_with_multiple_suites() {
         let source = r#"
 use std::constants
@@ -1458,5 +1545,126 @@ suite test2 {
         let file = result.unwrap();
         assert_eq!(file.use_stds.len(), 1);
         assert_eq!(file.suites.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_global_setup_inside_suite() {
+        let source = r#"
+use std::anvil
+
+suite evmTest {
+    description: "EVM benchmarks"
+    
+    globalSetup {
+        anvil.spawnAnvil()
+    }
+    
+    bench rpcCall {
+        go: callRpc()
+    }
+}
+"#;
+        let result = parse(source, "test.bench");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+        
+        let file = result.unwrap();
+        assert_eq!(file.suites.len(), 1);
+        
+        let suite = &file.suites[0];
+        assert_eq!(suite.name, "evmTest");
+        assert!(suite.global_setup.is_some());
+        
+        let gs = suite.global_setup.as_ref().unwrap();
+        assert!(gs.anvil_config.is_some());
+    }
+
+    #[test]
+    fn test_parse_global_setup_inside_suite_with_fork() {
+        let source = r#"
+use std::anvil
+
+suite evmTest {
+    globalSetup {
+        anvil.spawnAnvil(fork: "https://mainnet.infura.io")
+    }
+    
+    bench rpcCall {
+        go: callRpc()
+    }
+}
+"#;
+        let result = parse(source, "test.bench");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+        
+        let file = result.unwrap();
+        let suite = &file.suites[0];
+        let gs = suite.global_setup.as_ref().unwrap();
+        let anvil = gs.anvil_config.as_ref().unwrap();
+        assert_eq!(anvil.fork_url, Some("https://mainnet.infura.io".to_string()));
+    }
+
+    #[test]
+    fn test_parse_file_level_global_setup_inherited() {
+        // File-level globalSetup should be inherited by suites without their own
+        let source = r#"
+use std::anvil
+
+globalSetup {
+    anvil.spawnAnvil()
+}
+
+suite test1 {
+    bench foo {
+        go: test()
+    }
+}
+
+suite test2 {
+    bench bar {
+        go: test()
+    }
+}
+"#;
+        let result = parse(source, "test.bench");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+        
+        let file = result.unwrap();
+        assert_eq!(file.suites.len(), 2);
+        
+        // Both suites should have inherited the file-level globalSetup
+        assert!(file.suites[0].global_setup.is_some());
+        assert!(file.suites[1].global_setup.is_some());
+    }
+
+    #[test]
+    fn test_parse_suite_level_global_setup_overrides() {
+        // Suite-level globalSetup should override file-level
+        let source = r#"
+use std::anvil
+
+globalSetup {
+    anvil.spawnAnvil()
+}
+
+suite test1 {
+    globalSetup {
+        anvil.spawnAnvil(fork: "https://custom.rpc")
+    }
+    
+    bench foo {
+        go: test()
+    }
+}
+"#;
+        let result = parse(source, "test.bench");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+        
+        let file = result.unwrap();
+        let suite = &file.suites[0];
+        let gs = suite.global_setup.as_ref().unwrap();
+        let anvil = gs.anvil_config.as_ref().unwrap();
+        
+        // Suite's own globalSetup should be used (with fork)
+        assert_eq!(anvil.fork_url, Some("https://custom.rpc".to_string()));
     }
 }

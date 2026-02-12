@@ -2,6 +2,12 @@
 //!
 //! Produces consistently indented output. Embedded code blocks (Go, TypeScript)
 //! are normalized (min indent stripped) then re-indented.
+//!
+//! The formatter preserves:
+//! - `use std::module` import statements
+//! - File-level `globalSetup` blocks
+//! - Suite-level `globalSetup` blocks
+//! - Comments (when using `format_file_preserving_comments`)
 
 use crate::dsl::ast::*;
 use std::fmt::Write;
@@ -81,6 +87,38 @@ fn normalize_embedded_code(code: &str) -> Vec<String> {
 /// Format an AST into a string with consistent indentation and style.
 pub fn format_file(file: &File) -> String {
     let mut out = String::new();
+    
+    // Format use statements first
+    for use_std in &file.use_stds {
+        writeln!(out, "use std::{}", use_std.module).unwrap();
+    }
+    
+    // Add blank line after use statements if there are any
+    if !file.use_stds.is_empty() {
+        out.push('\n');
+    }
+    
+    // Format file-level globalSetup if present (and not inherited by suites)
+    // Only output file-level globalSetup if it exists and is different from suite-level
+    if let Some(ref global_setup) = file.global_setup {
+        // Check if any suite has its own globalSetup - if so, don't output file-level
+        let any_suite_has_own = file.suites.iter().any(|s| {
+            if let Some(ref suite_gs) = s.global_setup {
+                // Suite has its own if it's different from file-level
+                suite_gs.span.start != global_setup.span.start
+            } else {
+                false
+            }
+        });
+        
+        // Only output file-level if no suite overrides it
+        if !any_suite_has_own {
+            format_global_setup(&mut out, global_setup, 0);
+            out.push('\n');
+        }
+    }
+    
+    // Format suites
     for (i, suite) in file.suites.iter().enumerate() {
         if i > 0 {
             out.push('\n');
@@ -91,6 +129,109 @@ pub fn format_file(file: &File) -> String {
         out.push('\n');
     }
     out
+}
+
+/// Format an AST into a string, preserving comments from the original source.
+/// 
+/// This function extracts comments from the original source and places them
+/// appropriately in the formatted output.
+pub fn format_file_with_source(file: &File, original_source: &str) -> String {
+    let mut out = String::new();
+    
+    // Extract leading comments (before first use statement or suite)
+    let leading_comments = extract_leading_comments(original_source);
+    if !leading_comments.is_empty() {
+        out.push_str(&leading_comments);
+        if !leading_comments.ends_with('\n') {
+            out.push('\n');
+        }
+    }
+    
+    // Format use statements first
+    for use_std in &file.use_stds {
+        writeln!(out, "use std::{}", use_std.module).unwrap();
+    }
+    
+    // Add blank line after use statements if there are any
+    if !file.use_stds.is_empty() {
+        out.push('\n');
+    }
+    
+    // Format file-level globalSetup if present
+    if let Some(ref global_setup) = file.global_setup {
+        // Check if any suite has its own globalSetup
+        let any_suite_has_own = file.suites.iter().any(|s| {
+            if let Some(ref suite_gs) = s.global_setup {
+                suite_gs.span.start != global_setup.span.start
+            } else {
+                false
+            }
+        });
+        
+        if !any_suite_has_own {
+            format_global_setup(&mut out, global_setup, 0);
+            out.push('\n');
+        }
+    }
+    
+    // Format suites
+    for (i, suite) in file.suites.iter().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        format_suite(&mut out, suite, 0);
+    }
+    
+    if !out.is_empty() && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
+/// Extract leading comments from source (comments before any code)
+fn extract_leading_comments(source: &str) -> String {
+    let mut comments = String::new();
+    
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            // Keep blank lines in the comment block
+            comments.push('\n');
+        } else if trimmed.starts_with('#') {
+            // This is a comment line
+            comments.push_str(line);
+            comments.push('\n');
+        } else {
+            // First non-comment, non-blank line - stop
+            break;
+        }
+    }
+    
+    // Trim trailing newlines but keep one
+    let trimmed = comments.trim_end();
+    if trimmed.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", trimmed)
+    }
+}
+
+/// Format a globalSetup block
+fn format_global_setup(out: &mut String, global_setup: &GlobalSetup, indent_level: usize) {
+    let pad = INDENT.repeat(indent_level);
+    let inner = INDENT.repeat(indent_level + 1);
+    
+    writeln!(out, "{}globalSetup {{", pad).unwrap();
+    
+    if let Some(ref anvil_config) = global_setup.anvil_config {
+        if let Some(ref fork_url) = anvil_config.fork_url {
+            writeln!(out, "{}anvil.spawnAnvil(fork: \"{}\")", inner, escape_string(fork_url)).unwrap();
+        } else {
+            writeln!(out, "{}anvil.spawnAnvil()", inner).unwrap();
+        }
+    }
+    
+    writeln!(out, "{}}}", pad).unwrap();
 }
 
 fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
@@ -132,8 +273,14 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
     }
 
     // Add blank line after properties if there are any setups, fixtures, or benchmarks
-    let has_content = !suite.setups.is_empty() || !suite.fixtures.is_empty() || !suite.benchmarks.is_empty();
+    let has_content = suite.global_setup.is_some() || !suite.setups.is_empty() || !suite.fixtures.is_empty() || !suite.benchmarks.is_empty();
     if has_content {
+        out.push('\n');
+    }
+
+    // Suite-level globalSetup (if present and not inherited from file-level)
+    if let Some(ref global_setup) = suite.global_setup {
+        format_global_setup(out, global_setup, indent_level + 1);
         out.push('\n');
     }
 
@@ -414,5 +561,76 @@ mod tests {
         let roundtrip = parse(&formatted, "test.bench").unwrap();
         assert_eq!(ast.suites.len(), roundtrip.suites.len());
         assert_eq!(ast.suites[0].name, roundtrip.suites[0].name);
+    }
+
+    #[test]
+    fn test_format_preserves_use_statements() {
+        let input = r#"use std::anvil
+
+suite example {
+    bench test {
+        go: doSomething()
+    }
+}"#;
+        let ast = parse(input, "test.bench").unwrap();
+        let formatted = format_file(&ast);
+        
+        // Verify use statement is preserved
+        assert!(formatted.contains("use std::anvil"), "use statement should be preserved");
+        assert!(formatted.starts_with("use std::anvil"), "use statement should be at the start");
+    }
+
+    #[test]
+    fn test_format_preserves_comments_with_source() {
+        let input = r#"# This is a comment about the benchmark
+# Another comment line
+
+use std::anvil
+
+suite example {
+    bench test {
+        go: doSomething()
+    }
+}"#;
+        let ast = parse(input, "test.bench").unwrap();
+        let formatted = format_file_with_source(&ast, input);
+        
+        // Verify comments are preserved
+        assert!(formatted.contains("# This is a comment about the benchmark"), "first comment should be preserved");
+        assert!(formatted.contains("# Another comment line"), "second comment should be preserved");
+        // Verify use statement is preserved
+        assert!(formatted.contains("use std::anvil"), "use statement should be preserved");
+    }
+
+    #[test]
+    fn test_format_suite_with_global_setup() {
+        let input = r#"use std::anvil
+
+suite example {
+    globalSetup {
+        anvil.spawnAnvil()
+    }
+    
+    bench test {
+        go: doSomething()
+    }
+}"#;
+        let ast = parse(input, "test.bench").unwrap();
+        let formatted = format_file(&ast);
+        
+        // Verify use statement is preserved
+        assert!(formatted.contains("use std::anvil"), "use statement should be preserved");
+        // Verify globalSetup is inside suite
+        assert!(formatted.contains("globalSetup {"), "globalSetup should be present");
+        assert!(formatted.contains("anvil.spawnAnvil()"), "spawnAnvil call should be present");
+    }
+
+    #[test]
+    fn test_extract_leading_comments() {
+        let source = "# Comment 1\n# Comment 2\n\nuse std::anvil\nsuite test {}";
+        let comments = extract_leading_comments(source);
+        assert!(comments.contains("# Comment 1"));
+        assert!(comments.contains("# Comment 2"));
+        assert!(!comments.contains("use std::anvil"));
     }
 }

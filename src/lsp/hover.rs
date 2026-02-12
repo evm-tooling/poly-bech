@@ -621,11 +621,13 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
         // Global setup
         "globalSetup" => Some(
             "**globalSetup** `{ ... }`\n\n\
-            Global setup block for file-level initialization.\n\n\
-            Currently supports:\n\
-            - `spawnAnvil()` - Spawn a local Anvil Ethereum node\n\
-            - `spawnAnvil(fork: \"url\")` - Spawn with chain forking\n\n\
-            ```\nglobalSetup {\n    spawnAnvil()\n}\n```"
+            Global setup block for suite-level initialization.\n\n\
+            Can be placed inside a suite or at file level (for all suites).\n\n\
+            **Available functions (with std::anvil):**\n\
+            - `anvil.spawnAnvil()` - Spawn a local Anvil Ethereum node\n\
+            - `anvil.spawnAnvil(fork: \"url\")` - Spawn with chain forking\n\n\
+            **Example (inside suite):**\n\
+            ```\nsuite evmBench {\n    globalSetup {\n        anvil.spawnAnvil()\n    }\n    \n    bench test {\n        go: callRpc(anvil.ANVIL_RPC_URL)\n    }\n}\n```"
         ),
         "spawnAnvil" => Some(
             "**spawnAnvil** `()` or `(fork: \"url\")`\n\n\
@@ -685,27 +687,57 @@ fn stdlib_module_docs(module: &str) -> Option<&'static str> {
 }
 
 /// Get documentation for stdlib symbols (constants, functions, etc.)
+/// Supports both legacy (ANVIL_RPC_URL, std_PI) and namespaced (anvil.ANVIL_RPC_URL, constants.PI)
 fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
     match symbol {
-        // std::anvil symbols
+        // Namespaced std::anvil symbols (new preferred style)
+        "spawnAnvil" => Some(
+            "**anvil.spawnAnvil** `()` or `(fork: \"url\")`\n\n\
+            Spawn a local Anvil Ethereum node.\n\n\
+            Anvil is started before benchmarks and stopped after.\n\
+            The RPC URL is available as `anvil.ANVIL_RPC_URL` in benchmark code.\n\n\
+            **Options:**\n\
+            - `fork: \"url\"` - Fork from an existing chain\n\n\
+            **Example:**\n\
+            ```\nglobalSetup {\n    anvil.spawnAnvil()\n}\n```"
+        ),
+        // Legacy std::anvil symbols (still supported)
         "ANVIL_RPC_URL" => Some(
             "```go\nvar ANVIL_RPC_URL string\n```\n\n\
-            **Anvil RPC endpoint URL.**\n\n\
-            When `use std::anvil` is specified, poly-bench automatically starts an Anvil\n\
-            node and sets this variable to its RPC URL (e.g., `http://127.0.0.1:8545`).\n\n\
+            **anvil.ANVIL_RPC_URL** - Anvil RPC endpoint URL.\n\n\
+            When `use std::anvil` is specified with `anvil.spawnAnvil()`,\n\
+            poly-bench automatically starts an Anvil node and sets this variable\n\
+            to its RPC URL (e.g., `http://127.0.0.1:8545`).\n\n\
             **Example:**\n\
-            ```go\nhttp.Post(ANVIL_RPC_URL, \"application/json\", body)\n```\n\n\
+            ```go\nhttp.Post(anvil.ANVIL_RPC_URL, \"application/json\", body)\n```\n\n\
             *From `std::anvil`*"
         ),
-        // std::constants symbols
+        // Namespaced std::constants symbols (new preferred style)
+        "PI" => Some(
+            "```go\nconst constants.PI float64 = 3.14159265358979323846\n```\n\n\
+            **constants.PI** - Pi (π), the ratio of a circle's circumference to its diameter.\n\n\
+            **Example:**\n\
+            ```go\narea := constants.PI * radius * radius\n```\n\n\
+            *From `std::constants`*"
+        ),
+        "E" => Some(
+            "```go\nconst constants.E float64 = 2.71828182845904523536\n```\n\n\
+            **constants.E** - Euler's number (e), the base of natural logarithms.\n\n\
+            **Example:**\n\
+            ```go\nresult := math.Pow(constants.E, x)\n```\n\n\
+            *From `std::constants`*"
+        ),
+        // Legacy std::constants symbols (still supported)
         "std_PI" => Some(
             "```go\nconst std_PI float64 = 3.14159265358979323846\n```\n\n\
             **Pi (π)** - The ratio of a circle's circumference to its diameter.\n\n\
+            *Legacy: consider using `constants.PI` instead.*\n\n\
             *From `std::constants`*"
         ),
         "std_E" => Some(
             "```go\nconst std_E float64 = 2.71828182845904523536\n```\n\n\
             **Euler's number (e)** - The base of natural logarithms.\n\n\
+            *Legacy: consider using `constants.E` instead.*\n\n\
             *From `std::constants`*"
         ),
         _ => None,

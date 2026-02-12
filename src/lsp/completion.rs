@@ -3,6 +3,7 @@
 //! This module provides context-aware code completions
 //! for poly-bench files.
 
+use poly_bench::stdlib::{self, StdlibSymbolKind};
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, InsertTextFormat, Position,
 };
@@ -33,40 +34,44 @@ pub fn get_completions(doc: &ParsedDocument, position: Position) -> Vec<Completi
         }
         Context::InsideSuite => {
             items.extend(suite_body_completions());
-            // Add stdlib variables in suite context
-            items.extend(stdlib_variable_completions(&stdlib_imports));
+            // Add stdlib module names for autocomplete (e.g., typing "anvil" to get "anvil.")
+            items.extend(stdlib_module_name_completions(&stdlib_imports));
         }
         Context::InsideSetup => {
             items.extend(setup_section_completions());
-            // Add stdlib variables in setup context
-            items.extend(stdlib_variable_completions(&stdlib_imports));
+            // Add stdlib module names for autocomplete
+            items.extend(stdlib_module_name_completions(&stdlib_imports));
         }
         Context::InsideBench => {
             items.extend(bench_body_completions());
-            // Add stdlib variables in bench context (commonly used here)
-            items.extend(stdlib_variable_completions(&stdlib_imports));
+            // Add stdlib module names for autocomplete
+            items.extend(stdlib_module_name_completions(&stdlib_imports));
         }
         Context::InsideFixture => {
             items.extend(fixture_body_completions());
-            // Add stdlib variables in fixture context
-            items.extend(stdlib_variable_completions(&stdlib_imports));
+            // Add stdlib module names for autocomplete
+            items.extend(stdlib_module_name_completions(&stdlib_imports));
         }
         Context::AfterColon(keyword) => {
             items.extend(after_colon_completions(&keyword));
-            // Also add stdlib variables after colon (for expressions)
-            items.extend(stdlib_variable_completions(&stdlib_imports));
+            // Also add stdlib module names for expressions
+            items.extend(stdlib_module_name_completions(&stdlib_imports));
         }
         Context::UseStdModule => {
             items.extend(stdlib_module_completions());
         }
         Context::InsideGlobalSetup => {
-            items.extend(global_setup_completions());
+            items.extend(global_setup_completions(&stdlib_imports));
+        }
+        Context::ModuleDotAccess(module_name) => {
+            // User typed "anvil." - show all symbols from that module
+            items.extend(stdlib_module_member_completions(&module_name, &stdlib_imports));
         }
         Context::Unknown => {
             // Provide all keywords as fallback
             items.extend(all_keyword_completions());
-            // Also add stdlib variables
-            items.extend(stdlib_variable_completions(&stdlib_imports));
+            // Also add stdlib module names
+            items.extend(stdlib_module_name_completions(&stdlib_imports));
         }
     }
 
@@ -104,57 +109,81 @@ fn detect_stdlib_imports(doc: &ParsedDocument) -> Vec<String> {
     imports
 }
 
-/// Get completions for stdlib variables based on imported modules
-fn stdlib_variable_completions(imports: &[String]) -> Vec<CompletionItem> {
+/// Get completions for stdlib module names (e.g., "anvil", "constants")
+/// These show up when the user might want to access module members
+fn stdlib_module_name_completions(imports: &[String]) -> Vec<CompletionItem> {
     let mut items = Vec::new();
     
     for module in imports {
-        match module.as_str() {
-            "anvil" => {
-                items.push(CompletionItem {
-                    label: "ANVIL_RPC_URL".to_string(),
-                    kind: Some(CompletionItemKind::CONSTANT),
-                    detail: Some("Anvil RPC endpoint URL (from std::anvil)".to_string()),
-                    documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-                        tower_lsp::lsp_types::MarkupContent {
-                            kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-                            value: "**ANVIL_RPC_URL**\n\nThe RPC endpoint URL for the spawned Anvil node.\n\n**Example:**\n```go\nresp, err := http.Post(ANVIL_RPC_URL, \"application/json\", body)\n```\n\n```typescript\nfetch(ANVIL_RPC_URL, { method: 'POST', body })\n```".to_string(),
-                        }
-                    )),
-                    insert_text: Some("ANVIL_RPC_URL".to_string()),
-                    ..Default::default()
-                });
-            }
-            "constants" => {
-                items.push(CompletionItem {
-                    label: "std_PI".to_string(),
-                    kind: Some(CompletionItemKind::CONSTANT),
-                    detail: Some("Pi constant (≈ 3.14159) from std::constants".to_string()),
-                    documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-                        tower_lsp::lsp_types::MarkupContent {
-                            kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-                            value: "**std_PI**\n\nThe mathematical constant Pi (π ≈ 3.141592653589793).\n\n**Example:**\n```go\narea := std_PI * radius * radius\n```".to_string(),
-                        }
-                    )),
-                    insert_text: Some("std_PI".to_string()),
-                    ..Default::default()
-                });
-                items.push(CompletionItem {
-                    label: "std_E".to_string(),
-                    kind: Some(CompletionItemKind::CONSTANT),
-                    detail: Some("Euler's number (≈ 2.71828) from std::constants".to_string()),
-                    documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-                        tower_lsp::lsp_types::MarkupContent {
-                            kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-                            value: "**std_E**\n\nEuler's number (e ≈ 2.718281828459045).\n\n**Example:**\n```go\nresult := math.Pow(std_E, x)\n```".to_string(),
-                        }
-                    )),
-                    insert_text: Some("std_E".to_string()),
-                    ..Default::default()
-                });
-            }
-            _ => {}
+        let symbols = stdlib::get_module_symbols(module);
+        if !symbols.is_empty() {
+            // Add the module name as a completion - when selected, user can type "."
+            items.push(CompletionItem {
+                label: module.clone(),
+                kind: Some(CompletionItemKind::MODULE),
+                detail: Some(format!("std::{} module", module)),
+                documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                    tower_lsp::lsp_types::MarkupContent {
+                        kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                        value: format!(
+                            "**{}** module\n\nType `{}.` to see available members:\n{}",
+                            module,
+                            module,
+                            symbols.iter()
+                                .map(|s| format!("- `{}.{}` - {}", module, s.name, s.description))
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        ),
+                    }
+                )),
+                insert_text: Some(module.clone()),
+                ..Default::default()
+            });
         }
+    }
+    
+    items
+}
+
+/// Get completions for members of a specific stdlib module (after typing "module.")
+fn stdlib_module_member_completions(module_name: &str, imports: &[String]) -> Vec<CompletionItem> {
+    let mut items = Vec::new();
+    
+    // Only provide completions if the module is imported
+    if !imports.contains(&module_name.to_string()) {
+        return items;
+    }
+    
+    let symbols = stdlib::get_module_symbols(module_name);
+    
+    for symbol in symbols {
+        let kind = match symbol.kind {
+            StdlibSymbolKind::Function => CompletionItemKind::FUNCTION,
+            StdlibSymbolKind::Constant => CompletionItemKind::CONSTANT,
+            StdlibSymbolKind::Variable => CompletionItemKind::VARIABLE,
+        };
+        
+        let insert_text = if symbol.kind == StdlibSymbolKind::Function {
+            // For functions, add parentheses
+            format!("{}()", symbol.name)
+        } else {
+            symbol.name.to_string()
+        };
+        
+        items.push(CompletionItem {
+            label: symbol.name.to_string(),
+            kind: Some(kind),
+            detail: Some(format!("{}.{} - {}", module_name, symbol.name, symbol.description)),
+            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                tower_lsp::lsp_types::MarkupContent {
+                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                    value: symbol.documentation.to_string(),
+                }
+            )),
+            insert_text: Some(insert_text),
+            insert_text_format: Some(InsertTextFormat::PLAIN_TEXT),
+            ..Default::default()
+        });
     }
     
     items
@@ -171,6 +200,9 @@ enum Context {
     AfterColon(String),
     /// After typing "use std::" - suggests stdlib modules
     UseStdModule,
+    /// After typing a module name followed by "." (e.g., "anvil.")
+    /// Contains the module name
+    ModuleDotAccess(String),
     Unknown,
 }
 
@@ -180,6 +212,16 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
     let trimmed = line_text.trim();
     if trimmed == "use std::" || trimmed.starts_with("use std::") {
         return Context::UseStdModule;
+    }
+    
+    // Check for module dot access pattern (e.g., "anvil.", "constants.")
+    // This enables autocomplete for imported module members
+    if let Some(module_name) = extract_module_before_dot(trimmed) {
+        // Verify this module is imported
+        let stdlib_imports = detect_stdlib_imports(doc);
+        if stdlib_imports.contains(&module_name) {
+            return Context::ModuleDotAccess(module_name);
+        }
     }
     
     // Check if we're after a colon
@@ -236,17 +278,41 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
             }
         }
         2 => {
-            // Inside a nested block (setup, bench, fixture)
+            // Inside a nested block (setup, bench, fixture, or globalSetup inside suite)
             match last_keyword.as_deref() {
                 Some("setup") => Context::InsideSetup,
                 Some("bench") => Context::InsideBench,
                 Some("fixture") => Context::InsideFixture,
+                Some("globalSetup") => Context::InsideGlobalSetup,
                 Some("go") | Some("ts") => Context::InsideSetup,
                 _ => Context::InsideSuite,
             }
         }
         _ => Context::Unknown,
     }
+}
+
+/// Extract module name if the line ends with "module." pattern
+fn extract_module_before_dot(line_text: &str) -> Option<String> {
+    // Check if line ends with a dot
+    if !line_text.ends_with('.') {
+        return None;
+    }
+    
+    // Get the word before the dot
+    let without_dot = line_text.trim_end_matches('.');
+    let words: Vec<&str> = without_dot.split_whitespace().collect();
+    
+    if let Some(last_word) = words.last() {
+        // Also handle cases like "anvil.spawn" where we want "anvil"
+        // but in this case we're checking for "anvil." so just return the word
+        let word = last_word.trim();
+        if !word.is_empty() && word.chars().all(|c| c.is_alphanumeric() || c == '_') {
+            return Some(word.to_string());
+        }
+    }
+    
+    None
 }
 
 fn extract_keyword_before_colon(line_text: &str) -> Option<String> {
@@ -284,25 +350,47 @@ fn top_level_completions() -> Vec<CompletionItem> {
     ]
 }
 
-fn global_setup_completions() -> Vec<CompletionItem> {
-    vec![
-        completion_item(
-            "spawnAnvil",
-            "spawnAnvil()",
+fn global_setup_completions(stdlib_imports: &[String]) -> Vec<CompletionItem> {
+    let mut items = Vec::new();
+    
+    // If anvil module is imported, suggest anvil.spawnAnvil()
+    if stdlib_imports.contains(&"anvil".to_string()) {
+        items.push(completion_item(
+            "anvil.spawnAnvil",
+            "anvil.spawnAnvil()",
             "Spawn a local Anvil Ethereum node",
             CompletionItemKind::FUNCTION,
-        ),
-        completion_item(
-            "spawnAnvil with fork",
-            "spawnAnvil(fork: \"${1:https://eth-mainnet.g.alchemy.com/v2/...}\")",
+        ));
+        items.push(completion_item(
+            "anvil.spawnAnvil with fork",
+            "anvil.spawnAnvil(fork: \"${1:https://eth-mainnet.g.alchemy.com/v2/...}\")",
             "Spawn Anvil with chain forking",
             CompletionItemKind::FUNCTION,
-        ),
-    ]
+        ));
+    }
+    
+    // Also add module names for dot access
+    items.extend(stdlib_module_name_completions(stdlib_imports));
+    
+    items
 }
 
 fn suite_body_completions() -> Vec<CompletionItem> {
     vec![
+        // globalSetup block (inside suite)
+        completion_item(
+            "globalSetup",
+            "globalSetup {\n    $0\n}",
+            "Global setup block for suite-level initialization",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "globalSetup with anvil",
+            "globalSetup {\n    anvil.spawnAnvil()$0\n}",
+            "Global setup with Anvil node",
+            CompletionItemKind::KEYWORD,
+        ),
+        
         // Setup blocks
         completion_item(
             "setup",
@@ -685,8 +773,8 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
     // Fixture body completions
     items.extend(fixture_body_completions());
     
-    // Global setup completions
-    items.extend(global_setup_completions());
+    // Global setup completions (passing empty imports since this is generic fallback)
+    items.extend(global_setup_completions(&[]));
     
     // Add individual keyword completions that might be missing from context-specific functions
     items.extend(vec![

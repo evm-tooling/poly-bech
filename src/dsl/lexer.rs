@@ -90,12 +90,13 @@ impl<'a> Lexer<'a> {
                     (TokenKind::At, "@".to_string())
                 }
             }
+            '.' => (TokenKind::Dot, ".".to_string()),
             '"' => self.scan_string()?,
             '\'' => self.scan_single_quote_string()?,
             c if c.is_ascii_digit() => self.scan_number_or_duration(pos)?,
             c if c.is_ascii_alphabetic() || c == '_' => self.scan_identifier(pos)?,
             // Code characters - treat as identifiers for inline code
-            '.' | '+' | '-' | '*' | '/' | '%' | '=' | '<' | '>' | '!' | '&' | '|' | 
+            '+' | '-' | '*' | '/' | '%' | '=' | '<' | '>' | '!' | '&' | '|' | 
             ';' | '?' | '^' | '~' | '`' => {
                 // Scan the rest as a code expression
                 self.scan_code_expr(pos, ch)?
@@ -528,5 +529,29 @@ mod tests {
         assert!(matches!(tokens[2].kind, TokenKind::Identifier(ref s) if s == "bar"));
         assert_eq!(tokens[3].kind, TokenKind::DoubleColon);
         assert!(matches!(tokens[4].kind, TokenKind::Identifier(ref s) if s == "baz"));
+    }
+
+    #[test]
+    fn test_dot_token() {
+        let source = "anvil.spawnAnvil";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        
+        assert!(matches!(tokens[0].kind, TokenKind::Identifier(ref s) if s == "anvil"));
+        assert_eq!(tokens[1].kind, TokenKind::Dot);
+        assert!(matches!(tokens[2].kind, TokenKind::Identifier(ref s) if s == "spawnAnvil"));
+    }
+
+    #[test]
+    fn test_namespaced_function_call() {
+        let source = "anvil.spawnAnvil()";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        
+        assert!(matches!(tokens[0].kind, TokenKind::Identifier(ref s) if s == "anvil"));
+        assert_eq!(tokens[1].kind, TokenKind::Dot);
+        assert!(matches!(tokens[2].kind, TokenKind::Identifier(ref s) if s == "spawnAnvil"));
+        assert_eq!(tokens[3].kind, TokenKind::LParen);
+        assert_eq!(tokens[4].kind, TokenKind::RParen);
     }
 }
