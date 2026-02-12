@@ -7,6 +7,12 @@
       "include": "#comment"
     },
     {
+      "include": "#use-statement"
+    },
+    {
+      "include": "#global-setup-block"
+    },
+    {
       "include": "#suite-block"
     }
   ],
@@ -14,6 +20,106 @@
     "comment": {
       "name": "comment.line.bench",
       "match": "#.*$"
+    },
+    "use-statement": {
+      "name": "meta.import.bench",
+      "match": "\\b(use)\\s+(std)(::)([a-zA-Z_][a-zA-Z0-9_]*)",
+      "captures": {
+        "1": {
+          "name": "keyword.control.import.bench"
+        },
+        "2": {
+          "name": "entity.name.namespace.bench"
+        },
+        "3": {
+          "name": "punctuation.accessor.bench"
+        },
+        "4": {
+          "name": "entity.name.module.bench"
+        }
+      }
+    },
+    "global-setup-block": {
+      "name": "meta.block.globalsetup.bench",
+      "begin": "\\b(globalSetup)\\s*\\{",
+      "end": "\\}",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "include": "#stdlib-function-call"
+        }
+      ]
+    },
+    "stdlib-function-call": {
+      "patterns": [
+        {
+          "name": "meta.function-call.stdlib.bench",
+          "match": "\\b(anvil|constants)\\s*\\.\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "entity.name.module.bench"
+            },
+            "2": {
+              "name": "entity.name.function.bench"
+            }
+          }
+        },
+        {
+          "name": "meta.function-call.bench",
+          "match": "\\b(spawnAnvil)\\s*\\(",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.bench"
+            }
+          }
+        }
+      ]
+    },
+    "suite-global-setup-block": {
+      "name": "meta.block.globalsetup.suite.bench",
+      "begin": "\\b(globalSetup)\\s*\\{",
+      "end": "\\}",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "include": "#stdlib-function-call"
+        },
+        {
+          "name": "string.quoted.double.bench",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.bench",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
     },
     "suite-block": {
       "begin": "\\b(suite)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
@@ -37,6 +143,9 @@
         },
         {
           "include": "#suite-attributes"
+        },
+        {
+          "include": "#suite-global-setup-block"
         },
         {
           "include": "#setup-go-block"
