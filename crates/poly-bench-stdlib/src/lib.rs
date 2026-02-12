@@ -15,10 +15,11 @@ use poly_bench_dsl::Lang;
 use std::collections::HashSet;
 
 pub mod anvil;
+pub mod charting;
 pub mod constants;
 
 /// Valid stdlib module names
-pub const VALID_MODULES: &[&str] = &["anvil", "constants"];
+pub const VALID_MODULES: &[&str] = &["anvil", "charting", "constants"];
 
 /// Check if a module name is a valid stdlib module
 pub fn is_valid_module(name: &str) -> bool {
@@ -53,6 +54,7 @@ pub enum StdlibSymbolKind {
 pub fn get_module_symbols(module: &str) -> &'static [StdlibSymbol] {
     match module {
         "anvil" => &ANVIL_SYMBOLS,
+        "charting" => charting::CHARTING_SYMBOLS,
         "constants" => &CONSTANTS_SYMBOLS,
         _ => &[],
     }
