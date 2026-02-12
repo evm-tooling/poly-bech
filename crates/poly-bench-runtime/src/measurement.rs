@@ -19,20 +19,28 @@ pub struct Measurement {
     pub max_nanos: Option<u64>,
     /// Median (p50) time per operation (nanoseconds)
     pub p50_nanos: Option<u64>,
+    /// 75th percentile time per operation (nanoseconds)
+    pub p75_nanos: Option<u64>,
     /// 99th percentile time per operation (nanoseconds)
     pub p99_nanos: Option<u64>,
+    /// 99.5th percentile time per operation (nanoseconds)
+    pub p995_nanos: Option<u64>,
+    /// Relative margin of error (percentage)
+    pub rme_percent: Option<f64>,
+    /// Number of samples collected
+    pub samples: Option<u64>,
     /// Bytes allocated per operation (Go-specific)
     pub bytes_per_op: Option<u64>,
     /// Allocations per operation (Go-specific)
     pub allocs_per_op: Option<u64>,
-    /// Raw sample times in nanoseconds
-    pub samples: Option<Vec<u64>>,
+    /// Raw sample times in nanoseconds (for detailed analysis)
+    pub raw_samples: Option<Vec<u64>>,
 }
 
 impl Measurement {
     /// Create a new measurement from raw timing data
-    pub fn from_samples(samples: Vec<u64>, iterations: u64) -> Self {
-        let total_nanos: u64 = samples.iter().sum();
+    pub fn from_samples(raw_samples: Vec<u64>, iterations: u64) -> Self {
+        let total_nanos: u64 = raw_samples.iter().sum();
         let nanos_per_op = total_nanos as f64 / iterations as f64;
         let ops_per_sec = if nanos_per_op > 0.0 {
             1_000_000_000.0 / nanos_per_op
@@ -40,13 +48,31 @@ impl Measurement {
             0.0
         };
 
-        let mut sorted = samples.clone();
+        let mut sorted = raw_samples.clone();
         sorted.sort_unstable();
 
         let min_nanos = sorted.first().copied();
         let max_nanos = sorted.last().copied();
         let p50_nanos = percentile(&sorted, 50);
+        let p75_nanos = percentile(&sorted, 75);
         let p99_nanos = percentile(&sorted, 99);
+        let p995_nanos = percentile_f(&sorted, 99.5);
+        
+        // Calculate relative margin of error (RME)
+        let rme_percent = if sorted.len() > 1 {
+            let mean = nanos_per_op;
+            let variance: f64 = sorted.iter()
+                .map(|&x| (x as f64 - mean).powi(2))
+                .sum::<f64>() / (sorted.len() - 1) as f64;
+            let std_dev = variance.sqrt();
+            let std_error = std_dev / (sorted.len() as f64).sqrt();
+            // 95% confidence interval uses t-value ~1.96 for large samples
+            Some((std_error / mean) * 100.0 * 1.96)
+        } else {
+            None
+        };
+        
+        let sample_count = raw_samples.len() as u64;
 
         Self {
             iterations,
@@ -56,10 +82,14 @@ impl Measurement {
             min_nanos,
             max_nanos,
             p50_nanos,
+            p75_nanos,
             p99_nanos,
+            p995_nanos,
+            rme_percent,
+            samples: Some(sample_count),
             bytes_per_op: None,
             allocs_per_op: None,
-            samples: Some(samples),
+            raw_samples: Some(raw_samples),
         }
     }
 
@@ -80,10 +110,14 @@ impl Measurement {
             min_nanos: None,
             max_nanos: None,
             p50_nanos: None,
+            p75_nanos: None,
             p99_nanos: None,
+            p995_nanos: None,
+            rme_percent: None,
+            samples: Some(iterations),
             bytes_per_op: None,
             allocs_per_op: None,
-            samples: None,
+            raw_samples: None,
         }
     }
 
@@ -121,12 +155,21 @@ impl Measurement {
     }
 }
 
-/// Calculate percentile from sorted samples
+/// Calculate percentile from sorted samples (integer percentile)
 fn percentile(sorted: &[u64], p: usize) -> Option<u64> {
     if sorted.is_empty() {
         return None;
     }
     let idx = (sorted.len() * p / 100).min(sorted.len() - 1);
+    Some(sorted[idx])
+}
+
+/// Calculate fractional percentile from sorted samples
+fn percentile_f(sorted: &[u64], p: f64) -> Option<u64> {
+    if sorted.is_empty() {
+        return None;
+    }
+    let idx = ((sorted.len() as f64 * p / 100.0) as usize).min(sorted.len() - 1);
     Some(sorted[idx])
 }
 

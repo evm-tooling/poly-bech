@@ -7,6 +7,9 @@ pub mod pie_chart;
 pub mod line_chart;
 
 use poly_bench_dsl::Lang;
+use poly_bench_ir::ChartDirectiveIR;
+use poly_bench_runtime::measurement::ComparisonWinner;
+use poly_bench_executor::comparison::BenchmarkResult;
 
 // Default chart dimensions
 pub const DEFAULT_WIDTH: i32 = 880;
@@ -130,4 +133,239 @@ pub fn svg_legend(width: i32, y: i32, items: &[(&str, &str)]) -> String {
 
     svg.push_str("</g>\n");
     svg
+}
+
+// ============================================================================
+// Filter and Sort Utilities
+// ============================================================================
+
+/// Filter benchmarks based on directive parameters
+pub fn filter_benchmarks<'a>(
+    benchmarks: Vec<&'a BenchmarkResult>,
+    directive: &ChartDirectiveIR,
+) -> Vec<&'a BenchmarkResult> {
+    let mut filtered: Vec<&BenchmarkResult> = benchmarks
+        .into_iter()
+        .filter(|bench| {
+            // Apply include filter
+            if !directive.include_benchmarks.is_empty() {
+                if !directive.include_benchmarks.iter().any(|name: &String| {
+                    bench.name.to_lowercase().contains(&name.to_lowercase())
+                }) {
+                    return false;
+                }
+            }
+            
+            // Apply exclude filter
+            if directive.exclude_benchmarks.iter().any(|name: &String| {
+                bench.name.to_lowercase().contains(&name.to_lowercase())
+            }) {
+                return false;
+            }
+            
+            // Apply min_speedup filter
+            if let Some(min_speedup) = directive.min_speedup {
+                if let Some(ref comparison) = bench.comparison {
+                    let speedup = if comparison.first.nanos_per_op > 0.0 {
+                        comparison.second.nanos_per_op / comparison.first.nanos_per_op
+                    } else {
+                        1.0
+                    };
+                    if speedup.abs() < min_speedup {
+                        return false;
+                    }
+                }
+            }
+            
+            // Apply filter_winner filter
+            if let Some(ref winner_filter) = directive.filter_winner {
+                if let Some(ref comparison) = bench.comparison {
+                    let wf = winner_filter.to_lowercase();
+                    match wf.as_str() {
+                        "go" => {
+                            if comparison.winner != ComparisonWinner::First {
+                                return false;
+                            }
+                        }
+                        "ts" | "typescript" => {
+                            if comparison.winner != ComparisonWinner::Second {
+                                return false;
+                            }
+                        }
+                        "all" | _ => {} // No filter
+                    }
+                }
+            }
+            
+            true
+        })
+        .collect();
+    
+    // Apply limit
+    if let Some(limit) = directive.limit {
+        if limit > 0 {
+            filtered.truncate(limit as usize);
+        }
+    }
+    
+    filtered
+}
+
+/// Sort benchmarks based on directive parameters
+pub fn sort_benchmarks(benchmarks: &mut [&BenchmarkResult], directive: &ChartDirectiveIR) {
+    let sort_by = directive.sort_by.as_deref().unwrap_or("name");
+    let sort_desc = directive.sort_order.as_deref().unwrap_or("asc") == "desc";
+    
+    benchmarks.sort_by(|a, b| {
+        let cmp = match sort_by {
+            "speedup" => {
+                let speedup_a = a.comparison.as_ref().map(|c| {
+                    if c.first.nanos_per_op > 0.0 {
+                        c.second.nanos_per_op / c.first.nanos_per_op
+                    } else {
+                        1.0
+                    }
+                }).unwrap_or(1.0);
+                let speedup_b = b.comparison.as_ref().map(|c| {
+                    if c.first.nanos_per_op > 0.0 {
+                        c.second.nanos_per_op / c.first.nanos_per_op
+                    } else {
+                        1.0
+                    }
+                }).unwrap_or(1.0);
+                speedup_a.partial_cmp(&speedup_b).unwrap_or(std::cmp::Ordering::Equal)
+            }
+            "time" => {
+                let time_a = a.comparison.as_ref()
+                    .map(|c| c.first.nanos_per_op.min(c.second.nanos_per_op))
+                    .unwrap_or(f64::MAX);
+                let time_b = b.comparison.as_ref()
+                    .map(|c| c.first.nanos_per_op.min(c.second.nanos_per_op))
+                    .unwrap_or(f64::MAX);
+                time_a.partial_cmp(&time_b).unwrap_or(std::cmp::Ordering::Equal)
+            }
+            "ops" => {
+                let ops_a = a.comparison.as_ref()
+                    .map(|c| c.first.ops_per_sec.max(c.second.ops_per_sec))
+                    .unwrap_or(0.0);
+                let ops_b = b.comparison.as_ref()
+                    .map(|c| c.first.ops_per_sec.max(c.second.ops_per_sec))
+                    .unwrap_or(0.0);
+                ops_a.partial_cmp(&ops_b).unwrap_or(std::cmp::Ordering::Equal)
+            }
+            "name" | _ => a.name.cmp(&b.name),
+        };
+        
+        if sort_desc {
+            cmp.reverse()
+        } else {
+            cmp
+        }
+    });
+}
+
+/// Format duration with custom time unit
+pub fn format_duration_with_unit(nanos: f64, time_unit: Option<&str>, precision: Option<u32>) -> String {
+    let precision = precision.unwrap_or(2) as usize;
+    
+    match time_unit {
+        Some("ns") => format!("{:.precision$}ns", nanos),
+        Some("us") => format!("{:.precision$}µs", nanos / 1_000.0),
+        Some("ms") => format!("{:.precision$}ms", nanos / 1_000_000.0),
+        Some("s") => format!("{:.precision$}s", nanos / 1_000_000_000.0),
+        Some("auto") | None => format_duration(nanos),
+        Some(_) => format_duration(nanos), // Unknown unit, use auto
+    }
+}
+
+/// Format ops/sec for display
+pub fn format_ops_per_sec(ops: f64) -> String {
+    if ops >= 1_000_000_000.0 {
+        format!("{:.1}G", ops / 1_000_000_000.0)
+    } else if ops >= 1_000_000.0 {
+        format!("{:.1}M", ops / 1_000_000.0)
+    } else if ops >= 1_000.0 {
+        format!("{:.1}K", ops / 1_000.0)
+    } else {
+        format!("{:.0}", ops)
+    }
+}
+
+/// Format config footer for charts
+pub fn format_config_footer(
+    iterations: Option<u64>,
+    warmup: Option<u64>,
+    timeout: Option<u64>,
+    order: Option<&str>,
+) -> String {
+    let mut parts = Vec::new();
+    
+    if let Some(iter) = iterations {
+        parts.push(format!("{} iterations", iter));
+    }
+    if let Some(warm) = warmup {
+        parts.push(format!("{} warmup", warm));
+    }
+    if let Some(to) = timeout {
+        parts.push(format!("{}ms timeout", to));
+    }
+    if let Some(ord) = order {
+        parts.push(ord.to_string());
+    }
+    
+    parts.join(" | ")
+}
+
+/// Format stats label for a measurement
+pub fn format_stats_label(
+    time_nanos: f64,
+    ops_per_sec: f64,
+    time_unit: Option<&str>,
+    precision: Option<u32>,
+) -> String {
+    let time_str = format_duration_with_unit(time_nanos, time_unit, precision);
+    let ops_str = format_ops_per_sec(ops_per_sec);
+    format!("{} ({} ops/s)", time_str, ops_str)
+}
+
+/// Calculate geometric mean of speedups
+pub fn calculate_geo_mean(benchmarks: &[&BenchmarkResult]) -> f64 {
+    let log_speedups: Vec<f64> = benchmarks
+        .iter()
+        .filter_map(|b| {
+            b.comparison.as_ref().and_then(|c| {
+                if c.first.nanos_per_op > 0.0 && c.second.nanos_per_op > 0.0 {
+                    Some((c.second.nanos_per_op / c.first.nanos_per_op).ln())
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+    
+    if log_speedups.is_empty() {
+        1.0
+    } else {
+        let avg_log = log_speedups.iter().sum::<f64>() / log_speedups.len() as f64;
+        avg_log.exp()
+    }
+}
+
+/// Count wins by language
+pub fn count_wins(benchmarks: &[&BenchmarkResult]) -> (usize, usize, usize) {
+    let mut go_wins = 0;
+    let mut ts_wins = 0;
+    let mut ties = 0;
+    
+    for bench in benchmarks {
+        if let Some(ref comparison) = bench.comparison {
+            match comparison.winner {
+                ComparisonWinner::First => go_wins += 1,
+                ComparisonWinner::Second => ts_wins += 1,
+                ComparisonWinner::Tie => ties += 1,
+            }
+        }
+    }
+    
+    (go_wins, ts_wins, ties)
 }

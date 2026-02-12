@@ -87,33 +87,18 @@ fn filter_results_by_suite(results: &BenchmarkResults, suite_name: &str) -> Benc
 
 /// Generate a bar chart SVG
 fn generate_bar_chart(directive: &ChartDirectiveIR, results: &BenchmarkResults) -> Result<String> {
-    bar_chart::generate(
-        results,
-        &directive.get_title(),
-        directive.description.as_deref(),
-        &directive.get_x_label(),
-        &directive.get_y_label(),
-    )
+    // TODO: Pass suite config from the benchmark execution context
+    bar_chart::generate(results, directive, None)
 }
 
 /// Generate a pie chart SVG
 fn generate_pie_chart(directive: &ChartDirectiveIR, results: &BenchmarkResults) -> Result<String> {
-    pie_chart::generate(
-        results,
-        &directive.get_title(),
-        directive.description.as_deref(),
-    )
+    pie_chart::generate(results, directive)
 }
 
 /// Generate a line chart SVG
 fn generate_line_chart(directive: &ChartDirectiveIR, results: &BenchmarkResults) -> Result<String> {
-    line_chart::generate(
-        results,
-        &directive.get_title(),
-        directive.description.as_deref(),
-        &directive.get_x_label(),
-        &directive.get_y_label(),
-    )
+    line_chart::generate(results, directive)
 }
 
 #[cfg(test)]
