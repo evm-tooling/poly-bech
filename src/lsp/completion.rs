@@ -11,7 +11,10 @@ use tower_lsp::lsp_types::{
 use super::document::ParsedDocument;
 
 /// Get completions at a position
-pub fn get_completions(doc: &ParsedDocument, position: Position) -> Vec<CompletionItem> {
+/// 
+/// `trigger_char` is the character that triggered completion (e.g., "." or ":"),
+/// provided by the LSP client when available.
+pub fn get_completions(doc: &ParsedDocument, position: Position, trigger_char: Option<&str>) -> Vec<CompletionItem> {
     let mut items = Vec::new();
 
     // Get the text before the cursor to determine context
@@ -21,6 +24,28 @@ pub fn get_completions(doc: &ParsedDocument, position: Position) -> Vec<Completi
     };
 
     let trimmed = line_text.trim();
+    
+    // If triggered by ".", check for module dot access immediately
+    // This handles the case where VS Code sends completion before document is fully updated
+    if trigger_char == Some(".") {
+        // Check if the word before the dot is a known stdlib module
+        if let Some(module_name) = extract_module_name_before_trigger(trimmed) {
+            let stdlib_imports = detect_stdlib_imports(doc);
+            if stdlib_imports.contains(&module_name) {
+                // Return only module member completions
+                return stdlib_module_member_completions(&module_name, &stdlib_imports);
+            }
+        }
+    }
+    
+    // If triggered by ":", check for use statement pattern immediately
+    if trigger_char == Some(":") {
+        // Check if this looks like a use statement
+        if trimmed.starts_with("use") {
+            // Return stdlib module completions
+            return stdlib_module_completions();
+        }
+    }
 
     // Determine context and provide relevant completions
     let context = determine_context(doc, position, trimmed);
@@ -293,6 +318,34 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
         }
         _ => Context::Unknown,
     }
+}
+
+/// Extract the module name when a trigger character was typed
+/// For example, if line_text is "    anvil" and trigger is ".", return Some("anvil")
+fn extract_module_name_before_trigger(line_text: &str) -> Option<String> {
+    let trimmed = line_text.trim();
+    
+    // Known stdlib module names
+    let known_modules = ["anvil", "constants"];
+    
+    // Get the last word on the line
+    let words: Vec<&str> = trimmed.split_whitespace().collect();
+    if let Some(last_word) = words.last() {
+        let word = last_word.trim();
+        // Check if it's a known module (without the dot, since trigger char comes separately)
+        if known_modules.contains(&word) {
+            return Some(word.to_string());
+        }
+        // Also check if it ends with a known module followed by dot
+        // (for cases where the doc was already updated)
+        for module in known_modules {
+            if word == module || word.ends_with(&format!("{}.", module)) || word == format!("{}.", module) {
+                return Some(module.to_string());
+            }
+        }
+    }
+    
+    None
 }
 
 /// Check if the line is a use statement pattern where we should suggest stdlib modules

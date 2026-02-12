@@ -328,9 +328,14 @@ impl LanguageServer for Backend {
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = &params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
+        
+        // Get trigger character if available (e.g., "." when user types "anvil.")
+        let trigger_char = params.context
+            .as_ref()
+            .and_then(|ctx| ctx.trigger_character.as_deref());
 
         if let Some(doc) = self.documents.get(uri) {
-            let items = get_completions(&doc, position);
+            let items = get_completions(&doc, position, trigger_char);
             Ok(Some(CompletionResponse::Array(items)))
         } else {
             Ok(None)
