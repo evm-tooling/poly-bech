@@ -1,6 +1,6 @@
 //! IR types - normalized benchmark specifications
 
-use poly_bench_dsl::{Lang, ExecutionOrder};
+use poly_bench_dsl::{Lang, ExecutionOrder, ChartType};
 use serde::{Serialize, Deserialize};
 use std::collections::{HashMap, HashSet};
 
@@ -26,19 +26,25 @@ pub struct BenchmarkIR {
     pub anvil_config: Option<AnvilConfigIR>,
     /// All benchmark suites
     pub suites: Vec<SuiteIR>,
+    /// Chart directives to execute after all benchmarks complete
+    pub chart_directives: Vec<ChartDirectiveIR>,
 }
 
 impl BenchmarkIR {
     pub fn new(suites: Vec<SuiteIR>) -> Self {
-        Self { stdlib_imports: HashSet::new(), anvil_config: None, suites }
+        Self { stdlib_imports: HashSet::new(), anvil_config: None, suites, chart_directives: Vec::new() }
     }
 
     pub fn with_stdlib(stdlib_imports: HashSet<String>, suites: Vec<SuiteIR>) -> Self {
-        Self { stdlib_imports, anvil_config: None, suites }
+        Self { stdlib_imports, anvil_config: None, suites, chart_directives: Vec::new() }
     }
     
     pub fn with_anvil(stdlib_imports: HashSet<String>, anvil_config: Option<AnvilConfigIR>, suites: Vec<SuiteIR>) -> Self {
-        Self { stdlib_imports, anvil_config, suites }
+        Self { stdlib_imports, anvil_config, suites, chart_directives: Vec::new() }
+    }
+    
+    pub fn with_charts(stdlib_imports: HashSet<String>, anvil_config: Option<AnvilConfigIR>, suites: Vec<SuiteIR>, chart_directives: Vec<ChartDirectiveIR>) -> Self {
+        Self { stdlib_imports, anvil_config, suites, chart_directives }
     }
 
     /// Get all benchmarks across all suites
@@ -293,5 +299,71 @@ impl BenchmarkSpec {
     /// Check if this benchmark should be skipped for a language
     pub fn should_skip(&self, lang: Lang) -> bool {
         self.skip_conditions.contains_key(&lang)
+    }
+}
+
+/// A chart directive to be executed after benchmarks complete
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChartDirectiveIR {
+    /// Type of chart to generate
+    pub chart_type: ChartType,
+    /// Chart title
+    pub title: Option<String>,
+    /// Chart description/subtitle
+    pub description: Option<String>,
+    /// X-axis label
+    pub x_label: Option<String>,
+    /// Y-axis label
+    pub y_label: Option<String>,
+    /// Output filename
+    pub output_file: String,
+    /// Suite name this directive belongs to (for scoping results)
+    pub suite_name: Option<String>,
+}
+
+impl ChartDirectiveIR {
+    pub fn new(chart_type: ChartType, output_file: String) -> Self {
+        Self {
+            chart_type,
+            title: None,
+            description: None,
+            x_label: None,
+            y_label: None,
+            output_file,
+            suite_name: None,
+        }
+    }
+
+    /// Get the title to display, with a sensible default
+    pub fn get_title(&self) -> String {
+        self.title.clone().unwrap_or_else(|| {
+            match self.chart_type {
+                ChartType::BarChart => "Benchmark Results".to_string(),
+                ChartType::PieChart => "Time Distribution".to_string(),
+                ChartType::LineChart => "Performance Trend".to_string(),
+            }
+        })
+    }
+
+    /// Get the x-axis label with a sensible default
+    pub fn get_x_label(&self) -> String {
+        self.x_label.clone().unwrap_or_else(|| {
+            match self.chart_type {
+                ChartType::BarChart => "Time".to_string(),
+                ChartType::PieChart => "".to_string(),
+                ChartType::LineChart => "Benchmark".to_string(),
+            }
+        })
+    }
+
+    /// Get the y-axis label with a sensible default
+    pub fn get_y_label(&self) -> String {
+        self.y_label.clone().unwrap_or_else(|| {
+            match self.chart_type {
+                ChartType::BarChart => "Benchmark".to_string(),
+                ChartType::PieChart => "".to_string(),
+                ChartType::LineChart => "Time".to_string(),
+            }
+        })
     }
 }

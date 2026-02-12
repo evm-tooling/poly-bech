@@ -254,6 +254,90 @@ impl GlobalSetup {
     }
 }
 
+/// Type of chart to generate
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ChartType {
+    /// Horizontal bar chart comparing benchmark times
+    BarChart,
+    /// Pie chart showing relative time distribution
+    PieChart,
+    /// Line chart for trend visualization
+    LineChart,
+}
+
+impl ChartType {
+    pub fn from_function_name(name: &str) -> Option<Self> {
+        match name {
+            "drawBarChart" => Some(ChartType::BarChart),
+            "drawPieChart" => Some(ChartType::PieChart),
+            "drawLineChart" => Some(ChartType::LineChart),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ChartType::BarChart => "bar",
+            ChartType::PieChart => "pie",
+            ChartType::LineChart => "line",
+        }
+    }
+
+    pub fn default_filename(&self) -> &'static str {
+        match self {
+            ChartType::BarChart => "bar-chart.svg",
+            ChartType::PieChart => "pie-chart.svg",
+            ChartType::LineChart => "line-chart.svg",
+        }
+    }
+}
+
+impl std::fmt::Display for ChartType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// A chart directive to be executed after benchmarks complete
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChartDirective {
+    /// Type of chart to generate
+    pub chart_type: ChartType,
+    /// Chart title
+    pub title: Option<String>,
+    /// Chart description/subtitle
+    pub description: Option<String>,
+    /// X-axis label
+    pub x_label: Option<String>,
+    /// Y-axis label
+    pub y_label: Option<String>,
+    /// Output filename (without path)
+    pub output_file: Option<String>,
+    /// Source location
+    pub span: Span,
+}
+
+impl ChartDirective {
+    pub fn new(chart_type: ChartType, span: Span) -> Self {
+        Self {
+            chart_type,
+            title: None,
+            description: None,
+            x_label: None,
+            y_label: None,
+            output_file: None,
+            span,
+        }
+    }
+
+    /// Get the output filename, using default if not specified
+    pub fn get_output_file(&self) -> String {
+        self.output_file
+            .clone()
+            .unwrap_or_else(|| self.chart_type.default_filename().to_string())
+    }
+}
+
 /// Top-level file containing one or more suites
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct File {
@@ -314,6 +398,8 @@ pub struct Suite {
     pub fixtures: Vec<Fixture>,
     /// Benchmark definitions
     pub benchmarks: Vec<Benchmark>,
+    /// Chart directives to execute after benchmarks complete
+    pub chart_directives: Vec<ChartDirective>,
 }
 
 impl Suite {
@@ -333,6 +419,7 @@ impl Suite {
             setups: HashMap::new(),
             fixtures: Vec::new(),
             benchmarks: Vec::new(),
+            chart_directives: Vec::new(),
         }
     }
 }

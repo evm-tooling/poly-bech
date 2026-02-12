@@ -2,8 +2,8 @@
 //!
 //! Transforms the parsed AST into a normalized IR suitable for execution.
 
-use poly_bench_dsl::{File, Suite, Fixture, Benchmark, Lang, ExecutionOrder};
-use crate::{BenchmarkIR, SuiteIR, FixtureIR, FixtureParamIR, BenchmarkSpec, AnvilConfigIR};
+use poly_bench_dsl::{File, Suite, Fixture, Benchmark, Lang, ExecutionOrder, ChartDirective};
+use crate::{BenchmarkIR, SuiteIR, FixtureIR, FixtureParamIR, BenchmarkSpec, AnvilConfigIR, ChartDirectiveIR};
 use crate::fixtures::{decode_hex, load_hex_file, extract_fixture_refs};
 use crate::imports::{extract_go_imports, extract_ts_imports, ParsedSetup};
 use miette::{Result, miette};
@@ -37,13 +37,21 @@ pub fn lower(ast: &File, base_dir: Option<&Path>) -> Result<BenchmarkIR> {
     }
 
     let mut suites = Vec::new();
+    let mut chart_directives = Vec::new();
 
     for suite in &ast.suites {
         let suite_ir = lower_suite(suite, base_dir, &stdlib_imports)?;
+        
+        // Lower chart directives from suite, associating them with the suite name
+        for directive in &suite.chart_directives {
+            let directive_ir = lower_chart_directive(directive, Some(&suite.name));
+            chart_directives.push(directive_ir);
+        }
+        
         suites.push(suite_ir);
     }
 
-    Ok(BenchmarkIR::with_anvil(stdlib_imports, anvil_config, suites))
+    Ok(BenchmarkIR::with_charts(stdlib_imports, anvil_config, suites, chart_directives))
 }
 
 /// Lower a single Suite to SuiteIR
@@ -214,6 +222,20 @@ fn lower_benchmark(
     }
 
     Ok(spec)
+}
+
+/// Lower a ChartDirective to ChartDirectiveIR
+fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -> ChartDirectiveIR {
+    let output_file = directive.get_output_file();
+    
+    let mut ir = ChartDirectiveIR::new(directive.chart_type, output_file);
+    ir.title = directive.title.clone();
+    ir.description = directive.description.clone();
+    ir.x_label = directive.x_label.clone();
+    ir.y_label = directive.y_label.clone();
+    ir.suite_name = suite_name.map(|s| s.to_string());
+    
+    ir
 }
 
 #[cfg(test)]

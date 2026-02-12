@@ -286,6 +286,11 @@ impl Parser {
                 let benchmark = self.parse_benchmark()?;
                 suite.benchmarks.push(benchmark);
             }
+            // Suite-level after block for chart directives
+            TokenKind::After => {
+                let directives = self.parse_suite_after_block()?;
+                suite.chart_directives.extend(directives);
+            }
             TokenKind::Identifier(_) => {
                 // Could be a property or language implementation
                 // Check if it's a known property
@@ -301,7 +306,7 @@ impl Parser {
             }
             _ => {
                 return Err(self.make_error(ParseError::ExpectedToken {
-                    expected: "suite item (globalSetup, setup, fixture, bench, or property)".to_string(),
+                    expected: "suite item (globalSetup, setup, fixture, bench, after, or property)".to_string(),
                     found: format!("{:?}", token.kind),
                     span: token.span.clone(),
                 }));
@@ -309,6 +314,118 @@ impl Parser {
         }
 
         Ok(())
+    }
+
+    /// Parse a suite-level after block containing chart directives
+    /// Syntax: after { charting.drawBarChart(...) }
+    fn parse_suite_after_block(&mut self) -> Result<Vec<ChartDirective>> {
+        let after_token = self.expect_keyword(TokenKind::After)?;
+        self.expect(TokenKind::LBrace)?;
+        
+        let mut directives = Vec::new();
+        
+        while !self.check(TokenKind::RBrace) && !self.is_at_end() {
+            let directive = self.parse_chart_directive(&after_token.span)?;
+            directives.push(directive);
+        }
+        
+        self.expect(TokenKind::RBrace)?;
+        
+        Ok(directives)
+    }
+
+    /// Parse a chart directive: charting.drawBarChart(title: "...", ...)
+    fn parse_chart_directive(&mut self, block_span: &Span) -> Result<ChartDirective> {
+        let start_span = self.peek().span.clone();
+        
+        // Expect "charting" identifier
+        let module_token = self.expect_identifier()?;
+        let module_name = match &module_token.kind {
+            TokenKind::Identifier(s) => s.clone(),
+            _ => unreachable!(),
+        };
+        
+        if module_name != "charting" {
+            return Err(self.make_error(ParseError::InvalidProperty {
+                name: format!("Expected 'charting' module, found '{}'", module_name),
+                span: module_token.span.clone(),
+            }));
+        }
+        
+        // Expect "."
+        self.expect(TokenKind::Dot)?;
+        
+        // Expect function name (drawBarChart, drawPieChart, etc.)
+        let func_token = self.expect_identifier()?;
+        let func_name = match &func_token.kind {
+            TokenKind::Identifier(s) => s.clone(),
+            _ => unreachable!(),
+        };
+        
+        let chart_type = ChartType::from_function_name(&func_name).ok_or_else(|| {
+            self.make_error(ParseError::InvalidProperty {
+                name: format!("Unknown charting function '{}'. Valid functions: drawBarChart, drawPieChart, drawLineChart", func_name),
+                span: func_token.span.clone(),
+            })
+        })?;
+        
+        // Expect "("
+        self.expect(TokenKind::LParen)?;
+        
+        let mut directive = ChartDirective::new(chart_type, start_span);
+        
+        // Parse optional named parameters: title: "...", xlabel: "...", etc.
+        // Note: Some parameter names (like "description") may be DSL keywords,
+        // so we need to handle both identifiers and specific keyword tokens.
+        while !self.check(TokenKind::RParen) && !self.is_at_end() {
+            let param_token = self.advance().clone();
+            let param_name = match &param_token.kind {
+                TokenKind::Identifier(s) => s.clone(),
+                TokenKind::Description => "description".to_string(),
+                _ => {
+                    return Err(self.make_error(ParseError::ExpectedIdentifier {
+                        span: param_token.span.clone(),
+                    }));
+                }
+            };
+            
+            self.expect(TokenKind::Colon)?;
+            let value = self.expect_string()?;
+            
+            match param_name.as_str() {
+                "title" => directive.title = Some(value),
+                "description" => directive.description = Some(value),
+                "xlabel" => directive.x_label = Some(value),
+                "ylabel" => directive.y_label = Some(value),
+                "output" => directive.output_file = Some(value),
+                _ => {
+                    return Err(self.make_error(ParseError::InvalidProperty {
+                        name: format!("Unknown chart parameter '{}'. Valid parameters: title, description, xlabel, ylabel, output", param_name),
+                        span: param_token.span.clone(),
+                    }));
+                }
+            }
+            
+            // Check for comma between parameters
+            if !self.check(TokenKind::RParen) {
+                if self.check(TokenKind::Comma) {
+                    self.advance();
+                }
+            }
+        }
+        
+        // Expect ")"
+        self.expect(TokenKind::RParen)?;
+        
+        // Update span to include the full directive
+        directive.span = Span {
+            start: directive.span.start,
+            end: self.previous().span.end,
+            line: directive.span.line,
+            col: directive.span.col,
+        };
+        
+        Ok(directive)
     }
 
     /// Parse a structured setup block with import/declare/init/helpers sections
