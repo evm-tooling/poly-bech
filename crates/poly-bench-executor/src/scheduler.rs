@@ -1,12 +1,12 @@
 //! Benchmark execution scheduler
 
-use crate::dsl::Lang;
-use crate::ir::BenchmarkIR;
-use crate::runtime::go::GoRuntime;
-use crate::runtime::js::JsRuntime;
-use crate::runtime::measurement::Measurement;
-use crate::runtime::traits::Runtime;
-use crate::executor::comparison::{BenchmarkResults, SuiteResults, BenchmarkResult};
+use poly_bench_dsl::Lang;
+use poly_bench_ir::BenchmarkIR;
+use poly_bench_runtime::go::GoRuntime;
+use poly_bench_runtime::js::JsRuntime;
+use poly_bench_runtime::measurement::Measurement;
+use poly_bench_runtime::traits::Runtime;
+use crate::comparison::{BenchmarkResults, SuiteResults, BenchmarkResult};
 use super::{ProjectRoots, AnvilService, AnvilConfig};
 use colored::Colorize;
 use miette::Result;

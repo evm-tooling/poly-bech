@@ -1,7 +1,7 @@
 //! Cross-language comparison types and logic
 
-use crate::dsl::Lang;
-use crate::runtime::measurement::{Measurement, Comparison, ComparisonWinner};
+use poly_bench_dsl::Lang;
+use poly_bench_runtime::measurement::{Measurement, Comparison, ComparisonWinner};
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 
