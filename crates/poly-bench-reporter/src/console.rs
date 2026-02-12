@@ -1,13 +1,97 @@
-//! Console output reporter
+//! Console output reporter with vitest/tinybench-style distribution stats
 
 use poly_bench_dsl::Lang;
 use poly_bench_executor::{BenchmarkResults, SuiteResults};
+use poly_bench_executor::comparison::BenchmarkResult;
 use poly_bench_runtime::measurement::Measurement;
 use colored::Colorize;
 use miette::Result;
 
-/// Generate console report
+/// Benchmark configuration for display
+#[derive(Debug, Clone, Default)]
+pub struct BenchConfig {
+    pub iterations: Option<u64>,
+    pub warmup: Option<u64>,
+    pub timeout_ms: Option<u64>,
+    pub order: Option<String>,
+}
+
+/// Report options for enhanced output
+#[derive(Debug, Clone)]
+pub struct ReportOptions {
+    /// Show ops/sec for each benchmark
+    pub show_ops_per_sec: bool,
+    /// Show config section
+    pub show_config: bool,
+    /// Show distribution stats (min, max, mean, p50, p75, p99) - default: true
+    pub show_distribution: bool,
+    /// Show memory stats (if available)
+    pub show_memory: bool,
+    /// Benchmark configuration
+    pub config: BenchConfig,
+}
+
+impl Default for ReportOptions {
+    fn default() -> Self {
+        Self {
+            show_ops_per_sec: true,
+            show_config: true,
+            show_distribution: true, // Show distribution by default
+            show_memory: false,
+            config: BenchConfig::default(),
+        }
+    }
+}
+
+/// Format ops/sec for display (hz style like vitest)
+fn format_hz(ops: f64) -> String {
+    if ops >= 1_000_000_000.0 {
+        format!("{:>10.2}G", ops / 1_000_000_000.0)
+    } else if ops >= 1_000_000.0 {
+        format!("{:>10.2}M", ops / 1_000_000.0)
+    } else if ops >= 1_000.0 {
+        // Rust doesn't support comma separators directly, use thousands manually
+        let formatted = format!("{:.2}", ops);
+        format!("{:>12}", formatted)
+    } else {
+        format!("{:>10.2}", ops)
+    }
+}
+
+/// Format duration in ms for display (vitest style)
+fn format_ms(nanos: f64) -> String {
+    let ms = nanos / 1_000_000.0;
+    if ms >= 1.0 {
+        format!("{:.4}", ms)
+    } else if ms >= 0.001 {
+        format!("{:.4}", ms)
+    } else {
+        // Very fast - show as us
+        let us = nanos / 1_000.0;
+        format!("{:.4}", us)
+    }
+}
+
+/// Format ops/sec for display (legacy)
+fn format_ops_per_sec(ops: f64) -> String {
+    if ops >= 1_000_000_000.0 {
+        format!("{:.1}G", ops / 1_000_000_000.0)
+    } else if ops >= 1_000_000.0 {
+        format!("{:.1}M", ops / 1_000_000.0)
+    } else if ops >= 1_000.0 {
+        format!("{:.1}K", ops / 1_000.0)
+    } else {
+        format!("{:.0}", ops)
+    }
+}
+
+/// Generate console report (simple version)
 pub fn report(results: &BenchmarkResults) -> Result<()> {
+    report_with_options(results, &ReportOptions::default())
+}
+
+/// Generate console report with options
+pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) -> Result<()> {
     println!("\n{}", "═".repeat(80));
     println!("{}", "  BENCHMARK RESULTS".bold());
     println!("{}\n", "═".repeat(80));
@@ -53,60 +137,266 @@ pub fn report(results: &BenchmarkResults) -> Result<()> {
     println!("  {:<20} {:.2}x", "Geometric Mean:", summary.geo_mean_speedup);
     println!();
 
+    // Config section (if enabled and config provided)
+    if options.show_config {
+        let config = &options.config;
+        let has_config = config.iterations.is_some() 
+            || config.warmup.is_some() 
+            || config.timeout_ms.is_some()
+            || config.order.is_some();
+        
+        if has_config {
+            println!("{}", "CONFIG".bold().underline());
+            println!();
+            
+            if let Some(iter) = config.iterations {
+                println!("  {:<20} {}", "Iterations:", iter);
+            }
+            if let Some(warm) = config.warmup {
+                println!("  {:<20} {}", "Warmup:", warm);
+            }
+            if let Some(to) = config.timeout_ms {
+                let timeout_str = if to >= 1000 {
+                    format!("{}s", to / 1000)
+                } else {
+                    format!("{}ms", to)
+                };
+                println!("  {:<20} {}", "Timeout:", timeout_str);
+            }
+            if let Some(ref ord) = config.order {
+                println!("  {:<20} {}", "Execution Order:", ord);
+            }
+            println!();
+        }
+    }
+
     // Suite details
     println!("{}", "SUITE RESULTS".bold().underline());
     println!();
 
     for suite in &results.suites {
-        print_suite(suite);
+        print_suite_with_options(suite, options);
     }
 
     // Legend
-    println!("{}", "─".repeat(80));
+    println!("{}", "─".repeat(100));
     println!("{}", "LEGEND".dimmed());
-    println!("  {} Go faster  |  {} TS faster  |  {} Similar (±5%)",
-        "🟢".green(),
-        "🔵".cyan(),
-        "⚪".dimmed()
+    println!("  {} = Go result  |  {} = TypeScript result",
+        "go".green(),
+        "ts".cyan()
     );
-    println!("  ns/op = nanoseconds per operation (lower is better)");
+    println!("  {} = operations per second (higher is better)", "hz".dimmed());
+    println!("  {} = minimum latency  |  {} = maximum latency  |  {} = mean latency (all in ms)",
+        "min".dimmed(),
+        "max".dimmed(),
+        "mean".dimmed()
+    );
+    println!("  {} = 75th percentile  |  {} = 99th percentile  |  {} = 99.5th percentile",
+        "p75".dimmed(),
+        "p99".dimmed(),
+        "p995".dimmed()
+    );
+    println!("  {} = relative margin of error  |  {} = number of samples",
+        "rme".dimmed(),
+        "samples".dimmed()
+    );
     println!();
 
     Ok(())
 }
 
-fn print_suite(suite: &SuiteResults) {
+fn print_suite_with_options(suite: &SuiteResults, options: &ReportOptions) {
     let icon = match suite.summary.winner {
-        Some(Lang::Go) => "🟢",
-        Some(Lang::TypeScript) => "🔵",
-        _ => "⚪",
+        Some(Lang::Go) => "✓",
+        Some(Lang::TypeScript) => "✓",
+        _ => "✓",
     };
 
-    println!("  {} {} ({})", 
-        icon,
-        suite.name.bold(),
-        format!("{:.2}x avg speedup", suite.summary.geo_mean_speedup).dimmed()
-    );
+    // Suite header
+    println!(" {} {}", icon.green(), suite.name.bold());
 
     if let Some(ref desc) = suite.description {
-        println!("    {}", desc.dimmed());
+        println!("   {}", desc.dimmed());
     }
 
-    // Results table header
+    // Distribution stats table (vitest/tinybench style)
+    if options.show_distribution {
+        print_distribution_table(&suite.benchmarks, options);
+    } else {
+        // Legacy compact table
+        print_compact_table(&suite.benchmarks, options);
+    }
+
+    // Suite summary footer
+    let go_wins = suite.summary.go_wins;
+    let ts_wins = suite.summary.ts_wins;
+    let ties = suite.summary.ties;
+    
     println!();
-    println!("    {:<30} {:>15} {:>15} {:>20}",
-        "Benchmark".underline(),
-        "Go".underline(),
-        "TypeScript".underline(),
-        "Result".underline()
+    println!("   {} Go: {} wins | TS: {} wins | Ties: {} | Geo mean: {:.2}x",
+        "Summary:".dimmed(),
+        format!("{}", go_wins).green(),
+        format!("{}", ts_wins).cyan(),
+        format!("{}", ties).dimmed(),
+        suite.summary.geo_mean_speedup
     );
 
-    for bench in &suite.benchmarks {
-        let go_str = bench.measurements.get(&Lang::Go)
+    println!();
+}
+
+/// Print the vitest/tinybench style distribution table
+fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOptions) {
+    // Table header
+    println!("   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>9} {:>8}",
+        "name".dimmed(),
+        "hz".dimmed(),
+        "min".dimmed(),
+        "max".dimmed(),
+        "mean".dimmed(),
+        "p75".dimmed(),
+        "p99".dimmed(),
+        "p995".dimmed(),
+        "rme".dimmed(),
+        "samples".dimmed()
+    );
+
+    // Determine fastest/slowest for each language
+    let go_fastest: Option<&str> = benchmarks.iter()
+        .filter_map(|b| b.measurements.get(&Lang::Go).map(|m| (b.name.as_str(), m.ops_per_sec)))
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(name, _)| name);
+    
+    let go_slowest: Option<&str> = benchmarks.iter()
+        .filter_map(|b| b.measurements.get(&Lang::Go).map(|m| (b.name.as_str(), m.ops_per_sec)))
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(name, _)| name);
+
+    let ts_fastest: Option<&str> = benchmarks.iter()
+        .filter_map(|b| b.measurements.get(&Lang::TypeScript).map(|m| (b.name.as_str(), m.ops_per_sec)))
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(name, _)| name);
+    
+    let ts_slowest: Option<&str> = benchmarks.iter()
+        .filter_map(|b| b.measurements.get(&Lang::TypeScript).map(|m| (b.name.as_str(), m.ops_per_sec)))
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(name, _)| name);
+
+    for bench in benchmarks {
+        // Go row
+        if let Some(m) = bench.measurements.get(&Lang::Go) {
+            let badge = if Some(bench.name.as_str()) == go_fastest && benchmarks.len() > 1 {
+                " fastest".green().to_string()
+            } else if Some(bench.name.as_str()) == go_slowest && benchmarks.len() > 1 {
+                " slowest".yellow().to_string()
+            } else {
+                String::new()
+            };
+            
+            // Calculate stats from percentiles or estimate
+            let min_ns = m.min_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+            let max_ns = m.max_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+            let mean_ns = m.nanos_per_op;
+            let p75_ns = m.p75_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+            let p99_ns = m.p99_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+            let p995_ns = m.p995_nanos.unwrap_or(m.p99_nanos.unwrap_or(m.nanos_per_op as u64)) as f64;
+            let rme = m.rme_percent.unwrap_or(0.0);
+            let samples = m.samples.unwrap_or(1000);
+            
+            let name = format!("· go: {}", bench.name);
+            println!("   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}% {:>8}{}",
+                name.green(),
+                format_hz(m.ops_per_sec),
+                format_ms(min_ns),
+                format_ms(max_ns),
+                format_ms(mean_ns),
+                format_ms(p75_ns),
+                format_ms(p99_ns),
+                format_ms(p995_ns),
+                format!("±{:.2}", rme),
+                samples,
+                badge
+            );
+        }
+        
+        // TypeScript row
+        if let Some(m) = bench.measurements.get(&Lang::TypeScript) {
+            let badge = if Some(bench.name.as_str()) == ts_fastest && benchmarks.len() > 1 {
+                " fastest".green().to_string()
+            } else if Some(bench.name.as_str()) == ts_slowest && benchmarks.len() > 1 {
+                " slowest".yellow().to_string()
+            } else {
+                String::new()
+            };
+            
+            let min_ns = m.min_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+            let max_ns = m.max_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+            let mean_ns = m.nanos_per_op;
+            let p75_ns = m.p75_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+            let p99_ns = m.p99_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+            let p995_ns = m.p995_nanos.unwrap_or(m.p99_nanos.unwrap_or(m.nanos_per_op as u64)) as f64;
+            let rme = m.rme_percent.unwrap_or(0.0);
+            let samples = m.samples.unwrap_or(1000);
+            
+            let name = format!("· ts: {}", bench.name);
+            println!("   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}% {:>8}{}",
+                name.cyan(),
+                format_hz(m.ops_per_sec),
+                format_ms(min_ns),
+                format_ms(max_ns),
+                format_ms(mean_ns),
+                format_ms(p75_ns),
+                format_ms(p99_ns),
+                format_ms(p995_ns),
+                format!("±{:.2}", rme),
+                samples,
+                badge
+            );
+        }
+
+        // Comparison row
+        if let Some(ref cmp) = bench.comparison {
+            let winner_str = match cmp.winner {
+                poly_bench_runtime::measurement::ComparisonWinner::First => 
+                    format!("  → Go is {:.2}x faster", cmp.speedup).green().to_string(),
+                poly_bench_runtime::measurement::ComparisonWinner::Second => 
+                    format!("  → TS is {:.2}x faster", 1.0 / cmp.speedup).cyan().to_string(),
+                poly_bench_runtime::measurement::ComparisonWinner::Tie => 
+                    "  → Similar performance".dimmed().to_string(),
+            };
+            println!("{}", winner_str);
+        }
+    }
+}
+
+/// Print compact table (legacy format)
+fn print_compact_table(benchmarks: &[BenchmarkResult], options: &ReportOptions) {
+    // Table header
+    if options.show_ops_per_sec {
+        println!("    {:<25} {:>12} {:>12} {:>18} {:>12}",
+            "Benchmark".underline(),
+            "Go".underline(),
+            "TypeScript".underline(),
+            "Result".underline(),
+            "ops/s".underline()
+        );
+    } else {
+        println!("    {:<30} {:>15} {:>15} {:>20}",
+            "Benchmark".underline(),
+            "Go".underline(),
+            "TypeScript".underline(),
+            "Result".underline()
+        );
+    }
+
+    for bench in benchmarks {
+        let go_measurement = bench.measurements.get(&Lang::Go);
+        let ts_measurement = bench.measurements.get(&Lang::TypeScript);
+        
+        let go_str = go_measurement
             .map(|m| Measurement::format_duration(m.nanos_per_op))
             .unwrap_or_else(|| "-".to_string());
 
-        let ts_str = bench.measurements.get(&Lang::TypeScript)
+        let ts_str = ts_measurement
             .map(|m| Measurement::format_duration(m.nanos_per_op))
             .unwrap_or_else(|| "-".to_string());
 
@@ -129,13 +419,42 @@ fn print_suite(suite: &SuiteResults) {
             result_str.dimmed().to_string()
         };
 
-        println!("    {:<30} {:>15} {:>15} {:>20}",
-            bench.name,
-            go_str.green(),
-            ts_str.cyan(),
-            result_colored
-        );
-    }
+        let ops_str = if let Some(ref cmp) = bench.comparison {
+            let go_ops = cmp.first.ops_per_sec;
+            let ts_ops = cmp.second.ops_per_sec;
+            format!("{} / {}", 
+                format_ops_per_sec(go_ops).green(),
+                format_ops_per_sec(ts_ops).cyan()
+            )
+        } else if let Some(m) = go_measurement {
+            format_ops_per_sec(m.ops_per_sec).green().to_string()
+        } else if let Some(m) = ts_measurement {
+            format_ops_per_sec(m.ops_per_sec).cyan().to_string()
+        } else {
+            "-".to_string()
+        };
 
-    println!();
+        if options.show_ops_per_sec {
+            println!("    {:<25} {:>12} {:>12} {:>18} {:>12}",
+                bench.name,
+                go_str.green(),
+                ts_str.cyan(),
+                result_colored,
+                ops_str
+            );
+        } else {
+            println!("    {:<30} {:>15} {:>15} {:>20}",
+                bench.name,
+                go_str.green(),
+                ts_str.cyan(),
+                result_colored
+            );
+        }
+    }
+}
+
+// Legacy function for backwards compatibility
+#[allow(dead_code)]
+fn print_suite(suite: &SuiteResults) {
+    print_suite_with_options(suite, &ReportOptions::default());
 }
