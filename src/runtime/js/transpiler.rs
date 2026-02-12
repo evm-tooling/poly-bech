@@ -148,27 +148,34 @@ pub fn strip_type_annotations(ts_code: &str) -> String {
                 let rest: String = chars.clone().take(30).collect();
                 let trimmed_rest = rest.trim_start();
                 
-                // Check if we're in a function parameter context OR after closing paren (return type)
-                // Look back to see if this looks like a type context
-                let last_few: String = result.chars().rev().take(30).collect::<String>().chars().rev().collect();
-                let is_after_param_name = last_few.chars().rev()
-                    .skip_while(|c| c.is_whitespace())
-                    .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '?' )
-                    .count() > 0;
+                // Check what's before the colon (ignoring whitespace)
+                let last_non_ws = result.trim_end().chars().last().unwrap_or(' ');
+                
+                // Return type annotation: ): TypeName
+                let is_return_type = last_non_ws == ')';
+                
+                // Parameter type annotation: paramName: TypeName (inside parens)
+                let is_after_param_name = last_non_ws.is_alphanumeric() || last_non_ws == '_' || last_non_ws == '?';
                 
                 // Type annotations start with: type name, { (for object types), [ (for array types), ( (for function types)
                 // But we should only strip if we're in a type annotation context, not object literal
                 let looks_like_type = trimmed_rest.starts_with(|c: char| c.is_alphabetic())
                     || trimmed_rest.starts_with("Array<")
                     || trimmed_rest.starts_with("Promise<")
-                    || trimmed_rest.starts_with("Record<");
+                    || trimmed_rest.starts_with("Record<")
+                    || trimmed_rest.starts_with("{")
+                    || trimmed_rest.starts_with("[")
+                    || trimmed_rest.starts_with("(");
                 
-                // Only treat as type annotation if in paren context (function params) 
-                // or right after closing paren (return type)
-                let last_non_ws = result.trim_end().chars().last().unwrap_or(' ');
-                let is_return_type = last_non_ws == ')';
+                // Variable declaration: const x: Type = value
+                // Check if we're after a variable name (identifier followed by colon)
+                let is_var_decl = is_after_param_name && paren_depth == 0 && !is_return_type;
                 
-                if (paren_depth > 0 || is_return_type) && is_after_param_name && looks_like_type {
+                // Strip type if:
+                // 1. We're in function params (paren_depth > 0) and after a param name
+                // 2. We're after closing paren (return type)
+                // 3. We're in a variable declaration context
+                if ((paren_depth > 0 && is_after_param_name) || is_return_type || is_var_decl) && looks_like_type {
                     in_type_annotation = true;
                     continue;
                 }
@@ -247,5 +254,37 @@ mod tests {
         let js = strip_type_annotations(ts);
         // Type annotations should be stripped, parameters preserved
         assert!(js.contains("function foo(a") && js.contains("b)"), "Got: {}", js);
+        // Return type should also be stripped
+        assert!(!js.contains(": void"), "Return type not stripped: {}", js);
+    }
+
+    #[test]
+    fn test_strip_return_type_buffer() {
+        let ts = "function sha256SumTs(data): Buffer {\n    return createHash('sha256').update(Buffer.from(data)).digest()\n}";
+        let js = strip_type_annotations(ts);
+        // Return type `: Buffer` should be stripped
+        assert!(!js.contains(": Buffer"), "Return type not stripped: {}", js);
+        // Function body should be preserved
+        assert!(js.contains("function sha256SumTs(data)"), "Function declaration mangled: {}", js);
+        assert!(js.contains("createHash"), "Function body lost: {}", js);
+    }
+
+    #[test]
+    fn test_preserve_object_literal_colons() {
+        let ts = "const obj = { key: 'value', num: 42 };";
+        let js = strip_type_annotations(ts);
+        // Object literal colons should be preserved
+        assert!(js.contains("key: 'value'"), "Object literal colon stripped: {}", js);
+        assert!(js.contains("num: 42"), "Object literal colon stripped: {}", js);
+    }
+
+    #[test]
+    fn test_strip_param_with_return_type() {
+        let ts = "function process(data: Uint8Array): Buffer { return data; }";
+        let js = strip_type_annotations(ts);
+        // Both param type and return type should be stripped
+        assert!(!js.contains(": Uint8Array"), "Param type not stripped: {}", js);
+        assert!(!js.contains(": Buffer"), "Return type not stripped: {}", js);
+        assert!(js.contains("function process(data)"), "Function signature mangled: {}", js);
     }
 }
