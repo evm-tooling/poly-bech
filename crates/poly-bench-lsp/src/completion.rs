@@ -3,7 +3,9 @@
 //! This module provides context-aware code completions
 //! for poly-bench files.
 
+use poly_bench_dsl::Lang;
 use poly_bench_stdlib::{self as stdlib, StdlibSymbolKind};
+use regex::Regex;
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, InsertTextFormat, Position,
 };
@@ -71,6 +73,8 @@ pub fn get_completions(doc: &ParsedDocument, position: Position, trigger_char: O
             items.extend(bench_body_completions());
             // Add stdlib module names for autocomplete
             items.extend(stdlib_module_name_completions(&stdlib_imports));
+            // Add setup-declared symbols (functions and variables from init/helpers)
+            items.extend(extract_setup_symbols(doc));
         }
         Context::InsideFixture => {
             items.extend(fixture_body_completions());
@@ -96,6 +100,21 @@ pub fn get_completions(doc: &ParsedDocument, position: Position, trigger_char: O
             // Provide all keywords as fallback
             items.extend(all_keyword_completions());
             // Also add stdlib module names
+            items.extend(stdlib_module_name_completions(&stdlib_imports));
+        }
+        // Embedded code contexts - only show setup symbols, no DSL keywords
+        Context::InsideEmbeddedInit | Context::InsideEmbeddedHelpers | Context::InsideEmbeddedDeclarations => {
+            // Inside embedded Go/TypeScript code blocks
+            // Only provide setup-declared symbols for reference
+            items.extend(extract_setup_symbols(doc));
+            // Also provide stdlib module constants that might be used (like ANVIL_RPC_URL)
+            items.extend(stdlib_module_name_completions(&stdlib_imports));
+        }
+        Context::InsideEmbeddedBenchCode => {
+            // Inside go: or ts: code in a bench block
+            // Only provide setup-declared symbols (functions/variables from init/helpers)
+            items.extend(extract_setup_symbols(doc));
+            // Also provide stdlib module constants
             items.extend(stdlib_module_name_completions(&stdlib_imports));
         }
     }
@@ -228,6 +247,14 @@ enum Context {
     /// After typing a module name followed by "." (e.g., "anvil.")
     /// Contains the module name
     ModuleDotAccess(String),
+    /// Inside init{} block - embedded code, no DSL completions
+    InsideEmbeddedInit,
+    /// Inside helpers{} block - embedded code, no DSL completions
+    InsideEmbeddedHelpers,
+    /// Inside go: or ts: code in bench block - embedded code
+    InsideEmbeddedBenchCode,
+    /// Inside import{} or declare{} block - embedded code
+    InsideEmbeddedDeclarations,
     Unknown,
 }
 
@@ -252,71 +279,139 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
         }
     }
     
-    // Check if we're after a colon
+    // Check if we're after a colon (but not for go: or ts: in bench blocks)
     if line_text.ends_with(':') || line_text.contains(": ") {
-        if let Some(keyword) = extract_keyword_before_colon(line_text) {
-            return Context::AfterColon(keyword);
+        // Check if this is a go: or ts: line in a bench block first
+        if !trimmed.starts_with("go:") && !trimmed.starts_with("ts:") {
+            if let Some(keyword) = extract_keyword_before_colon(line_text) {
+                // Don't return AfterColon for go/ts - we'll handle those below
+                if keyword != "go" && keyword != "ts" {
+                    return Context::AfterColon(keyword);
+                }
+            }
         }
     }
 
-    // Simple heuristic: count braces to determine nesting
+    // Check if we're on a go: or ts: line (embedded bench code)
+    if trimmed.starts_with("go:") || trimmed.starts_with("ts:") {
+        return Context::InsideEmbeddedBenchCode;
+    }
+
+    // Simple heuristic: count braces and track block hierarchy
     let offset = match doc.position_to_offset(position) {
         Some(o) => o,
         None => return Context::Unknown,
     };
 
     let text_before = &doc.source[..offset];
+    
+    // Track block hierarchy: (keyword, depth when entered)
+    let mut block_stack: Vec<(String, i32)> = Vec::new();
     let mut depth = 0;
-    let mut last_keyword = None;
+    let mut current_word = String::new();
+    let mut last_word = String::new(); // Keep track of the last complete word
 
     // Simple scanner for context detection
     let mut chars = text_before.chars().peekable();
-    let mut current_word = String::new();
 
     while let Some(c) = chars.next() {
         match c {
             '{' => {
                 depth += 1;
-                if !current_word.is_empty() {
-                    last_keyword = Some(current_word.clone());
+                // Use current_word if not empty, otherwise use last_word
+                let word_to_push = if !current_word.is_empty() {
+                    current_word.clone()
+                } else {
+                    last_word.clone()
+                };
+                if !word_to_push.is_empty() {
+                    block_stack.push((word_to_push, depth));
                 }
                 current_word.clear();
+                last_word.clear();
             }
             '}' => {
+                // Pop blocks that were opened at this depth
+                while let Some((_, block_depth)) = block_stack.last() {
+                    if *block_depth == depth {
+                        block_stack.pop();
+                    } else {
+                        break;
+                    }
+                }
                 depth -= 1;
                 current_word.clear();
+                last_word.clear();
             }
             c if c.is_alphanumeric() || c == '_' => {
                 current_word.push(c);
             }
             _ => {
+                // Save the word before clearing
+                if !current_word.is_empty() {
+                    last_word = current_word.clone();
+                }
                 current_word.clear();
             }
         }
     }
 
+    // Analyze the block stack to determine context
+    // Check if we're inside an embedded code block (init, helpers, import, declare)
+    for (keyword, _) in block_stack.iter().rev() {
+        match keyword.as_str() {
+            "init" => return Context::InsideEmbeddedInit,
+            "helpers" => return Context::InsideEmbeddedHelpers,
+            "import" | "declare" => return Context::InsideEmbeddedDeclarations,
+            _ => {}
+        }
+    }
+
+    // Get the most recent structural keyword (suite, setup, bench, fixture, globalSetup)
+    let last_structural = block_stack
+        .iter()
+        .rev()
+        .find(|(kw, _)| {
+            matches!(
+                kw.as_str(),
+                "suite" | "setup" | "bench" | "fixture" | "globalSetup" | "go" | "ts"
+            )
+        })
+        .map(|(kw, _)| kw.as_str());
+
     match depth {
         0 => Context::TopLevel,
         1 => {
             // Inside a top-level block (suite or globalSetup)
-            match last_keyword.as_deref() {
+            match last_structural {
                 Some("suite") => Context::InsideSuite,
                 Some("globalSetup") => Context::InsideGlobalSetup,
                 _ => Context::InsideSuite,
             }
         }
         2 => {
-            // Inside a nested block (setup, bench, fixture, or globalSetup inside suite)
-            match last_keyword.as_deref() {
-                Some("setup") => Context::InsideSetup,
+            // Inside a nested block (setup, bench, fixture)
+            match last_structural {
+                Some("setup") | Some("go") | Some("ts") => Context::InsideSetup,
                 Some("bench") => Context::InsideBench,
                 Some("fixture") => Context::InsideFixture,
                 Some("globalSetup") => Context::InsideGlobalSetup,
-                Some("go") | Some("ts") => Context::InsideSetup,
                 _ => Context::InsideSuite,
             }
         }
-        _ => Context::Unknown,
+        _ => {
+            // Deeper nesting - likely inside embedded code
+            // Check what structural block we're in
+            match last_structural {
+                Some("setup") | Some("go") | Some("ts") => {
+                    // We're deep inside a setup block - probably in init/helpers
+                    // But we already checked for those above, so this is unknown
+                    Context::InsideSetup
+                }
+                Some("bench") => Context::InsideBench,
+                _ => Context::Unknown,
+            }
+        }
     }
 }
 
@@ -1129,4 +1224,137 @@ fn simple_completion(label: &str, kind: CompletionItemKind) -> CompletionItem {
         kind: Some(kind),
         ..Default::default()
     }
+}
+
+/// Extract symbols (functions and variables) declared in setup init/helpers blocks
+fn extract_setup_symbols(doc: &ParsedDocument) -> Vec<CompletionItem> {
+    let mut items = Vec::new();
+    let Some(ref ast) = doc.ast else {
+        return items;
+    };
+
+    for suite in &ast.suites {
+        for (lang, setup) in &suite.setups {
+            // Extract from helpers block
+            if let Some(ref helpers) = setup.helpers {
+                items.extend(extract_symbols_from_code(&helpers.code, *lang, "helper"));
+            }
+            // Extract from init block
+            if let Some(ref init) = setup.init {
+                items.extend(extract_symbols_from_code(&init.code, *lang, "init"));
+            }
+            // Extract from declarations block
+            if let Some(ref decls) = setup.declarations {
+                items.extend(extract_symbols_from_code(&decls.code, *lang, "declaration"));
+            }
+        }
+    }
+
+    items
+}
+
+/// Extract function and variable names from code using regex patterns
+fn extract_symbols_from_code(code: &str, lang: Lang, source: &str) -> Vec<CompletionItem> {
+    let mut items = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    match lang {
+        Lang::Go => {
+            // Go function: func name(
+            if let Ok(re) = Regex::new(r"func\s+(\w+)\s*\(") {
+                for cap in re.captures_iter(code) {
+                    if let Some(name) = cap.get(1) {
+                        let name_str = name.as_str();
+                        if seen.insert(name_str.to_string()) {
+                            items.push(CompletionItem {
+                                label: format!("{}()", name_str),
+                                kind: Some(CompletionItemKind::FUNCTION),
+                                detail: Some(format!("Go {} function", source)),
+                                insert_text: Some(format!("{}($0)", name_str)),
+                                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+            // Go variable: var name or name :=
+            if let Ok(re) = Regex::new(r"(?:var\s+(\w+)|(\w+)\s*:=)") {
+                for cap in re.captures_iter(code) {
+                    let name = cap.get(1).or_else(|| cap.get(2));
+                    if let Some(name) = name {
+                        let name_str = name.as_str();
+                        // Skip common Go keywords/patterns
+                        if !["err", "ok", "_", "nil"].contains(&name_str) && seen.insert(name_str.to_string()) {
+                            items.push(CompletionItem {
+                                label: name_str.to_string(),
+                                kind: Some(CompletionItemKind::VARIABLE),
+                                detail: Some(format!("Go {} variable", source)),
+                                insert_text: Some(name_str.to_string()),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        Lang::TypeScript => {
+            // TypeScript function: function name( or async function name(
+            if let Ok(re) = Regex::new(r"(?:async\s+)?function\s+(\w+)\s*\(") {
+                for cap in re.captures_iter(code) {
+                    if let Some(name) = cap.get(1) {
+                        let name_str = name.as_str();
+                        if seen.insert(name_str.to_string()) {
+                            items.push(CompletionItem {
+                                label: format!("{}()", name_str),
+                                kind: Some(CompletionItemKind::FUNCTION),
+                                detail: Some(format!("TypeScript {} function", source)),
+                                insert_text: Some(format!("{}($0)", name_str)),
+                                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+            // TypeScript const/let: const name or let name
+            if let Ok(re) = Regex::new(r"(?:const|let)\s+(\w+)") {
+                for cap in re.captures_iter(code) {
+                    if let Some(name) = cap.get(1) {
+                        let name_str = name.as_str();
+                        if seen.insert(name_str.to_string()) {
+                            items.push(CompletionItem {
+                                label: name_str.to_string(),
+                                kind: Some(CompletionItemKind::VARIABLE),
+                                detail: Some(format!("TypeScript {} variable", source)),
+                                insert_text: Some(name_str.to_string()),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+            // Arrow functions: const name = ( or const name = async (
+            if let Ok(re) = Regex::new(r"const\s+(\w+)\s*=\s*(?:async\s*)?\(") {
+                for cap in re.captures_iter(code) {
+                    if let Some(name) = cap.get(1) {
+                        let name_str = name.as_str();
+                        if seen.insert(format!("{}()", name_str)) {
+                            items.push(CompletionItem {
+                                label: format!("{}()", name_str),
+                                kind: Some(CompletionItemKind::FUNCTION),
+                                detail: Some(format!("TypeScript {} arrow function", source)),
+                                insert_text: Some(format!("{}($0)", name_str)),
+                                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    items
 }
