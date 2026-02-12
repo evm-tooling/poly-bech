@@ -10,6 +10,7 @@ description = "Report generation for poly-bench benchmarks"
 [dependencies]
 poly-bench-dsl.workspace = true
 poly-bench-executor.workspace = true
+poly-bench-ir.workspace = true
 poly-bench-runtime.workspace = true
 miette.workspace = true
 serde.workspace = true

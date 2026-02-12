@@ -2,7 +2,7 @@
 
 mod anvil;
 mod scheduler;
-mod comparison;
+pub mod comparison;
 
 use std::path::PathBuf;
 
@@ -18,4 +18,4 @@ pub struct ProjectRoots {
 }
 
 pub use scheduler::run;
-pub use comparison::{BenchmarkResults, SuiteResults};
+pub use comparison::{BenchmarkResults, SuiteResults, BenchmarkResult};

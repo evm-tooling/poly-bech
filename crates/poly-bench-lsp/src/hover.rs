@@ -687,8 +687,12 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             Hook that runs once before all iterations."
         ),
         "after" => Some(
-            "**after** `<lang>:` `{ ... }`\n\n\
-            Hook that runs once after all iterations."
+            "**after** `<lang>:` `{ ... }` or `{ ... }`\n\n\
+            Hook that runs once after all iterations.\n\n\
+            **Benchmark-level hook:**\n\
+            ```\nbench test {\n    after go: { cleanup() }\n}\n```\n\n\
+            **Suite-level charting block:**\n\
+            ```\nafter {\n    charting.drawBarChart(title: \"Results\")\n}\n```"
         ),
         "each" => Some(
             "**each** `<lang>:` `{ ... }`\n\n\
@@ -731,6 +735,7 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             Import a module from the poly-bench standard library.\n\n\
             Available modules:\n\
             - `anvil` - Anvil node integration (ANVIL_RPC_URL)\n\
+            - `charting` - Chart generation (drawBarChart, drawPieChart, drawLineChart)\n\
             - `constants` - Mathematical constants (std_PI, std_E)"
         ),
 
@@ -765,6 +770,7 @@ fn std_namespace_docs() -> &'static str {
     Use `use std::module` to import a standard library module.\n\n\
     Available modules:\n\
     - `anvil` - Local Ethereum node management\n\
+    - `charting` - Chart generation from benchmark results\n\
     - `constants` - Mathematical constants"
 }
 
@@ -783,6 +789,17 @@ fn stdlib_module_docs(module: &str) -> Option<&'static str> {
             - Anvil is stopped automatically when benchmarks complete\n\n\
             **Requirements:** Anvil must be installed (part of Foundry toolchain)"
         ),
+        "charting" => Some(
+            "**std::charting**\n\n\
+            Chart generation from benchmark results.\n\n\
+            Use in a suite-level `after { }` block to generate charts after benchmarks complete.\n\n\
+            **Provided functions:**\n\
+            - `charting.drawBarChart()` - Generate a bar chart comparing benchmark times\n\
+            - `charting.drawPieChart()` - Generate a pie chart showing time distribution\n\
+            - `charting.drawLineChart()` - Generate a line chart for trend visualization\n\n\
+            **Example:**\n\
+            ```\nafter {\n    charting.drawBarChart(\n        title: \"Performance Comparison\",\n        xlabel: \"Benchmark\",\n        ylabel: \"Time (ns)\"\n    )\n}\n```"
+        ),
         "constants" => Some(
             "**std::constants**\n\n\
             Mathematical constants from the poly-bench standard library.\n\n\
@@ -793,10 +810,6 @@ fn stdlib_module_docs(module: &str) -> Option<&'static str> {
         "math" => Some(
             "**std::math** *(planned)*\n\n\
             Mathematical utility functions."
-        ),
-        "chart" => Some(
-            "**std::chart** *(planned)*\n\n\
-            Charting and visualization utilities for benchmark results."
         ),
         _ => None,
     }
@@ -827,6 +840,44 @@ fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
             **Example:**\n\
             ```go\nhttp.Post(anvil.ANVIL_RPC_URL, \"application/json\", body)\n```\n\n\
             *From `std::anvil`*"
+        ),
+        // std::charting symbols
+        "drawBarChart" => Some(
+            "**charting.drawBarChart** `(title?, description?, xlabel?, ylabel?, output?)`\n\n\
+            Generate a bar chart comparing benchmark execution times.\n\n\
+            **Parameters:**\n\
+            - `title` - Chart title\n\
+            - `description` - Chart description\n\
+            - `xlabel` - X-axis label\n\
+            - `ylabel` - Y-axis label\n\
+            - `output` - Output filename (default: bar-chart.svg)\n\n\
+            **Example:**\n\
+            ```\nafter {\n    charting.drawBarChart(\n        title: \"Performance Comparison\",\n        xlabel: \"Benchmark\",\n        ylabel: \"Time (ns)\"\n    )\n}\n```\n\n\
+            *From `std::charting`*"
+        ),
+        "drawPieChart" => Some(
+            "**charting.drawPieChart** `(title?, description?, output?)`\n\n\
+            Generate a pie chart showing time distribution across benchmarks.\n\n\
+            **Parameters:**\n\
+            - `title` - Chart title\n\
+            - `description` - Chart description\n\
+            - `output` - Output filename (default: pie-chart.svg)\n\n\
+            **Example:**\n\
+            ```\nafter {\n    charting.drawPieChart(\n        title: \"Time Distribution\"\n    )\n}\n```\n\n\
+            *From `std::charting`*"
+        ),
+        "drawLineChart" => Some(
+            "**charting.drawLineChart** `(title?, description?, xlabel?, ylabel?, output?)`\n\n\
+            Generate a line chart for trend visualization.\n\n\
+            **Parameters:**\n\
+            - `title` - Chart title\n\
+            - `description` - Chart description\n\
+            - `xlabel` - X-axis label\n\
+            - `ylabel` - Y-axis label\n\
+            - `output` - Output filename (default: line-chart.svg)\n\n\
+            **Example:**\n\
+            ```\nafter {\n    charting.drawLineChart(\n        title: \"Performance Trends\"\n    )\n}\n```\n\n\
+            *From `std::charting`*"
         ),
         // Namespaced std::constants symbols (new preferred style)
         "PI" => Some(

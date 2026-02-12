@@ -117,6 +117,33 @@ pub fn get_completions(doc: &ParsedDocument, position: Position, trigger_char: O
             // Also provide stdlib module constants
             items.extend(stdlib_module_name_completions(&stdlib_imports));
         }
+        Context::InsideAfterBlock => {
+            // Inside suite-level after { } block - only charting is allowed
+            // Suggest "charting" module if imported
+            if stdlib_imports.contains(&"charting".to_string()) {
+                items.push(CompletionItem {
+                    label: "charting".to_string(),
+                    kind: Some(CompletionItemKind::MODULE),
+                    detail: Some("Chart generation module".to_string()),
+                    documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                        tower_lsp::lsp_types::MarkupContent {
+                            kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                            value: "**std::charting**\n\nType `charting.` to access chart functions:\n- `charting.drawBarChart()` - Bar chart\n- `charting.drawPieChart()` - Pie chart\n- `charting.drawLineChart()` - Line chart".to_string(),
+                        }
+                    )),
+                    insert_text: Some("charting".to_string()),
+                    ..Default::default()
+                });
+            }
+        }
+        Context::ChartingDotAccess => {
+            // After "charting." - show chart function completions
+            items.extend(charting_function_completions());
+        }
+        Context::InsideChartingFunctionArgs => {
+            // Inside charting function arguments - show parameter completions
+            items.extend(charting_function_param_completions());
+        }
     }
 
     items
@@ -255,6 +282,12 @@ enum Context {
     InsideEmbeddedBenchCode,
     /// Inside import{} or declare{} block - embedded code
     InsideEmbeddedDeclarations,
+    /// Inside suite-level after { } block for charting directives
+    InsideAfterBlock,
+    /// After typing "charting." - suggests chart functions
+    ChartingDotAccess,
+    /// Inside charting function arguments (e.g., "charting.drawBarChart(")
+    InsideChartingFunctionArgs,
     Unknown,
 }
 
@@ -269,10 +302,21 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
         return Context::UseStdModule;
     }
     
-    // Check for module dot access pattern (e.g., "anvil.", "constants.")
-    // This enables autocomplete for imported module members
+    // Check for charting function argument context (e.g., "charting.drawBarChart(")
+    if is_inside_chart_function_args(trimmed) {
+        return Context::InsideChartingFunctionArgs;
+    }
+    
+    // Check for charting dot access specifically (takes precedence over generic module dot access)
     if let Some(module_name) = extract_module_before_dot(trimmed) {
-        // Verify this module is imported
+        if module_name == "charting" {
+            // Verify charting is imported
+            let stdlib_imports = detect_stdlib_imports(doc);
+            if stdlib_imports.contains(&"charting".to_string()) {
+                return Context::ChartingDotAccess;
+            }
+        }
+        // Check for other module dot access
         let stdlib_imports = detect_stdlib_imports(doc);
         if stdlib_imports.contains(&module_name) {
             return Context::ModuleDotAccess(module_name);
@@ -358,11 +402,22 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
 
     // Analyze the block stack to determine context
     // Check if we're inside an embedded code block (init, helpers, import, declare)
+    // or inside a suite-level after block (for charting)
     for (keyword, _) in block_stack.iter().rev() {
         match keyword.as_str() {
             "init" => return Context::InsideEmbeddedInit,
             "helpers" => return Context::InsideEmbeddedHelpers,
             "import" | "declare" => return Context::InsideEmbeddedDeclarations,
+            // Suite-level "after" block (not "after go:" or "after ts:" which are hooks)
+            // This is detected by being directly inside suite at depth 2
+            "after" => {
+                // Check if this is a suite-level after block (depth 2, inside suite)
+                // by checking if the block before it is "suite"
+                let in_suite = block_stack.iter().any(|(kw, _)| kw == "suite");
+                if in_suite {
+                    return Context::InsideAfterBlock;
+                }
+            }
             _ => {}
         }
     }
@@ -421,7 +476,7 @@ fn extract_module_name_before_trigger(line_text: &str) -> Option<String> {
     let trimmed = line_text.trim();
     
     // Known stdlib module names
-    let known_modules = ["anvil", "constants"];
+    let known_modules = ["anvil", "charting", "constants"];
     
     // Get the last word on the line
     let words: Vec<&str> = trimmed.split_whitespace().collect();
@@ -478,7 +533,7 @@ fn extract_module_before_dot(_line_text: &str) -> Option<String> {
     }
     
     // Known stdlib module names
-    let known_modules = ["anvil", "constants"];
+    let known_modules = ["anvil", "charting", "constants"];
     
     // Check for pattern: "module." at the end (user just typed the dot)
     if line_text.ends_with('.') {
@@ -523,6 +578,17 @@ fn extract_keyword_before_colon(line_text: &str) -> Option<String> {
     let words: Vec<&str> = before_colon.split_whitespace().collect();
 
     words.last().map(|s| s.to_string())
+}
+
+/// Check if cursor is inside charting function arguments
+/// e.g., "charting.drawBarChart(" or "charting.drawBarChart(title:"
+fn is_inside_chart_function_args(text: &str) -> bool {
+    // Check for unclosed charting.drawX( pattern
+    let draw_pattern = Regex::new(r"charting\.draw\w+\([^)]*$").ok();
+    if let Some(pattern) = draw_pattern {
+        return pattern.is_match(text);
+    }
+    false
 }
 
 fn top_level_completions() -> Vec<CompletionItem> {
@@ -1188,6 +1254,18 @@ fn stdlib_module_completions() -> Vec<CompletionItem> {
             ..Default::default()
         },
         CompletionItem {
+            label: "charting".to_string(),
+            kind: Some(CompletionItemKind::MODULE),
+            detail: Some("Chart generation (drawBarChart, drawPieChart, drawLineChart)".to_string()),
+            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                tower_lsp::lsp_types::MarkupContent {
+                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                    value: "**std::charting**\n\nGenerate charts from benchmark results:\n- `charting.drawBarChart()` - Bar chart comparison\n- `charting.drawPieChart()` - Pie chart distribution\n- `charting.drawLineChart()` - Line chart trends\n\nUse in suite-level `after { }` block.".to_string(),
+                }
+            )),
+            ..Default::default()
+        },
+        CompletionItem {
             label: "constants".to_string(),
             kind: Some(CompletionItemKind::MODULE),
             detail: Some("Mathematical constants (std_PI, std_E)".to_string()),
@@ -1197,6 +1275,130 @@ fn stdlib_module_completions() -> Vec<CompletionItem> {
                     value: "**std::constants**\n\nProvides mathematical constants:\n- `std_PI` - Pi (π ≈ 3.14159)\n- `std_E` - Euler's number (e ≈ 2.71828)".to_string(),
                 }
             )),
+            ..Default::default()
+        },
+    ]
+}
+
+/// Completions for charting functions after "charting."
+fn charting_function_completions() -> Vec<CompletionItem> {
+    vec![
+        CompletionItem {
+            label: "drawBarChart".to_string(),
+            kind: Some(CompletionItemKind::FUNCTION),
+            detail: Some("Draw a bar chart of benchmark results".to_string()),
+            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                tower_lsp::lsp_types::MarkupContent {
+                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                    value: "**charting.drawBarChart** `(title?, description?, xlabel?, ylabel?, output?)`\n\nGenerates a bar chart comparing benchmark execution times.\n\n**Parameters:**\n- `title` - Chart title\n- `description` - Chart description\n- `xlabel` - X-axis label\n- `ylabel` - Y-axis label\n- `output` - Output filename (default: bar-chart.svg)".to_string(),
+                }
+            )),
+            insert_text: Some("drawBarChart($0)".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "drawPieChart".to_string(),
+            kind: Some(CompletionItemKind::FUNCTION),
+            detail: Some("Draw a pie chart of time distribution".to_string()),
+            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                tower_lsp::lsp_types::MarkupContent {
+                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                    value: "**charting.drawPieChart** `(title?, description?, output?)`\n\nGenerates a pie chart showing time distribution across benchmarks.\n\n**Parameters:**\n- `title` - Chart title\n- `description` - Chart description\n- `output` - Output filename (default: pie-chart.svg)".to_string(),
+                }
+            )),
+            insert_text: Some("drawPieChart($0)".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "drawLineChart".to_string(),
+            kind: Some(CompletionItemKind::FUNCTION),
+            detail: Some("Draw a line chart for trend visualization".to_string()),
+            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                tower_lsp::lsp_types::MarkupContent {
+                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                    value: "**charting.drawLineChart** `(title?, description?, xlabel?, ylabel?, output?)`\n\nGenerates a line chart for visualizing benchmark trends.\n\n**Parameters:**\n- `title` - Chart title\n- `description` - Chart description\n- `xlabel` - X-axis label\n- `ylabel` - Y-axis label\n- `output` - Output filename (default: line-chart.svg)".to_string(),
+                }
+            )),
+            insert_text: Some("drawLineChart($0)".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            ..Default::default()
+        },
+    ]
+}
+
+/// Completions for charting function parameters
+fn charting_function_param_completions() -> Vec<CompletionItem> {
+    vec![
+        CompletionItem {
+            label: "title".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            detail: Some("Chart title".to_string()),
+            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                tower_lsp::lsp_types::MarkupContent {
+                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                    value: "**title** `string`\n\nThe title displayed at the top of the chart.".to_string(),
+                }
+            )),
+            insert_text: Some("title: \"$0\"".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "description".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            detail: Some("Chart description".to_string()),
+            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                tower_lsp::lsp_types::MarkupContent {
+                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                    value: "**description** `string`\n\nA description shown below the chart title.".to_string(),
+                }
+            )),
+            insert_text: Some("description: \"$0\"".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "xlabel".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            detail: Some("X-axis label".to_string()),
+            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                tower_lsp::lsp_types::MarkupContent {
+                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                    value: "**xlabel** `string`\n\nLabel for the X-axis.".to_string(),
+                }
+            )),
+            insert_text: Some("xlabel: \"$0\"".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "ylabel".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            detail: Some("Y-axis label".to_string()),
+            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                tower_lsp::lsp_types::MarkupContent {
+                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                    value: "**ylabel** `string`\n\nLabel for the Y-axis.".to_string(),
+                }
+            )),
+            insert_text: Some("ylabel: \"$0\"".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "output".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            detail: Some("Output filename".to_string()),
+            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+                tower_lsp::lsp_types::MarkupContent {
+                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                    value: "**output** `string`\n\nThe output filename for the generated chart SVG.\n\nDefault: `bar-chart.svg`, `pie-chart.svg`, or `line-chart.svg` depending on chart type.".to_string(),
+                }
+            )),
+            insert_text: Some("output: \"$0\"".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
             ..Default::default()
         },
     ]
