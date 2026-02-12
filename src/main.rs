@@ -10,7 +10,7 @@ use poly_bench_ir as ir;
 use poly_bench_project as project;
 use poly_bench_runtime as runtime;
 use poly_bench_executor as executor;
-mod reporter;
+use poly_bench_reporter as reporter;
 
 #[derive(Parser)]
 #[command(name = "poly-bench")]
