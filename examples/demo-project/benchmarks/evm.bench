@@ -71,8 +71,8 @@ suite evmBench {
 
     bench getChainId {
         description: "Get the chain ID via RPC"
-        go: callAnvil("eth_chainId", nil)
-        ts: await callAnvil("eth_chainId", [])
+        go: callAnvil("eth_blockNumber", nil)
+        ts: await callAnvil("eth_blockNumber", [])
     }
 
 }
