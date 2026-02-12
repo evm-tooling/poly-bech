@@ -3,7 +3,7 @@
 //! This module handles parsing and storing documents,
 //! providing utilities for position/offset conversion.
 
-use poly_bench::dsl::{self, File, Span};
+use poly_bench_dsl::{self as dsl, File, Span};
 use ropey::Rope;
 
 /// A parsed document with its source and AST

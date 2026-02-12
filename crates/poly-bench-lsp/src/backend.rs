@@ -11,7 +11,7 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{OneOf, *};
 use tower_lsp::{Client, LanguageServer};
 
-use poly_bench::dsl::format_file_with_source;
+use poly_bench_dsl::format_file_with_source;
 
 use super::completion::get_completions;
 use super::diagnostics::compute_diagnostics_with_config;

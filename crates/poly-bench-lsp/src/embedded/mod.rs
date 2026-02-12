@@ -6,8 +6,8 @@
 pub mod go_bridge;
 pub mod ts_bridge;
 
-use poly_bench::dsl::{Benchmark, Fixture, Lang, Span, StructuredSetup, Suite};
-use poly_bench::stdlib;
+use poly_bench_dsl::{Benchmark, Fixture, Lang, Span, StructuredSetup, Suite};
+use poly_bench_stdlib as stdlib;
 use std::collections::HashSet;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Range};
 

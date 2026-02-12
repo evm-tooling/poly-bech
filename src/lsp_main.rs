@@ -4,19 +4,7 @@
 //! providing diagnostics, hover, completion, and semantic tokens.
 
 use tower_lsp::{LspService, Server};
-
-mod backend;
-mod completion;
-mod diagnostics;
-mod document;
-mod embedded;
-mod gopls_client;
-mod hover;
-mod semantic_tokens;
-mod tsserver_client;
-mod virtual_files;
-
-use backend::Backend;
+use poly_bench_lsp::Backend;
 
 #[tokio::main]
 async fn main() {

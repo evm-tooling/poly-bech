@@ -3,7 +3,7 @@
 //! This module provides context-aware code completions
 //! for poly-bench files.
 
-use poly_bench::stdlib::{self, StdlibSymbolKind};
+use poly_bench_stdlib::{self as stdlib, StdlibSymbolKind};
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, InsertTextFormat, Position,
 };

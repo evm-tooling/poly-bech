@@ -3,7 +3,7 @@
 //! This module converts parse errors and validation warnings/errors
 //! into LSP diagnostics, including embedded Go/TypeScript code checking.
 
-use poly_bench::dsl;
+use poly_bench_dsl as dsl;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
 
 use super::document::ParsedDocument;

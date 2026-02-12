@@ -15,3 +15,4 @@ pub use poly_bench_project as project;
 pub use poly_bench_runtime as runtime;
 pub use poly_bench_executor as executor;
 pub use poly_bench_reporter as reporter;
+pub use poly_bench_lsp as lsp;
