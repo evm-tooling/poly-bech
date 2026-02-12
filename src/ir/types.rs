@@ -4,22 +4,41 @@ use crate::dsl::{Lang, ExecutionOrder};
 use serde::{Serialize, Deserialize};
 use std::collections::{HashMap, HashSet};
 
+/// Configuration for spawning an Anvil instance (from globalSetup)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnvilConfigIR {
+    /// Optional RPC URL to fork from
+    pub fork_url: Option<String>,
+}
+
+impl AnvilConfigIR {
+    pub fn new(fork_url: Option<String>) -> Self {
+        Self { fork_url }
+    }
+}
+
 /// A complete benchmark IR with all suites
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BenchmarkIR {
     /// Standard library modules imported (e.g., "constants", "math")
     pub stdlib_imports: HashSet<String>,
+    /// Anvil configuration from globalSetup (if spawnAnvil() was called)
+    pub anvil_config: Option<AnvilConfigIR>,
     /// All benchmark suites
     pub suites: Vec<SuiteIR>,
 }
 
 impl BenchmarkIR {
     pub fn new(suites: Vec<SuiteIR>) -> Self {
-        Self { stdlib_imports: HashSet::new(), suites }
+        Self { stdlib_imports: HashSet::new(), anvil_config: None, suites }
     }
 
     pub fn with_stdlib(stdlib_imports: HashSet<String>, suites: Vec<SuiteIR>) -> Self {
-        Self { stdlib_imports, suites }
+        Self { stdlib_imports, anvil_config: None, suites }
+    }
+    
+    pub fn with_anvil(stdlib_imports: HashSet<String>, anvil_config: Option<AnvilConfigIR>, suites: Vec<SuiteIR>) -> Self {
+        Self { stdlib_imports, anvil_config, suites }
     }
 
     /// Get all benchmarks across all suites
@@ -59,6 +78,9 @@ pub struct SuiteIR {
     /// Baseline language for comparison ratios
     pub baseline: Option<Lang>,
     
+    /// Standard library modules imported (e.g., "constants", "anvil")
+    pub stdlib_imports: HashSet<String>,
+    
     // Phase 1: Structured setup (separated into sections)
     /// Per-language imports (extracted from setup blocks)
     pub imports: HashMap<Lang, Vec<String>>,
@@ -89,6 +111,7 @@ impl SuiteIR {
             order: ExecutionOrder::Sequential,
             compare: false,
             baseline: None,
+            stdlib_imports: HashSet::new(),
             imports: HashMap::new(),
             declarations: HashMap::new(),
             init_code: HashMap::new(),

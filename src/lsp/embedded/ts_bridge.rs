@@ -287,6 +287,17 @@ fn build_combined_setup(blocks: &[&EmbeddedBlock], context: &SetupContext) -> (S
         }
     }
 
+    // Add stdlib code (constants, etc.) after imports - no mapping needed as it's synthetic
+    if let Some(ref stdlib) = context.stdlib_code {
+        let trimmed = stdlib.trim();
+        if !trimmed.is_empty() {
+            combined.push_str(trimmed);
+            combined.push_str("\n\n");
+            let line_count = trimmed.lines().count();
+            current_line += line_count + 1;
+        }
+    }
+
     // Add declarations
     if let Some(ref decls) = context.declarations {
         let trimmed = decls.trim();

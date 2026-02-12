@@ -224,22 +224,58 @@ impl UseStd {
     }
 }
 
+/// Configuration for spawning an Anvil instance
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnvilSetupConfig {
+    /// Optional RPC URL to fork from
+    pub fork_url: Option<String>,
+    /// Source location of the spawnAnvil() call
+    pub span: Span,
+}
+
+impl AnvilSetupConfig {
+    pub fn new(fork_url: Option<String>, span: Span) -> Self {
+        Self { fork_url, span }
+    }
+}
+
+/// Global setup block for file-level initialization
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GlobalSetup {
+    /// Anvil configuration if spawnAnvil() is called
+    pub anvil_config: Option<AnvilSetupConfig>,
+    /// Source location
+    pub span: Span,
+}
+
+impl GlobalSetup {
+    pub fn new(anvil_config: Option<AnvilSetupConfig>, span: Span) -> Self {
+        Self { anvil_config, span }
+    }
+}
+
 /// Top-level file containing one or more suites
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct File {
     /// Standard library imports (use std::module)
     pub use_stds: Vec<UseStd>,
+    /// Global setup block (optional)
+    pub global_setup: Option<GlobalSetup>,
     /// Benchmark suites
     pub suites: Vec<Suite>,
 }
 
 impl File {
     pub fn new(suites: Vec<Suite>) -> Self {
-        Self { use_stds: Vec::new(), suites }
+        Self { use_stds: Vec::new(), global_setup: None, suites }
     }
 
     pub fn with_use_stds(use_stds: Vec<UseStd>, suites: Vec<Suite>) -> Self {
-        Self { use_stds, suites }
+        Self { use_stds, global_setup: None, suites }
+    }
+    
+    pub fn with_global_setup(use_stds: Vec<UseStd>, global_setup: Option<GlobalSetup>, suites: Vec<Suite>) -> Self {
+        Self { use_stds, global_setup, suites }
     }
 }
 

@@ -24,6 +24,8 @@ pub struct JsRuntime {
     generated_code: Option<String>,
     /// Project root directory (where package.json/node_modules is located)
     project_root: Option<PathBuf>,
+    /// Anvil RPC URL if std::anvil is enabled
+    anvil_rpc_url: Option<String>,
 }
 
 impl JsRuntime {
@@ -36,12 +38,18 @@ impl JsRuntime {
             node_binary,
             generated_code: None,
             project_root: None,
+            anvil_rpc_url: None,
         })
     }
     
     /// Set the project root directory where package.json/node_modules is located
     pub fn set_project_root(&mut self, path: Option<PathBuf>) {
         self.project_root = path;
+    }
+    
+    /// Set the Anvil RPC URL to pass to subprocess
+    pub fn set_anvil_rpc_url(&mut self, url: String) {
+        self.anvil_rpc_url = Some(url);
     }
 }
 
@@ -106,10 +114,16 @@ impl Runtime for JsRuntime {
             .map_err(|e| miette!("Failed to write benchmark script: {}", e))?;
 
         // Run with Node.js from the working directory (which has node_modules)
-        let output = tokio::process::Command::new(&self.node_binary)
-            .arg(&script_path)
-            .current_dir(&working_dir)
-            .output()
+        let mut cmd = tokio::process::Command::new(&self.node_binary);
+        cmd.arg(&script_path)
+            .current_dir(&working_dir);
+        
+        // Pass Anvil RPC URL if available
+        if let Some(ref url) = self.anvil_rpc_url {
+            cmd.env("ANVIL_RPC_URL", url);
+        }
+        
+        let output = cmd.output()
             .await
             .map_err(|e| miette!("Failed to run Node.js: {}", e))?;
 

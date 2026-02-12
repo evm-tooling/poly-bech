@@ -7,6 +7,8 @@ pub mod go_bridge;
 pub mod ts_bridge;
 
 use poly_bench::dsl::{Benchmark, Fixture, Lang, Span, StructuredSetup, Suite};
+use poly_bench::stdlib;
+use std::collections::HashSet;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Range};
 
 use super::document::ParsedDocument;
@@ -245,6 +247,8 @@ pub struct SetupContext {
     pub declarations: Option<String>,
     /// Helper functions
     pub helpers: Option<String>,
+    /// Standard library code to inject (from `use std::module` statements)
+    pub stdlib_code: Option<String>,
 }
 
 /// Result from embedded checking including debug info
@@ -296,11 +300,39 @@ pub fn check_embedded_blocks(
         }
     }
     
+    // Extract stdlib imports from AST and generate stdlib code
+    if let Some(ref ast) = doc.ast {
+        if !ast.use_stds.is_empty() {
+            let stdlib_imports: HashSet<String> = ast.use_stds
+                .iter()
+                .map(|u| u.module.clone())
+                .collect();
+            
+            // Generate Go stdlib code
+            let go_stdlib = stdlib::get_stdlib_code(&stdlib_imports, Lang::Go);
+            if !go_stdlib.is_empty() {
+                go_context.stdlib_code = Some(go_stdlib);
+            }
+            
+            // Generate TypeScript stdlib code
+            let ts_stdlib = stdlib::get_stdlib_code(&stdlib_imports, Lang::TypeScript);
+            if !ts_stdlib.is_empty() {
+                ts_context.stdlib_code = Some(ts_stdlib);
+            }
+            
+            result.debug_messages.push(format!(
+                "Stdlib imports: {:?}",
+                stdlib_imports
+            ));
+        }
+    }
+    
     result.debug_messages.push(format!(
-        "Go context: imports={}, decl={}, helpers={}",
+        "Go context: imports={}, decl={}, helpers={}, stdlib={}",
         go_context.imports.is_some(),
         go_context.declarations.is_some(),
-        go_context.helpers.is_some()
+        go_context.helpers.is_some(),
+        go_context.stdlib_code.is_some()
     ));
 
     // === Go blocks ===

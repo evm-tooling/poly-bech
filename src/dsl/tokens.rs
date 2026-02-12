@@ -47,6 +47,9 @@ pub enum TokenKind {
     // Standard library keywords
     Use,         // use
 
+    // Global setup keywords
+    GlobalSetup, // globalSetup
+
     // Language keywords
     Go,
     Ts,
@@ -111,6 +114,7 @@ impl TokenKind {
                 | TokenKind::Shape
                 | TokenKind::Async
                 | TokenKind::Use
+                | TokenKind::GlobalSetup
         )
     }
 
@@ -196,6 +200,9 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         
         // Standard library keywords
         "use" => Some(TokenKind::Use),
+        
+        // Global setup keywords
+        "globalSetup" => Some(TokenKind::GlobalSetup),
         
         // Language keywords
         "go" => Some(TokenKind::Go),

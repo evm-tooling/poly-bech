@@ -71,6 +71,11 @@ pub fn get_hover_with_gopls(
         } else {
             eprintln!("[hover] No go_mod_root configured");
         }
+        
+        // Fallback: check for stdlib symbols when gopls returns None
+        if let Some(hover) = get_stdlib_symbol_hover(doc, position) {
+            return Some(hover);
+        }
     }
     
     // Check if the offset is within a TypeScript code block
@@ -93,6 +98,11 @@ pub fn get_hover_with_gopls(
             }
         } else {
             eprintln!("[hover] No ts_module_root configured");
+        }
+        
+        // Fallback: check for stdlib symbols when tsserver returns None
+        if let Some(hover) = get_stdlib_symbol_hover(doc, position) {
+            return Some(hover);
         }
     }
     
@@ -604,7 +614,26 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             "**use** `std::module`\n\n\
             Import a module from the poly-bench standard library.\n\n\
             Available modules:\n\
+            - `anvil` - Anvil node integration (ANVIL_RPC_URL)\n\
             - `constants` - Mathematical constants (std_PI, std_E)"
+        ),
+
+        // Global setup
+        "globalSetup" => Some(
+            "**globalSetup** `{ ... }`\n\n\
+            Global setup block for file-level initialization.\n\n\
+            Currently supports:\n\
+            - `spawnAnvil()` - Spawn a local Anvil Ethereum node\n\
+            - `spawnAnvil(fork: \"url\")` - Spawn with chain forking\n\n\
+            ```\nglobalSetup {\n    spawnAnvil()\n}\n```"
+        ),
+        "spawnAnvil" => Some(
+            "**spawnAnvil** `()` or `(fork: \"url\")`\n\n\
+            Spawn a local Anvil Ethereum node.\n\n\
+            Anvil is started before benchmarks and stopped after.\n\
+            The RPC URL is available as `ANVIL_RPC_URL` in benchmark code.\n\n\
+            **Options:**\n\
+            - `fork: \"url\"` - Fork from an existing chain"
         ),
 
         _ => None,
@@ -617,12 +646,25 @@ fn std_namespace_docs() -> &'static str {
     Poly-bench standard library namespace.\n\n\
     Use `use std::module` to import a standard library module.\n\n\
     Available modules:\n\
+    - `anvil` - Local Ethereum node management\n\
     - `constants` - Mathematical constants"
 }
 
 /// Get documentation for a stdlib module
 fn stdlib_module_docs(module: &str) -> Option<&'static str> {
     match module {
+        "anvil" => Some(
+            "**std::anvil**\n\n\
+            Anvil Ethereum node integration from the poly-bench standard library.\n\n\
+            When imported, poly-bench automatically spawns a local Anvil node before\n\
+            running benchmarks and makes the RPC URL available via `ANVIL_RPC_URL`.\n\n\
+            **Provided variables:**\n\
+            - `ANVIL_RPC_URL` - The RPC endpoint URL (e.g., http://127.0.0.1:8545)\n\n\
+            **Lifecycle:**\n\
+            - Anvil is started automatically when benchmarks begin\n\
+            - Anvil is stopped automatically when benchmarks complete\n\n\
+            **Requirements:** Anvil must be installed (part of Foundry toolchain)"
+        ),
         "constants" => Some(
             "**std::constants**\n\n\
             Mathematical constants from the poly-bench standard library.\n\n\
@@ -640,6 +682,52 @@ fn stdlib_module_docs(module: &str) -> Option<&'static str> {
         ),
         _ => None,
     }
+}
+
+/// Get documentation for stdlib symbols (constants, functions, etc.)
+fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
+    match symbol {
+        // std::anvil symbols
+        "ANVIL_RPC_URL" => Some(
+            "```go\nvar ANVIL_RPC_URL string\n```\n\n\
+            **Anvil RPC endpoint URL.**\n\n\
+            When `use std::anvil` is specified, poly-bench automatically starts an Anvil\n\
+            node and sets this variable to its RPC URL (e.g., `http://127.0.0.1:8545`).\n\n\
+            **Example:**\n\
+            ```go\nhttp.Post(ANVIL_RPC_URL, \"application/json\", body)\n```\n\n\
+            *From `std::anvil`*"
+        ),
+        // std::constants symbols
+        "std_PI" => Some(
+            "```go\nconst std_PI float64 = 3.14159265358979323846\n```\n\n\
+            **Pi (π)** - The ratio of a circle's circumference to its diameter.\n\n\
+            *From `std::constants`*"
+        ),
+        "std_E" => Some(
+            "```go\nconst std_E float64 = 2.71828182845904523536\n```\n\n\
+            **Euler's number (e)** - The base of natural logarithms.\n\n\
+            *From `std::constants`*"
+        ),
+        _ => None,
+    }
+}
+
+/// Get hover information for stdlib symbols in embedded code blocks
+fn get_stdlib_symbol_hover(doc: &ParsedDocument, position: Position) -> Option<Hover> {
+    let (word, range) = doc.word_at_position(position)?;
+    
+    if let Some(docs) = stdlib_symbol_docs(&word) {
+        eprintln!("[hover] Found stdlib symbol: {}", word);
+        return Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: docs.to_string(),
+            }),
+            range: Some(range),
+        });
+    }
+    
+    None
 }
 
 /// Get documentation for a language identifier

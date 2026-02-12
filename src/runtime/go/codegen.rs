@@ -22,11 +22,24 @@ pub fn generate(ir: &BenchmarkIR) -> Result<String> {
         }
     }
     
-    // Generate unified import block
-    code.push_str("import (\n");
-    code.push_str("\t\"encoding/json\"\n");
-    code.push_str("\t\"time\"\n");
+    // Collect stdlib imports
+    let stdlib_imports = stdlib::get_stdlib_imports(&ir.stdlib_imports, Lang::Go);
+    
+    // Generate unified import block with deduplication
+    let mut all_imports: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    all_imports.insert("\"encoding/json\"");
+    all_imports.insert("\"time\"");
     for import_spec in &user_imports {
+        all_imports.insert(import_spec);
+    }
+    for import_spec in &stdlib_imports {
+        all_imports.insert(import_spec);
+    }
+    
+    code.push_str("import (\n");
+    let mut sorted_imports: Vec<_> = all_imports.into_iter().collect();
+    sorted_imports.sort();
+    for import_spec in sorted_imports {
         code.push_str(&format!("\t{}\n", import_spec));
     }
     code.push_str(")\n\n");

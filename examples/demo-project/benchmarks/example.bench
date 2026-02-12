@@ -1,5 +1,6 @@
 use std::constants
 
+
 suite example {
     description: "Example benchmark to get you started"
     iterations: 50
@@ -17,12 +18,15 @@ suite example {
         }
 
         init {
-            
         }
 
         helpers {
             func sha256SumGo(data []byte) [32]byte {
                 return sha256.Sum256(data)
+            }
+
+             func sha256SumGo1(data float64) float64 {
+                return data * x
             }
         }
     }
@@ -39,6 +43,7 @@ suite example {
             function sha256SumTs(data: Uint8Array): Buffer {
                 return createHash('sha256').update(Buffer.from(data)).digest()
             }
+            
         }
     }
 

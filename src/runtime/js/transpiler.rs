@@ -129,15 +129,46 @@ pub fn strip_type_annotations(ts_code: &str) -> String {
     let mut in_type_annotation = false;
     let mut depth = 0;
     let mut chars = ts_code.chars().peekable();
+    let mut paren_depth: usize = 0; // Track if we're inside function parameters
 
     while let Some(c) = chars.next() {
         match c {
+            '(' => {
+                paren_depth += 1;
+                result.push(c);
+            }
+            ')' if !in_type_annotation => {
+                paren_depth = paren_depth.saturating_sub(1);
+                result.push(c);
+            }
             ':' if !in_type_annotation => {
                 // Check if this starts a type annotation
-                // Skip whitespace and check for type-like patterns
-                let rest: String = chars.clone().take(20).collect();
-                if rest.trim_start().starts_with(|c: char| c.is_alphabetic() || c == '{' || c == '[' || c == '(') {
-                    // Likely a type annotation
+                // Type annotations follow: function params, variable declarations, function return types
+                // NOT: object literal properties (key: value)
+                let rest: String = chars.clone().take(30).collect();
+                let trimmed_rest = rest.trim_start();
+                
+                // Check if we're in a function parameter context OR after closing paren (return type)
+                // Look back to see if this looks like a type context
+                let last_few: String = result.chars().rev().take(30).collect::<String>().chars().rev().collect();
+                let is_after_param_name = last_few.chars().rev()
+                    .skip_while(|c| c.is_whitespace())
+                    .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '?' )
+                    .count() > 0;
+                
+                // Type annotations start with: type name, { (for object types), [ (for array types), ( (for function types)
+                // But we should only strip if we're in a type annotation context, not object literal
+                let looks_like_type = trimmed_rest.starts_with(|c: char| c.is_alphabetic())
+                    || trimmed_rest.starts_with("Array<")
+                    || trimmed_rest.starts_with("Promise<")
+                    || trimmed_rest.starts_with("Record<");
+                
+                // Only treat as type annotation if in paren context (function params) 
+                // or right after closing paren (return type)
+                let last_non_ws = result.trim_end().chars().last().unwrap_or(' ');
+                let is_return_type = last_non_ws == ')';
+                
+                if (paren_depth > 0 || is_return_type) && is_after_param_name && looks_like_type {
                     in_type_annotation = true;
                     continue;
                 }
@@ -149,7 +180,12 @@ pub fn strip_type_annotations(ts_code: &str) -> String {
             '>' if in_type_annotation && depth > 0 => {
                 depth -= 1;
             }
-            '=' | ',' | ')' | '{' | ';' | '\n' if in_type_annotation && depth == 0 => {
+            ')' if in_type_annotation && depth == 0 => {
+                in_type_annotation = false;
+                paren_depth = paren_depth.saturating_sub(1);
+                result.push(c);
+            }
+            '=' | ',' | '{' | ';' | '\n' if in_type_annotation && depth == 0 => {
                 in_type_annotation = false;
                 result.push(c);
             }
