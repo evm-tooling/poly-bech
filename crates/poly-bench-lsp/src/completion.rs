@@ -422,11 +422,9 @@ fn extract_module_before_dot(_line_text: &str) -> Option<String> {
 
 fn extract_keyword_before_colon(line_text: &str) -> Option<String> {
     let parts: Vec<&str> = line_text.split(':').collect();
-    if parts.is_empty() {
-        return None;
-    }
 
-    let before_colon = parts[0].trim();
+    // Use safe access with .first() instead of parts[0]
+    let before_colon = parts.first()?.trim();
     let words: Vec<&str> = before_colon.split_whitespace().collect();
 
     words.last().map(|s| s.to_string())

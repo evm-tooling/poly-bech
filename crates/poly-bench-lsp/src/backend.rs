@@ -3,8 +3,11 @@
 //! This module implements the `LanguageServer` trait from tower-lsp,
 //! handling all LSP protocol requests.
 
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
+use std::time::Duration;
 
 use dashmap::DashMap;
 use tower_lsp::jsonrpc::Result;
@@ -21,6 +24,14 @@ use super::hover::{get_hover, get_hover_with_gopls};
 use super::semantic_tokens::{get_semantic_tokens, LEGEND};
 use super::virtual_files::{VirtualFileManager, VirtualTsFileManager};
 
+/// Debounce delay for document changes (in milliseconds)
+const DEBOUNCE_DELAY_MS: u64 = 300;
+
+/// Pending document change (tracks only the change ID for debouncing)
+struct PendingChange {
+    change_id: u64,
+}
+
 /// The LSP backend holding all state
 pub struct Backend {
     /// LSP client for sending notifications
@@ -35,6 +46,10 @@ pub struct Backend {
     virtual_file_manager: VirtualFileManager,
     /// Virtual file manager for tsserver integration
     virtual_ts_file_manager: VirtualTsFileManager,
+    /// Pending document changes for debouncing
+    pending_changes: DashMap<Url, PendingChange>,
+    /// Counter for generating unique change IDs
+    change_counter: AtomicU64,
 }
 
 impl Backend {
@@ -46,7 +61,24 @@ impl Backend {
             embedded_configs: DashMap::new(),
             virtual_file_manager: VirtualFileManager::new(),
             virtual_ts_file_manager: VirtualTsFileManager::new(),
+            pending_changes: DashMap::new(),
+            change_counter: AtomicU64::new(0),
         }
+    }
+
+    /// Queue a document change for debounced processing
+    fn queue_change(&self, uri: Url, _text: String, _version: i32) -> u64 {
+        let change_id = self.change_counter.fetch_add(1, Ordering::SeqCst);
+        self.pending_changes.insert(uri, PendingChange { change_id });
+        change_id
+    }
+
+    /// Check if a change is still the latest for a document
+    fn is_change_current(&self, uri: &Url, change_id: u64) -> bool {
+        self.pending_changes
+            .get(uri)
+            .map(|c| c.change_id == change_id)
+            .unwrap_or(false)
     }
 
     /// Re-parse a document and publish diagnostics
@@ -284,7 +316,19 @@ impl LanguageServer for Backend {
 
         // We use full sync, so there's exactly one change with the full content
         if let Some(change) = params.content_changes.into_iter().next() {
-            self.on_change(uri, change.text, version).await;
+            // Queue the change for debounced processing
+            let change_id = self.queue_change(uri.clone(), change.text.clone(), version);
+
+            // Wait for the debounce delay
+            tokio::time::sleep(Duration::from_millis(DEBOUNCE_DELAY_MS)).await;
+
+            // Check if this change is still the latest (no newer changes came in)
+            if self.is_change_current(&uri, change_id) {
+                // Remove from pending and process
+                self.pending_changes.remove(&uri);
+                self.on_change(uri, change.text, version).await;
+            }
+            // If not current, a newer change will be processed instead
         }
     }
 
@@ -296,6 +340,7 @@ impl LanguageServer for Backend {
         let uri = &params.text_document.uri;
         self.documents.remove(uri);
         self.embedded_configs.remove(uri);
+        self.pending_changes.remove(uri);
         self.virtual_file_manager.remove(uri.as_str());
         self.virtual_ts_file_manager.remove(uri.as_str());
     }
@@ -305,20 +350,34 @@ impl LanguageServer for Backend {
         let position = params.text_document_position_params.position;
 
         if let Some(doc) = self.documents.get(uri) {
-            // Try to get hover with embedded language integration (Go/TypeScript)
-            if let Some(config) = self.embedded_configs.get(uri) {
-                let hover = get_hover_with_gopls(
-                    &doc,
-                    position,
-                    &config,
-                    uri,
-                    &self.virtual_file_manager,
-                    &self.virtual_ts_file_manager,
-                );
-                Ok(hover)
+            // Wrap in catch_unwind to prevent panics from crashing the LSP
+            let result = if let Some(config) = self.embedded_configs.get(uri) {
+                catch_unwind(AssertUnwindSafe(|| {
+                    get_hover_with_gopls(
+                        &doc,
+                        position,
+                        &config,
+                        uri,
+                        &self.virtual_file_manager,
+                        &self.virtual_ts_file_manager,
+                    )
+                }))
             } else {
-                // Fall back to standard hover if no config
-                Ok(get_hover(&doc, position))
+                catch_unwind(AssertUnwindSafe(|| get_hover(&doc, position)))
+            };
+
+            match result {
+                Ok(hover) => Ok(hover),
+                Err(e) => {
+                    // Log the panic but don't crash
+                    self.client
+                        .log_message(
+                            MessageType::ERROR,
+                            format!("Hover panic caught: {:?}", e),
+                        )
+                        .await;
+                    Ok(None)
+                }
             }
         } else {
             Ok(None)
@@ -328,15 +387,32 @@ impl LanguageServer for Backend {
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = &params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
-        
+
         // Get trigger character if available (e.g., "." when user types "anvil.")
         let trigger_char = params.context
             .as_ref()
-            .and_then(|ctx| ctx.trigger_character.as_deref());
+            .and_then(|ctx| ctx.trigger_character.as_deref())
+            .map(|s| s.to_string());
 
         if let Some(doc) = self.documents.get(uri) {
-            let items = get_completions(&doc, position, trigger_char);
-            Ok(Some(CompletionResponse::Array(items)))
+            // Wrap in catch_unwind to prevent panics from crashing the LSP
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                get_completions(&doc, position, trigger_char.as_deref())
+            }));
+
+            match result {
+                Ok(items) => Ok(Some(CompletionResponse::Array(items))),
+                Err(e) => {
+                    // Log the panic but don't crash
+                    self.client
+                        .log_message(
+                            MessageType::ERROR,
+                            format!("Completion panic caught: {:?}", e),
+                        )
+                        .await;
+                    Ok(Some(CompletionResponse::Array(vec![])))
+                }
+            }
         } else {
             Ok(None)
         }
@@ -349,11 +425,25 @@ impl LanguageServer for Backend {
         let uri = &params.text_document.uri;
 
         if let Some(doc) = self.documents.get(uri) {
-            let tokens = get_semantic_tokens(&doc);
-            Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
-                result_id: None,
-                data: tokens,
-            })))
+            // Wrap in catch_unwind to prevent panics from crashing the LSP
+            let result = catch_unwind(AssertUnwindSafe(|| get_semantic_tokens(&doc)));
+
+            match result {
+                Ok(tokens) => Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
+                    result_id: None,
+                    data: tokens,
+                }))),
+                Err(e) => {
+                    // Log the panic but don't crash
+                    self.client
+                        .log_message(
+                            MessageType::ERROR,
+                            format!("Semantic tokens panic caught: {:?}", e),
+                        )
+                        .await;
+                    Ok(None)
+                }
+            }
         } else {
             Ok(None)
         }
@@ -367,30 +457,47 @@ impl LanguageServer for Backend {
                 return Ok(None);
             };
 
-            // Use the source-preserving formatter to keep comments and use statements
-            let formatted = format_file_with_source(ast, &doc.source);
+            // Wrap in catch_unwind to prevent panics from crashing the LSP
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                // Use the source-preserving formatter to keep comments and use statements
+                let formatted = format_file_with_source(ast, &doc.source);
 
-            // Return a single edit replacing the entire document
-            let line_count = doc.rope.len_lines();
-            let last_line = (line_count.saturating_sub(1)) as u32;
-            let last_line_len = if line_count > 0 {
-                doc.rope.line(line_count - 1).len_chars() as u32
-            } else {
-                0
-            };
+                // Return a single edit replacing the entire document
+                let line_count = doc.rope.len_lines();
+                let last_line = (line_count.saturating_sub(1)) as u32;
+                let last_line_len = if line_count > 0 {
+                    doc.rope.line(line_count - 1).len_chars() as u32
+                } else {
+                    0
+                };
 
-            let range = Range {
-                start: Position { line: 0, character: 0 },
-                end: Position {
-                    line: last_line,
-                    character: last_line_len,
-                },
-            };
+                let range = Range {
+                    start: Position { line: 0, character: 0 },
+                    end: Position {
+                        line: last_line,
+                        character: last_line_len,
+                    },
+                };
 
-            Ok(Some(vec![TextEdit {
-                range,
-                new_text: formatted,
-            }]))
+                vec![TextEdit {
+                    range,
+                    new_text: formatted,
+                }]
+            }));
+
+            match result {
+                Ok(edits) => Ok(Some(edits)),
+                Err(e) => {
+                    // Log the panic but don't crash
+                    self.client
+                        .log_message(
+                            MessageType::ERROR,
+                            format!("Formatting panic caught: {:?}", e),
+                        )
+                        .await;
+                    Ok(None)
+                }
+            }
         } else {
             Ok(None)
         }
