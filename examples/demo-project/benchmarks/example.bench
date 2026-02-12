@@ -56,24 +56,34 @@ suite example {
         ts: sha256SumTs(data)
     }
 
+
     after {
         charting.drawBarChart(
             title: "Performance Comparison",
-            description: "Go vs TypeScript",
-            xlabel: "Benchmark",
-            ylabel: "Time (ns)"
+            description: "Go vs TypeScript SHA256 Benchmarks",
+            showStats: true,
+            showConfig: true,
+            showWinCounts: true,
+            showGeoMean: true,
+            showDistribution: true,
+            sortBy: "speedup",
+            sortOrder: "desc"
         )
+        
         charting.drawLineChart(
-            title: "Performance Comparison",
-            description: "Go vs TypeScript",
+            title: "Performance Trends",
+            description: "Go vs TypeScript over benchmarks",
             xlabel: "Benchmark",
-            ylabel: "Time (ns)"
+            ylabel: "Time",
+            showStats: true,
+            timeUnit: "auto"
         )
+        
         charting.drawPieChart(
-            title: "Performance Comparison",
-            description: "Go vs TypeScript",
-            xlabel: "Benchmark",
-            ylabel: "Time (ns)"
+            title: "Time Distribution",
+            description: "Relative time spent in each benchmark",
+            showStats: true,
+            showTotalTime: true
         )
     }
 

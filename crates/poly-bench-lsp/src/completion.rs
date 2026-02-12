@@ -1330,78 +1330,71 @@ fn charting_function_completions() -> Vec<CompletionItem> {
 
 /// Completions for charting function parameters
 fn charting_function_param_completions() -> Vec<CompletionItem> {
-    vec![
-        CompletionItem {
-            label: "title".to_string(),
-            kind: Some(CompletionItemKind::PROPERTY),
-            detail: Some("Chart title".to_string()),
-            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-                tower_lsp::lsp_types::MarkupContent {
-                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-                    value: "**title** `string`\n\nThe title displayed at the top of the chart.".to_string(),
-                }
-            )),
-            insert_text: Some("title: \"$0\"".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "description".to_string(),
-            kind: Some(CompletionItemKind::PROPERTY),
-            detail: Some("Chart description".to_string()),
-            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-                tower_lsp::lsp_types::MarkupContent {
-                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-                    value: "**description** `string`\n\nA description shown below the chart title.".to_string(),
-                }
-            )),
-            insert_text: Some("description: \"$0\"".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "xlabel".to_string(),
-            kind: Some(CompletionItemKind::PROPERTY),
-            detail: Some("X-axis label".to_string()),
-            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-                tower_lsp::lsp_types::MarkupContent {
-                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-                    value: "**xlabel** `string`\n\nLabel for the X-axis.".to_string(),
-                }
-            )),
-            insert_text: Some("xlabel: \"$0\"".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "ylabel".to_string(),
-            kind: Some(CompletionItemKind::PROPERTY),
-            detail: Some("Y-axis label".to_string()),
-            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-                tower_lsp::lsp_types::MarkupContent {
-                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-                    value: "**ylabel** `string`\n\nLabel for the Y-axis.".to_string(),
-                }
-            )),
-            insert_text: Some("ylabel: \"$0\"".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "output".to_string(),
-            kind: Some(CompletionItemKind::PROPERTY),
-            detail: Some("Output filename".to_string()),
-            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-                tower_lsp::lsp_types::MarkupContent {
-                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-                    value: "**output** `string`\n\nThe output filename for the generated chart SVG.\n\nDefault: `bar-chart.svg`, `pie-chart.svg`, or `line-chart.svg` depending on chart type.".to_string(),
-                }
-            )),
-            insert_text: Some("output: \"$0\"".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            ..Default::default()
-        },
-    ]
+    let mut items = vec![
+        // String parameters
+        chart_param_completion("title", "string", "Chart title", "The title displayed at the top of the chart.", "title: \"$0\""),
+        chart_param_completion("description", "string", "Chart description", "A description shown below the chart title.", "description: \"$0\""),
+        chart_param_completion("xlabel", "string", "X-axis label", "Label for the X-axis.", "xlabel: \"$0\""),
+        chart_param_completion("ylabel", "string", "Y-axis label", "Label for the Y-axis.", "ylabel: \"$0\""),
+        chart_param_completion("output", "string", "Output filename", "The output filename for the generated chart SVG.\n\nDefault: `bar-chart.svg`, `pie-chart.svg`, or `line-chart.svg` depending on chart type.", "output: \"$0\""),
+        
+        // Display toggle parameters (boolean)
+        chart_param_completion("showStats", "bool", "Show statistics", "Show ops/sec and time per op for each benchmark.\n\nDefault: `true`", "showStats: ${1|true,false|}"),
+        chart_param_completion("showConfig", "bool", "Show config", "Show benchmark configuration (iterations, warmup, timeout) in chart footer.\n\nDefault: `true`", "showConfig: ${1|true,false|}"),
+        chart_param_completion("showWinCounts", "bool", "Show win counts", "Show win counts in legend (e.g., 'Go faster (5 wins)').\n\nDefault: `true`", "showWinCounts: ${1|true,false|}"),
+        chart_param_completion("showGeoMean", "bool", "Show geometric mean", "Show geometric mean speedup in legend.\n\nDefault: `true`", "showGeoMean: ${1|true,false|}"),
+        chart_param_completion("showDistribution", "bool", "Show distribution", "Show min/max/p50/p99 percentile distribution.\n\nDefault: `false`", "showDistribution: ${1|true,false|}"),
+        chart_param_completion("showMemory", "bool", "Show memory stats", "Show bytes/allocs memory statistics (if available).\n\nDefault: `false`", "showMemory: ${1|true,false|}"),
+        chart_param_completion("showTotalTime", "bool", "Show total time", "Show total execution time.\n\nDefault: `false`", "showTotalTime: ${1|true,false|}"),
+        chart_param_completion("compact", "bool", "Compact mode", "Minimal chart mode without extra statistics.\n\nDefault: `false`", "compact: ${1|true,false|}"),
+        
+        // Filtering parameters
+        chart_param_completion("minSpeedup", "number", "Minimum speedup", "Only show benchmarks with speedup >= N.\n\nExample: `minSpeedup: 2.0` shows only benchmarks where one language is at least 2x faster.", "minSpeedup: $0"),
+        chart_param_completion("filterWinner", "string", "Filter by winner", "Filter benchmarks by winner: `\"go\"`, `\"ts\"`, or `\"all\"`.", "filterWinner: \"${1|go,ts,all|}\""),
+        chart_param_completion("includeBenchmarks", "array", "Include benchmarks", "Only include these benchmark names (case-insensitive substring match).\n\nExample: `includeBenchmarks: [\"hash\", \"sort\"]`", "includeBenchmarks: [\"$0\"]"),
+        chart_param_completion("excludeBenchmarks", "array", "Exclude benchmarks", "Exclude these benchmark names (case-insensitive substring match).\n\nExample: `excludeBenchmarks: [\"slow\", \"legacy\"]`", "excludeBenchmarks: [\"$0\"]"),
+        chart_param_completion("limit", "number", "Limit results", "Maximum number of benchmarks to show.\n\nExample: `limit: 10` shows only top 10 benchmarks.", "limit: $0"),
+        
+        // Sorting parameters
+        chart_param_completion("sortBy", "string", "Sort by", "Sort benchmarks by: `\"speedup\"`, `\"name\"`, `\"time\"`, or `\"ops\"`.\n\nDefault: `\"name\"`", "sortBy: \"${1|speedup,name,time,ops|}\""),
+        chart_param_completion("sortOrder", "string", "Sort order", "Sort order: `\"asc\"` (ascending) or `\"desc\"` (descending).\n\nDefault: `\"asc\"`", "sortOrder: \"${1|asc,desc|}\""),
+        
+        // Layout parameters
+        chart_param_completion("width", "number", "Chart width", "Chart width in pixels.\n\nDefault: `880`", "width: $0"),
+        chart_param_completion("barHeight", "number", "Bar height", "Height of each bar in pixels.\n\nDefault: `26`", "barHeight: $0"),
+        chart_param_completion("barGap", "number", "Bar gap", "Gap between bars in pixels.\n\nDefault: `5`", "barGap: $0"),
+        chart_param_completion("marginLeft", "number", "Left margin", "Left margin for benchmark labels in pixels.\n\nDefault: `200`", "marginLeft: $0"),
+        
+        // Data display parameters
+        chart_param_completion("precision", "number", "Decimal precision", "Number of decimal places for numbers.\n\nDefault: `2`", "precision: $0"),
+        chart_param_completion("timeUnit", "string", "Time unit", "Time unit for display: `\"auto\"`, `\"ns\"`, `\"us\"`, `\"ms\"`, or `\"s\"`.\n\nDefault: `\"auto\"` (chooses appropriate unit)", "timeUnit: \"${1|auto,ns,us,ms,s|}\""),
+    ];
+    
+    items
+}
+
+/// Helper to create a chart parameter completion item
+fn chart_param_completion(
+    name: &str,
+    param_type: &str,
+    detail: &str,
+    doc: &str,
+    insert_text: &str,
+) -> CompletionItem {
+    CompletionItem {
+        label: name.to_string(),
+        kind: Some(CompletionItemKind::PROPERTY),
+        detail: Some(format!("{} ({})", detail, param_type)),
+        documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+            tower_lsp::lsp_types::MarkupContent {
+                kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+                value: format!("**{}** `{}`\n\n{}", name, param_type, doc),
+            }
+        )),
+        insert_text: Some(insert_text.to_string()),
+        insert_text_format: Some(InsertTextFormat::SNIPPET),
+        ..Default::default()
+    }
 }
 
 fn completion_item(
