@@ -11,7 +11,7 @@
 //!
 //! This enables autocomplete: typing `anvil.` will suggest all available members.
 
-use crate::dsl::Lang;
+use poly_bench_dsl::Lang;
 use std::collections::HashSet;
 
 pub mod anvil;

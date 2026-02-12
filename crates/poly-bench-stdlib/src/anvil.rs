@@ -35,7 +35,7 @@
 //! }
 //! ```
 
-use crate::dsl::Lang;
+use poly_bench_dsl::Lang;
 
 /// Get the language-specific imports for the anvil module
 pub fn get_imports(lang: Lang) -> Vec<&'static str> {

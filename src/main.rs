@@ -5,12 +5,12 @@ use miette::Result;
 use std::path::PathBuf;
 
 use poly_bench_dsl as dsl;
+use poly_bench_stdlib as stdlib;
 mod ir;
 mod runtime;
 mod executor;
 mod reporter;
 mod project;
-mod stdlib;
 
 #[derive(Parser)]
 #[command(name = "poly-bench")]

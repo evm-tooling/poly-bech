@@ -12,6 +12,7 @@ repository = "https://github.com/evanmcgrane/poly-bench"
 [workspace.dependencies]
 # Internal crates
 poly-bench-dsl = { path = "crates/poly-bench-dsl" }
+poly-bench-stdlib = { path = "crates/poly-bench-stdlib" }
 
 # Shared dependencies
 miette = { version = "7", features = ["fancy"] }
@@ -50,6 +51,7 @@ categories = ["development-tools::profiling", "command-line-utilities"]
 [dependencies]
 # Internal crates
 poly-bench-dsl.workspace = true
+poly-bench-stdlib.workspace = true
 
 # CLI
 clap.workspace = true

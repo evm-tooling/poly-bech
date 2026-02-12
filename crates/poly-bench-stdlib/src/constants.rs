@@ -21,7 +21,7 @@
 //! }
 //! ```
 
-use crate::dsl::Lang;
+use poly_bench_dsl::Lang;
 
 /// Get the language-specific code for the constants module
 pub fn get_code(lang: Lang) -> String {
