@@ -1,6 +1,6 @@
 //! Token types for the poly-bench DSL lexer
 
-use crate::dsl::ast::Span;
+use crate::ast::Span;
 
 /// Token types for the DSL
 #[derive(Debug, Clone, PartialEq)]

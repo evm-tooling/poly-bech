@@ -1,6 +1,6 @@
 //! Error types for DSL parsing
 
-use crate::dsl::ast::Span;
+use crate::ast::Span;
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 

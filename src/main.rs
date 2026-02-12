@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use miette::Result;
 use std::path::PathBuf;
 
-mod dsl;
+use poly_bench_dsl as dsl;
 mod ir;
 mod runtime;
 mod executor;
