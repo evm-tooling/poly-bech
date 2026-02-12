@@ -1,0 +1,5 @@
+{
+  // Show LSP communication in output panel for debugging
+  "poly-bench.trace.server": "messages",
+  "poly-bench.formatOnSave": true
+}

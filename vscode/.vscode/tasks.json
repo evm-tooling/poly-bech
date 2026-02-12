@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "poly-bench: compile",
+      "type": "shell",
+      "command": "npm run compile",
+      "group": "build",
+      "presentation": { "reveal": "silent", "panel": "shared" }
+    },
+    {
+      "label": "poly-bench: watch",
+      "type": "shell",
+      "command": "npm run watch",
+      "group": "build",
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "poly-bench: package (vsix)",
+      "type": "shell",
+      "command": "npm run compile && vsce package",
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "shared" }
+    }
+  ]
+}
