@@ -7,7 +7,7 @@
 //! Use this when the .polybench directory is deleted, corrupted, or after cloning
 //! a repo where it was gitignored.
 
-use crate::project::{self, manifest, runtime_env_go, runtime_env_ts, templates};
+use crate::{manifest, runtime_env_go, runtime_env_ts, templates};
 use colored::Colorize;
 use miette::Result;
 use std::path::Path;
@@ -35,12 +35,12 @@ pub fn build_project(options: &BuildOptions) -> Result<()> {
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
 
-    let project_root = project::find_project_root(&current_dir)
+    let project_root = crate::find_project_root(&current_dir)
         .ok_or_else(|| miette::miette!(
             "Not in a poly-bench project. Run 'poly-bench init' first."
         ))?;
 
-    let manifest = project::load_manifest(&project_root)?;
+    let manifest = crate::load_manifest(&project_root)?;
 
     println!(
         "{} Building runtime environment for '{}'",

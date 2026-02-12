@@ -1,0 +1,16 @@
+[package]
+name = "poly-bench-project"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Project management for poly-bench"
+
+[dependencies]
+miette.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+colored.workspace = true
+tempfile.workspace = true

@@ -1,6 +1,6 @@
 //! Dependency management for poly-bench projects
 
-use crate::project::{self, manifest, runtime_env_go, runtime_env_ts, templates};
+use crate::{manifest, runtime_env_go, runtime_env_ts, templates};
 use colored::Colorize;
 use miette::Result;
 use std::path::Path;
@@ -78,10 +78,10 @@ pub fn add_go_dependency(spec: &str) -> Result<()> {
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
 
-    let project_root = project::find_project_root(&current_dir)
+    let project_root = crate::find_project_root(&current_dir)
         .ok_or_else(|| miette::miette!("Not in a poly-bench project"))?;
 
-    let mut manifest = project::load_manifest(&project_root)?;
+    let mut manifest = crate::load_manifest(&project_root)?;
 
     if !manifest.has_go() {
         return Err(miette::miette!("Go is not enabled in this project"));
@@ -91,7 +91,7 @@ pub fn add_go_dependency(spec: &str) -> Result<()> {
 
     // Add to manifest
     manifest.add_go_dependency(&package, &version)?;
-    project::save_manifest(&project_root, &manifest)?;
+    crate::save_manifest(&project_root, &manifest)?;
 
     println!(
         "{} Added Go dependency: {}@{}",
@@ -131,10 +131,10 @@ pub fn add_ts_dependency(spec: &str) -> Result<()> {
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
 
-    let project_root = project::find_project_root(&current_dir)
+    let project_root = crate::find_project_root(&current_dir)
         .ok_or_else(|| miette::miette!("Not in a poly-bench project"))?;
 
-    let mut manifest = project::load_manifest(&project_root)?;
+    let mut manifest = crate::load_manifest(&project_root)?;
 
     if !manifest.has_ts() {
         return Err(miette::miette!("TypeScript is not enabled in this project"));
@@ -144,7 +144,7 @@ pub fn add_ts_dependency(spec: &str) -> Result<()> {
 
     // Add to manifest
     manifest.add_ts_dependency(&package, &version)?;
-    project::save_manifest(&project_root, &manifest)?;
+    crate::save_manifest(&project_root, &manifest)?;
 
     println!(
         "{} Added TypeScript dependency: {}@{}",
@@ -195,10 +195,10 @@ pub fn install_all() -> Result<()> {
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
 
-    let project_root = project::find_project_root(&current_dir)
+    let project_root = crate::find_project_root(&current_dir)
         .ok_or_else(|| miette::miette!("Not in a poly-bench project"))?;
 
-    let manifest = project::load_manifest(&project_root)?;
+    let manifest = crate::load_manifest(&project_root)?;
 
     println!(
         "{} Installing dependencies for {}",
