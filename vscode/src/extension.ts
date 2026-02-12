@@ -24,8 +24,11 @@ import {
 } from 'vscode';
 
 import {
+  CloseAction,
+  ErrorAction,
   LanguageClient,
   LanguageClientOptions,
+  Message,
   ServerOptions,
   TransportKind,
 } from 'vscode-languageclient/node';
@@ -96,7 +99,7 @@ export function activate(context: ExtensionContext): void {
     },
   };
 
-  // Client options - configure which documents to sync
+  // Client options - configure which documents to sync and error handling
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: 'file', language: 'polybench' }],
     synchronize: {
@@ -104,6 +107,27 @@ export function activate(context: ExtensionContext): void {
       fileEvents: workspace.createFileSystemWatcher('**/*.bench'),
     },
     outputChannelName: 'Poly-Bench LSP',
+    // Configure error handling for graceful recovery
+    errorHandler: {
+      error: (error: Error, message: Message | undefined, count: number | undefined) => {
+        // Log the error but continue running
+        console.error(`[Poly-Bench LSP] Error #${count}: ${error.message}`);
+        if (message) {
+          console.error(`[Poly-Bench LSP] Message: ${JSON.stringify(message)}`);
+        }
+        // Continue running instead of shutting down on transient errors
+        return { action: ErrorAction.Continue };
+      },
+      closed: () => {
+        // Restart the server when it closes unexpectedly
+        console.log('[Poly-Bench LSP] Server closed, attempting restart...');
+        return { action: CloseAction.Restart };
+      },
+    },
+    // Increase the restart threshold (default is 5 restarts in 3 minutes)
+    connectionOptions: {
+      maxRestartCount: 10, // Allow more restarts before giving up
+    },
   };
 
   // Create the language client
