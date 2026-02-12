@@ -14,5 +14,4 @@ pub use poly_bench_ir as ir;
 pub use poly_bench_project as project;
 pub use poly_bench_runtime as runtime;
 pub use poly_bench_executor as executor;
-
-pub mod reporter;
+pub use poly_bench_reporter as reporter;

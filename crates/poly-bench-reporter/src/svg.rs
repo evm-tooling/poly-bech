@@ -1,7 +1,7 @@
 //! SVG chart generator
 
-use crate::dsl::Lang;
-use crate::executor::BenchmarkResults;
+use poly_bench_dsl::Lang;
+use poly_bench_executor::BenchmarkResults;
 use miette::Result;
 
 /// Generate SVG speedup chart
@@ -112,9 +112,9 @@ pub fn generate_speedup_chart(results: &BenchmarkResults) -> Result<String> {
             let bar_width = bar_width.max(3.0);
 
             let fill = match cmp.winner {
-                crate::runtime::measurement::ComparisonWinner::First => "url(#goGrad)",
-                crate::runtime::measurement::ComparisonWinner::Second => "url(#tsGrad)",
-                crate::runtime::measurement::ComparisonWinner::Tie => "#9CA3AF",
+                poly_bench_runtime::measurement::ComparisonWinner::First => "url(#goGrad)",
+                poly_bench_runtime::measurement::ComparisonWinner::Second => "url(#tsGrad)",
+                poly_bench_runtime::measurement::ComparisonWinner::Tie => "#9CA3AF",
             };
 
             // Label
@@ -135,9 +135,9 @@ pub fn generate_speedup_chart(results: &BenchmarkResults) -> Result<String> {
             };
             
             let val_color = match cmp.winner {
-                crate::runtime::measurement::ComparisonWinner::First => "#0E7490",
-                crate::runtime::measurement::ComparisonWinner::Second => "#1E40AF",
-                crate::runtime::measurement::ComparisonWinner::Tie => "#6B7280",
+                poly_bench_runtime::measurement::ComparisonWinner::First => "#0E7490",
+                poly_bench_runtime::measurement::ComparisonWinner::Second => "#1E40AF",
+                poly_bench_runtime::measurement::ComparisonWinner::Tie => "#6B7280",
             };
 
             svg.push_str(&format!(

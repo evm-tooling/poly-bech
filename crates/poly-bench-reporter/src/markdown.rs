@@ -1,8 +1,8 @@
 //! Markdown report generator
 
-use crate::dsl::Lang;
-use crate::executor::BenchmarkResults;
-use crate::runtime::measurement::Measurement;
+use poly_bench_dsl::Lang;
+use poly_bench_executor::BenchmarkResults;
+use poly_bench_runtime::measurement::Measurement;
 use miette::Result;
 
 /// Generate markdown report
@@ -82,9 +82,9 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
 
             let result_str = if let Some(ref cmp) = bench.comparison {
                 let icon = match cmp.winner {
-                    crate::runtime::measurement::ComparisonWinner::First => "🟢",
-                    crate::runtime::measurement::ComparisonWinner::Second => "🔵",
-                    crate::runtime::measurement::ComparisonWinner::Tie => "⚪",
+                    poly_bench_runtime::measurement::ComparisonWinner::First => "🟢",
+                    poly_bench_runtime::measurement::ComparisonWinner::Second => "🔵",
+                    poly_bench_runtime::measurement::ComparisonWinner::Tie => "⚪",
                 };
                 format!("{} {}", icon, cmp.speedup_description())
             } else {

@@ -17,6 +17,7 @@ poly-bench-ir = { path = "crates/poly-bench-ir" }
 poly-bench-project = { path = "crates/poly-bench-project" }
 poly-bench-runtime = { path = "crates/poly-bench-runtime" }
 poly-bench-executor = { path = "crates/poly-bench-executor" }
+poly-bench-reporter = { path = "crates/poly-bench-reporter" }
 
 # Shared dependencies
 miette = { version = "7", features = ["fancy"] }
@@ -60,6 +61,7 @@ poly-bench-ir.workspace = true
 poly-bench-project.workspace = true
 poly-bench-runtime.workspace = true
 poly-bench-executor.workspace = true
+poly-bench-reporter.workspace = true
 
 # CLI
 clap.workspace = true

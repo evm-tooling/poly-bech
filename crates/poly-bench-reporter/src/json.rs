@@ -1,6 +1,6 @@
 //! JSON report generator
 
-use crate::executor::BenchmarkResults;
+use poly_bench_executor::BenchmarkResults;
 use miette::Result;
 
 /// Generate JSON report

@@ -1,8 +1,8 @@
 //! Console output reporter
 
-use crate::dsl::Lang;
-use crate::executor::{BenchmarkResults, SuiteResults};
-use crate::runtime::measurement::Measurement;
+use poly_bench_dsl::Lang;
+use poly_bench_executor::{BenchmarkResults, SuiteResults};
+use poly_bench_runtime::measurement::Measurement;
 use colored::Colorize;
 use miette::Result;
 
@@ -118,11 +118,11 @@ fn print_suite(suite: &SuiteResults) {
 
         let result_colored = if let Some(ref cmp) = bench.comparison {
             match cmp.winner {
-                crate::runtime::measurement::ComparisonWinner::First => 
+                poly_bench_runtime::measurement::ComparisonWinner::First => 
                     result_str.green().to_string(),
-                crate::runtime::measurement::ComparisonWinner::Second => 
+                poly_bench_runtime::measurement::ComparisonWinner::Second => 
                     result_str.cyan().to_string(),
-                crate::runtime::measurement::ComparisonWinner::Tie => 
+                poly_bench_runtime::measurement::ComparisonWinner::Tie => 
                     result_str.dimmed().to_string(),
             }
         } else {
