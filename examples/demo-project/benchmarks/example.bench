@@ -1,5 +1,5 @@
 use std::constants
-
+use std::charting
 
 suite example {
     description: "Example benchmark to get you started"
@@ -54,6 +54,27 @@ suite example {
     bench sha256Bench {
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
+    }
+
+    after {
+        charting.drawBarChart(
+            title: "Performance Comparison",
+            description: "Go vs TypeScript",
+            xlabel: "Benchmark",
+            ylabel: "Time (ns)"
+        )
+        charting.drawLineChart(
+            title: "Performance Comparison",
+            description: "Go vs TypeScript",
+            xlabel: "Benchmark",
+            ylabel: "Time (ns)"
+        )
+        charting.drawPieChart(
+            title: "Performance Comparison",
+            description: "Go vs TypeScript",
+            xlabel: "Benchmark",
+            ylabel: "Time (ns)"
+        )
     }
 
 }
