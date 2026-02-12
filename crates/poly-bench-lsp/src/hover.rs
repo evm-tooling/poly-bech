@@ -4,6 +4,11 @@
 //! in poly-bench files, including embedded Go code via gopls and
 //! TypeScript code via typescript-language-server.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
+
+use dashmap::DashMap;
+use once_cell::sync::Lazy;
 use poly_bench_dsl::Lang;
 use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position, Url};
 
@@ -12,6 +17,75 @@ use super::embedded::{extract_embedded_blocks, EmbeddedBlock, EmbeddedConfig};
 use super::gopls_client::init_gopls_client;
 use super::tsserver_client::init_tsserver_client;
 use super::virtual_files::{VirtualFileManager, VirtualTsFileManager};
+
+/// Cache TTL for embedded language hover results (in milliseconds)
+const HOVER_CACHE_TTL_MS: u64 = 500;
+
+/// Cache key for hover requests
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct HoverCacheKey {
+    uri: String,
+    line: u32,
+    character: u32,
+}
+
+/// Cached hover result
+struct CachedHover {
+    hover: Option<Hover>,
+    timestamp: Instant,
+}
+
+/// Global hover cache for embedded language results
+static HOVER_CACHE: Lazy<DashMap<HoverCacheKey, CachedHover>> = Lazy::new(DashMap::new);
+
+/// Counter for cache cleanup (run cleanup every N requests)
+static CACHE_CLEANUP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Check if a cached hover result is still valid
+fn get_cached_hover(uri: &Url, position: Position) -> Option<Option<Hover>> {
+    let key = HoverCacheKey {
+        uri: uri.to_string(),
+        line: position.line,
+        character: position.character,
+    };
+
+    if let Some(cached) = HOVER_CACHE.get(&key) {
+        if cached.timestamp.elapsed() < Duration::from_millis(HOVER_CACHE_TTL_MS) {
+            eprintln!("[hover-cache] Cache hit for {:?} at {}:{}", uri.path(), position.line, position.character);
+            return Some(cached.hover.clone());
+        }
+    }
+    None
+}
+
+/// Store a hover result in the cache
+fn cache_hover(uri: &Url, position: Position, hover: Option<Hover>) {
+    let key = HoverCacheKey {
+        uri: uri.to_string(),
+        line: position.line,
+        character: position.character,
+    };
+
+    HOVER_CACHE.insert(
+        key,
+        CachedHover {
+            hover,
+            timestamp: Instant::now(),
+        },
+    );
+
+    // Periodically clean up old entries (every 100 requests)
+    let count = CACHE_CLEANUP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    if count % 100 == 0 {
+        cleanup_expired_cache();
+    }
+}
+
+/// Remove expired entries from the cache
+fn cleanup_expired_cache() {
+    let ttl = Duration::from_millis(HOVER_CACHE_TTL_MS * 2); // Use 2x TTL for cleanup
+    HOVER_CACHE.retain(|_, v| v.timestamp.elapsed() < ttl);
+}
 
 /// Get hover information at a position (with embedded language support)
 ///
@@ -55,18 +129,28 @@ pub fn get_hover_with_gopls(
         eprintln!("[hover] Offset {} is in Go block {:?} (span {}..{})", 
             offset, go_block.block_type, go_block.span.start, go_block.span.end);
         
+        // Check cache first for embedded language hover
+        if let Some(cached) = get_cached_hover(uri, position) {
+            return cached;
+        }
+        
         // Try to get hover from gopls
         if let Some(go_mod_root) = &config.go_mod_root {
             eprintln!("[hover] go_mod_root: {}", go_mod_root);
-            if let Some(hover) = get_gopls_hover(
+            let hover = get_gopls_hover(
                 doc,
                 uri,
                 offset,
                 &go_blocks,
                 go_mod_root,
                 virtual_file_manager,
-            ) {
-                return Some(hover);
+            );
+            
+            // Cache the result (even if None)
+            cache_hover(uri, position, hover.clone());
+            
+            if hover.is_some() {
+                return hover;
             }
         } else {
             eprintln!("[hover] No go_mod_root configured");
@@ -83,18 +167,28 @@ pub fn get_hover_with_gopls(
         eprintln!("[hover] Offset {} is in TS block {:?} (span {}..{})", 
             offset, ts_block.block_type, ts_block.span.start, ts_block.span.end);
         
+        // Check cache first for embedded language hover
+        if let Some(cached) = get_cached_hover(uri, position) {
+            return cached;
+        }
+        
         // Try to get hover from tsserver
         if let Some(ts_module_root) = &config.ts_module_root {
             eprintln!("[hover] ts_module_root: {}", ts_module_root);
-            if let Some(hover) = get_tsserver_hover(
+            let hover = get_tsserver_hover(
                 doc,
                 uri,
                 offset,
                 &ts_blocks,
                 ts_module_root,
                 virtual_ts_file_manager,
-            ) {
-                return Some(hover);
+            );
+            
+            // Cache the result (even if None)
+            cache_hover(uri, position, hover.clone());
+            
+            if hover.is_some() {
+                return hover;
             }
         } else {
             eprintln!("[hover] No ts_module_root configured");

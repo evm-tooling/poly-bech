@@ -387,9 +387,14 @@ fn parse_combined_errors(output: &str, mappings: &[SectionMapping]) -> Vec<Embed
     }
 
     for cap in error_re.captures_iter(output) {
-        let error_line: usize = cap[1].parse().unwrap_or(1);
-        let error_col: usize = cap[2].parse().unwrap_or(1);
-        let message = cap[3].to_string();
+        // Use safe access for regex captures
+        let Some(line_match) = cap.get(1) else { continue };
+        let Some(col_match) = cap.get(2) else { continue };
+        let Some(msg_match) = cap.get(3) else { continue };
+        
+        let error_line: usize = line_match.as_str().parse().unwrap_or(1);
+        let error_col: usize = col_match.as_str().parse().unwrap_or(1);
+        let message = msg_match.as_str().to_string();
 
         // Skip common false positives
         if should_skip_ts_error(&message) {
@@ -533,9 +538,14 @@ fn parse_ts_errors(
     let lines: Vec<&str> = block.code.split('\n').collect();
 
     for cap in error_re.captures_iter(output) {
-        let line_num: usize = cap[1].parse().unwrap_or(1);
-        let col_num: usize = cap[2].parse().unwrap_or(1);
-        let message = cap[3].to_string();
+        // Use safe access for regex captures
+        let Some(line_match) = cap.get(1) else { continue };
+        let Some(col_match) = cap.get(2) else { continue };
+        let Some(msg_match) = cap.get(3) else { continue };
+        
+        let line_num: usize = line_match.as_str().parse().unwrap_or(1);
+        let col_num: usize = col_match.as_str().parse().unwrap_or(1);
+        let message = msg_match.as_str().to_string();
 
         // Skip common false positives
         if should_skip_ts_error(&message) {
