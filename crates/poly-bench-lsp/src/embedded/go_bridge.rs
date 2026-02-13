@@ -23,9 +23,6 @@ struct SectionMapping {
     start_line: usize,
     /// Number of lines in this section
     line_count: usize,
-    /// Block type for this section (used for debugging)
-    #[allow(dead_code)]
-    block_type: BlockType,
     /// Original span start in .bench file
     span_start: usize,
     /// Original code for line lookups
@@ -207,7 +204,6 @@ fn build_combined_setup(blocks: &[&EmbeddedBlock], context: &SetupContext) -> (S
                 mappings.push(SectionMapping {
                     start_line: current_line,
                     line_count,
-                    block_type: BlockType::SetupImport,
                     span_start: block.span.start,
                     code: block.code.clone(),
                 });
@@ -241,7 +237,6 @@ fn build_combined_setup(blocks: &[&EmbeddedBlock], context: &SetupContext) -> (S
                 mappings.push(SectionMapping {
                     start_line: current_line,
                     line_count,
-                    block_type: BlockType::SetupDeclare,
                     span_start: block.span.start,
                     code: block.code.clone(),
                 });
@@ -262,7 +257,6 @@ fn build_combined_setup(blocks: &[&EmbeddedBlock], context: &SetupContext) -> (S
                 mappings.push(SectionMapping {
                     start_line: current_line,
                     line_count,
-                    block_type: BlockType::SetupHelpers,
                     span_start: block.span.start,
                     code: block.code.clone(),
                 });
@@ -285,7 +279,6 @@ fn build_combined_setup(blocks: &[&EmbeddedBlock], context: &SetupContext) -> (S
                 mappings.push(SectionMapping {
                     start_line: current_line + 1, // +1 for "func init() {"
                     line_count,
-                    block_type: BlockType::SetupInit,
                     span_start: block.span.start,
                     code: block.code.clone(),
                 });
@@ -299,7 +292,6 @@ fn build_combined_setup(blocks: &[&EmbeddedBlock], context: &SetupContext) -> (S
                 mappings.push(SectionMapping {
                     start_line: current_line,
                     line_count,
-                    block_type: BlockType::SetupInit,
                     span_start: block.span.start,
                     code: block.code.clone(),
                 });
@@ -322,8 +314,8 @@ fn parse_combined_errors(output: &str, mappings: &[SectionMapping]) -> Vec<Embed
 
     eprintln!("[go-combined-parse] Parsing errors, {} mappings:", mappings.len());
     for (i, m) in mappings.iter().enumerate() {
-        eprintln!("[go-combined-parse]   [{}] {:?} start_line={}, line_count={}, span_start={}", 
-            i, m.block_type, m.start_line, m.line_count, m.span_start);
+        eprintln!("[go-combined-parse]   [{}] start_line={}, line_count={}, span_start={}", 
+            i, m.start_line, m.line_count, m.span_start);
     }
 
     for cap in error_re.captures_iter(output) {
@@ -343,7 +335,7 @@ fn parse_combined_errors(output: &str, mappings: &[SectionMapping]) -> Vec<Embed
             // Calculate line within the section
             let line_in_section = error_line.saturating_sub(mapping.start_line);
             
-            eprintln!("[go-combined-parse]   -> Found in {:?}, line_in_section={}", mapping.block_type, line_in_section);
+            eprintln!("[go-combined-parse]   -> Found in section at line {}, line_in_section={}", mapping.start_line, line_in_section);
             
             // Get the line content from original code
             let lines: Vec<&str> = mapping.code.lines().collect();

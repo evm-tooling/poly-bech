@@ -10,6 +10,7 @@ pub mod document;
 pub mod embedded;
 pub mod gopls_client;
 pub mod hover;
+pub mod lsp_client;
 pub mod semantic_tokens;
 pub mod tsserver_client;
 pub mod virtual_files;

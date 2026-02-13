@@ -17,8 +17,8 @@ suite example {
     sink: true
     outlierDetection: true
     cvThreshold: 10
-    memory: false
-    concurrency: 1
+    memory: true
+    concurrency: 10
 
     setup go {
         import (
