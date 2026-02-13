@@ -111,7 +111,7 @@ impl GoRuntime {
             let result: BenchResultJson = serde_json::from_str(&result_json)
                 .map_err(|e| miette!("Failed to parse benchmark result: {}", e))?;
             
-            Ok(result.into_measurement())
+            Ok(result.into_measurement_with_options(spec.outlier_detection, spec.cv_threshold))
         }
     }
 
@@ -165,7 +165,7 @@ impl GoRuntime {
         let result: BenchResultJson = serde_json::from_str(&stdout)
             .map_err(|e| miette!("Failed to parse benchmark result: {}\nOutput: {}", e, stdout))?;
         
-        Ok(result.into_measurement())
+        Ok(result.into_measurement_with_options(spec.outlier_detection, spec.cv_threshold))
     }
 }
 
@@ -185,11 +185,16 @@ struct BenchResultJson {
 }
 
 impl BenchResultJson {
-    fn into_measurement(self) -> Measurement {
+    fn into_measurement_with_options(self, outlier_detection: bool, cv_threshold: f64) -> Measurement {
         let mut m = if self.samples.is_empty() {
             Measurement::from_aggregate(self.iterations, self.total_nanos)
         } else {
-            Measurement::from_samples(self.samples, self.iterations)
+            Measurement::from_samples_with_options(
+                self.samples,
+                self.iterations,
+                outlier_detection,
+                cv_threshold,
+            )
         };
         
         if self.bytes_per_op > 0 || self.allocs_per_op > 0 {
@@ -303,11 +308,11 @@ fn generate_auto_main(
     _after_hook: Option<&String>,
     each_hook: Option<&String>,
 ) {
+    // Note: targetNanos is declared inside generate_auto_mode_loop, not here
     code.push_str(&format!(r#"
 func main() {{
-	targetNanos := int64({})
 {}{}
-"#, spec.target_time_ms * 1_000_000, decls.sink_decl, decls.memory_decl));
+"#, decls.sink_decl, decls.memory_decl));
 
     // Before hook
     if let Some(before) = before_hook {

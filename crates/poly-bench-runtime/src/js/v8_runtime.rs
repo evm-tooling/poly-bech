@@ -134,7 +134,7 @@ impl Runtime for JsRuntime {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        parse_benchmark_result(&stdout)
+        parse_benchmark_result(&stdout, spec.outlier_detection, spec.cv_threshold)
     }
 
     async fn shutdown(&mut self) -> Result<()> {
@@ -333,7 +333,7 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
 }
 
 /// Parse benchmark result JSON from stdout
-fn parse_benchmark_result(stdout: &str) -> Result<Measurement> {
+fn parse_benchmark_result(stdout: &str, outlier_detection: bool, cv_threshold: f64) -> Result<Measurement> {
     // Find the JSON line (last non-empty line)
     let json_line = stdout.lines()
         .filter(|l| !l.trim().is_empty())
@@ -343,7 +343,7 @@ fn parse_benchmark_result(stdout: &str) -> Result<Measurement> {
     let result: BenchResultJson = serde_json::from_str(json_line)
         .map_err(|e| miette!("Failed to parse benchmark result: {}\nOutput: {}", e, stdout))?;
 
-    Ok(result.into_measurement())
+    Ok(result.into_measurement_with_options(outlier_detection, cv_threshold))
 }
 
 /// JSON format for benchmark results
@@ -359,7 +359,7 @@ struct BenchResultJson {
 }
 
 impl BenchResultJson {
-    fn into_measurement(self) -> Measurement {
+    fn into_measurement_with_options(self, outlier_detection: bool, cv_threshold: f64) -> Measurement {
         let samples: Vec<u64> = self.samples.iter()
             .map(|&s| s as u64)
             .collect();
@@ -367,7 +367,12 @@ impl BenchResultJson {
         if samples.is_empty() {
             Measurement::from_aggregate(self.iterations, self.total_nanos as u64)
         } else {
-            Measurement::from_samples(samples, self.iterations)
+            Measurement::from_samples_with_options(
+                samples,
+                self.iterations,
+                outlier_detection,
+                cv_threshold,
+            )
         }
     }
 }

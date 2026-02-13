@@ -186,8 +186,8 @@ suite example {
     bench sink_enabled_example {
         description: "Benchmark with sink pattern enabled"
         mode: auto
-        targetTime: 2000
-        sink: true
+        targetTime: 10000
+        sink: false
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
     }
@@ -197,8 +197,8 @@ suite example {
     bench sink_disabled_example {
         description: "Benchmark with sink pattern disabled"
         mode: auto
-        targetTime: 2000
-        sink: false
+        targetTime: 10000
+        sink: true
         go: {
             incrementCounter()
         }
@@ -217,7 +217,7 @@ suite example {
     bench memory_profiling_example {
         description: "Benchmark with memory profiling enabled"
         mode: auto
-        targetTime: 2000
+        targetTime: 10000
         memory: true
         go: allocateMemory(1024)
         ts: allocateMemory(1024)
