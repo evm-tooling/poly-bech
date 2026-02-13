@@ -9,10 +9,10 @@ use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
 use super::document::ParsedDocument;
 use super::embedded::{check_embedded_blocks, extract_embedded_blocks, EmbeddedCheckResult, EmbeddedConfig};
 
-/// Compute all diagnostics for a document
+/// Compute all diagnostics for a document (including embedded Go/TS checks)
 #[allow(dead_code)]
 pub fn compute_diagnostics(doc: &ParsedDocument) -> Vec<Diagnostic> {
-    compute_diagnostics_with_config(doc, &EmbeddedConfig::default()).diagnostics
+    compute_diagnostics_with_config(doc, &EmbeddedConfig::default(), true).diagnostics
 }
 
 /// Result from diagnostics computation
@@ -21,10 +21,13 @@ pub struct DiagnosticsResult {
     pub embedded_debug: Option<EmbeddedCheckResult>,
 }
 
-/// Compute diagnostics with embedded language configuration
+/// Compute diagnostics with embedded language configuration.
+/// When `include_embedded` is false, only parse and validation diagnostics are computed
+/// (fast path for did_change). When true, also runs Go/TS embedded checks (slower, for did_save).
 pub fn compute_diagnostics_with_config(
     doc: &ParsedDocument,
     config: &EmbeddedConfig,
+    include_embedded: bool,
 ) -> DiagnosticsResult {
     let mut diagnostics = Vec::new();
 
@@ -102,14 +105,21 @@ pub fn compute_diagnostics_with_config(
         }
     }
 
-    // Check embedded Go/TypeScript code
-    let blocks = extract_embedded_blocks(doc);
-    let embedded_result = check_embedded_blocks(doc, &blocks, config);
-    diagnostics.extend(embedded_result.diagnostics.clone());
+    // Check embedded Go/TypeScript code (slow: spawns go build / tsc)
+    if include_embedded {
+        let blocks = extract_embedded_blocks(doc);
+        let embedded_result = check_embedded_blocks(doc, &blocks, config);
+        diagnostics.extend(embedded_result.diagnostics.clone());
 
-    DiagnosticsResult {
-        diagnostics,
-        embedded_debug: Some(embedded_result),
+        DiagnosticsResult {
+            diagnostics,
+            embedded_debug: Some(embedded_result),
+        }
+    } else {
+        DiagnosticsResult {
+            diagnostics,
+            embedded_debug: None,
+        }
     }
 }
 

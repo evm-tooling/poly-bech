@@ -2,12 +2,73 @@
 //!
 //! Parses a stream of tokens into an AST.
 
-use crate::ast::*;
+use crate::ast::{*, HookStyle};
 use crate::error::{ParseError, NamedSource};
 use crate::lexer::Lexer;
 use crate::tokens::{Token, TokenKind};
 use miette::{Report, Result};
 use std::collections::HashMap;
+
+/// Normalize code indentation by stripping common leading whitespace
+/// This preserves relative indentation while removing absolute positioning
+fn normalize_code_indent(code: &str) -> String {
+    let lines: Vec<&str> = code.lines().collect();
+    if lines.is_empty() {
+        return String::new();
+    }
+    
+    // Find minimum indent among non-empty lines, but skip first line if it has 0 indent
+    // (this handles cases where reconstruct_code starts mid-line)
+    let non_empty_lines: Vec<_> = lines.iter()
+        .filter(|l| !l.trim().is_empty())
+        .collect();
+    
+    let min_indent = if non_empty_lines.len() <= 1 {
+        // Only one line or empty, use its indent
+        non_empty_lines.first()
+            .map(|l| l.len() - l.trim_start().len())
+            .unwrap_or(0)
+    } else {
+        // Multiple lines - calculate min indent, but if first line has 0 indent,
+        // use the min of the remaining lines
+        let first_indent = non_empty_lines[0].len() - non_empty_lines[0].trim_start().len();
+        let rest_min = non_empty_lines.iter()
+            .skip(1)
+            .map(|l| l.len() - l.trim_start().len())
+            .min()
+            .unwrap_or(0);
+        
+        if first_indent == 0 && rest_min > 0 {
+            // First line has no indent but others do - use rest_min and leave first line as-is
+            rest_min
+        } else {
+            // Normal case - use overall min
+            first_indent.min(rest_min)
+        }
+    };
+    
+    // Strip the minimum indent from each line
+    lines
+        .iter()
+        .enumerate()
+        .map(|(i, line)| {
+            if line.trim().is_empty() {
+                String::new()
+            } else {
+                let line_indent = line.len() - line.trim_start().len();
+                if i == 0 && line_indent == 0 && min_indent > 0 {
+                    // First line with 0 indent when min_indent > 0 - keep as-is
+                    line.to_string()
+                } else if line.len() >= min_indent {
+                    line[min_indent..].to_string()
+                } else {
+                    line.trim_start().to_string()
+                }
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
 
 /// Parser state
 pub struct Parser {
@@ -664,8 +725,8 @@ impl Parser {
             }
             
             let code = self.reconstruct_code(&code_tokens);
-            // Wrap in import ( ... ) for the code
-            let full_code = format!("import (\n{}\n)", code.trim());
+            // Wrap in import ( ... ) for the code, preserving internal indentation
+            let full_code = format!("import (\n{}\n)", normalize_code_indent(&code));
             
             // Compute span covering the import content
             let code_span = if code_tokens.is_empty() {
@@ -986,24 +1047,60 @@ impl Parser {
                 let value = self.expect_number()?;
                 benchmark.concurrency = Some(value as u32);
             }
-            // Phase 3: Lifecycle hooks
+            // Phase 3: Lifecycle hooks - support both grouped and flat syntax
             TokenKind::Before => {
                 self.advance();
-                self.expect(TokenKind::Colon)?;
-                let before_map = self.parse_lang_code_map()?;
-                benchmark.before = before_map;
+                // Check if next token is a language (flat syntax) or colon (grouped syntax)
+                if self.peek_is_lang() {
+                    // Flat syntax: before go: CODE
+                    let lang = self.expect_lang()?;
+                    self.expect(TokenKind::Colon)?;
+                    let code = self.parse_inline_or_block_code()?;
+                    benchmark.before.insert(lang, code);
+                    benchmark.hook_style = HookStyle::Flat;
+                } else {
+                    // Grouped syntax: before: { go: CODE, ts: CODE }
+                    self.expect(TokenKind::Colon)?;
+                    let before_map = self.parse_lang_code_map()?;
+                    benchmark.before = before_map;
+                    benchmark.hook_style = HookStyle::Grouped;
+                }
             }
             TokenKind::After => {
                 self.advance();
-                self.expect(TokenKind::Colon)?;
-                let after_map = self.parse_lang_code_map()?;
-                benchmark.after = after_map;
+                // Check if next token is a language (flat syntax) or colon (grouped syntax)
+                if self.peek_is_lang() {
+                    // Flat syntax: after go: CODE
+                    let lang = self.expect_lang()?;
+                    self.expect(TokenKind::Colon)?;
+                    let code = self.parse_inline_or_block_code()?;
+                    benchmark.after.insert(lang, code);
+                    benchmark.hook_style = HookStyle::Flat;
+                } else {
+                    // Grouped syntax: after: { go: CODE, ts: CODE }
+                    self.expect(TokenKind::Colon)?;
+                    let after_map = self.parse_lang_code_map()?;
+                    benchmark.after = after_map;
+                    benchmark.hook_style = HookStyle::Grouped;
+                }
             }
             TokenKind::Each => {
                 self.advance();
-                self.expect(TokenKind::Colon)?;
-                let each_map = self.parse_lang_code_map()?;
-                benchmark.each = each_map;
+                // Check if next token is a language (flat syntax) or colon (grouped syntax)
+                if self.peek_is_lang() {
+                    // Flat syntax: each go: CODE
+                    let lang = self.expect_lang()?;
+                    self.expect(TokenKind::Colon)?;
+                    let code = self.parse_inline_or_block_code()?;
+                    benchmark.each.insert(lang, code);
+                    benchmark.hook_style = HookStyle::Flat;
+                } else {
+                    // Grouped syntax: each: { go: CODE, ts: CODE }
+                    self.expect(TokenKind::Colon)?;
+                    let each_map = self.parse_lang_code_map()?;
+                    benchmark.each = each_map;
+                    benchmark.hook_style = HookStyle::Grouped;
+                }
             }
             // Language-specific implementation
             TokenKind::Go | TokenKind::Ts | TokenKind::TypeScript | TokenKind::Rust | TokenKind::Python => {
@@ -1300,6 +1397,19 @@ impl Parser {
             return false;
         }
         matches!(&self.peek().kind, TokenKind::Identifier(s) if s == name)
+    }
+
+    /// Check if current token is a language keyword (go, ts, typescript, rust, python)
+    fn peek_is_lang(&self) -> bool {
+        if self.is_at_end() {
+            return false;
+        }
+        let token = self.peek();
+        match &token.kind {
+            TokenKind::Go | TokenKind::Ts | TokenKind::TypeScript | TokenKind::Rust | TokenKind::Python => true,
+            TokenKind::Identifier(s) => Lang::from_str(s).is_some(),
+            _ => false,
+        }
     }
 
     fn expect(&mut self, expected: TokenKind) -> Result<Token> {

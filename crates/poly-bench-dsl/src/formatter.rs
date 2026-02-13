@@ -1,23 +1,25 @@
 //! AST-based formatter for the poly-bench DSL
 //!
-//! Produces consistently indented output. Embedded code blocks (Go, TypeScript)
-//! are normalized (min indent stripped) then re-indented.
+//! Source-preserving formatter that maintains embedded code blocks exactly as written.
+//! Only DSL structure (keywords, properties) is reformatted with consistent indentation.
 //!
 //! The formatter preserves:
 //! - `use std::module` import statements
 //! - File-level `globalSetup` blocks
 //! - Suite-level `globalSetup` blocks
-//! - Comments (when using `format_file_preserving_comments`)
+//! - Comments (when using `format_file_with_source`)
+//! - Original embedded code formatting (Go, TypeScript, etc.)
 
-use crate::ast::*;
+use crate::ast::{*, HookStyle};
 use crate::ChartType;
 use std::fmt::Write;
 
 const INDENT: &str = "    ";
 
-/// Normalize embedded code: strip minimum leading indent, then re-normalize remaining
-/// relative indentation using smart heuristics to fix broken source indentation.
-fn normalize_embedded_code(code: &str) -> Vec<String> {
+/// Preserve embedded code with minimal normalization.
+/// Only strips common leading indent to align to the block's indent level.
+/// Does NOT attempt to reformat or re-indent based on brace counting.
+fn preserve_embedded_code(code: &str, base_indent: &str) -> Vec<String> {
     let lines: Vec<&str> = code.lines().collect();
     if lines.is_empty() {
         return Vec::new();
@@ -31,54 +33,18 @@ fn normalize_embedded_code(code: &str) -> Vec<String> {
         .min()
         .unwrap_or(0);
     
-    // First pass: calculate raw indent levels for each line
-    let mut raw_levels: Vec<(usize, &str)> = Vec::new();
-    for l in &lines {
-        if l.trim().is_empty() {
-            raw_levels.push((0, ""));
-        } else {
-            let leading = l.len() - l.trim_start().len();
-            let extra_spaces = leading.saturating_sub(min_indent);
-            // Use any 4+ spaces as one indent level
-            let level = extra_spaces / 4;
-            raw_levels.push((level, l.trim_start()));
-        }
-    }
-    
-    // Second pass: apply smart normalization based on code structure
-    // Use closing brace detection to determine indent level
+    // Strip the minimum indent and apply base_indent
     let mut result = Vec::new();
-    let mut current_depth = 0usize;
-    
-    for (_, content) in raw_levels.iter() {
-        if content.is_empty() {
+    for line in &lines {
+        if line.trim().is_empty() {
             result.push(String::new());
-            continue;
-        }
-        
-        // Check if this line starts with a closing brace/bracket
-        let starts_with_close = content.starts_with('}') || 
-                                 content.starts_with(')') || 
-                                 content.starts_with(']');
-        
-        // Decrease depth before this line if it starts with closing brace
-        if starts_with_close && current_depth > 0 {
-            current_depth -= 1;
-        }
-        
-        let pad = INDENT.repeat(current_depth);
-        result.push(format!("{}{}", pad, content));
-        
-        // Count braces to adjust depth for next line
-        let opens = content.chars().filter(|c| *c == '{' || *c == '(' || *c == '[').count();
-        let closes = content.chars().filter(|c| *c == '}' || *c == ')' || *c == ']').count();
-        
-        // Adjust depth for next line (not counting the starting close we already handled)
-        let effective_closes = if starts_with_close { closes - 1 } else { closes };
-        if opens > effective_closes {
-            current_depth += opens - effective_closes;
-        } else if effective_closes > opens && current_depth >= (effective_closes - opens) {
-            current_depth -= effective_closes - opens;
+        } else {
+            let stripped = if line.len() >= min_indent {
+                &line[min_indent..]
+            } else {
+                line.trim_start()
+            };
+            result.push(format!("{}{}", base_indent, stripped));
         }
     }
     
@@ -175,18 +141,166 @@ pub fn format_file_with_source(file: &File, original_source: &str) -> String {
         }
     }
     
-    // Format suites
+    // Format suites with comment preservation
     for (i, suite) in file.suites.iter().enumerate() {
         if i > 0 {
             out.push('\n');
         }
-        format_suite(&mut out, suite, 0);
+        format_suite_with_source(&mut out, suite, 0, original_source);
     }
     
     if !out.is_empty() && !out.ends_with('\n') {
         out.push('\n');
     }
     out
+}
+
+/// Format a suite, preserving comments from the original source
+fn format_suite_with_source(out: &mut String, suite: &Suite, indent_level: usize, original_source: &str) {
+    let pad = INDENT.repeat(indent_level);
+    let inner = INDENT.repeat(indent_level + 1);
+
+    write!(out, "{}suite {} {{\n", pad, suite.name).unwrap();
+
+    // Suite properties in canonical order
+    if let Some(ref desc) = suite.description {
+        write!(out, "{}description: \"{}\"\n", inner, escape_string(desc)).unwrap();
+    }
+    if let Some(n) = suite.iterations {
+        write!(out, "{}iterations: {}\n", inner, n).unwrap();
+    }
+    if let Some(n) = suite.warmup {
+        write!(out, "{}warmup: {}\n", inner, n).unwrap();
+    }
+    if let Some(n) = suite.timeout {
+        write!(out, "{}timeout: {}\n", inner, n).unwrap();
+    }
+    if !suite.requires.is_empty() {
+        let langs: Vec<_> = suite.requires.iter().map(|l| l.as_str()).collect();
+        write!(out, "{}requires: [{}]\n", inner, langs.join(", ")).unwrap();
+    }
+    if let Some(order) = suite.order {
+        let s = match order {
+            ExecutionOrder::Sequential => "sequential",
+            ExecutionOrder::Parallel => "parallel",
+            ExecutionOrder::Random => "random",
+        };
+        write!(out, "{}order: {}\n", inner, s).unwrap();
+    }
+    if suite.compare {
+        write!(out, "{}compare: true\n", inner).unwrap();
+    }
+    if let Some(baseline) = suite.baseline {
+        write!(out, "{}baseline: \"{}\"\n", inner, baseline.as_str()).unwrap();
+    }
+    
+    // Benchmark accuracy settings - only output non-default values
+    if let Some(mode) = suite.mode {
+        write!(out, "{}mode: \"{}\"\n", inner, mode.as_str()).unwrap();
+    }
+    if let Some(target_time) = suite.target_time_ms {
+        write!(out, "{}targetTime: {}ms\n", inner, target_time).unwrap();
+    }
+    if let Some(min_iters) = suite.min_iterations {
+        write!(out, "{}minIterations: {}\n", inner, min_iters).unwrap();
+    }
+    if let Some(max_iters) = suite.max_iterations {
+        write!(out, "{}maxIterations: {}\n", inner, max_iters).unwrap();
+    }
+    if !suite.sink {
+        write!(out, "{}sink: false\n", inner).unwrap();
+    }
+    if !suite.outlier_detection {
+        write!(out, "{}outlierDetection: false\n", inner).unwrap();
+    }
+    if let Some(cv_threshold) = suite.cv_threshold {
+        write!(out, "{}cvThreshold: {}\n", inner, cv_threshold).unwrap();
+    }
+    if let Some(count) = suite.count {
+        write!(out, "{}count: {}\n", inner, count).unwrap();
+    }
+    if suite.memory {
+        write!(out, "{}memory: true\n", inner).unwrap();
+    }
+    if suite.concurrency > 1 {
+        write!(out, "{}concurrency: {}\n", inner, suite.concurrency).unwrap();
+    }
+
+    // Add blank line after properties
+    let has_content = suite.global_setup.is_some() || !suite.setups.is_empty() || !suite.fixtures.is_empty() || !suite.benchmarks.is_empty();
+    if has_content {
+        out.push('\n');
+    }
+
+    // Suite-level globalSetup
+    if let Some(ref global_setup) = suite.global_setup {
+        format_global_setup(out, global_setup, indent_level + 1);
+        out.push('\n');
+    }
+
+    // Setups in canonical order
+    let lang_order = [Lang::Go, Lang::TypeScript, Lang::Rust, Lang::Python];
+    for lang in &lang_order {
+        if let Some(setup) = suite.setups.get(lang) {
+            format_setup(out, lang, setup, indent_level + 1);
+        }
+    }
+
+    // Fixtures
+    for fixture in &suite.fixtures {
+        format_fixture(out, fixture, indent_level + 1);
+    }
+
+    // Benchmarks with comment preservation
+    let mut last_bench_end = 0usize;
+    for bench in &suite.benchmarks {
+        // Extract comments between last benchmark and this one
+        let comments_before = extract_comments_between(original_source, last_bench_end, bench.span.start);
+        if !comments_before.is_empty() {
+            // Output preserved comments
+            for comment_line in comments_before.lines() {
+                if !comment_line.trim().is_empty() {
+                    writeln!(out, "{}{}", inner, comment_line.trim()).unwrap();
+                } else {
+                    out.push('\n');
+                }
+            }
+        }
+        
+        format_benchmark(out, bench, indent_level + 1);
+        last_bench_end = bench.span.end;
+    }
+
+    // Chart directives
+    if !suite.chart_directives.is_empty() {
+        format_chart_directives(out, &suite.chart_directives, indent_level + 1);
+    }
+
+    write!(out, "{}}}\n", pad).unwrap();
+}
+
+/// Extract comment lines between two positions in the source
+fn extract_comments_between(source: &str, start: usize, end: usize) -> String {
+    if start >= end || start >= source.len() {
+        return String::new();
+    }
+    
+    let slice = &source[start..end.min(source.len())];
+    let mut comments = String::new();
+    
+    for line in slice.lines() {
+        let trimmed = line.trim();
+        // Only preserve lines that are pure comments (start with #)
+        if trimmed.starts_with('#') {
+            comments.push_str(trimmed);
+            comments.push('\n');
+        } else if trimmed.is_empty() && !comments.is_empty() {
+            // Keep blank lines within comment blocks
+            comments.push('\n');
+        }
+    }
+    
+    comments
 }
 
 /// Extract leading comments from source (comments before any code)
@@ -362,23 +476,23 @@ fn format_setup(out: &mut String, lang: &Lang, setup: &StructuredSetup, indent_l
     // Sections in canonical order: import, declare, init, helpers
     // Import: Go stores full "import ( ... )", TS stores inner content for "import { ... }"
     if let Some(ref imports) = setup.imports {
-        let code = imports.code.trim();
+        let code = trim_code_block(&imports.code);
         if !code.is_empty() {
             if code.starts_with("import (") {
                 // Go style: full "import ( ... )" - emit as-is with indent
-                let normalized = normalize_embedded_code(code);
-                for line in &normalized {
-                    write!(out, "{}{}\n", inner, line).unwrap();
+                let preserved = preserve_embedded_code(&code, &inner);
+                for line in &preserved {
+                    writeln!(out, "{}", line).unwrap();
                 }
             } else {
                 // TS style: wrap inner content in "import { ... }"
                 let inner2 = format!("{}{}", inner, INDENT);
-                write!(out, "{}import {{\n", inner).unwrap();
-                let normalized = normalize_embedded_code(code);
-                for line in &normalized {
-                    write!(out, "{}{}\n", inner2, line).unwrap();
+                writeln!(out, "{}import {{", inner).unwrap();
+                let preserved = preserve_embedded_code(&code, &inner2);
+                for line in &preserved {
+                    writeln!(out, "{}", line).unwrap();
                 }
-                write!(out, "{}}}\n", inner).unwrap();
+                writeln!(out, "{}}}", inner).unwrap();
             }
             wrote_section = true;
         }
@@ -409,24 +523,43 @@ fn format_setup(out: &mut String, lang: &Lang, setup: &StructuredSetup, indent_l
 }
 
 fn write_code_block(out: &mut String, keyword: &str, block: &CodeBlock, inner: &str) {
-    let code = block.code.trim();
+    // Use trim_lines to preserve internal indentation structure
+    let code = trim_code_block(&block.code);
     let content_indent = format!("{}{}", inner, INDENT); // One more level for content inside block
     if code.is_empty() {
-        write!(out, "{}{} {{\n{}}}\n", inner, keyword, inner).unwrap();
+        writeln!(out, "{}{} {{", inner, keyword).unwrap();
+        writeln!(out, "{}}}", inner).unwrap();
     } else if block.is_multiline || code.contains('\n') {
-        write!(out, "{}{} {{\n", inner, keyword).unwrap();
-        let normalized = normalize_embedded_code(code);
-        for line in &normalized {
-            if line.is_empty() {
+        writeln!(out, "{}{} {{", inner, keyword).unwrap();
+        let preserved = preserve_embedded_code(&code, &content_indent);
+        for line in &preserved {
+            if line.trim().is_empty() {
                 out.push('\n');
             } else {
-                write!(out, "{}{}\n", content_indent, line).unwrap();
+                writeln!(out, "{}", line).unwrap();
             }
         }
-        write!(out, "{}}}\n", inner).unwrap();
+        writeln!(out, "{}}}", inner).unwrap();
     } else {
-        write!(out, "{}{} {}\n", inner, keyword, code).unwrap();
+        writeln!(out, "{}{} {}", inner, keyword, code.trim()).unwrap();
     }
+}
+
+/// Trim a code block by removing leading/trailing empty lines
+/// but preserving the internal indentation structure
+fn trim_code_block(code: &str) -> String {
+    let lines: Vec<&str> = code.lines().collect();
+    
+    // Find first non-empty line
+    let start = lines.iter().position(|l| !l.trim().is_empty()).unwrap_or(0);
+    // Find last non-empty line
+    let end = lines.iter().rposition(|l| !l.trim().is_empty()).map(|i| i + 1).unwrap_or(lines.len());
+    
+    if start >= end {
+        return String::new();
+    }
+    
+    lines[start..end].join("\n")
 }
 
 fn format_fixture(out: &mut String, fixture: &Fixture, indent_level: usize) {
@@ -471,7 +604,7 @@ fn format_fixture(out: &mut String, fixture: &Fixture, indent_level: usize) {
     for lang in &lang_order {
         if let Some(code) = fixture.implementations.get(lang) {
             write!(out, "{}{}: ", inner, lang.as_str()).unwrap();
-            format_code_block_inline(out, code);
+            format_code_block_inline_with_indent(out, code, &inner);
             out.push('\n');
         }
     }
@@ -539,65 +672,126 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
         write!(out, "{}concurrency: {}\n", inner, concurrency).unwrap();
     }
 
+    // Skip and validate hooks (always flat syntax)
     for lang in &lang_order {
         if let Some(code) = bench.skip.get(lang) {
             write!(out, "{}skip {}: ", inner, lang.as_str()).unwrap();
-            format_code_block_inline(out, code);
+            format_code_block_inline_with_indent(out, code, &inner);
             out.push('\n');
         }
     }
     for lang in &lang_order {
         if let Some(code) = bench.validate.get(lang) {
             write!(out, "{}validate {}: ", inner, lang.as_str()).unwrap();
-            format_code_block_inline(out, code);
+            format_code_block_inline_with_indent(out, code, &inner);
             out.push('\n');
         }
     }
-    for lang in &lang_order {
-        if let Some(code) = bench.before.get(lang) {
-            write!(out, "{}before {}: ", inner, lang.as_str()).unwrap();
-            format_code_block_inline(out, code);
-            out.push('\n');
+    
+    // Lifecycle hooks - respect original style (grouped vs flat)
+    match bench.hook_style {
+        HookStyle::Grouped => {
+            // Grouped syntax: before: { go: ... ts: ... }
+            format_grouped_hooks(out, "before", &bench.before, &lang_order, &inner);
+            format_grouped_hooks(out, "each", &bench.each, &lang_order, &inner);
+        }
+        HookStyle::Flat => {
+            // Flat syntax: before go: ... \n before ts: ...
+            for lang in &lang_order {
+                if let Some(code) = bench.before.get(lang) {
+                    write!(out, "{}before {}: ", inner, lang.as_str()).unwrap();
+                    format_code_block_inline_with_indent(out, code, &inner);
+                    out.push('\n');
+                }
+            }
+            for lang in &lang_order {
+                if let Some(code) = bench.each.get(lang) {
+                    write!(out, "{}each {}: ", inner, lang.as_str()).unwrap();
+                    format_code_block_inline_with_indent(out, code, &inner);
+                    out.push('\n');
+                }
+            }
         }
     }
+
+    // Language implementations
     for lang in &lang_order {
-        if let Some(code) = bench.after.get(lang) {
-            write!(out, "{}after {}: ", inner, lang.as_str()).unwrap();
-            format_code_block_inline(out, code);
-            out.push('\n');
-        }
-    }
-    for lang in &lang_order {
-        if let Some(code) = bench.each.get(lang) {
-            write!(out, "{}each {}: ", inner, lang.as_str()).unwrap();
-            format_code_block_inline(out, code);
+        if let Some(code) = bench.implementations.get(lang) {
+            write!(out, "{}{}: ", inner, lang.as_str()).unwrap();
+            format_code_block_inline_with_indent(out, code, &inner);
             out.push('\n');
         }
     }
 
-    for lang in &lang_order {
-        if let Some(code) = bench.implementations.get(lang) {
-            write!(out, "{}{}: ", inner, lang.as_str()).unwrap();
-            format_code_block_inline(out, code);
-            out.push('\n');
+    // After hooks - respect original style (grouped vs flat)
+    match bench.hook_style {
+        HookStyle::Grouped => {
+            format_grouped_hooks(out, "after", &bench.after, &lang_order, &inner);
+        }
+        HookStyle::Flat => {
+            for lang in &lang_order {
+                if let Some(code) = bench.after.get(lang) {
+                    write!(out, "{}after {}: ", inner, lang.as_str()).unwrap();
+                    format_code_block_inline_with_indent(out, code, &inner);
+                    out.push('\n');
+                }
+            }
         }
     }
 
     write!(out, "{}}}\n\n", pad).unwrap();
 }
 
-fn format_code_block_inline(out: &mut String, block: &CodeBlock) {
-    let code = block.code.trim();
-    if block.is_multiline || code.contains('\n') {
-        write!(out, "{{\n").unwrap();
-        let normalized = normalize_embedded_code(code);
-        for line in &normalized {
-            write!(out, "{}{}\n", INDENT, line).unwrap();
-        }
-        out.push('}');
-    } else {
-        write!(out, "{}", code).unwrap();
+/// Format lifecycle hooks in grouped syntax: hook_name: { go: CODE ts: CODE }
+fn format_grouped_hooks(
+    out: &mut String,
+    hook_name: &str,
+    hooks: &std::collections::HashMap<Lang, CodeBlock>,
+    lang_order: &[Lang],
+    inner: &str,
+) {
+    if hooks.is_empty() {
+        return;
     }
+    
+    let inner2 = format!("{}{}", inner, INDENT);
+    
+    out.push('\n');
+    writeln!(out, "{}{}: {{", inner, hook_name).unwrap();
+    for lang in lang_order {
+        if let Some(code) = hooks.get(lang) {
+            write!(out, "{}{}: ", inner2, lang.as_str()).unwrap();
+            format_code_block_inline_with_indent(out, code, &inner2);
+            out.push('\n');
+        }
+    }
+    writeln!(out, "{}}}", inner).unwrap();
+}
+
+/// Format an inline code block (e.g. `go: { ... }` or `ts: expr`).
+/// `line_indent` is the indent of the current line (e.g. "        " for benchmark props);
+/// block content inside braces will be indented with line_indent + one more level.
+fn format_code_block_inline_with_indent(out: &mut String, block: &CodeBlock, line_indent: &str) {
+    let code = trim_code_block(&block.code);
+    if block.is_multiline || code.contains('\n') {
+        writeln!(out, "{{").unwrap();
+        let block_content_indent = format!("{}{}", line_indent, INDENT);
+        let preserved = preserve_embedded_code(&code, &block_content_indent);
+        for line in &preserved {
+            if line.trim().is_empty() {
+                out.push('\n');
+            } else {
+                writeln!(out, "{}", line).unwrap();
+            }
+        }
+        write!(out, "{}}}", line_indent).unwrap();
+    } else {
+        write!(out, "{}", code.trim()).unwrap();
+    }
+}
+
+fn format_code_block_inline(out: &mut String, block: &CodeBlock) {
+    format_code_block_inline_with_indent(out, block, INDENT);
 }
 
 /// Format chart directives inside an after { } block

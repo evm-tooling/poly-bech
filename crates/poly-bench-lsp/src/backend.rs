@@ -81,7 +81,7 @@ impl Backend {
             .unwrap_or(false)
     }
 
-    /// Re-parse a document and publish diagnostics
+    /// Re-parse a document and publish diagnostics (fast path: parse + validation only, no Go/TS embedded checks).
     async fn on_change(&self, uri: Url, text: String, version: i32) {
         let filename = uri
             .path_segments()
@@ -90,77 +90,55 @@ impl Backend {
             .to_string();
 
         let doc = ParsedDocument::parse(&text, &filename, version);
-
-        // Find embedded language roots based on document location
         let config = self.find_embedded_config(&uri);
-        
-        // Log embedded config for debugging
-        self.client
-            .log_message(
-                MessageType::INFO,
-                format!(
-                    "Checking {} - go_mod_root: {:?}, ts_module_root: {:?}",
-                    filename, config.go_mod_root, config.ts_module_root
-                ),
-            )
-            .await;
-        
-        // Log parse status
-        if let Some(ref err) = doc.parse_error {
-            self.client
-                .log_message(MessageType::WARNING, format!("Parse error in {}: {}", filename, err.message))
-                .await;
-        } else if let Some(ref ast) = doc.ast {
-            let suite_count = ast.suites.len();
-            let setup_count: usize = ast.suites.iter().map(|s| s.setups.len()).sum();
-            self.client
-                .log_message(MessageType::INFO, format!("{} has {} suites, {} setups", filename, suite_count, setup_count))
-                .await;
-        }
 
-        let result = compute_diagnostics_with_config(&doc, &config);
-        
-        // Log embedded checking debug info
-        if let Some(ref embedded) = result.embedded_debug {
-            self.client
-                .log_message(
-                    MessageType::INFO,
-                    format!(
-                        "Embedded check: {} Go blocks, {} TS blocks",
-                        embedded.go_blocks_checked, embedded.ts_blocks_checked
-                    ),
-                )
-                .await;
-            
-            for msg in &embedded.debug_messages {
-                self.client
-                    .log_message(MessageType::INFO, format!("  {}", msg))
-                    .await;
-            }
-        }
-        
-        // Log diagnostic count with details
-        self.client
-            .log_message(
-                MessageType::INFO,
-                format!("Found {} diagnostics for {}", result.diagnostics.len(), filename),
-            )
-            .await;
-        
-        // Log first few diagnostics for debugging
-        for (i, diag) in result.diagnostics.iter().take(3).enumerate() {
-            self.client
-                .log_message(MessageType::INFO, format!("  Diag {}: {}", i + 1, diag.message))
-                .await;
-        }
+        // Fast path: only parse + validation. Embedded Go/TS checks run on save.
+        let result = compute_diagnostics_with_config(&doc, &config, false);
 
         self.documents.insert(uri.clone(), doc);
-        
-        // Cache the embedded config for hover requests
         self.embedded_configs.insert(uri.clone(), config);
 
         self.client
             .publish_diagnostics(uri, result.diagnostics, Some(version))
+            .await;
+    }
+
+    /// Run full diagnostics including embedded Go/TS checks and publish (called on save).
+    async fn on_save_full_diagnostics(&self, uri: Url) {
+        let (version, doc, config) = {
+            let doc_guard = match self.documents.get(&uri) {
+                Some(d) => d,
+                None => return,
+            };
+            let config_guard = match self.embedded_configs.get(&uri) {
+                Some(c) => c,
+                None => return,
+            };
+            (doc_guard.version, doc_guard.clone(), config_guard.clone())
+        };
+
+        // Embedded checks run `go build` / `tsc` (blocking). Run on a blocking thread so we don't block format/hover.
+        let diagnostics = tokio::task::spawn_blocking(move || {
+            let result = compute_diagnostics_with_config(&doc, &config, true);
+            result.diagnostics
+        })
+        .await;
+
+        let diagnostics = match diagnostics {
+            Ok(d) => d,
+            Err(e) => {
+                self.client
+                    .log_message(
+                        MessageType::ERROR,
+                        format!("Embedded diagnostics task failed: {}", e),
+                    )
+                    .await;
+                return;
+            }
+        };
+
+        self.client
+            .publish_diagnostics(uri, diagnostics, Some(version))
             .await;
     }
 
@@ -332,8 +310,9 @@ impl LanguageServer for Backend {
         }
     }
 
-    async fn did_save(&self, _params: DidSaveTextDocumentParams) {
-        // No special handling needed - diagnostics already updated on change
+    async fn did_save(&self, params: DidSaveTextDocumentParams) {
+        // Run full diagnostics (including embedded Go/TS) on save so they don't block typing
+        self.on_save_full_diagnostics(params.text_document.uri).await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
