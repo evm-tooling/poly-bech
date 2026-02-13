@@ -7,6 +7,7 @@ use poly_bench_dsl::{self as dsl, File, Span};
 use ropey::Rope;
 
 /// A parsed document with its source and AST
+#[derive(Clone)]
 pub struct ParsedDocument {
     /// The original source text
     pub source: String,
@@ -23,6 +24,7 @@ pub struct ParsedDocument {
 }
 
 /// Information about a parse error
+#[derive(Clone)]
 pub struct ParseErrorInfo {
     pub message: String,
     pub span: Option<Span>,

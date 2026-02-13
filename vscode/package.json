@@ -2,7 +2,7 @@
   "name": "poly-bench",
   "displayName": "poly-bench",
   "description": "Language support for .bench files with embedded Go and TypeScript - powered by poly-bench-lsp",
-  "version": "0.5.6",
+  "version": "0.6.1",
   "publisher": "evm-tooling",
   "repository": {
     "type": "git",
@@ -39,8 +39,8 @@
         },
         "poly-bench.formatOnSave": {
           "type": "boolean",
-          "default": false,
-          "description": "Format .bench files when you save."
+          "default": true,
+          "description": "Format .bench files when you save (uses Poly-Bench LSP)."
         }
       }
     },

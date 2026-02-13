@@ -132,7 +132,7 @@
     },
     "suite-block": {
       "begin": "\\b(suite)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
-      "end": "^\\}(\\s*)$",
+      "end": "^\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.bench"
@@ -299,7 +299,7 @@
           }
         },
         {
-          "match": "\\b(mode)\\s*:\\s*(auto|fixed)",
+          "match": "\\b(mode)\\s*:\\s*\"?(auto|fixed)\"?",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
@@ -389,7 +389,7 @@
     "setup-go-block": {
       "name": "meta.block.setup.go.bench",
       "begin": "\\b(setup)\\s+(go)\\s*\\{\\s*$",
-      "end": "^(\\s{2,4})\\}(\\s*)$",
+      "end": "^(\\s{2,4})\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.bench"
@@ -415,7 +415,7 @@
     "setup-ts-block": {
       "name": "meta.block.setup.ts.bench",
       "begin": "\\b(setup)\\s+(ts)\\s*\\{\\s*$",
-      "end": "^(\\s{2,4})\\}(\\s*)$",
+      "end": "^(\\s{2,4})\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.bench"
@@ -440,7 +440,7 @@
     },
     "fixture-block": {
       "begin": "\\b(fixture)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
-      "end": "\\}",
+      "end": "^(\\s{2,4})\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.bench"
@@ -494,7 +494,7 @@
     },
     "bench-block": {
       "begin": "\\b(bench)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
-      "end": "^(\\s{4})\\}(\\s*)$",
+      "end": "^(\\s{2,4})\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.bench"
@@ -579,7 +579,7 @@
           }
         },
         {
-          "match": "\\b(mode)\\s*:\\s*(auto|fixed)",
+          "match": "\\b(mode)\\s*:\\s*\"?(auto|fixed)\"?",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
@@ -680,7 +680,7 @@
     "bench-go-block": {
       "name": "meta.block.bench.go.bench",
       "begin": "\\b(go)\\s*:\\s*\\{\\s*$",
-      "end": "^(\\s{6,8})\\}(\\s*)$",
+      "end": "^(\\s{6,8})\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "entity.name.language.bench"
@@ -701,7 +701,7 @@
     "bench-ts-block": {
       "name": "meta.block.bench.ts.bench",
       "begin": "\\b(ts)\\s*:\\s*\\{\\s*$",
-      "end": "^(\\s{6,8})\\}(\\s*)$",
+      "end": "^(\\s{6,8})\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "entity.name.language.bench"
@@ -754,7 +754,7 @@
     "fixture-go-block": {
       "name": "meta.block.fixture.go.bench",
       "begin": "\\b(go)\\s*:\\s*\\{\\s*$",
-      "end": "^[ \\t]{4,8}\\}\\s*$",
+      "end": "^(\\s{6,8})\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "entity.name.language.bench"
@@ -775,7 +775,7 @@
     "fixture-ts-block": {
       "name": "meta.block.fixture.ts.bench",
       "begin": "\\b(ts)\\s*:\\s*\\{\\s*$",
-      "end": "^[ \\t]{4,8}\\}\\s*$",
+      "end": "^(\\s{6,8})\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "entity.name.language.bench"

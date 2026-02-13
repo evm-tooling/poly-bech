@@ -154,6 +154,16 @@ impl Default for BenchMode {
     }
 }
 
+/// Style for lifecycle hooks (before/after/each) - tracks original syntax
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum HookStyle {
+    /// Grouped syntax: before: { go: ... ts: ... }
+    #[default]
+    Grouped,
+    /// Flat syntax: before go: ... \n before ts: ...
+    Flat,
+}
+
 impl std::fmt::Display for BenchMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.as_str())
@@ -674,6 +684,8 @@ pub struct Benchmark {
     pub after: HashMap<Lang, CodeBlock>,
     /// Per-iteration hook (runs before each iteration, outside timing)
     pub each: HashMap<Lang, CodeBlock>,
+    /// Style used for lifecycle hooks in source (for formatting)
+    pub hook_style: HookStyle,
     
     /// Per-language implementations
     pub implementations: HashMap<Lang, CodeBlock>,
@@ -704,6 +716,7 @@ impl Benchmark {
             before: HashMap::new(),
             after: HashMap::new(),
             each: HashMap::new(),
+            hook_style: HookStyle::default(),
             implementations: HashMap::new(),
         }
     }

@@ -1,5 +1,14 @@
 {
+  // Path to poly-bench-lsp when developing (optional; omit to use PATH)
+  "poly-bench.lspPath": "${workspaceFolder}/target/debug/poly-bench-lsp",
   // Show LSP communication in output panel for debugging
   "poly-bench.trace.server": "messages",
-  "poly-bench.formatOnSave": true
+  "poly-bench.formatOnSave": true,
+
+  // Use the Poly-Bench extension (LSP) as the formatter for .bench files
+  // Language id is "polybench" (see vscode/package.json)
+  "[polybench]": {
+    "editor.defaultFormatter": "evm-tooling.poly-bench",
+    "editor.formatOnSave": true
+  }
 }
