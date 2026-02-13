@@ -44,7 +44,7 @@ pub struct ProjectConfig {
 }
 
 fn default_version() -> String {
-    "0.1.0".to_string()
+    "0.0.1".to_string()
 }
 
 /// Default benchmark settings

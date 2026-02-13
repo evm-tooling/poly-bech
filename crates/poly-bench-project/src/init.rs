@@ -17,6 +17,8 @@ pub struct InitOptions {
     pub languages: Vec<String>,
     /// Skip generating example benchmark
     pub no_example: bool,
+    /// When true, skip all success messages and final "Next steps" (caller prints T3-style output)
+    pub quiet: bool,
 }
 
 /// Initialize a new poly-bench project
@@ -51,7 +53,9 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     if !project_dir.exists() {
         std::fs::create_dir_all(&project_dir)
             .map_err(|e| miette::miette!("Failed to create project directory: {}", e))?;
-        terminal::success(&format!("Created directory {}", project_dir.display()));
+        if !options.quiet {
+            terminal::success(&format!("Created directory {}", project_dir.display()));
+        }
     }
 
     // Normalize languages
@@ -71,13 +75,17 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     let manifest = Manifest::new(&project_name, &languages);
     let manifest_path = project_dir.join(MANIFEST_FILENAME);
     manifest::save(&manifest_path, &manifest)?;
-    terminal::success(&format!("Created {}", MANIFEST_FILENAME));
+    if !options.quiet {
+        terminal::success(&format!("Created {}", MANIFEST_FILENAME));
+    }
 
     // Create benchmarks directory
     let benchmarks_dir = project_dir.join(BENCHMARKS_DIR);
     std::fs::create_dir_all(&benchmarks_dir)
         .map_err(|e| miette::miette!("Failed to create benchmarks directory: {}", e))?;
-    terminal::success(&format!("Created {}/", BENCHMARKS_DIR));
+    if !options.quiet {
+        terminal::success(&format!("Created {}/", BENCHMARKS_DIR));
+    }
 
     // Create example benchmark
     if !options.no_example {
@@ -85,7 +93,9 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         let example_content = templates::example_bench(has_go, has_ts);
         std::fs::write(&example_path, example_content)
             .map_err(|e| miette::miette!("Failed to write example.bench: {}", e))?;
-        terminal::success(&format!("Created {}/example.bench", BENCHMARKS_DIR));
+        if !options.quiet {
+            terminal::success(&format!("Created {}/example.bench", BENCHMARKS_DIR));
+        }
     }
 
     // Create runtime-env dirs and language-specific env files (keeps root uncluttered)
@@ -99,7 +109,9 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
             .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
         // Note: No .go file created yet - bench_standalone.go is generated when running benchmarks.
         // This keeps deps in go.mod since `go mod tidy` won't run until bench code exists.
-        terminal::success("Created .polybench/runtime-env/go/ (go.mod)");
+        if !options.quiet {
+            terminal::success("Created .polybench/runtime-env/go/ (go.mod)");
+        }
     }
 
     if has_ts {
@@ -112,29 +124,37 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         let tsconfig_content = templates::tsconfig_json();
         std::fs::write(ts_env.join("tsconfig.json"), tsconfig_content)
             .map_err(|e| miette::miette!("Failed to write tsconfig.json: {}", e))?;
-        terminal::success("Created .polybench/runtime-env/ts/ (package.json, tsconfig.json)");
+            if !options.quiet {
+                terminal::success("Created .polybench/runtime-env/ts/ (package.json, tsconfig.json)");
+            }
         
         // Run npm install to install dev dependencies (@types/node, typescript)
-        let spinner = terminal::step_spinner("Installing TypeScript dependencies...");
-        let npm_result = terminal::run_command_with_spinner(
-            &spinner,
-            Command::new("npm")
+        if options.quiet {
+            let _ = Command::new("npm")
                 .arg("install")
-                .current_dir(&ts_env),
-        );
-        
-        match npm_result {
-            Ok(output) if output.status.success() => {
-                terminal::finish_success(&spinner, "TypeScript dependencies installed");
-            }
-            Ok(output) => {
-                let err_msg = terminal::first_error_line(&output.stderr);
-                terminal::finish_failure(&spinner, &format!("npm install failed: {}", err_msg));
-                eprintln!("  Run 'npm install' manually in .polybench/runtime-env/ts/");
-            }
-            Err(e) => {
-                terminal::finish_failure(&spinner, &format!("Could not run npm: {}", e));
-                eprintln!("  Run 'npm install' manually in .polybench/runtime-env/ts/");
+                .current_dir(&ts_env)
+                .output();
+        } else {
+            let spinner = terminal::step_spinner("Installing TypeScript dependencies...");
+            let npm_result = terminal::run_command_with_spinner(
+                &spinner,
+                Command::new("npm")
+                    .arg("install")
+                    .current_dir(&ts_env),
+            );
+            match npm_result {
+                Ok(output) if output.status.success() => {
+                    terminal::finish_success(&spinner, "TypeScript dependencies installed");
+                }
+                Ok(output) => {
+                    let err_msg = terminal::first_error_line(&output.stderr);
+                    terminal::finish_failure(&spinner, &format!("npm install failed: {}", err_msg));
+                    eprintln!("  Run 'npm install' manually in .polybench/runtime-env/ts/");
+                }
+                Err(e) => {
+                    terminal::finish_failure(&spinner, &format!("Could not run npm: {}", e));
+                    eprintln!("  Run 'npm install' manually in .polybench/runtime-env/ts/");
+                }
             }
         }
     }
@@ -154,7 +174,9 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     };
     std::fs::write(&gitignore_path, gitignore_content)
         .map_err(|e| miette::miette!("Failed to write .gitignore: {}", e))?;
-    terminal::success("Created .gitignore");
+    if !options.quiet {
+        terminal::success("Created .gitignore");
+    }
 
     // Create README.md
     let readme_path = project_dir.join("README.md");
@@ -162,19 +184,23 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         let readme_content = templates::readme(&project_name, has_go, has_ts);
         std::fs::write(&readme_path, readme_content)
             .map_err(|e| miette::miette!("Failed to write README.md: {}", e))?;
-        terminal::success("Created README.md");
+        if !options.quiet {
+            terminal::success("Created README.md");
+        }
     }
 
-    println!();
-    terminal::success(&format!("Project '{}' initialized successfully!", project_name));
-    println!();
-    println!("Next steps:");
-    if options.name != "." {
-        println!("  cd {}", project_name);
+    if !options.quiet {
+        println!();
+        terminal::success(&format!("Project '{}' initialized successfully!", project_name));
+        println!();
+        println!("Next steps:");
+        if options.name != "." {
+            println!("  cd {}", project_name);
+        }
+        println!("  poly-bench install    # Install dependencies");
+        println!("  poly-bench run        # Run benchmarks");
+        println!();
     }
-    println!("  poly-bench install    # Install dependencies");
-    println!("  poly-bench run        # Run benchmarks");
-    println!();
 
     Ok(project_dir)
 }
@@ -238,6 +264,7 @@ mod tests {
             name: project_path.to_string_lossy().to_string(),
             languages: vec!["go".to_string(), "ts".to_string()],
             no_example: false,
+            quiet: false,
         };
 
         let result = init_project(&options);
@@ -264,6 +291,7 @@ mod tests {
             name: project_path.to_string_lossy().to_string(),
             languages: vec!["go".to_string()],
             no_example: false,
+            quiet: false,
         };
 
         let result = init_project(&options);
@@ -282,6 +310,7 @@ mod tests {
             name: project_path.to_string_lossy().to_string(),
             languages: vec!["go".to_string()],
             no_example: true,
+            quiet: false,
         };
 
         // First init should succeed
