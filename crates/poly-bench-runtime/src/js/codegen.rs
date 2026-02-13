@@ -42,8 +42,18 @@ interface BenchResult {
     totalNanos: number;
     nanosPerOp: number;
     opsPerSec: number;
+    bytesPerOp?: number;
+    allocsPerOp?: number;
     samples: number[];
 }
+
+// Memory profiling helper (Node.js only)
+const getMemoryUsage = () => {
+    if (typeof process !== 'undefined' && process.memoryUsage) {
+        return process.memoryUsage().heapUsed;
+    }
+    return 0;
+};
 
 // High-resolution timing - use best available timer
 const now = (() => {
@@ -63,7 +73,7 @@ const now = (() => {
 let __polybench_sink: any;
 
 // Fixed iterations benchmark with sink pattern
-function runBenchmark(fn: () => any, iterations: number, warmup: number, useSink: boolean = true): BenchResult {
+function runBenchmark(fn: () => any, iterations: number, warmup: number, useSink: boolean = true, trackMemory: boolean = false): BenchResult {
     const samples: number[] = new Array(iterations);
     
     // Warmup
@@ -74,6 +84,9 @@ function runBenchmark(fn: () => any, iterations: number, warmup: number, useSink
             fn();
         }
     }
+    
+    // Memory tracking before
+    const memBefore = trackMemory ? getMemoryUsage() : 0;
     
     // Timed run
     let totalNanos = 0;
@@ -89,6 +102,10 @@ function runBenchmark(fn: () => any, iterations: number, warmup: number, useSink
         totalNanos += elapsed;
     }
     
+    // Memory tracking after
+    const memAfter = trackMemory ? getMemoryUsage() : 0;
+    const bytesPerOp = trackMemory ? Math.max(0, (memAfter - memBefore) / iterations) : undefined;
+    
     const nanosPerOp = totalNanos / iterations;
     const opsPerSec = 1e9 / nanosPerOp;
     
@@ -97,13 +114,14 @@ function runBenchmark(fn: () => any, iterations: number, warmup: number, useSink
         totalNanos,
         nanosPerOp,
         opsPerSec,
+        bytesPerOp,
         samples,
     };
 }
 
 // Auto-calibrating benchmark (time-based, like Go's testing.B)
 // Total time is approximately targetTimeMs
-function runBenchmarkAuto(fn: () => any, targetTimeMs: number, useSink: boolean = true): BenchResult {
+function runBenchmarkAuto(fn: () => any, targetTimeMs: number, useSink: boolean = true, trackMemory: boolean = false): BenchResult {
     const targetNanos = targetTimeMs * 1e6;
     
     // Brief warmup (100 iterations)
@@ -114,6 +132,9 @@ function runBenchmarkAuto(fn: () => any, targetTimeMs: number, useSink: boolean 
             fn();
         }
     }
+    
+    // Memory tracking before
+    const memBefore = trackMemory ? getMemoryUsage() : 0;
     
     // Adaptive measurement phase - no per-iteration timing
     let batchSize = 1;
@@ -152,6 +173,10 @@ function runBenchmarkAuto(fn: () => any, targetTimeMs: number, useSink: boolean 
         }
     }
     
+    // Memory tracking after
+    const memAfter = trackMemory ? getMemoryUsage() : 0;
+    const bytesPerOp = trackMemory ? Math.max(0, (memAfter - memBefore) / totalIterations) : undefined;
+    
     const nanosPerOp = totalNanos / totalIterations;
     const opsPerSec = 1e9 / nanosPerOp;
     
@@ -173,12 +198,13 @@ function runBenchmarkAuto(fn: () => any, targetTimeMs: number, useSink: boolean 
         totalNanos,
         nanosPerOp,
         opsPerSec,
+        bytesPerOp,
         samples,
     };
 }
 
 // Fixed iterations benchmark with per-iteration hook
-function runBenchmarkWithHook(fn: () => any, eachHook: () => void, iterations: number, warmup: number, useSink: boolean = true): BenchResult {
+function runBenchmarkWithHook(fn: () => any, eachHook: () => void, iterations: number, warmup: number, useSink: boolean = true, trackMemory: boolean = false): BenchResult {
     const samples: number[] = new Array(iterations);
     
     // Warmup
@@ -190,6 +216,9 @@ function runBenchmarkWithHook(fn: () => any, eachHook: () => void, iterations: n
             fn();
         }
     }
+    
+    // Memory tracking before
+    const memBefore = trackMemory ? getMemoryUsage() : 0;
     
     // Timed run
     let totalNanos = 0;
@@ -206,6 +235,10 @@ function runBenchmarkWithHook(fn: () => any, eachHook: () => void, iterations: n
         totalNanos += elapsed;
     }
     
+    // Memory tracking after
+    const memAfter = trackMemory ? getMemoryUsage() : 0;
+    const bytesPerOp = trackMemory ? Math.max(0, (memAfter - memBefore) / iterations) : undefined;
+    
     const nanosPerOp = totalNanos / iterations;
     const opsPerSec = 1e9 / nanosPerOp;
     
@@ -214,12 +247,13 @@ function runBenchmarkWithHook(fn: () => any, eachHook: () => void, iterations: n
         totalNanos,
         nanosPerOp,
         opsPerSec,
+        bytesPerOp,
         samples,
     };
 }
 
 // Auto-calibrating benchmark with per-iteration hook (time-based, like Go's testing.B)
-function runBenchmarkAutoWithHook(fn: () => any, eachHook: () => void, targetTimeMs: number, useSink: boolean = true): BenchResult {
+function runBenchmarkAutoWithHook(fn: () => any, eachHook: () => void, targetTimeMs: number, useSink: boolean = true, trackMemory: boolean = false): BenchResult {
     const targetNanos = targetTimeMs * 1e6;
     
     // Brief warmup (100 iterations)
@@ -231,6 +265,9 @@ function runBenchmarkAutoWithHook(fn: () => any, eachHook: () => void, targetTim
             fn();
         }
     }
+    
+    // Memory tracking before
+    const memBefore = trackMemory ? getMemoryUsage() : 0;
     
     // Adaptive measurement phase - no per-iteration timing
     let batchSize = 1;
@@ -270,6 +307,10 @@ function runBenchmarkAutoWithHook(fn: () => any, eachHook: () => void, targetTim
         }
     }
     
+    // Memory tracking after
+    const memAfter = trackMemory ? getMemoryUsage() : 0;
+    const bytesPerOp = trackMemory ? Math.max(0, (memAfter - memBefore) / totalIterations) : undefined;
+    
     const nanosPerOp = totalNanos / totalIterations;
     const opsPerSec = 1e9 / nanosPerOp;
     
@@ -292,6 +333,7 @@ function runBenchmarkAutoWithHook(fn: () => any, eachHook: () => void, targetTim
         totalNanos,
         nanosPerOp,
         opsPerSec,
+        bytesPerOp,
         samples,
     };
 }
@@ -440,6 +482,7 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec) -> Result<()> {
     }
 
     let use_sink = if bench.use_sink { "true" } else { "false" };
+    let track_memory = if bench.memory { "true" } else { "false" };
     
     // Check for lifecycle hooks
     let before_hook = bench.before_hooks.get(&Lang::TypeScript);
@@ -467,44 +510,44 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec) -> Result<()> {
         return {}
     }}, () => {{
         {}
-    }}, {}, {});{}
+    }}, {}, {}, {});{}
     return result;
 }}
 
 "#, bench.full_name, before_code, impl_code, each.trim(), 
-    bench.target_time_ms, use_sink, after_code));
+    bench.target_time_ms, use_sink, track_memory, after_code));
                 } else {
                     code.push_str(&format!(r#"function bench_{}(): BenchResult {{
     return runBenchmarkAutoWithHook(() => {{
         return {}
     }}, () => {{
         {}
-    }}, {}, {});
+    }}, {}, {}, {});
 }}
 
 "#, bench.full_name, impl_code, each.trim(), 
-    bench.target_time_ms, use_sink));
+    bench.target_time_ms, use_sink, track_memory));
                 }
             } else if has_before_or_after {
                 // Auto mode with before/after but no each hook
                 code.push_str(&format!(r#"function bench_{}(): BenchResult {{
 {}    const result = runBenchmarkAuto(() => {{
         return {}
-    }}, {}, {});{}
+    }}, {}, {}, {});{}
     return result;
 }}
 
 "#, bench.full_name, before_code, impl_code, 
-    bench.target_time_ms, use_sink, after_code));
+    bench.target_time_ms, use_sink, track_memory, after_code));
             } else {
                 // Auto mode without hooks
                 code.push_str(&format!(r#"function bench_{}(): BenchResult {{
     return runBenchmarkAuto(() => {{
         return {}
-    }}, {}, {});
+    }}, {}, {}, {});
 }}
 
-"#, bench.full_name, impl_code, bench.target_time_ms, use_sink));
+"#, bench.full_name, impl_code, bench.target_time_ms, use_sink, track_memory));
             }
         }
         BenchMode::Fixed => {
@@ -516,42 +559,42 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec) -> Result<()> {
         return {}
     }}, () => {{
         {}
-    }}, {}, {}, {});{}
+    }}, {}, {}, {}, {});{}
     return result;
 }}
 
 "#, bench.full_name, before_code, impl_code, each.trim(), 
-    bench.iterations, bench.warmup, use_sink, after_code));
+    bench.iterations, bench.warmup, use_sink, track_memory, after_code));
                 } else {
                     code.push_str(&format!(r#"function bench_{}(): BenchResult {{
     return runBenchmarkWithHook(() => {{
         return {}
     }}, () => {{
         {}
-    }}, {}, {}, {});
+    }}, {}, {}, {}, {});
 }}
 
-"#, bench.full_name, impl_code, each.trim(), bench.iterations, bench.warmup, use_sink));
+"#, bench.full_name, impl_code, each.trim(), bench.iterations, bench.warmup, use_sink, track_memory));
                 }
             } else if has_before_or_after {
                 // Fixed mode with before/after but no each hook
                 code.push_str(&format!(r#"function bench_{}(): BenchResult {{
 {}    const result = runBenchmark(() => {{
         return {}
-    }}, {}, {}, {});{}
+    }}, {}, {}, {}, {});{}
     return result;
 }}
 
-"#, bench.full_name, before_code, impl_code, bench.iterations, bench.warmup, use_sink, after_code));
+"#, bench.full_name, before_code, impl_code, bench.iterations, bench.warmup, use_sink, track_memory, after_code));
             } else {
                 // Fixed mode without hooks
                 code.push_str(&format!(r#"function bench_{}(): BenchResult {{
     return runBenchmark(() => {{
         return {}
-    }}, {}, {}, {});
+    }}, {}, {}, {}, {});
 }}
 
-"#, bench.full_name, impl_code, bench.iterations, bench.warmup, use_sink));
+"#, bench.full_name, impl_code, bench.iterations, bench.warmup, use_sink, track_memory));
             }
         }
     }

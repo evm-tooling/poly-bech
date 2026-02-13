@@ -145,15 +145,32 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
         "suite", "bench", "setup", "fixture", "hex", "description", "iterations",
         "warmup", "declare", "init", "helpers", "import", "timeout", "tags",
         "skip", "validate", "before", "after", "each", "requires", "order",
-        "compare", "baseline", "shape", "async", "use",
+        "compare", "baseline", "shape", "async", "use", "globalSetup",
+        // Auto-calibration keywords
+        "mode", "targetTime", "minIterations", "maxIterations",
+        // Performance keywords
+        "sink",
+        // Statistical keywords
+        "outlierDetection", "cvThreshold",
+        // Observability keywords (Phase 2B)
+        "memory", "concurrency",
+        // Charting keywords (used as parameters in charting calls)
+        "title", "xlabel", "ylabel", "sortBy", "sortOrder", "timeUnit",
+        "showTotalTime", "showLegend", "showGrid",
     ];
 
     // std and stdlib module names get NAMESPACE highlighting
-    let namespace_keywords = ["std", "constants", "math", "chart"];
+    let namespace_keywords = ["std", "constants", "math", "charting", "anvil"];
 
     let lang_keywords = ["go", "ts", "typescript", "rust", "python"];
 
-    let order_values = ["sequential", "parallel", "random"];
+    let order_values = ["sequential", "parallel", "random", "auto", "fixed"];
+    
+    // Charting library methods get FUNCTION highlighting
+    let charting_methods = [
+        "drawBarChart", "drawLineChart", "drawPieChart", "drawScatterPlot",
+        "drawHistogram", "drawHeatmap", "drawBoxPlot", "drawAreaChart",
+    ];
 
     // Simple tokenizer
     let mut line = 0u32;
@@ -171,6 +188,7 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
                     &lang_keywords,
                     &order_values,
                     &namespace_keywords,
+                    &charting_methods,
                     &mut tokens,
                     &mut prev_line,
                     &mut prev_char,
@@ -199,6 +217,7 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
                     &lang_keywords,
                     &order_values,
                     &namespace_keywords,
+                    &charting_methods,
                     &mut tokens,
                     &mut prev_line,
                     &mut prev_char,
@@ -250,6 +269,7 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
             &lang_keywords,
             &order_values,
             &namespace_keywords,
+            &charting_methods,
             &mut tokens,
             &mut prev_line,
             &mut prev_char,
@@ -267,6 +287,7 @@ fn emit_word_token(
     lang_keywords: &[&str],
     order_values: &[&str],
     namespace_keywords: &[&str],
+    charting_methods: &[&str],
     tokens: &mut Vec<SemanticToken>,
     prev_line: &mut u32,
     prev_char: &mut u32,
@@ -279,6 +300,8 @@ fn emit_word_token(
         Some(1) // TYPE
     } else if namespace_keywords.contains(&word) {
         Some(8) // NAMESPACE
+    } else if charting_methods.contains(&word) {
+        Some(2) // FUNCTION for charting methods
     } else if order_values.contains(&word) {
         Some(4) // PROPERTY
     } else if word.parse::<u64>().is_ok() {

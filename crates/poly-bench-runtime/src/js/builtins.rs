@@ -23,8 +23,16 @@ pub const BENCHMARK_HARNESS: &str = r#"
     // Global sink to prevent dead code elimination
     globalThis.__polybench_sink = undefined;
 
+    // Memory profiling helper (Node.js only)
+    const getMemoryUsage = () => {
+        if (typeof process !== 'undefined' && process.memoryUsage) {
+            return process.memoryUsage().heapUsed;
+        }
+        return 0;
+    };
+
     // Run a benchmark function (fixed iterations with sink pattern)
-    function runBenchmark(fn, iterations, warmup, useSink = true) {
+    function runBenchmark(fn, iterations, warmup, useSink = true, trackMemory = false) {
         const samples = new Array(iterations);
         
         // Warmup phase
@@ -35,6 +43,9 @@ pub const BENCHMARK_HARNESS: &str = r#"
                 fn();
             }
         }
+        
+        // Memory tracking before
+        const memBefore = trackMemory ? getMemoryUsage() : 0;
         
         // Timed phase
         let totalNanos = 0;
@@ -50,6 +61,10 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos += elapsed;
         }
         
+        // Memory tracking after
+        const memAfter = trackMemory ? getMemoryUsage() : 0;
+        const bytesPerOp = trackMemory ? Math.max(0, (memAfter - memBefore) / iterations) : undefined;
+        
         const nanosPerOp = totalNanos / iterations;
         const opsPerSec = 1e9 / nanosPerOp;
         
@@ -58,13 +73,14 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos: totalNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
+            bytesPerOp: bytesPerOp,
             samples: samples,
         };
     }
 
     // Run a benchmark with auto-calibration (time-based, like Go's testing.B)
     // Total benchmark time is approximately targetTimeMs
-    function runBenchmarkAuto(fn, targetTimeMs, useSink = true) {
+    function runBenchmarkAuto(fn, targetTimeMs, useSink = true, trackMemory = false) {
         const targetNanos = targetTimeMs * 1e6;
         
         // Brief warmup (fixed 100 iterations to warm JIT)
@@ -75,6 +91,9 @@ pub const BENCHMARK_HARNESS: &str = r#"
                 fn();
             }
         }
+        
+        // Memory tracking before
+        const memBefore = trackMemory ? getMemoryUsage() : 0;
         
         // Adaptive measurement phase (like Go's testing.B)
         // Run batches, scale up N, stop when total elapsed >= targetTime
@@ -116,6 +135,10 @@ pub const BENCHMARK_HARNESS: &str = r#"
             }
         }
         
+        // Memory tracking after
+        const memAfter = trackMemory ? getMemoryUsage() : 0;
+        const bytesPerOp = trackMemory ? Math.max(0, (memAfter - memBefore) / totalIterations) : undefined;
+        
         const nanosPerOp = totalNanos / totalIterations;
         const opsPerSec = 1e9 / nanosPerOp;
         
@@ -138,12 +161,13 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos: totalNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
+            bytesPerOp: bytesPerOp,
             samples: samples,
         };
     }
 
     // Run an async benchmark function
-    async function runBenchmarkAsync(fn, iterations, warmup, useSink = true) {
+    async function runBenchmarkAsync(fn, iterations, warmup, useSink = true, trackMemory = false) {
         const samples = new Array(iterations);
         
         // Warmup phase
@@ -154,6 +178,9 @@ pub const BENCHMARK_HARNESS: &str = r#"
                 await fn();
             }
         }
+        
+        // Memory tracking before
+        const memBefore = trackMemory ? getMemoryUsage() : 0;
         
         // Timed phase
         let totalNanos = 0;
@@ -169,6 +196,10 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos += elapsed;
         }
         
+        // Memory tracking after
+        const memAfter = trackMemory ? getMemoryUsage() : 0;
+        const bytesPerOp = trackMemory ? Math.max(0, (memAfter - memBefore) / iterations) : undefined;
+        
         const nanosPerOp = totalNanos / iterations;
         const opsPerSec = 1e9 / nanosPerOp;
         
@@ -177,12 +208,13 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos: totalNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
+            bytesPerOp: bytesPerOp,
             samples: samples,
         };
     }
 
     // Run an async benchmark with auto-calibration (time-based)
-    async function runBenchmarkAutoAsync(fn, targetTimeMs, useSink = true) {
+    async function runBenchmarkAutoAsync(fn, targetTimeMs, useSink = true, trackMemory = false) {
         const targetNanos = targetTimeMs * 1e6;
         
         // Brief warmup (fixed 100 iterations)
@@ -193,6 +225,9 @@ pub const BENCHMARK_HARNESS: &str = r#"
                 await fn();
             }
         }
+        
+        // Memory tracking before
+        const memBefore = trackMemory ? getMemoryUsage() : 0;
         
         // Adaptive measurement phase - no per-iteration timing
         let batchSize = 1;
@@ -231,6 +266,10 @@ pub const BENCHMARK_HARNESS: &str = r#"
             }
         }
         
+        // Memory tracking after
+        const memAfter = trackMemory ? getMemoryUsage() : 0;
+        const bytesPerOp = trackMemory ? Math.max(0, (memAfter - memBefore) / totalIterations) : undefined;
+        
         const nanosPerOp = totalNanos / totalIterations;
         const opsPerSec = 1e9 / nanosPerOp;
         
@@ -252,12 +291,13 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos: totalNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
+            bytesPerOp: bytesPerOp,
             samples: samples,
         };
     }
 
     // Run a benchmark function with an each-iteration hook
-    function runBenchmarkWithHook(fn, eachHook, iterations, warmup, useSink = true) {
+    function runBenchmarkWithHook(fn, eachHook, iterations, warmup, useSink = true, trackMemory = false) {
         const samples = new Array(iterations);
         
         // Warmup phase with hook
@@ -269,6 +309,9 @@ pub const BENCHMARK_HARNESS: &str = r#"
                 fn();
             }
         }
+        
+        // Memory tracking before
+        const memBefore = trackMemory ? getMemoryUsage() : 0;
         
         // Timed phase with hook (hook runs outside timing)
         let totalNanos = 0;
@@ -285,6 +328,10 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos += elapsed;
         }
         
+        // Memory tracking after
+        const memAfter = trackMemory ? getMemoryUsage() : 0;
+        const bytesPerOp = trackMemory ? Math.max(0, (memAfter - memBefore) / iterations) : undefined;
+        
         const nanosPerOp = totalNanos / iterations;
         const opsPerSec = 1e9 / nanosPerOp;
         
@@ -293,12 +340,13 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos: totalNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
+            bytesPerOp: bytesPerOp,
             samples: samples,
         };
     }
 
     // Run an async benchmark function with an each-iteration hook
-    async function runBenchmarkWithHookAsync(fn, eachHook, iterations, warmup, useSink = true) {
+    async function runBenchmarkWithHookAsync(fn, eachHook, iterations, warmup, useSink = true, trackMemory = false) {
         const samples = new Array(iterations);
         
         // Warmup phase with hook
@@ -310,6 +358,9 @@ pub const BENCHMARK_HARNESS: &str = r#"
                 await fn();
             }
         }
+        
+        // Memory tracking before
+        const memBefore = trackMemory ? getMemoryUsage() : 0;
         
         // Timed phase with hook (hook runs outside timing)
         let totalNanos = 0;
@@ -326,6 +377,10 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos += elapsed;
         }
         
+        // Memory tracking after
+        const memAfter = trackMemory ? getMemoryUsage() : 0;
+        const bytesPerOp = trackMemory ? Math.max(0, (memAfter - memBefore) / iterations) : undefined;
+        
         const nanosPerOp = totalNanos / iterations;
         const opsPerSec = 1e9 / nanosPerOp;
         
@@ -334,6 +389,7 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos: totalNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
+            bytesPerOp: bytesPerOp,
             samples: samples,
         };
     }

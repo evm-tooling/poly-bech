@@ -312,6 +312,18 @@ impl Parser {
                 let value = self.expect_float()?;
                 suite.cv_threshold = Some(value);
             }
+            TokenKind::Memory => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_bool()?;
+                suite.memory = value;
+            }
+            TokenKind::Concurrency => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_number()?;
+                suite.concurrency = value as u32;
+            }
             // globalSetup can now be inside suite
             TokenKind::GlobalSetup => {
                 let global_setup = self.parse_global_setup()?;
@@ -950,6 +962,18 @@ impl Parser {
                 let value = self.expect_float()?;
                 benchmark.cv_threshold = Some(value);
             }
+            TokenKind::Memory => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_bool()?;
+                benchmark.memory = Some(value);
+            }
+            TokenKind::Concurrency => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_number()?;
+                benchmark.concurrency = Some(value as u32);
+            }
             // Phase 3: Lifecycle hooks
             TokenKind::Before => {
                 self.advance();
@@ -1157,6 +1181,10 @@ impl Parser {
                     TokenKind::TargetTime |
                     TokenKind::MinIterations |
                     TokenKind::MaxIterations |
+                    TokenKind::OutlierDetection |
+                    TokenKind::CvThreshold |
+                    TokenKind::Memory |
+                    TokenKind::Concurrency |
                     TokenKind::Before |
                     TokenKind::After |
                     TokenKind::Each |

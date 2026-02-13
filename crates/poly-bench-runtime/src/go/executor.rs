@@ -232,9 +232,14 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     all_imports.insert("\"fmt\"");
     all_imports.insert("\"time\"");
     
-    // Add runtime import for sink pattern (KeepAlive)
-    if spec.use_sink {
+    // Add runtime import for sink pattern (KeepAlive) or memory profiling
+    if spec.use_sink || spec.memory {
         all_imports.insert("\"runtime\"");
+    }
+    
+    // Add sync import for concurrent execution
+    if spec.concurrency > 1 {
+        all_imports.insert("\"sync\"");
     }
     
     // Add user imports from the pre-extracted imports in SuiteIR
@@ -338,10 +343,13 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     let sink_decl = if spec.use_sink { "\tvar __sink interface{}\n" } else { "" };
     
     // Generate the benchmark call with or without sink
+    // For void functions, we can't assign to _ or __sink, so just call them directly
     let bench_call = if spec.use_sink {
         format!("__sink = {}", impl_code)
     } else {
-        format!("_ = {}", impl_code)
+        // For sink: false, just call the function directly without assignment
+        // This handles void functions that return nothing
+        impl_code.to_string()
     };
     
     // Generate sink keepalive at end of timed loop if enabled
@@ -350,8 +358,30 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     } else {
         ""
     };
+    
+    // Memory profiling support
+    let memory_decl = if spec.memory {
+        "\tvar memBefore, memAfter runtime.MemStats\n"
+    } else {
+        ""
+    };
+    let memory_before = if spec.memory {
+        "\n\truntime.GC()\n\truntime.ReadMemStats(&memBefore)\n"
+    } else {
+        ""
+    };
+    let memory_after = if spec.memory {
+        "\n\truntime.GC()\n\truntime.ReadMemStats(&memAfter)\n"
+    } else {
+        ""
+    };
 
     // Generate main function based on mode
+    // Check for concurrent execution first
+    if spec.concurrency > 1 {
+        return generate_concurrent_main(&mut code, spec, &sink_decl, &memory_decl, &memory_before, &memory_after, &bench_call, before_hook, after_hook);
+    }
+    
     match spec.mode {
         BenchMode::Auto => {
             // Auto-calibration mode: like Go's testing.B
@@ -359,8 +389,8 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
             code.push_str(&format!(r#"
 func main() {{
 	targetNanos := int64({})
-{}
-"#, spec.target_time_ms * 1_000_000, sink_decl));
+{}{}
+"#, spec.target_time_ms * 1_000_000, sink_decl, memory_decl));
 
             // Before hook
             if let Some(before) = before_hook {
@@ -369,6 +399,9 @@ func main() {{
                     code.push_str(&format!("\t{}\n", line));
                 }
             }
+            
+            // Memory before measurement
+            code.push_str(memory_before);
 
             // Brief warmup (fixed 100 iterations)
             code.push_str("\n\t// Brief warmup (100 iterations)\n");
@@ -481,8 +514,8 @@ func main() {{
 	iterations := {}
 	warmup := {}
 	samples := make([]uint64, iterations)
-{}
-"#, spec.iterations, spec.warmup, sink_decl));
+{}{}
+"#, spec.iterations, spec.warmup, sink_decl, memory_decl));
 
             // Before hook
             if let Some(before) = before_hook {
@@ -491,6 +524,9 @@ func main() {{
                     code.push_str(&format!("\t{}\n", line));
                 }
             }
+            
+            // Memory before measurement
+            code.push_str(memory_before);
 
             // Warmup loop
             code.push_str("\n\t// Warmup\n");
@@ -523,6 +559,9 @@ func main() {{
         }
     }
 
+    // Memory profiling after measurement
+    code.push_str(memory_after);
+
     // After hook (common for both modes)
     if let Some(after) = after_hook {
         code.push_str("\n\t// After hook\n");
@@ -530,24 +569,165 @@ func main() {{
             code.push_str(&format!("\t{}\n", line));
         }
     }
+    
+    // Memory result fields
+    let memory_result = if spec.memory {
+        "\t\tBytesPerOp:  (memAfter.TotalAlloc - memBefore.TotalAlloc) / uint64(iterations),\n\t\tAllocsPerOp: (memAfter.Mallocs - memBefore.Mallocs) / uint64(iterations),\n"
+    } else {
+        ""
+    };
 
-    code.push_str(r#"
+    code.push_str(&format!(r#"
 	nanosPerOp := float64(totalNanos) / float64(iterations)
 	opsPerSec := 1e9 / nanosPerOp
 	
-	result := BenchResult{
+	result := BenchResult{{
 		Iterations:  uint64(iterations),
 		TotalNanos:  uint64(totalNanos),
 		NanosPerOp:  nanosPerOp,
 		OpsPerSec:   opsPerSec,
-		Samples:     samples,
-	}
+{}		Samples:     samples,
+	}}
 	
 	jsonBytes, _ := json.Marshal(result)
 	fmt.Println(string(jsonBytes))
-}
-"#);
+}}
+"#, memory_result));
 
     Ok(code)
+}
+
+/// Generate concurrent execution main function
+fn generate_concurrent_main(
+    code: &mut String,
+    spec: &BenchmarkSpec,
+    sink_decl: &str,
+    memory_decl: &str,
+    memory_before: &str,
+    memory_after: &str,
+    bench_call: &str,
+    before_hook: Option<&String>,
+    after_hook: Option<&String>,
+) -> Result<String> {
+    let concurrency = spec.concurrency;
+    
+    // Memory result fields
+    let memory_result = if spec.memory {
+        "\t\tBytesPerOp:  (memAfter.TotalAlloc - memBefore.TotalAlloc) / uint64(totalIterations),\n\t\tAllocsPerOp: (memAfter.Mallocs - memBefore.Mallocs) / uint64(totalIterations),\n"
+    } else {
+        ""
+    };
+    
+    // For concurrent execution, we need local sink variables per goroutine to avoid races
+    // Then we use runtime.KeepAlive on them at the end
+    let concurrent_sink_decl = if spec.use_sink { "\tvar __sink interface{}\n" } else { "" };
+    let sink_keepalive = if spec.use_sink { "\n\truntime.KeepAlive(__sink)\n" } else { "" };
+    
+    code.push_str(&format!(r#"
+func main() {{
+	// Concurrent benchmark: {} goroutines
+	concurrency := {}
+	iterations := {}
+	iterPerGoroutine := iterations / concurrency
+	if iterPerGoroutine < 1 {{
+		iterPerGoroutine = 1
+	}}
+	totalIterations := iterPerGoroutine * concurrency
+	
+{}{}
+"#, concurrency, concurrency, spec.iterations, concurrent_sink_decl, memory_decl));
+
+    // Before hook
+    if let Some(before) = before_hook {
+        code.push_str("\n\t// Before hook\n");
+        for line in before.lines() {
+            code.push_str(&format!("\t{}\n", line));
+        }
+    }
+    
+    // Memory before
+    code.push_str(memory_before);
+    
+    // Warmup - don't use sink in warmup to keep it simple
+    let warmup_call = if spec.use_sink {
+        format!("_ = {}", spec.get_impl(Lang::Go).unwrap_or(&"nil".to_string()))
+    } else {
+        bench_call.to_string()
+    };
+    
+    code.push_str(&format!(r#"
+	// Concurrent warmup
+	var wgWarmup sync.WaitGroup
+	for g := 0; g < concurrency; g++ {{
+		wgWarmup.Add(1)
+		go func() {{
+			defer wgWarmup.Done()
+			for i := 0; i < 10; i++ {{
+				{}
+			}}
+		}}()
+	}}
+	wgWarmup.Wait()
+	
+	// Timed concurrent run
+	var wg sync.WaitGroup
+	start := time.Now()
+	
+	for g := 0; g < concurrency; g++ {{
+		wg.Add(1)
+		go func() {{
+			defer wg.Done()
+			for i := 0; i < iterPerGoroutine; i++ {{
+				{}
+			}}
+		}}()
+	}}
+	wg.Wait()
+	
+	totalNanos := time.Since(start).Nanoseconds(){}
+"#, warmup_call, bench_call, sink_keepalive));
+
+    // Memory after
+    code.push_str(memory_after);
+
+    // After hook
+    if let Some(after) = after_hook {
+        code.push_str("\n\t// After hook\n");
+        for line in after.lines() {
+            code.push_str(&format!("\t{}\n", line));
+        }
+    }
+    
+    // Collect samples and output result
+    code.push_str(&format!(r#"
+	nanosPerOp := float64(totalNanos) / float64(totalIterations)
+	opsPerSec := 1e9 / nanosPerOp
+	
+	// Collect samples (sequential, for statistical analysis)
+	sampleCount := 100
+	if sampleCount > totalIterations {{
+		sampleCount = totalIterations
+	}}
+	samples := make([]uint64, sampleCount)
+	for i := 0; i < sampleCount; i++ {{
+		sampleStart := time.Now()
+		{}
+		samples[i] = uint64(time.Since(sampleStart).Nanoseconds())
+	}}
+	
+	result := BenchResult{{
+		Iterations:  uint64(totalIterations),
+		TotalNanos:  uint64(totalNanos),
+		NanosPerOp:  nanosPerOp,
+		OpsPerSec:   opsPerSec,
+{}		Samples:     samples,
+	}}
+	
+	jsonBytes, _ := json.Marshal(result)
+	fmt.Println(string(jsonBytes))
+}}
+"#, bench_call, memory_result));
+
+    Ok(code.clone())
 }
 

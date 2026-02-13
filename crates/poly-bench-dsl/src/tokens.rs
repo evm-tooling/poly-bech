@@ -48,6 +48,10 @@ pub enum TokenKind {
     // Statistical analysis keywords
     OutlierDetection,  // outlierDetection (true/false)
     CvThreshold,       // cvThreshold (percentage)
+    
+    // Observability keywords (Phase 2B)
+    Memory,            // memory (true/false) - enable memory profiling
+    Concurrency,       // concurrency (number) - concurrent goroutines/workers
 
     // Phase 5: Fixture keywords
     Shape,       // shape
@@ -135,6 +139,8 @@ impl TokenKind {
                 | TokenKind::MaxIterations
                 | TokenKind::OutlierDetection
                 | TokenKind::CvThreshold
+                | TokenKind::Memory
+                | TokenKind::Concurrency
                 | TokenKind::Shape
                 | TokenKind::Async
                 | TokenKind::Use
@@ -226,6 +232,10 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         // Statistical analysis keywords
         "outlierDetection" => Some(TokenKind::OutlierDetection),
         "cvThreshold" => Some(TokenKind::CvThreshold),
+        
+        // Observability keywords (Phase 2B)
+        "memory" => Some(TokenKind::Memory),
+        "concurrency" => Some(TokenKind::Concurrency),
         
         // Phase 5: Fixture keywords
         "shape" => Some(TokenKind::Shape),

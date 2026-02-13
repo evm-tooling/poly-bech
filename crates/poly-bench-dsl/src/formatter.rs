@@ -299,6 +299,16 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
     if let Some(cv_threshold) = suite.cv_threshold {
         write!(out, "{}cvThreshold: {}\n", inner, cv_threshold).unwrap();
     }
+    
+    // Observability settings (Phase 2B) - only output non-default values
+    if suite.memory {
+        // Only output memory: true since false is the default
+        write!(out, "{}memory: true\n", inner).unwrap();
+    }
+    if suite.concurrency > 1 {
+        // Only output concurrency if > 1 (default is 1)
+        write!(out, "{}concurrency: {}\n", inner, suite.concurrency).unwrap();
+    }
 
     // Add blank line after properties if there are any setups, fixtures, or benchmarks
     let has_content = suite.global_setup.is_some() || !suite.setups.is_empty() || !suite.fixtures.is_empty() || !suite.benchmarks.is_empty();
@@ -513,6 +523,14 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
     }
     if let Some(cv_threshold) = bench.cv_threshold {
         write!(out, "{}cvThreshold: {}\n", inner, cv_threshold).unwrap();
+    }
+    
+    // Observability settings (Phase 2B) - only output if explicitly set
+    if let Some(memory) = bench.memory {
+        write!(out, "{}memory: {}\n", inner, if memory { "true" } else { "false" }).unwrap();
+    }
+    if let Some(concurrency) = bench.concurrency {
+        write!(out, "{}concurrency: {}\n", inner, concurrency).unwrap();
     }
 
     for lang in &lang_order {

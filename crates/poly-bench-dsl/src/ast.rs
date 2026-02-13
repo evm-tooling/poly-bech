@@ -523,6 +523,12 @@ pub struct Suite {
     /// Coefficient of variation threshold percentage for stability check (default: 5.0)
     pub cv_threshold: Option<f64>,
     
+    // Observability settings (Phase 2B)
+    /// Enable memory allocation profiling (default: false)
+    pub memory: bool,
+    /// Number of concurrent goroutines/workers for parallel execution (default: 1)
+    pub concurrency: u32,
+    
     /// Global setup block for suite-level initialization (runs once before all benchmarks)
     pub global_setup: Option<GlobalSetup>,
     
@@ -556,6 +562,8 @@ impl Suite {
             sink: true, // Enabled by default to prevent DCE
             outlier_detection: true, // Enabled by default for statistical accuracy
             cv_threshold: None, // Uses default (5.0%) when None
+            memory: false, // Memory profiling disabled by default
+            concurrency: 1, // Single-threaded by default
             global_setup: None,
             setups: HashMap::new(),
             fixtures: Vec::new(),
@@ -648,6 +656,12 @@ pub struct Benchmark {
     /// Override CV threshold (None = inherit from suite)
     pub cv_threshold: Option<f64>,
     
+    // Observability settings (Phase 2B)
+    /// Override memory profiling setting (None = inherit from suite)
+    pub memory: Option<bool>,
+    /// Override concurrency setting (None = inherit from suite)
+    pub concurrency: Option<u32>,
+    
     // Phase 3: Lifecycle hooks
     /// Pre-benchmark hook (runs once before iterations)
     pub before: HashMap<Lang, CodeBlock>,
@@ -679,6 +693,8 @@ impl Benchmark {
             sink: None,
             outlier_detection: None,
             cv_threshold: None,
+            memory: None,
+            concurrency: None,
             before: HashMap::new(),
             after: HashMap::new(),
             each: HashMap::new(),

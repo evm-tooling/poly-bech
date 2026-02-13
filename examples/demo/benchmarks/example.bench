@@ -1,18 +1,24 @@
 use std::constants
 use std::charting
 
+# Comprehensive example benchmark demonstrating all unique DSL configuration settings
+# This file showcases: mode, targetTime, iterations, warmup, sink, memory, concurrency,
+# outlierDetection, cvThreshold, minIterations, maxIterations, and lifecycle hooks
+
 suite example {
-    description: "Example benchmark showcasing auto-calibration, sink patterns, statistical analysis, and lifecycle hooks"
-    warmup: 0
+    description: "Comprehensive benchmark showcasing all DSL features"
+    warmup: 100
     compare: true
     baseline: "go"
     mode: "auto"
-    targetTime: 30000ms
-    minIterations: 10000
-    maxIterations: 1000000
-    sink: false
-    outlierDetection: false
-    cvThreshold: 5
+    targetTime: 5000ms
+    minIterations: 1000
+    maxIterations: 10000000
+    sink: true
+    outlierDetection: true
+    cvThreshold: 10
+    memory: false
+    concurrency: 1
 
     setup go {
         import (
@@ -24,14 +30,15 @@ suite example {
 
         declare {
             var benchERC20ABI *abi.ABI
-        var balanceOfAddr = common.HexToAddress("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
+            var balanceOfAddr = common.HexToAddress("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
             var x float64 = std_PI
             var setupCounter int
             var mu sync.Mutex
+            var allocBuf []byte
         }
 
         init {
-             var err error
+            var err error
             benchERC20ABI, err = abi.Parse([]byte(`[
                 {"name":"name","type":"function","inputs":[],"outputs":[{"type":"string"}],"stateMutability":"view"},
                 {"name":"symbol","type":"function","inputs":[],"outputs":[{"type":"string"}],"stateMutability":"view"},
@@ -49,13 +56,14 @@ suite example {
         }
 
         helpers {
-             func mustEncodeBalanceOf(addr common.Address) []byte {
-            data, err := benchERC20ABI.EncodeFunctionData("balanceOf", addr)
-            if err != nil {
-                panic(err)
+            func mustEncodeBalanceOf(addr common.Address) []byte {
+                data, err := benchERC20ABI.EncodeFunctionData("balanceOf", addr)
+                if err != nil {
+                    panic(err)
+                }
+                return data
             }
-            return data
-        }
+
             func sha256SumGo(data []byte) [32]byte {
                 return sha256.Sum256(data)
             }
@@ -75,6 +83,10 @@ suite example {
                 setupCounter = 0
                 mu.Unlock()
             }
+
+            func allocateMemory(size int) []byte {
+                return make([]byte, size)
+            }
         }
     }
 
@@ -82,26 +94,27 @@ suite example {
         import {
             import { createHash } from 'node:crypto';
             import {
-            encodeFunctionData,
-            parseAbi,
-        } from 'viem'
+                encodeFunctionData,
+                parseAbi,
+            } from 'viem'
         }
 
         declare {
             let setupCounter = 0;
+            let allocBuf: Uint8Array | null = null;
             const erc20Abi = parseAbi([
-            'function name() view returns (string)',
-            'function symbol() view returns (string)',
-            'function decimals() view returns (uint8)',
-            'function totalSupply() view returns (uint256)',
-            'function balanceOf(address owner) view returns (uint256)',
-            'function allowance(address owner, address spender) view returns (uint256)',
-            'function transfer(address to, uint256 amount) returns (bool)',
-            'function approve(address spender, uint256 amount) returns (bool)',
-            'function transferFrom(address from, address to, uint256 amount) returns (bool)',
-        ])
+                'function name() view returns (string)',
+                'function symbol() view returns (string)',
+                'function decimals() view returns (uint8)',
+                'function totalSupply() view returns (uint256)',
+                'function balanceOf(address owner) view returns (uint256)',
+                'function allowance(address owner, address spender) view returns (uint256)',
+                'function transfer(address to, uint256 amount) returns (bool)',
+                'function approve(address spender, uint256 amount) returns (bool)',
+                'function transferFrom(address from, address to, uint256 amount) returns (bool)',
+            ])
 
-        const VITALIK = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045' 
+            const VITALIK = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
         }
 
         init {
@@ -120,6 +133,10 @@ suite example {
             function resetCounter(): void {
                 setupCounter = 0;
             }
+
+            function allocateMemory(size: number): Uint8Array {
+                return new Uint8Array(size);
+            }
         }
     }
 
@@ -127,14 +144,19 @@ suite example {
         hex: "68656c6c6f20776f726c64"
     }
 
-    # Auto mode with 3s target time (quick benchmark)
-    bench sha256_auto_3s {
-        description: "SHA256 with auto mode, 3 second target"
+    # ============================================================================
+    # BENCHMARK MODE EXAMPLES
+    # ============================================================================
+
+    # Auto mode: Automatically calibrates iterations to reach targetTime
+    # Uses adaptive batch scaling like Go's testing.B
+    bench auto_mode_example {
+        description: "Auto mode with 3 second target time"
         mode: auto
-        targetTime: 30000
+        targetTime: 3000
         sink: true
-        go:  mustEncodeBalanceOf(balanceOfAddr)
-        ts:  {
+        go: mustEncodeBalanceOf(balanceOfAddr)
+        ts: {
             encodeFunctionData({
                 abi: erc20Abi,
                 functionName: 'balanceOf',
@@ -143,19 +165,179 @@ suite example {
         }
     }
 
-   
+    # Fixed mode: Runs exactly the specified number of iterations
+    # Good for reproducible benchmarks with known iteration counts
+    bench fixed_mode_example {
+        description: "Fixed mode with explicit iteration count"
+        mode: fixed
+        iterations: 100000
+        warmup: 1000
+        sink: true
+        go: sha256SumGo(data)
+        ts: sha256SumTs(data)
+    }
+
+    # ============================================================================
+    # SINK PATTERN EXAMPLES
+    # ============================================================================
+
+    # Sink enabled: Assigns result to a global variable to prevent DCE
+    # Use when the compiler might optimize away unused return values
+    bench sink_enabled_example {
+        description: "Benchmark with sink pattern enabled"
+        mode: auto
+        targetTime: 2000
+        sink: true
+        go: sha256SumGo(data)
+        ts: sha256SumTs(data)
+    }
+
+    # Sink disabled: Does not capture return value
+    # Use for functions with side effects or when DCE is not a concern
+    bench sink_disabled_example {
+        description: "Benchmark with sink pattern disabled"
+        mode: auto
+        targetTime: 2000
+        sink: false
+        go: {
+            incrementCounter()
+        }
+        ts: {
+            incrementCounter()
+        }
+    }
+
+    # ============================================================================
+    # MEMORY PROFILING EXAMPLES (Phase 2B)
+    # ============================================================================
+
+    # Memory profiling tracks heap allocations using:
+    # - Go: runtime.ReadMemStats (BytesPerOp, AllocsPerOp)
+    # - TypeScript: process.memoryUsage().heapUsed
+    bench memory_profiling_example {
+        description: "Benchmark with memory profiling enabled"
+        mode: auto
+        targetTime: 2000
+        memory: true
+        go: allocateMemory(1024)
+        ts: allocateMemory(1024)
+    }
+
+    # ============================================================================
+    # CONCURRENT EXECUTION EXAMPLES (Phase 2B - Go only)
+    # ============================================================================
+
+    # Concurrent benchmark splits iterations across multiple goroutines
+    # Useful for testing thread-safe code or parallel workloads
+    bench concurrent_execution_example {
+        description: "Concurrent execution with 4 goroutines"
+        mode: fixed
+        iterations: 100000
+        concurrency: 4
+        go: sha256SumGo(data)
+        ts: sha256SumTs(data)
+    }
+
+    # Combined memory profiling and concurrent execution
+    bench concurrent_with_memory {
+        description: "Concurrent execution with memory profiling"
+        mode: fixed
+        iterations: 50000
+        concurrency: 2
+        memory: true
+        go: allocateMemory(512)
+        ts: allocateMemory(512)
+    }
+
+    # ============================================================================
+    # STATISTICAL ANALYSIS EXAMPLES
+    # ============================================================================
+
+    # Outlier detection removes statistical outliers from measurements
+    # Helps produce more stable and representative results
+    bench outlier_detection_example {
+        description: "Benchmark with outlier detection enabled"
+        mode: auto
+        targetTime: 2000
+        outlierDetection: true
+        go: sha256SumGo(data)
+        ts: sha256SumTs(data)
+    }
+
+    # CV threshold sets the coefficient of variation stability target
+    # Lower values require more stable measurements before stopping
+    bench cv_threshold_example {
+        description: "Benchmark with strict CV threshold (5%)"
+        mode: auto
+        targetTime: 2000
+        cvThreshold: 5
+        outlierDetection: true
+        go: sha256SumGo(data)
+        ts: sha256SumTs(data)
+    }
+
+    # ============================================================================
+    # ITERATION BOUNDS EXAMPLES
+    # ============================================================================
+
+    # Min/max iterations constrain auto mode's iteration selection
+    # Ensures benchmarks run within reasonable bounds
+    bench iteration_bounds_example {
+        description: "Auto mode with min/max iteration bounds"
+        mode: auto
+        targetTime: 2000
+        minIterations: 5000
+        maxIterations: 500000
+        go: sha256SumGo(data)
+        ts: sha256SumTs(data)
+    }
+
+    # ============================================================================
+    # LIFECYCLE HOOKS EXAMPLES
+    # ============================================================================
+
+    # Before/after hooks run once per benchmark (setup/teardown)
+    # Each hook runs before every iteration (reset state)
+    bench lifecycle_hooks_example {
+        description: "Benchmark with before, after, and each hooks"
+        mode: fixed
+        iterations: 10000
+        warmup: 100
+
+        before: {
+            go: resetCounter()
+            ts: resetCounter()
+        }
+
+        each: {
+            go: incrementCounter()
+            ts: incrementCounter()
+        }
+
+        go: sha256SumGo(data)
+        ts: sha256SumTs(data)
+
+        after: {
+            go: { _ = setupCounter }
+            ts: { void setupCounter }
+        }
+    }
+
+    # ============================================================================
+    # POST-PROCESSING AND CHARTING
+    # ============================================================================
 
     after {
         charting.drawBarChart(
             title: "Performance Comparison",
-            description: "Go vs TypeScript SHA256 Benchmarks",
+            description: "Go vs TypeScript Benchmark Results",
             sortBy: "speedup",
             sortOrder: "desc"
         )
 
         charting.drawLineChart(
             title: "Performance Trends",
-            description: "Go vs TypeScript over benchmarks",
+            description: "Timing across all benchmarks",
             xlabel: "Benchmark",
             ylabel: "Time",
             timeUnit: "auto"
@@ -167,5 +349,4 @@ suite example {
             showTotalTime: true
         )
     }
-
 }

@@ -66,7 +66,7 @@
       "patterns": [
         {
           "name": "meta.function-call.stdlib.bench",
-          "match": "\\b(anvil|constants)\\s*\\.\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
+          "match": "\\b(anvil|constants|charting|math)\\s*\\.\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
           "captures": {
             "1": {
               "name": "entity.name.module.bench"
@@ -79,6 +79,15 @@
         {
           "name": "meta.function-call.bench",
           "match": "\\b(spawnAnvil)\\s*\\(",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.bench"
+            }
+          }
+        },
+        {
+          "name": "meta.function-call.charting.bench",
+          "match": "\\b(drawBarChart|drawLineChart|drawPieChart|drawScatterPlot|drawHistogram|drawHeatmap|drawBoxPlot|drawAreaChart)\\s*\\(",
           "captures": {
             "1": {
               "name": "entity.name.function.bench"
@@ -158,6 +167,69 @@
         },
         {
           "include": "#bench-block"
+        },
+        {
+          "include": "#suite-after-block"
+        }
+      ]
+    },
+    "suite-after-block": {
+      "name": "meta.block.after.bench",
+      "begin": "\\b(after)\\s*\\{",
+      "end": "\\}",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "include": "#stdlib-function-call"
+        },
+        {
+          "include": "#charting-params"
+        }
+      ]
+    },
+    "charting-params": {
+      "patterns": [
+        {
+          "match": "\\b(title|description|xlabel|ylabel|sortBy|sortOrder|timeUnit)\\s*:\\s*",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(showTotalTime|showLegend|showGrid)\\s*:\\s*(true|false)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.language.boolean.bench"
+            }
+          }
+        },
+        {
+          "name": "string.quoted.double.bench",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.bench",
+              "match": "\\\\."
+            }
+          ]
         }
       ]
     },
@@ -172,7 +244,7 @@
           }
         },
         {
-          "match": "\\b(iterations|warmup)\\s*:\\s*(\\d+)",
+          "match": "\\b(iterations|warmup|minIterations|maxIterations|concurrency)\\s*:\\s*(\\d+)",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
@@ -183,7 +255,7 @@
           }
         },
         {
-          "match": "\\b(timeout)\\s*:\\s*(\\d+)(ms|s|m)?",
+          "match": "\\b(timeout|targetTime)\\s*:\\s*(\\d+)(ms|s|m)?",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
@@ -193,6 +265,17 @@
             },
             "3": {
               "name": "keyword.other.unit.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(cvThreshold)\\s*:\\s*(\\d+\\.?\\d*)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.numeric.bench"
             }
           }
         },
@@ -216,7 +299,18 @@
           }
         },
         {
-          "match": "\\b(compare)\\s*:\\s*(true|false)",
+          "match": "\\b(mode)\\s*:\\s*(auto|fixed)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.language.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(compare|sink|memory|outlierDetection)\\s*:\\s*(true|false)",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
@@ -449,7 +543,7 @@
           }
         },
         {
-          "match": "\\b(iterations|warmup)\\s*:\\s*(\\d+)",
+          "match": "\\b(iterations|warmup|minIterations|maxIterations|concurrency)\\s*:\\s*(\\d+)",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
@@ -460,7 +554,7 @@
           }
         },
         {
-          "match": "\\b(timeout)\\s*:\\s*(\\d+)(ms|s|m)?",
+          "match": "\\b(timeout|targetTime)\\s*:\\s*(\\d+)(ms|s|m)?",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
@@ -470,6 +564,39 @@
             },
             "3": {
               "name": "keyword.other.unit.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(cvThreshold)\\s*:\\s*(\\d+\\.?\\d*)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.numeric.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(mode)\\s*:\\s*(auto|fixed)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.language.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(sink|memory|outlierDetection)\\s*:\\s*(true|false)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.language.boolean.bench"
             }
           }
         },
@@ -537,6 +664,14 @@
             },
             "2": {
               "name": "entity.name.language.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(before|after|each)\\s*:",
+          "captures": {
+            "1": {
+              "name": "keyword.control.hook.bench"
             }
           }
         }
