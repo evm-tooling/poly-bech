@@ -31,7 +31,7 @@ Adds syntax highlighting for `.bench` files:
    npm run compile
    vsce package
    ```
-   This creates `poly-bench-0.1.0.vsix`.
+   This creates `poly-bench-0.0.1.vsix`.
 
 4. **Publish** (requires a Personal Access Token with Marketplace (Publish) scope):
    - Create a PAT at [Azure DevOps → User settings → Personal access tokens](https://dev.azure.com) with **Marketplace (Publish)** scope.
@@ -41,7 +41,7 @@ Adds syntax highlighting for `.bench` files:
    # enter the PAT when prompted
    vsce publish
    ```
-   Or bump version and publish: `vsce publish patch` (0.1.0 → 0.1.1).
+   Or bump version and publish: `vsce publish patch` (0.0.1 → 0.0.2).
 
 5. **Install from VSIX** (without publishing): Use the `.vsix` from step 3: in VS Code, **Extensions** → **...** → **Install from VSIX...** and select the file.
 

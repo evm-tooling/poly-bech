@@ -167,7 +167,7 @@ pub fn go_mod(module_name: &str, go_version: Option<&str>) -> String {
 pub fn package_json(name: &str) -> String {
     serde_json::json!({
         "name": name,
-        "version": "0.1.0",
+        "version": "0.0.1",
         "type": "module",
         "private": true,
         "description": "poly-bench benchmarks",
@@ -187,7 +187,7 @@ pub fn package_json(name: &str) -> String {
 pub fn package_json_pretty(name: &str) -> String {
     serde_json::to_string_pretty(&serde_json::json!({
         "name": name,
-        "version": "0.1.0",
+        "version": "0.0.1",
         "type": "module",
         "private": true,
         "description": "poly-bench benchmarks",

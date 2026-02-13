@@ -1,25 +1,43 @@
 //! poly-bench CLI entrypoint
 
+mod init_t3;
+mod version_check;
+mod welcome;
+
 use clap::{Parser, Subcommand};
 use miette::Result;
 use std::path::PathBuf;
 
 use poly_bench_dsl as dsl;
-use poly_bench_stdlib as stdlib;
 use poly_bench_ir as ir;
 use poly_bench_project as project;
 use poly_bench_runtime as runtime;
 use poly_bench_executor as executor;
 use poly_bench_reporter as reporter;
 
+/// Current binary version (set at compile time).
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(Parser)]
 #[command(name = "poly-bench")]
 #[command(author = "Evan McGrane")]
-#[command(version = "0.1.0")]
-#[command(about = "A high-performance multi-language benchmarking framework", long_about = None)]
+#[command(disable_version_flag(true))]
+#[command(about = "Build, run, and compare benchmarks across Go and TypeScript with a custom DSL.", long_about = None)]
 struct Cli {
+    /// Print version and exit
+    #[arg(long, short = 'V', alias("v"), short_alias('v'), global = true)]
+    version: bool,
+
+    /// Colorize output [possible values: auto, always, never]
+    #[arg(long, global = true, value_name = "WHEN", help_heading = "Display options")]
+    color: Option<String>,
+
+    /// Reduce log output
+    #[arg(short, long, global = true, help_heading = "Display options")]
+    quiet: bool,
+
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -85,11 +103,11 @@ enum Commands {
 
     /// Initialize a new poly-bench project
     Init {
-        /// Project name or "." for current directory
+        /// Project name or "." for current directory (omit for interactive prompt)
         #[arg(value_name = "NAME")]
-        name: String,
+        name: Option<String>,
 
-        /// Languages to include (comma-separated: go,ts)
+        /// Languages to include (comma-separated: go,ts); used only when NAME is provided
         #[arg(long, short, value_delimiter = ',', default_value = "go,ts")]
         languages: Vec<String>,
 
@@ -140,13 +158,35 @@ enum Commands {
         #[arg(long, short)]
         write: bool,
     },
+
+    /// Upgrade to the latest poly-bench binary
+    Upgrade,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    match cli.command {
+    if cli.version {
+        println!("poly-bench {}", VERSION);
+        version_check::warn_if_outdated(VERSION);
+        return Ok(());
+    }
+
+    let command = match cli.command {
+        None => {
+            welcome::show_welcome_and_maybe_mark_seen();
+            return Ok(());
+        }
+        Some(c) => c,
+    };
+
+    // First run: show welcome once, then proceed with the command
+    if welcome::is_first_run() {
+        welcome::show_welcome_and_maybe_mark_seen();
+    }
+
+    match command {
         Commands::Check { file, show_ast } => {
             cmd_check(&file, show_ast).await?;
         }
@@ -169,7 +209,7 @@ async fn main() -> Result<()> {
             languages,
             no_example,
         } => {
-            cmd_init(&name, languages, no_example)?;
+            cmd_init(name.as_deref(), languages, no_example)?;
         }
         Commands::New { name } => {
             cmd_new(&name)?;
@@ -185,6 +225,9 @@ async fn main() -> Result<()> {
         }
         Commands::Fmt { files, write } => {
             cmd_fmt(files, write).await?;
+        }
+        Commands::Upgrade => {
+            cmd_upgrade()?;
         }
     }
 
@@ -511,14 +554,142 @@ async fn cmd_codegen(file: &PathBuf, lang: &str, output: &PathBuf) -> Result<()>
     Ok(())
 }
 
-fn cmd_init(name: &str, languages: Vec<String>, no_example: bool) -> Result<()> {
+fn cmd_upgrade() -> Result<()> {
+    use colored::Colorize;
+    let current = VERSION;
+    let latest = match version_check::fetch_latest_version() {
+        Some(v) => v,
+        None => {
+            eprintln!(
+                "{} Could not fetch latest version. Try: cargo install poly-bench",
+                "⚠".yellow()
+            );
+            return Ok(());
+        }
+    };
+    if !version_check::is_older(current, &latest) {
+        println!("{} Already on latest version ({}).", "✓".green().bold(), current);
+        return Ok(());
+    }
+    println!("Upgrading from {} to {}...", current, latest);
+    let status = std::process::Command::new("cargo")
+        .args(["install", "poly-bench", "--version", &latest])
+        .status();
+    match status {
+        Ok(s) if s.success() => {
+            println!("{} Upgraded to poly-bench {}.", "✓".green().bold(), latest);
+        }
+        Ok(_) => {
+            eprintln!(
+                "{} Install failed. You can try manually: cargo install poly-bench --version {}",
+                "⚠".yellow(),
+                latest
+            );
+        }
+        Err(e) => {
+            eprintln!(
+                "{} cargo not found or failed ({}). To upgrade, run: cargo install poly-bench --version {}",
+                "⚠".yellow(),
+                e,
+                latest
+            );
+        }
+    }
+    Ok(())
+}
+
+fn cmd_init(name: Option<&str>, languages: Vec<String>, no_example: bool) -> Result<()> {
+    let (name, languages, quiet) = match name {
+        Some(n) => (n.to_string(), languages, false),
+        None => {
+            let (name, languages) = init_interactive()?;
+            (name, languages, true)
+        }
+    };
     let options = project::init::InitOptions {
-        name: name.to_string(),
+        name,
         languages,
         no_example,
+        quiet,
     };
     project::init::init_project(&options)?;
+    if quiet {
+        init_t3::print_init_success_block(&options.name);
+    }
     Ok(())
+}
+
+/// Interactive init: T3-style menu flow with │ ◇ prompts and blocky logo.
+fn init_interactive() -> Result<(String, Vec<String>)> {
+    use dialoguer::{Input, MultiSelect};
+    use miette::miette;
+    use std::time::Duration;
+    use std::thread;
+
+    init_t3::print_init_logo();
+    thread::sleep(Duration::from_millis(120));
+
+    let theme = init_t3::T3StyleTheme::new();
+    let name: String = Input::with_theme(&theme)
+        .with_prompt("What will your project be called?")
+        .default("my-bench".into())
+        .validate_with(|s: &String| {
+            if s.trim().is_empty() {
+                return Err("Project name cannot be empty".to_string());
+            }
+            if s.contains(std::path::MAIN_SEPARATOR) {
+                return Err("Project name must not contain path separators".to_string());
+            }
+            Ok(())
+        })
+        .interact_text()
+        .map_err(|e| miette!("Prompt failed: {}", e))?;
+    let name = name.trim().to_string();
+
+    thread::sleep(Duration::from_millis(80));
+
+    let lang_choices = &[
+        "All (Go + TypeScript)",
+        "Go",
+        "TypeScript",
+    ];
+    let defaults = vec![false, false, false]; // Nothing selected by default
+    let prompt = "Which languages to include? (Space = toggle one · choose 'All' for both)";
+    let selected: Vec<usize> = MultiSelect::with_theme(&theme)
+        .with_prompt(prompt)
+        .items(lang_choices)
+        .defaults(&defaults)
+        .interact()
+        .map_err(|e| miette!("Prompt failed: {}", e))?;
+
+    if selected.is_empty() {
+        return Err(miette!("Select at least one language"));
+    }
+
+    // Resolve selection to language list. "All" means both only when both Go and TypeScript
+    // are selected; if user has All but toggles off one, we use only the remaining selected langs.
+    let languages: Vec<String> = if selected.contains(&0) && selected.contains(&1) && selected.contains(&2) {
+        vec!["go".to_string(), "ts".to_string()]
+    } else if selected.contains(&0) {
+        // All is checked but not both individual options — use only the checked individual langs
+        let only_langs: Vec<String> = selected
+            .iter()
+            .filter(|&&i| i != 0)
+            .map(|&i| if i == 1 { "go" } else { "ts" }.to_string())
+            .collect();
+        if only_langs.is_empty() {
+            vec!["go".to_string(), "ts".to_string()] // All alone = both
+        } else {
+            only_langs
+        }
+    } else {
+        selected
+            .into_iter()
+            .map(|i| if i == 1 { "go" } else { "ts" }.to_string())
+            .collect()
+    };
+
+    Ok((name, languages))
 }
 
 fn cmd_new(name: &str) -> Result<()> {
