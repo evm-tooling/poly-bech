@@ -2,7 +2,7 @@
 
 use poly_bench_dsl::{Lang, BenchMode};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
-use crate::go::{codegen, compiler::GoCompiler};
+use crate::go::compiler::GoCompiler;
 use crate::measurement::Measurement;
 use crate::traits::Runtime;
 use poly_bench_stdlib as stdlib;
@@ -11,6 +11,11 @@ use libloading::{Library, Symbol};
 use miette::{Result, miette};
 use std::collections::HashSet;
 use std::path::PathBuf;
+
+use super::shared::{
+    self, SinkMemoryDecls, BENCH_RESULT_STRUCT,
+    generate_bench_call, generate_suite_code, generate_fixtures_for_spec,
+};
 
 /// Go runtime using plugin system
 pub struct GoRuntime {
@@ -66,15 +71,8 @@ impl Runtime for GoRuntime {
 
     async fn initialize(&mut self, suite: &SuiteIR) -> Result<()> {
         // Go plugins only work on Linux, so we'll use subprocess execution on all platforms
-        // for consistency and to avoid platform-specific issues.
-        // 
-        // The plugin approach is kept in the code but not used by default.
-        // To enable plugins (Linux only), change the logic below.
-        
-        // Create a compiler for subprocess execution
         let compiler = GoCompiler::new()?;
         self.compiler = Some(compiler);
-        
         Ok(())
     }
 
@@ -84,7 +82,6 @@ impl Runtime for GoRuntime {
             match self.run_via_plugin(lib, spec) {
                 Ok(m) => return Ok(m),
                 Err(e) => {
-                    // Plugin failed, fall back to subprocess
                     eprintln!("Plugin execution failed: {}. Using subprocess.", e);
                 }
             }
@@ -95,7 +92,6 @@ impl Runtime for GoRuntime {
     }
 
     async fn shutdown(&mut self) -> Result<()> {
-        // Drop the library to unload it
         self.library = None;
         self.compiler = None;
         Ok(())
@@ -106,15 +102,12 @@ impl GoRuntime {
     /// Run benchmark via loaded plugin
     fn run_via_plugin(&self, lib: &Library, spec: &BenchmarkSpec) -> Result<Measurement> {
         unsafe {
-            // Get the RunBenchmark function
             let run_benchmark: Symbol<fn(&str, i32) -> String> = lib
                 .get(b"RunBenchmark")
                 .map_err(|e| miette!("Failed to get RunBenchmark symbol: {}", e))?;
             
-            // Call the function
             let result_json = run_benchmark(&spec.full_name, spec.iterations as i32);
             
-            // Parse the result
             let result: BenchResultJson = serde_json::from_str(&result_json)
                 .map_err(|e| miette!("Failed to parse benchmark result: {}", e))?;
             
@@ -124,12 +117,9 @@ impl GoRuntime {
 
     /// Run benchmark via subprocess (fallback for unsupported platforms)
     async fn run_via_subprocess(&self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<Measurement> {
-        // Generate a standalone Go program that runs the benchmark
         let source = generate_standalone_benchmark(spec, suite)?;
         
-        // Determine where to write and run the benchmark
         let (src_path, working_dir) = if let Some(ref module_root) = self.module_root {
-            // When using .polybench/runtime-env/go, write directly there; else use .polybench subdir
             let is_runtime_env = module_root.as_os_str().to_string_lossy().contains("runtime-env");
             let src_path = if is_runtime_env {
                 module_root.join("bench_standalone.go")
@@ -141,7 +131,6 @@ impl GoRuntime {
             };
             (src_path, module_root.clone())
         } else {
-            // Fall back to temp directory
             let compiler = self.compiler.as_ref()
                 .ok_or_else(|| miette!("Compiler not initialized"))?;
             
@@ -152,7 +141,6 @@ impl GoRuntime {
         std::fs::write(&src_path, &source)
             .map_err(|e| miette!("Failed to write benchmark source: {}", e))?;
         
-        // Compile and run from the working directory (which has go.mod)
         let go_binary = which::which("go")
             .map_err(|_| miette!("Go not found in PATH"))?;
         
@@ -160,7 +148,6 @@ impl GoRuntime {
         cmd.args(["run", src_path.to_str().unwrap()])
             .current_dir(&working_dir);
         
-        // Pass Anvil RPC URL if available
         if let Some(ref url) = self.anvil_rpc_url {
             cmd.env("ANVIL_RPC_URL", url);
         }
@@ -220,36 +207,27 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     
     let mut code = String::new();
     
-    // Start with package
+    // Package declaration
     code.push_str("package main\n\n");
 
-    // Collect stdlib imports
+    // Collect imports (similar to shared but with fmt for standalone)
     let stdlib_imports = stdlib::get_stdlib_imports(&suite.stdlib_imports, Lang::Go);
-    
-    // Emit unified import block with deduplication
     let mut all_imports: HashSet<&str> = HashSet::new();
     all_imports.insert("\"encoding/json\"");
     all_imports.insert("\"fmt\"");
     all_imports.insert("\"time\"");
     
-    // Add runtime import for sink pattern (KeepAlive) or memory profiling
     if spec.use_sink || spec.memory {
         all_imports.insert("\"runtime\"");
     }
-    
-    // Add sync import for concurrent execution
     if spec.concurrency > 1 {
         all_imports.insert("\"sync\"");
     }
-    
-    // Add user imports from the pre-extracted imports in SuiteIR
     if let Some(user_imports) = suite.imports.get(&Lang::Go) {
         for import_spec in user_imports {
             all_imports.insert(import_spec);
         }
     }
-    
-    // Add stdlib imports
     for import_spec in &stdlib_imports {
         all_imports.insert(import_spec);
     }
@@ -263,432 +241,41 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     code.push_str(")\n\n");
 
     // BenchResult type
-    code.push_str(
-        "type BenchResult struct {\n\
-\tIterations  uint64   `json:\"iterations\"`\n\
-\tTotalNanos  uint64   `json:\"total_nanos\"`\n\
-\tNanosPerOp  float64  `json:\"nanos_per_op\"`\n\
-\tOpsPerSec   float64  `json:\"ops_per_sec\"`\n\
-\tBytesPerOp  uint64   `json:\"bytes_per_op\"`\n\
-\tAllocsPerOp uint64   `json:\"allocs_per_op\"`\n\
-\tSamples     []uint64 `json:\"samples\"`\n\
-}\n\n",
-    );
+    code.push_str(BENCH_RESULT_STRUCT);
+    code.push('\n');
 
-    // Inject stdlib code (e.g., AnvilInstance, spawn_anvil, constants)
+    // Inject stdlib code
     let stdlib_code = stdlib::get_stdlib_code(&suite.stdlib_imports, Lang::Go);
     if !stdlib_code.is_empty() {
         code.push_str(&stdlib_code);
         code.push_str("\n");
     }
 
-    // Phase 1: Add declarations section (package-level vars, types, consts)
-    if let Some(declarations) = suite.declarations.get(&Lang::Go) {
-        if !declarations.trim().is_empty() {
-            code.push_str("// Declarations\n");
-            code.push_str(declarations);
-            if !declarations.ends_with('\n') {
-                code.push('\n');
-            }
-            code.push('\n');
-        }
-    }
+    // Suite-level code (declarations, init, helpers)
+    code.push_str(&generate_suite_code(suite, Lang::Go));
 
-    // Phase 1: Add init section as init() function
-    if let Some(init_code) = suite.init_code.get(&Lang::Go) {
-        if !init_code.trim().is_empty() {
-            code.push_str("func init() {\n");
-            code.push_str(init_code);
-            if !init_code.ends_with('\n') {
-                code.push('\n');
-            }
-            code.push_str("}\n\n");
-        }
-    }
+    // Fixtures
+    code.push_str(&generate_fixtures_for_spec(spec, suite, Lang::Go));
 
-    // Phase 1: Add helper functions
-    if let Some(helpers) = suite.helpers.get(&Lang::Go) {
-        if !helpers.trim().is_empty() {
-            code.push_str("// Helpers\n");
-            code.push_str(helpers);
-            if !helpers.ends_with('\n') {
-                code.push('\n');
-            }
-            code.push('\n');
-        }
-    }
-
-    // Add fixtures
-    for fixture_name in &spec.fixture_refs {
-        if let Some(fixture) = suite.get_fixture(fixture_name) {
-            if let Some(fixture_impl) = fixture.implementations.get(&Lang::Go) {
-                // Wrap in IIFE if it contains multiple statements (has return)
-                if fixture_impl.contains("return") {
-                    code.push_str(&format!("var {} = func() []byte {{\n{}\n}}()\n", fixture_name, fixture_impl));
-                } else {
-                    code.push_str(&format!("var {} = {}\n", fixture_name, fixture_impl));
-                }
-            } else if !fixture.data.is_empty() {
-                code.push_str(&format!("var {} = {}\n", fixture_name, fixture.as_go_bytes()));
-            }
-        }
-    }
-
-    // Phase 3: Get lifecycle hooks
+    // Get shared declarations
+    let decls = SinkMemoryDecls::from_spec(spec);
+    let bench_call = generate_bench_call(impl_code, spec.use_sink);
     let before_hook = spec.before_hooks.get(&Lang::Go);
     let after_hook = spec.after_hooks.get(&Lang::Go);
     let each_hook = spec.each_hooks.get(&Lang::Go);
 
-    // Generate sink variable declaration if enabled
-    let sink_decl = if spec.use_sink { "\tvar __sink interface{}\n" } else { "" };
-    
-    // Generate the benchmark call with or without sink
-    // For void functions, we can't assign to _ or __sink, so just call them directly
-    let bench_call = if spec.use_sink {
-        format!("__sink = {}", impl_code)
-    } else {
-        // For sink: false, just call the function directly without assignment
-        // This handles void functions that return nothing
-        impl_code.to_string()
-    };
-    
-    // Generate sink keepalive at end of timed loop if enabled
-    let sink_keepalive = if spec.use_sink {
-        "\t\truntime.KeepAlive(__sink)\n"
-    } else {
-        ""
-    };
-    
-    // Memory profiling support
-    let memory_decl = if spec.memory {
-        "\tvar memBefore, memAfter runtime.MemStats\n"
-    } else {
-        ""
-    };
-    let memory_before = if spec.memory {
-        "\n\truntime.GC()\n\truntime.ReadMemStats(&memBefore)\n"
-    } else {
-        ""
-    };
-    let memory_after = if spec.memory {
-        "\n\truntime.GC()\n\truntime.ReadMemStats(&memAfter)\n"
-    } else {
-        ""
-    };
-
     // Generate main function based on mode
-    // Check for concurrent execution first
     if spec.concurrency > 1 {
-        return generate_concurrent_main(&mut code, spec, &sink_decl, &memory_decl, &memory_before, &memory_after, &bench_call, before_hook, after_hook);
+        return generate_concurrent_main(&mut code, spec, &decls, &bench_call, before_hook, after_hook);
     }
     
     match spec.mode {
-        BenchMode::Auto => {
-            // Auto-calibration mode: like Go's testing.B
-            // Total time is approximately targetTime (measurement during calibration)
-            code.push_str(&format!(r#"
-func main() {{
-	targetNanos := int64({})
-{}{}
-"#, spec.target_time_ms * 1_000_000, sink_decl, memory_decl));
-
-            // Before hook
-            if let Some(before) = before_hook {
-                code.push_str("\n\t// Before hook\n");
-                for line in before.lines() {
-                    code.push_str(&format!("\t{}\n", line));
-                }
-            }
-            
-            // Memory before measurement
-            code.push_str(memory_before);
-
-            // Brief warmup (fixed 100 iterations)
-            code.push_str("\n\t// Brief warmup (100 iterations)\n");
-            code.push_str("\tfor i := 0; i < 100; i++ {\n");
-            if let Some(each) = each_hook {
-                for line in each.lines() {
-                    code.push_str(&format!("\t\t{}\n", line));
-                }
-            }
-            code.push_str(&format!("\t\t{}\n", bench_call));
-            code.push_str(sink_keepalive);
-            code.push_str("\t}\n");
-
-            // Adaptive measurement phase (like Go's testing.B) - NO per-iteration timing
-            code.push_str(r#"
-	// Adaptive measurement phase (like Go's testing.B)
-	// Run batches, scale up N, stop when totalElapsed >= targetTime
-	batchSize := 1
-	totalIterations := 0
-	var totalNanos int64
-	
-	for totalNanos < targetNanos {
-		// Run batch without per-iteration timing (fast)
-		batchStart := time.Now()
-		for i := 0; i < batchSize; i++ {
-"#);
-            if let Some(each) = each_hook {
-                for line in each.lines() {
-                    code.push_str(&format!("\t\t\t{}\n", line));
-                }
-            }
-            code.push_str(&format!("\t\t\t{}\n", bench_call));
-            code.push_str(sink_keepalive);
-            code.push_str(r#"		}
-		batchElapsed := time.Since(batchStart).Nanoseconds()
-		
-		totalIterations += batchSize
-		totalNanos += batchElapsed
-		
-		if totalNanos >= targetNanos {
-			break
-		}
-		
-		// Scale up for next batch (like Go's predictN)
-		// Conservative scaling to avoid overshooting target time
-		if batchElapsed > 0 {
-			remainingNanos := targetNanos - totalNanos
-			// Calculate predicted batch size to fill remaining time
-			predicted := int(float64(batchSize) * float64(remainingNanos) / float64(batchElapsed))
-			
-			var newSize int
-			if remainingNanos < batchElapsed {
-				// Less time remaining than last batch took - use exact prediction, no growth
-				newSize = predicted
-				if newSize < 1 {
-					newSize = 1
-				}
-			} else if remainingNanos < targetNanos / 5 {
-				// Near target (<20% remaining): conservative, slight buffer only
-				newSize = int(float64(predicted) * 0.9)
-				if newSize < 1 {
-					newSize = 1
-				}
-			} else {
-				// Early phase: grow faster but cap growth
-				newSize = int(float64(predicted) * 1.1)
-				if newSize <= batchSize {
-					newSize = batchSize * 2
-				}
-				// Cap at 10x growth per iteration
-				if newSize > batchSize * 10 {
-					newSize = batchSize * 10
-				}
-			}
-			if newSize < 1 {
-				newSize = 1
-			}
-			batchSize = newSize
-		} else {
-			batchSize *= 10
-		}
-	}
-	
-	// Collect samples for statistical analysis (small subset)
-	sampleCount := 1000
-	if sampleCount > totalIterations {
-		sampleCount = totalIterations
-	}
-	samples := make([]uint64, sampleCount)
-	for i := 0; i < sampleCount; i++ {
-		start := time.Now()
-"#);
-            if let Some(each) = each_hook {
-                for line in each.lines() {
-                    code.push_str(&format!("\t\t{}\n", line));
-                }
-            }
-            code.push_str(&format!("\t\t{}\n", bench_call));
-            code.push_str(sink_keepalive);
-            code.push_str(r#"		samples[i] = uint64(time.Since(start).Nanoseconds())
-	}
-	
-	iterations := totalIterations
-"#);
-        }
-        BenchMode::Fixed => {
-            // Fixed iteration mode (original behavior)
-            code.push_str(&format!(r#"
-func main() {{
-	iterations := {}
-	warmup := {}
-	samples := make([]uint64, iterations)
-{}{}
-"#, spec.iterations, spec.warmup, sink_decl, memory_decl));
-
-            // Before hook
-            if let Some(before) = before_hook {
-                code.push_str("\n\t// Before hook\n");
-                for line in before.lines() {
-                    code.push_str(&format!("\t{}\n", line));
-                }
-            }
-            
-            // Memory before measurement
-            code.push_str(memory_before);
-
-            // Warmup loop
-            code.push_str("\n\t// Warmup\n");
-            code.push_str("\tfor i := 0; i < warmup; i++ {\n");
-            if let Some(each) = each_hook {
-                for line in each.lines() {
-                    code.push_str(&format!("\t\t{}\n", line));
-                }
-            }
-            code.push_str(&format!("\t\t{}\n", bench_call));
-            code.push_str(sink_keepalive);
-            code.push_str("\t}\n");
-
-            // Timed run
-            code.push_str("\n\t// Timed run\n");
-            code.push_str("\tvar totalNanos uint64\n");
-            code.push_str("\tfor i := 0; i < iterations; i++ {\n");
-            if let Some(each) = each_hook {
-                for line in each.lines() {
-                    code.push_str(&format!("\t\t{}\n", line));
-                }
-            }
-            code.push_str("\t\tstart := time.Now()\n");
-            code.push_str(&format!("\t\t{}\n", bench_call));
-            code.push_str(sink_keepalive);
-            code.push_str("\t\telapsed := time.Since(start).Nanoseconds()\n");
-            code.push_str("\t\tsamples[i] = uint64(elapsed)\n");
-            code.push_str("\t\ttotalNanos += uint64(elapsed)\n");
-            code.push_str("\t}\n");
-        }
+        BenchMode::Auto => generate_auto_main(&mut code, spec, &decls, &bench_call, before_hook, after_hook, each_hook),
+        BenchMode::Fixed => generate_fixed_main(&mut code, spec, &decls, &bench_call, before_hook, after_hook, each_hook),
     }
 
     // Memory profiling after measurement
-    code.push_str(memory_after);
-
-    // After hook (common for both modes)
-    if let Some(after) = after_hook {
-        code.push_str("\n\t// After hook\n");
-        for line in after.lines() {
-            code.push_str(&format!("\t{}\n", line));
-        }
-    }
-    
-    // Memory result fields
-    let memory_result = if spec.memory {
-        "\t\tBytesPerOp:  (memAfter.TotalAlloc - memBefore.TotalAlloc) / uint64(iterations),\n\t\tAllocsPerOp: (memAfter.Mallocs - memBefore.Mallocs) / uint64(iterations),\n"
-    } else {
-        ""
-    };
-
-    code.push_str(&format!(r#"
-	nanosPerOp := float64(totalNanos) / float64(iterations)
-	opsPerSec := 1e9 / nanosPerOp
-	
-	result := BenchResult{{
-		Iterations:  uint64(iterations),
-		TotalNanos:  uint64(totalNanos),
-		NanosPerOp:  nanosPerOp,
-		OpsPerSec:   opsPerSec,
-{}		Samples:     samples,
-	}}
-	
-	jsonBytes, _ := json.Marshal(result)
-	fmt.Println(string(jsonBytes))
-}}
-"#, memory_result));
-
-    Ok(code)
-}
-
-/// Generate concurrent execution main function
-fn generate_concurrent_main(
-    code: &mut String,
-    spec: &BenchmarkSpec,
-    sink_decl: &str,
-    memory_decl: &str,
-    memory_before: &str,
-    memory_after: &str,
-    bench_call: &str,
-    before_hook: Option<&String>,
-    after_hook: Option<&String>,
-) -> Result<String> {
-    let concurrency = spec.concurrency;
-    
-    // Memory result fields
-    let memory_result = if spec.memory {
-        "\t\tBytesPerOp:  (memAfter.TotalAlloc - memBefore.TotalAlloc) / uint64(totalIterations),\n\t\tAllocsPerOp: (memAfter.Mallocs - memBefore.Mallocs) / uint64(totalIterations),\n"
-    } else {
-        ""
-    };
-    
-    // For concurrent execution, we need local sink variables per goroutine to avoid races
-    // Then we use runtime.KeepAlive on them at the end
-    let concurrent_sink_decl = if spec.use_sink { "\tvar __sink interface{}\n" } else { "" };
-    let sink_keepalive = if spec.use_sink { "\n\truntime.KeepAlive(__sink)\n" } else { "" };
-    
-    code.push_str(&format!(r#"
-func main() {{
-	// Concurrent benchmark: {} goroutines
-	concurrency := {}
-	iterations := {}
-	iterPerGoroutine := iterations / concurrency
-	if iterPerGoroutine < 1 {{
-		iterPerGoroutine = 1
-	}}
-	totalIterations := iterPerGoroutine * concurrency
-	
-{}{}
-"#, concurrency, concurrency, spec.iterations, concurrent_sink_decl, memory_decl));
-
-    // Before hook
-    if let Some(before) = before_hook {
-        code.push_str("\n\t// Before hook\n");
-        for line in before.lines() {
-            code.push_str(&format!("\t{}\n", line));
-        }
-    }
-    
-    // Memory before
-    code.push_str(memory_before);
-    
-    // Warmup - don't use sink in warmup to keep it simple
-    let warmup_call = if spec.use_sink {
-        format!("_ = {}", spec.get_impl(Lang::Go).unwrap_or(&"nil".to_string()))
-    } else {
-        bench_call.to_string()
-    };
-    
-    code.push_str(&format!(r#"
-	// Concurrent warmup
-	var wgWarmup sync.WaitGroup
-	for g := 0; g < concurrency; g++ {{
-		wgWarmup.Add(1)
-		go func() {{
-			defer wgWarmup.Done()
-			for i := 0; i < 10; i++ {{
-				{}
-			}}
-		}}()
-	}}
-	wgWarmup.Wait()
-	
-	// Timed concurrent run
-	var wg sync.WaitGroup
-	start := time.Now()
-	
-	for g := 0; g < concurrency; g++ {{
-		wg.Add(1)
-		go func() {{
-			defer wg.Done()
-			for i := 0; i < iterPerGoroutine; i++ {{
-				{}
-			}}
-		}}()
-	}}
-	wg.Wait()
-	
-	totalNanos := time.Since(start).Nanoseconds(){}
-"#, warmup_call, bench_call, sink_keepalive));
-
-    // Memory after
-    code.push_str(memory_after);
+    code.push_str(decls.memory_after);
 
     // After hook
     if let Some(after) = after_hook {
@@ -698,22 +285,141 @@ func main() {{
         }
     }
     
-    // Collect samples and output result
+    // Result calculation and output
+    let memory_result = SinkMemoryDecls::memory_result_fields(spec.memory, "iterations");
+    code.push_str(&shared::generate_result_return("iterations", &memory_result, true));
+    code.push_str("}\n");
+
+    Ok(code)
+}
+
+/// Generate auto-calibration main function
+fn generate_auto_main(
+    code: &mut String,
+    spec: &BenchmarkSpec,
+    decls: &SinkMemoryDecls,
+    bench_call: &str,
+    before_hook: Option<&String>,
+    _after_hook: Option<&String>,
+    each_hook: Option<&String>,
+) {
+    code.push_str(&format!(r#"
+func main() {{
+	targetNanos := int64({})
+{}{}
+"#, spec.target_time_ms * 1_000_000, decls.sink_decl, decls.memory_decl));
+
+    // Before hook
+    if let Some(before) = before_hook {
+        code.push_str("\n\t// Before hook\n");
+        for line in before.lines() {
+            code.push_str(&format!("\t{}\n", line));
+        }
+    }
+    
+    code.push_str(decls.memory_before);
+
+    // Warmup
+    code.push_str(&format!("\n{}", shared::generate_warmup_loop(bench_call, decls.sink_keepalive, each_hook, "100")));
+    
+    // Auto-calibration loop
+    code.push_str(&format!("\n{}", shared::generate_auto_mode_loop(bench_call, decls.sink_keepalive, each_hook, spec.target_time_ms)));
+    
+    // Sample collection
+    code.push_str(&format!("\n{}", shared::generate_sample_collection(bench_call, decls.sink_keepalive, each_hook, "1000", "totalIterations")));
+    
+    code.push_str("\n\titerations := totalIterations\n");
+}
+
+/// Generate fixed iteration main function
+fn generate_fixed_main(
+    code: &mut String,
+    spec: &BenchmarkSpec,
+    decls: &SinkMemoryDecls,
+    bench_call: &str,
+    before_hook: Option<&String>,
+    _after_hook: Option<&String>,
+    each_hook: Option<&String>,
+) {
+    code.push_str(&format!(r#"
+func main() {{
+	iterations := {}
+	warmup := {}
+	samples := make([]uint64, iterations)
+{}{}
+"#, spec.iterations, spec.warmup, decls.sink_decl, decls.memory_decl));
+
+    // Before hook
+    if let Some(before) = before_hook {
+        code.push_str("\n\t// Before hook\n");
+        for line in before.lines() {
+            code.push_str(&format!("\t{}\n", line));
+        }
+    }
+    
+    code.push_str(decls.memory_before);
+
+    // Warmup
+    code.push_str(&format!("\n{}", shared::generate_warmup_loop(bench_call, decls.sink_keepalive, each_hook, "warmup")));
+    
+    // Fixed measurement loop
+    code.push_str(&format!("\n{}", shared::generate_fixed_mode_loop(bench_call, decls.sink_keepalive, each_hook, "iterations")));
+}
+
+/// Generate concurrent execution main function
+fn generate_concurrent_main(
+    code: &mut String,
+    spec: &BenchmarkSpec,
+    decls: &SinkMemoryDecls,
+    bench_call: &str,
+    before_hook: Option<&String>,
+    after_hook: Option<&String>,
+) -> Result<String> {
+    let concurrency = spec.concurrency;
+    let memory_result = SinkMemoryDecls::memory_result_fields(spec.memory, "totalIterations");
+    let sink_keepalive = if spec.use_sink { "\n\truntime.KeepAlive(__sink)\n" } else { "" };
+    
+    let warmup_call = if spec.use_sink {
+        format!("_ = {}", spec.get_impl(Lang::Go).unwrap_or(&"nil".to_string()))
+    } else {
+        bench_call.to_string()
+    };
+    
+    code.push_str(&format!(r#"
+func main() {{
+{}{}
+"#, decls.sink_decl, decls.memory_decl));
+
+    // Before hook
+    if let Some(before) = before_hook {
+        code.push_str("\n\t// Before hook\n");
+        for line in before.lines() {
+            code.push_str(&format!("\t{}\n", line));
+        }
+    }
+    
+    code.push_str(decls.memory_before);
+    
+    // Concurrent execution
+    code.push_str(&format!("\n{}", shared::generate_concurrent_execution(bench_call, &warmup_call, concurrency, &spec.iterations.to_string())));
+    code.push_str(sink_keepalive);
+    code.push_str(decls.memory_after);
+
+    // After hook
+    if let Some(after) = after_hook {
+        code.push_str("\n\t// After hook\n");
+        for line in after.lines() {
+            code.push_str(&format!("\t{}\n", line));
+        }
+    }
+    
+    // Sample collection
+    code.push_str(&format!("\n{}", shared::generate_sample_collection(bench_call, "", None, "100", "totalIterations")));
+    
+    // Result output
     code.push_str(&format!(r#"
 	nanosPerOp := float64(totalNanos) / float64(totalIterations)
 	opsPerSec := 1e9 / nanosPerOp
-	
-	// Collect samples (sequential, for statistical analysis)
-	sampleCount := 100
-	if sampleCount > totalIterations {{
-		sampleCount = totalIterations
-	}}
-	samples := make([]uint64, sampleCount)
-	for i := 0; i < sampleCount; i++ {{
-		sampleStart := time.Now()
-		{}
-		samples[i] = uint64(time.Since(sampleStart).Nanoseconds())
-	}}
 	
 	result := BenchResult{{
 		Iterations:  uint64(totalIterations),
@@ -726,8 +432,7 @@ func main() {{
 	jsonBytes, _ := json.Marshal(result)
 	fmt.Println(string(jsonBytes))
 }}
-"#, bench_call, memory_result));
+"#, memory_result));
 
     Ok(code.clone())
 }
-

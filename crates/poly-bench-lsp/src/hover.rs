@@ -16,7 +16,7 @@ use super::document::ParsedDocument;
 use super::embedded::{extract_embedded_blocks, EmbeddedBlock, EmbeddedConfig};
 use super::gopls_client::init_gopls_client;
 use super::tsserver_client::init_tsserver_client;
-use super::virtual_files::{VirtualFileManager, VirtualTsFileManager};
+use super::virtual_files::{VirtualFile, VirtualFileManager, VirtualTsFileManager};
 
 /// Cache TTL for embedded language hover results (in milliseconds)
 const HOVER_CACHE_TTL_MS: u64 = 500;
@@ -252,7 +252,7 @@ fn get_gopls_hover(
         doc.version,
     );
     
-    eprintln!("[gopls] Virtual file: {}", virtual_file.path);
+    eprintln!("[gopls] Virtual file: {}", virtual_file.path());
     
     // Translate position from .bench to virtual Go file
     let go_position = match virtual_file.bench_to_go(bench_offset) {
@@ -268,7 +268,7 @@ fn get_gopls_hover(
     };
     
     // Ensure the virtual file is synced with gopls
-    if let Err(e) = client.did_change(&virtual_file.uri, &virtual_file.content, virtual_file.version) {
+    if let Err(e) = client.did_change(virtual_file.uri(), virtual_file.content(), virtual_file.version()) {
         eprintln!("[gopls] Failed to sync virtual file: {}", e);
         return None;
     }
@@ -276,7 +276,7 @@ fn get_gopls_hover(
     eprintln!("[gopls] Requesting hover at {}:{}", go_position.line, go_position.character);
     
     // Request hover from gopls
-    match client.hover(&virtual_file.uri, go_position.line, go_position.character) {
+    match client.hover(virtual_file.uri(), go_position.line, go_position.character) {
         Ok(Some(mut hover)) => {
             eprintln!("[gopls] Got hover response!");
             // Translate the range back to .bench file if present
@@ -342,7 +342,7 @@ fn get_tsserver_hover(
         doc.version,
     );
     
-    eprintln!("[tsserver] Virtual file: {}", virtual_file.path);
+    eprintln!("[tsserver] Virtual file: {}", virtual_file.path());
     
     // Translate position from .bench to virtual TS file
     let ts_position = match virtual_file.bench_to_ts(bench_offset) {
@@ -358,7 +358,7 @@ fn get_tsserver_hover(
     };
     
     // Ensure the virtual file is synced with tsserver
-    if let Err(e) = client.did_change(&virtual_file.uri, &virtual_file.content, virtual_file.version) {
+    if let Err(e) = client.did_change(virtual_file.uri(), virtual_file.content(), virtual_file.version()) {
         eprintln!("[tsserver] Failed to sync virtual file: {}", e);
         return None;
     }
@@ -366,7 +366,7 @@ fn get_tsserver_hover(
     eprintln!("[tsserver] Requesting hover at {}:{}", ts_position.line, ts_position.character);
     
     // Request hover from tsserver
-    match client.hover(&virtual_file.uri, ts_position.line, ts_position.character) {
+    match client.hover(virtual_file.uri(), ts_position.line, ts_position.character) {
         Ok(Some(mut hover)) => {
             eprintln!("[tsserver] Got hover response!");
             // Translate the range back to .bench file if present
