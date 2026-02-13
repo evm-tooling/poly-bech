@@ -41,6 +41,16 @@ pub struct Measurement {
     pub outliers_removed: Option<u64>,
     /// Whether the benchmark result is considered stable (CV < threshold)
     pub is_stable: Option<bool>,
+    
+    // Multi-run aggregation fields (for count > 1)
+    /// Number of benchmark runs aggregated (from count directive)
+    pub run_count: Option<u64>,
+    /// Median nanos_per_op across multiple runs
+    pub median_across_runs: Option<f64>,
+    /// 95% CI lower bound (nanos)
+    pub ci_95_lower: Option<f64>,
+    /// 95% CI upper bound (nanos)
+    pub ci_95_upper: Option<f64>,
 }
 
 /// Default CV threshold percentage (5%) - results with CV above this are considered unstable
@@ -146,6 +156,11 @@ impl Measurement {
             cv_percent,
             outliers_removed: Some(outliers_removed),
             is_stable,
+            // Multi-run fields (None for single run)
+            run_count: None,
+            median_across_runs: None,
+            ci_95_lower: None,
+            ci_95_upper: None,
         }
     }
 
@@ -177,6 +192,11 @@ impl Measurement {
             cv_percent: None,
             outliers_removed: None,
             is_stable: None,
+            // Multi-run fields (None for single run)
+            run_count: None,
+            median_across_runs: None,
+            ci_95_lower: None,
+            ci_95_upper: None,
         }
     }
 
@@ -211,6 +231,122 @@ impl Measurement {
         } else {
             format!("{:.2} ops/s", ops)
         }
+    }
+
+    /// Aggregate multiple run measurements into a single representative measurement.
+    /// Uses median for the primary value and calculates 95% confidence interval.
+    /// This matches Go's benchstat approach for statistical consistency.
+    pub fn aggregate_runs(runs: Vec<Measurement>) -> Self {
+        if runs.is_empty() {
+            return Measurement::from_aggregate(0, 0);
+        }
+        if runs.len() == 1 {
+            let mut single = runs.into_iter().next().unwrap();
+            single.run_count = Some(1);
+            return single;
+        }
+        
+        let run_count = runs.len();
+        
+        // Collect nanos_per_op from each run
+        let mut nanos_values: Vec<f64> = runs.iter()
+            .map(|r| r.nanos_per_op)
+            .collect();
+        nanos_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        
+        // Calculate median
+        let median = if run_count % 2 == 0 {
+            (nanos_values[run_count / 2 - 1] + nanos_values[run_count / 2]) / 2.0
+        } else {
+            nanos_values[run_count / 2]
+        };
+        
+        // Calculate mean and std deviation for CI
+        let mean: f64 = nanos_values.iter().sum::<f64>() / run_count as f64;
+        let variance: f64 = nanos_values.iter()
+            .map(|&x| (x - mean).powi(2))
+            .sum::<f64>() / (run_count - 1) as f64;
+        let std_dev = variance.sqrt();
+        let std_error = std_dev / (run_count as f64).sqrt();
+        
+        // 95% CI using t-distribution (approximate with z=1.96 for larger samples)
+        let t_value = 1.96;
+        let ci_half_width = t_value * std_error;
+        let ci_lower = (median - ci_half_width).max(0.0);
+        let ci_upper = median + ci_half_width;
+        
+        // Aggregate totals across runs
+        let total_iterations: u64 = runs.iter().map(|r| r.iterations).sum();
+        let total_nanos: u64 = runs.iter().map(|r| r.total_nanos).sum();
+        
+        // Use min/max across all runs
+        let min_nanos = runs.iter().filter_map(|r| r.min_nanos).min();
+        let max_nanos = runs.iter().filter_map(|r| r.max_nanos).max();
+        
+        // Aggregate percentiles using median of percentiles
+        let p50_nanos = median_of_options(runs.iter().filter_map(|r| r.p50_nanos).collect());
+        let p75_nanos = median_of_options(runs.iter().filter_map(|r| r.p75_nanos).collect());
+        let p99_nanos = median_of_options(runs.iter().filter_map(|r| r.p99_nanos).collect());
+        let p995_nanos = median_of_options(runs.iter().filter_map(|r| r.p995_nanos).collect());
+        
+        // Aggregate memory stats (average)
+        let bytes_per_op = {
+            let values: Vec<u64> = runs.iter().filter_map(|r| r.bytes_per_op).collect();
+            if values.is_empty() { None } else { Some(values.iter().sum::<u64>() / values.len() as u64) }
+        };
+        let allocs_per_op = {
+            let values: Vec<u64> = runs.iter().filter_map(|r| r.allocs_per_op).collect();
+            if values.is_empty() { None } else { Some(values.iter().sum::<u64>() / values.len() as u64) }
+        };
+        
+        // Total samples across all runs
+        let total_samples: u64 = runs.iter().filter_map(|r| r.samples).sum();
+        let total_outliers: u64 = runs.iter().filter_map(|r| r.outliers_removed).sum();
+        
+        // Calculate cross-run CV and RME
+        let cv_percent = if mean > 0.0 { Some((std_dev / mean) * 100.0) } else { None };
+        let rme_percent = if median > 0.0 { Some((std_error / median) * 100.0 * 1.96) } else { None };
+        let is_stable = cv_percent.map(|cv| cv <= DEFAULT_CV_THRESHOLD);
+        
+        Self {
+            iterations: total_iterations,
+            total_nanos,
+            nanos_per_op: median,  // Use median as primary value
+            ops_per_sec: if median > 0.0 { 1_000_000_000.0 / median } else { 0.0 },
+            min_nanos,
+            max_nanos,
+            p50_nanos,
+            p75_nanos,
+            p99_nanos,
+            p995_nanos,
+            rme_percent,
+            samples: Some(total_samples),
+            bytes_per_op,
+            allocs_per_op,
+            raw_samples: None,  // Don't combine raw samples (too large)
+            cv_percent,
+            outliers_removed: Some(total_outliers),
+            is_stable,
+            // Multi-run aggregation fields
+            run_count: Some(run_count as u64),
+            median_across_runs: Some(median),
+            ci_95_lower: Some(ci_lower),
+            ci_95_upper: Some(ci_upper),
+        }
+    }
+}
+
+/// Calculate median of a vector of u64 values
+fn median_of_options(mut values: Vec<u64>) -> Option<u64> {
+    if values.is_empty() {
+        return None;
+    }
+    values.sort_unstable();
+    let len = values.len();
+    if len % 2 == 0 {
+        Some((values[len / 2 - 1] + values[len / 2]) / 2)
+    } else {
+        Some(values[len / 2])
     }
 }
 

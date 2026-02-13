@@ -312,6 +312,12 @@ impl Parser {
                 let value = self.expect_float()?;
                 suite.cv_threshold = Some(value);
             }
+            TokenKind::Count => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_number()?;
+                suite.count = Some(value);
+            }
             TokenKind::Memory => {
                 self.advance();
                 self.expect(TokenKind::Colon)?;
@@ -961,6 +967,12 @@ impl Parser {
                 self.expect(TokenKind::Colon)?;
                 let value = self.expect_float()?;
                 benchmark.cv_threshold = Some(value);
+            }
+            TokenKind::Count => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_number()?;
+                benchmark.count = Some(value);
             }
             TokenKind::Memory => {
                 self.advance();

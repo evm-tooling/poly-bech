@@ -299,6 +299,9 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
     if let Some(cv_threshold) = suite.cv_threshold {
         write!(out, "{}cvThreshold: {}\n", inner, cv_threshold).unwrap();
     }
+    if let Some(count) = suite.count {
+        write!(out, "{}count: {}\n", inner, count).unwrap();
+    }
     
     // Observability settings (Phase 2B) - only output non-default values
     if suite.memory {
@@ -523,6 +526,9 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
     }
     if let Some(cv_threshold) = bench.cv_threshold {
         write!(out, "{}cvThreshold: {}\n", inner, cv_threshold).unwrap();
+    }
+    if let Some(count) = bench.count {
+        write!(out, "{}count: {}\n", inner, count).unwrap();
     }
     
     // Observability settings (Phase 2B) - only output if explicitly set

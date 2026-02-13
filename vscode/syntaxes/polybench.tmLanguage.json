@@ -244,7 +244,7 @@
           }
         },
         {
-          "match": "\\b(iterations|warmup|minIterations|maxIterations|concurrency)\\s*:\\s*(\\d+)",
+          "match": "\\b(iterations|warmup|minIterations|maxIterations|concurrency|count)\\s*:\\s*(\\d+)",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
@@ -543,7 +543,7 @@
           }
         },
         {
-          "match": "\\b(iterations|warmup|minIterations|maxIterations|concurrency)\\s*:\\s*(\\d+)",
+          "match": "\\b(iterations|warmup|minIterations|maxIterations|concurrency|count)\\s*:\\s*(\\d+)",
           "captures": {
             "1": {
               "name": "keyword.other.bench"

@@ -19,6 +19,7 @@ suite example {
     cvThreshold: 10
     memory: false
     concurrency: 1
+    count: 10
 
     setup go {
         import (
@@ -153,7 +154,7 @@ suite example {
     bench auto_mode_example {
         description: "Auto mode with 3 second target time"
         mode: auto
-        targetTime: 3000
+        targetTime: 2000
         sink: true
         go: mustEncodeBalanceOf(balanceOfAddr)
         ts: {
@@ -186,7 +187,7 @@ suite example {
     bench sink_enabled_example {
         description: "Benchmark with sink pattern enabled"
         mode: auto
-        targetTime: 10000
+        targetTime: 2000
         sink: false
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
@@ -197,8 +198,8 @@ suite example {
     bench sink_disabled_example {
         description: "Benchmark with sink pattern disabled"
         mode: auto
-        targetTime: 10000
-        sink: true
+        targetTime: 2000
+        sink: false
         go: {
             incrementCounter()
         }
@@ -217,7 +218,7 @@ suite example {
     bench memory_profiling_example {
         description: "Benchmark with memory profiling enabled"
         mode: auto
-        targetTime: 10000
+        targetTime: 2000
         memory: true
         go: allocateMemory(1024)
         ts: allocateMemory(1024)
@@ -233,7 +234,7 @@ suite example {
         description: "Concurrent execution with 4 goroutines"
         mode: fixed
         iterations: 100000
-        concurrency: 4
+        concurrency: 1
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
     }
@@ -243,7 +244,7 @@ suite example {
         description: "Concurrent execution with memory profiling"
         mode: fixed
         iterations: 50000
-        concurrency: 2
+        concurrency: 1
         memory: true
         go: allocateMemory(512)
         ts: allocateMemory(512)

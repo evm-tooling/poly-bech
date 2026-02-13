@@ -11,6 +11,7 @@ use super::{ProjectRoots, AnvilService, AnvilConfig};
 use colored::Colorize;
 use miette::Result;
 use std::collections::HashMap;
+use std::io::Write;
 use std::time::Instant;
 
 /// Run all benchmarks in the IR
@@ -110,7 +111,12 @@ pub async fn run(
                 BenchMode::Auto => format!("auto, targetTime={}ms", spec.target_time_ms),
                 BenchMode::Fixed => format!("fixed, iterations={}", spec.iterations),
             };
-            println!("  {} {} [{}]", "→".dimmed(), spec.name.bold(), mode_str.dimmed());
+            let count_str = if spec.count > 1 {
+                format!(", count={}", spec.count)
+            } else {
+                String::new()
+            };
+            println!("  {} {} [{}{}]", "→".dimmed(), spec.name.bold(), mode_str.dimmed(), count_str.dimmed());
 
             let mut measurements: HashMap<Lang, Measurement> = HashMap::new();
             let bench_start = Instant::now();
@@ -119,18 +125,54 @@ pub async fn run(
             if spec.has_lang(Lang::Go) {
                 if let Some(ref mut rt) = go_runtime {
                     let lang_start = Instant::now();
-                    match rt.run_benchmark(&spec_clone, suite).await {
-                        Ok(m) => {
-                            let elapsed = lang_start.elapsed();
-                            print!("    {} {} ({})", 
-                                "Go:".green(), 
-                                Measurement::format_duration(m.nanos_per_op),
-                                format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
-                            );
-                            measurements.insert(Lang::Go, m);
+                    
+                    if spec_clone.count > 1 {
+                        // Multiple runs for statistical consistency
+                        let mut run_measurements = Vec::new();
+                        for run_idx in 0..spec_clone.count {
+                            print!("\r    {} run {}/{}   ", "Go:".green(), run_idx + 1, spec_clone.count);
+                            std::io::stdout().flush().ok();
+                            
+                            match rt.run_benchmark(&spec_clone, suite).await {
+                                Ok(m) => run_measurements.push(m),
+                                Err(e) => {
+                                    eprintln!("\n    {} run {} failed: {}", "Go:".red(), run_idx + 1, e);
+                                }
+                            }
                         }
-                        Err(e) => {
-                            print!("    {} {}", "Go:".red(), format!("{}", e).red());
+                        
+                        if !run_measurements.is_empty() {
+                            let aggregated = Measurement::aggregate_runs(run_measurements);
+                            let elapsed = lang_start.elapsed();
+                            let ci_str = if let (Some(median), Some(ci_upper)) = (aggregated.median_across_runs, aggregated.ci_95_upper) {
+                                format!(" ±{}", Measurement::format_duration(ci_upper - median))
+                            } else {
+                                String::new()
+                            };
+                            print!("\r    {} {}{} ({}x runs, {:.2}s)", 
+                                "Go:".green(),
+                                Measurement::format_duration(aggregated.nanos_per_op),
+                                ci_str,
+                                spec_clone.count,
+                                elapsed.as_secs_f64()
+                            );
+                            measurements.insert(Lang::Go, aggregated);
+                        }
+                    } else {
+                        // Single run (existing behavior)
+                        match rt.run_benchmark(&spec_clone, suite).await {
+                            Ok(m) => {
+                                let elapsed = lang_start.elapsed();
+                                print!("    {} {} ({})", 
+                                    "Go:".green(), 
+                                    Measurement::format_duration(m.nanos_per_op),
+                                    format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
+                                );
+                                measurements.insert(Lang::Go, m);
+                            }
+                            Err(e) => {
+                                print!("    {} {}", "Go:".red(), format!("{}", e).red());
+                            }
                         }
                     }
                     println!();
@@ -141,18 +183,54 @@ pub async fn run(
             if spec.has_lang(Lang::TypeScript) {
                 if let Some(ref mut rt) = js_runtime {
                     let lang_start = Instant::now();
-                    match rt.run_benchmark(&spec_clone, suite).await {
-                        Ok(m) => {
-                            let elapsed = lang_start.elapsed();
-                            print!("    {} {} ({})",
-                                "TS:".cyan(),
-                                Measurement::format_duration(m.nanos_per_op),
-                                format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
-                            );
-                            measurements.insert(Lang::TypeScript, m);
+                    
+                    if spec_clone.count > 1 {
+                        // Multiple runs for statistical consistency
+                        let mut run_measurements = Vec::new();
+                        for run_idx in 0..spec_clone.count {
+                            print!("\r    {} run {}/{}   ", "TS:".cyan(), run_idx + 1, spec_clone.count);
+                            std::io::stdout().flush().ok();
+                            
+                            match rt.run_benchmark(&spec_clone, suite).await {
+                                Ok(m) => run_measurements.push(m),
+                                Err(e) => {
+                                    eprintln!("\n    {} run {} failed: {}", "TS:".red(), run_idx + 1, e);
+                                }
+                            }
                         }
-                        Err(e) => {
-                            print!("    {} {}", "TS:".red(), format!("{}", e).red());
+                        
+                        if !run_measurements.is_empty() {
+                            let aggregated = Measurement::aggregate_runs(run_measurements);
+                            let elapsed = lang_start.elapsed();
+                            let ci_str = if let (Some(median), Some(ci_upper)) = (aggregated.median_across_runs, aggregated.ci_95_upper) {
+                                format!(" ±{}", Measurement::format_duration(ci_upper - median))
+                            } else {
+                                String::new()
+                            };
+                            print!("\r    {} {}{} ({}x runs, {:.2}s)", 
+                                "TS:".cyan(),
+                                Measurement::format_duration(aggregated.nanos_per_op),
+                                ci_str,
+                                spec_clone.count,
+                                elapsed.as_secs_f64()
+                            );
+                            measurements.insert(Lang::TypeScript, aggregated);
+                        }
+                    } else {
+                        // Single run (existing behavior)
+                        match rt.run_benchmark(&spec_clone, suite).await {
+                            Ok(m) => {
+                                let elapsed = lang_start.elapsed();
+                                print!("    {} {} ({})",
+                                    "TS:".cyan(),
+                                    Measurement::format_duration(m.nanos_per_op),
+                                    format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
+                                );
+                                measurements.insert(Lang::TypeScript, m);
+                            }
+                            Err(e) => {
+                                print!("    {} {}", "TS:".red(), format!("{}", e).red());
+                            }
                         }
                     }
                     println!();
