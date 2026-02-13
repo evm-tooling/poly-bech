@@ -159,15 +159,29 @@ function runBenchmarkAuto(fn: () => any, targetTimeMs: number, useSink: boolean 
             break;
         }
         
+        // Scale up for next batch (matching Go's conservative approach)
         if (batchElapsed > 0) {
             const remainingNanos = targetNanos - totalNanos;
-            let newSize = Math.floor(batchSize * (remainingNanos / batchElapsed) * 1.2);
-            if (newSize <= batchSize) {
-                newSize = batchSize * 2;
+            const predicted = Math.floor(batchSize * (remainingNanos / batchElapsed));
+            
+            let newSize;
+            if (remainingNanos < batchElapsed) {
+                // Close to target - use predicted or less
+                newSize = Math.max(1, predicted);
+            } else if (remainingNanos < targetNanos / 5) {
+                // Within 20% of target - scale down slightly to avoid overshoot
+                newSize = Math.max(1, Math.floor(predicted * 0.9));
+            } else {
+                // Far from target - scale up conservatively
+                newSize = Math.floor(predicted * 1.1);
+                if (newSize <= batchSize) {
+                    newSize = batchSize * 2;
+                }
+                if (newSize > batchSize * 10) {
+                    newSize = batchSize * 10;
+                }
             }
-            newSize = Math.min(newSize, batchSize * 100);
-            newSize = Math.max(newSize, batchSize + 1);
-            batchSize = newSize;
+            batchSize = Math.max(1, newSize);
         } else {
             batchSize *= 10;
         }
@@ -293,15 +307,29 @@ function runBenchmarkAutoWithHook(fn: () => any, eachHook: () => void, targetTim
             break;
         }
         
+        // Scale up for next batch (matching Go's conservative approach)
         if (batchElapsed > 0) {
             const remainingNanos = targetNanos - totalNanos;
-            let newSize = Math.floor(batchSize * (remainingNanos / batchElapsed) * 1.2);
-            if (newSize <= batchSize) {
-                newSize = batchSize * 2;
+            const predicted = Math.floor(batchSize * (remainingNanos / batchElapsed));
+            
+            let newSize;
+            if (remainingNanos < batchElapsed) {
+                // Close to target - use predicted or less
+                newSize = Math.max(1, predicted);
+            } else if (remainingNanos < targetNanos / 5) {
+                // Within 20% of target - scale down slightly to avoid overshoot
+                newSize = Math.max(1, Math.floor(predicted * 0.9));
+            } else {
+                // Far from target - scale up conservatively
+                newSize = Math.floor(predicted * 1.1);
+                if (newSize <= batchSize) {
+                    newSize = batchSize * 2;
+                }
+                if (newSize > batchSize * 10) {
+                    newSize = batchSize * 10;
+                }
             }
-            newSize = Math.min(newSize, batchSize * 100);
-            newSize = Math.max(newSize, batchSize + 1);
-            batchSize = newSize;
+            batchSize = Math.max(1, newSize);
         } else {
             batchSize *= 10;
         }

@@ -496,6 +496,9 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
             };
             println!("{}", winner_str);
         }
+
+        // Add visual separation between benchmarks
+        println!();
     }
 }
 
