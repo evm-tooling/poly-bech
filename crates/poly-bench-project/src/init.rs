@@ -3,11 +3,11 @@
 use crate::{
     manifest::{self, Manifest},
     runtime_env_go, runtime_env_ts,
-    templates, BENCHMARKS_DIR, MANIFEST_FILENAME,
+    templates, terminal, BENCHMARKS_DIR, MANIFEST_FILENAME,
 };
-use colored::Colorize;
 use miette::Result;
 use std::path::PathBuf;
+use std::process::Command;
 
 /// Options for initializing a project
 pub struct InitOptions {
@@ -51,11 +51,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     if !project_dir.exists() {
         std::fs::create_dir_all(&project_dir)
             .map_err(|e| miette::miette!("Failed to create project directory: {}", e))?;
-        println!(
-            "{} Created directory {}",
-            "✓".green().bold(),
-            project_dir.display()
-        );
+        terminal::success(&format!("Created directory {}", project_dir.display()));
     }
 
     // Normalize languages
@@ -75,21 +71,13 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     let manifest = Manifest::new(&project_name, &languages);
     let manifest_path = project_dir.join(MANIFEST_FILENAME);
     manifest::save(&manifest_path, &manifest)?;
-    println!(
-        "{} Created {}",
-        "✓".green().bold(),
-        MANIFEST_FILENAME
-    );
+    terminal::success(&format!("Created {}", MANIFEST_FILENAME));
 
     // Create benchmarks directory
     let benchmarks_dir = project_dir.join(BENCHMARKS_DIR);
     std::fs::create_dir_all(&benchmarks_dir)
         .map_err(|e| miette::miette!("Failed to create benchmarks directory: {}", e))?;
-    println!(
-        "{} Created {}/",
-        "✓".green().bold(),
-        BENCHMARKS_DIR
-    );
+    terminal::success(&format!("Created {}/", BENCHMARKS_DIR));
 
     // Create example benchmark
     if !options.no_example {
@@ -97,11 +85,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         let example_content = templates::example_bench(has_go, has_ts);
         std::fs::write(&example_path, example_content)
             .map_err(|e| miette::miette!("Failed to write example.bench: {}", e))?;
-        println!(
-            "{} Created {}/example.bench",
-            "✓".green().bold(),
-            BENCHMARKS_DIR
-        );
+        terminal::success(&format!("Created {}/example.bench", BENCHMARKS_DIR));
     }
 
     // Create runtime-env dirs and language-specific env files (keeps root uncluttered)
@@ -115,7 +99,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
             .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
         // Note: No .go file created yet - bench_standalone.go is generated when running benchmarks.
         // This keeps deps in go.mod since `go mod tidy` won't run until bench code exists.
-        println!("{} Created .polybench/runtime-env/go/ (go.mod)", "✓".green().bold());
+        terminal::success("Created .polybench/runtime-env/go/ (go.mod)");
     }
 
     if has_ts {
@@ -128,34 +112,28 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         let tsconfig_content = templates::tsconfig_json();
         std::fs::write(ts_env.join("tsconfig.json"), tsconfig_content)
             .map_err(|e| miette::miette!("Failed to write tsconfig.json: {}", e))?;
-        println!("{} Created .polybench/runtime-env/ts/ (package.json, tsconfig.json)", "✓".green().bold());
+        terminal::success("Created .polybench/runtime-env/ts/ (package.json, tsconfig.json)");
         
         // Run npm install to install dev dependencies (@types/node, typescript)
-        println!("{} Installing TypeScript dependencies...", "→".blue().bold());
-        let npm_result = std::process::Command::new("npm")
-            .arg("install")
-            .current_dir(&ts_env)
-            .output();
+        let spinner = terminal::step_spinner("Installing TypeScript dependencies...");
+        let npm_result = terminal::run_command_with_spinner(
+            &spinner,
+            Command::new("npm")
+                .arg("install")
+                .current_dir(&ts_env),
+        );
         
         match npm_result {
             Ok(output) if output.status.success() => {
-                println!("{} Installed TypeScript dependencies", "✓".green().bold());
+                terminal::finish_success(&spinner, "TypeScript dependencies installed");
             }
             Ok(output) => {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                eprintln!(
-                    "{} npm install failed: {}",
-                    "⚠".yellow().bold(),
-                    stderr.trim()
-                );
+                let err_msg = terminal::first_error_line(&output.stderr);
+                terminal::finish_failure(&spinner, &format!("npm install failed: {}", err_msg));
                 eprintln!("  Run 'npm install' manually in .polybench/runtime-env/ts/");
             }
             Err(e) => {
-                eprintln!(
-                    "{} Could not run npm: {}",
-                    "⚠".yellow().bold(),
-                    e
-                );
+                terminal::finish_failure(&spinner, &format!("Could not run npm: {}", e));
                 eprintln!("  Run 'npm install' manually in .polybench/runtime-env/ts/");
             }
         }
@@ -176,7 +154,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     };
     std::fs::write(&gitignore_path, gitignore_content)
         .map_err(|e| miette::miette!("Failed to write .gitignore: {}", e))?;
-    println!("{} Created .gitignore", "✓".green().bold());
+    terminal::success("Created .gitignore");
 
     // Create README.md
     let readme_path = project_dir.join("README.md");
@@ -184,15 +162,11 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         let readme_content = templates::readme(&project_name, has_go, has_ts);
         std::fs::write(&readme_path, readme_content)
             .map_err(|e| miette::miette!("Failed to write README.md: {}", e))?;
-        println!("{} Created README.md", "✓".green().bold());
+        terminal::success("Created README.md");
     }
 
     println!();
-    println!(
-        "{} Project '{}' initialized successfully!",
-        "✓".green().bold(),
-        project_name
-    );
+    terminal::success(&format!("Project '{}' initialized successfully!", project_name));
     println!();
     println!("Next steps:");
     if options.name != "." {
@@ -242,12 +216,7 @@ pub fn new_benchmark(name: &str) -> Result<PathBuf> {
     std::fs::write(&bench_path, content)
         .map_err(|e| miette::miette!("Failed to write {}: {}", bench_filename, e))?;
 
-    println!(
-        "{} Created {}/{}",
-        "✓".green().bold(),
-        BENCHMARKS_DIR,
-        bench_filename
-    );
+    terminal::success(&format!("Created {}/{}", BENCHMARKS_DIR, bench_filename));
     println!();
     println!("Edit the file to add your benchmarks, then run:");
     println!("  poly-bench run {}/{}", BENCHMARKS_DIR, bench_filename);

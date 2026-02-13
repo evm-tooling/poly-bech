@@ -1,7 +1,6 @@
 //! Dependency management for poly-bench projects
 
-use crate::{manifest, runtime_env_go, runtime_env_ts, templates};
-use colored::Colorize;
+use crate::{manifest, runtime_env_go, runtime_env_ts, templates, terminal};
 use miette::Result;
 use std::path::Path;
 use std::process::Command;
@@ -93,27 +92,24 @@ pub fn add_go_dependency(spec: &str) -> Result<()> {
     manifest.add_go_dependency(&package, &version)?;
     crate::save_manifest(&project_root, &manifest)?;
 
-    println!(
-        "{} Added Go dependency: {}@{}",
-        "✓".green().bold(),
-        package,
-        version
-    );
-
     let go_root = resolve_go_root(&project_root);
     ensure_go_env(&go_root, manifest.go.as_ref().unwrap())?;
 
     // Use module/...@version so Go fetches all packages and transitive deps into go.sum
     let go_get_arg = go_get_spec_for_transitives(&package, &version);
-    println!("{} Running go get {}...", "→".blue(), go_get_arg);
+    let spinner = terminal::step_spinner(&format!("Installing {}...", go_get_arg));
 
-    let status = Command::new("go")
-        .args(["get", &go_get_arg])
-        .current_dir(&go_root)
-        .status()
-        .map_err(|e| miette::miette!("Failed to run go get: {}", e))?;
+    let output = terminal::run_command_with_spinner(
+        &spinner,
+        Command::new("go")
+            .args(["get", &go_get_arg])
+            .current_dir(&go_root),
+    )
+    .map_err(|e| miette::miette!("Failed to run go get: {}", e))?;
 
-    if !status.success() {
+    if !output.status.success() {
+        let err_msg = terminal::first_error_line(&output.stderr);
+        terminal::finish_failure(&spinner, &format!("go get failed: {}", err_msg));
         return Err(miette::miette!("go get failed"));
     }
 
@@ -121,7 +117,7 @@ pub fn add_go_dependency(spec: &str) -> Result<()> {
     // Running tidy without a .go file that imports the deps would remove them.
     // Tidy will run automatically when `poly-bench run` generates bench code.
 
-    println!("{} Go dependency installed successfully", "✓".green().bold());
+    terminal::finish_success(&spinner, &format!("Added {}@{} to polybench.toml", package, version));
 
     Ok(())
 }
@@ -146,13 +142,6 @@ pub fn add_ts_dependency(spec: &str) -> Result<()> {
     manifest.add_ts_dependency(&package, &version)?;
     crate::save_manifest(&project_root, &manifest)?;
 
-    println!(
-        "{} Added TypeScript dependency: {}@{}",
-        "✓".green().bold(),
-        package,
-        version
-    );
-
     let ts_root = resolve_ts_root(&project_root);
     std::fs::create_dir_all(&ts_root)
         .map_err(|e| miette::miette!("Failed to create TS env dir: {}", e))?;
@@ -170,22 +159,23 @@ pub fn add_ts_dependency(spec: &str) -> Result<()> {
         format!("{}@{}", package, version)
     };
 
-    println!("{} Running npm install {}...", "→".blue(), npm_spec);
+    let spinner = terminal::step_spinner(&format!("Installing {}...", npm_spec));
 
-    let status = Command::new("npm")
-        .args(["install", &npm_spec])
-        .current_dir(&ts_root)
-        .status()
-        .map_err(|e| miette::miette!("Failed to run npm install: {}", e))?;
+    let output = terminal::run_command_with_spinner(
+        &spinner,
+        Command::new("npm")
+            .args(["install", &npm_spec])
+            .current_dir(&ts_root),
+    )
+    .map_err(|e| miette::miette!("Failed to run npm install: {}", e))?;
 
-    if !status.success() {
+    if !output.status.success() {
+        let err_msg = terminal::first_error_line(&output.stderr);
+        terminal::finish_failure(&spinner, &format!("npm install failed: {}", err_msg));
         return Err(miette::miette!("npm install failed"));
     }
 
-    println!(
-        "{} TypeScript dependency installed successfully",
-        "✓".green().bold()
-    );
+    terminal::finish_success(&spinner, &format!("Added {}@{} to polybench.toml", package, version));
 
     Ok(())
 }
@@ -200,12 +190,9 @@ pub fn install_all() -> Result<()> {
 
     let manifest = crate::load_manifest(&project_root)?;
 
-    println!(
-        "{} Installing dependencies for {}",
-        "▶".green().bold(),
-        manifest.project.name
-    );
-    println!();
+    let spinner = terminal::step_spinner(&format!("Installing dependencies for {}...", manifest.project.name));
+    terminal::ensure_min_display(&spinner);
+    spinner.finish_and_clear();
 
     // Install Go dependencies
     if let Some(ref go_config) = manifest.go {
@@ -218,14 +205,14 @@ pub fn install_all() -> Result<()> {
     }
 
     println!();
-    println!("{} All dependencies installed!", "✓".green().bold());
+    terminal::success("All dependencies installed!");
 
     Ok(())
 }
 
 /// Install Go dependencies
 fn install_go_deps(project_root: &Path, go_config: &manifest::GoConfig) -> Result<()> {
-    println!("{} Go dependencies", "→".blue().bold());
+    terminal::section("Go dependencies");
 
     let go_root = resolve_go_root(project_root);
     std::fs::create_dir_all(&go_root)
@@ -237,41 +224,39 @@ fn install_go_deps(project_root: &Path, go_config: &manifest::GoConfig) -> Resul
             templates::go_mod(&go_config.module, go_config.version.as_deref());
         std::fs::write(&go_mod_path, go_mod_content)
             .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
-        println!("  {} Created go.mod", "✓".green());
+        terminal::success_indented("Created go.mod");
     }
 
     // Run go get for each dependency (use module/...@version so transitives go into go.sum)
     for (package, version) in &go_config.dependencies {
         let go_get_arg = go_get_spec_for_transitives(package, version);
-        println!("  {} Installing {}...", "→".blue(), go_get_arg);
+        let spinner = terminal::indented_spinner(&format!("Installing {}...", package));
 
-        let output = Command::new("go")
-            .args(["get", &go_get_arg])
-            .current_dir(&go_root)
-            .output()
-            .map_err(|e| miette::miette!("Failed to run go get: {}", e))?;
+        let output = terminal::run_command_with_spinner(
+            &spinner,
+            Command::new("go")
+                .args(["get", &go_get_arg])
+                .current_dir(&go_root),
+        )
+        .map_err(|e| miette::miette!("Failed to run go get: {}", e))?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
+            let err_msg = terminal::first_error_line(&output.stderr);
+            terminal::finish_failure_indented(&spinner, &format!("Failed to install {}: {}", package, err_msg));
             return Err(miette::miette!(
-                "go get {} failed.\n{}",
+                "go get {} failed: {}",
                 go_get_arg,
-                if stderr.is_empty() {
-                    "Run from project root and ensure 'go' is on PATH.".to_string()
-                } else {
-                    stderr.to_string()
-                }
+                err_msg
             ));
         }
-        println!("  {} Installed {}", "✓".green(), package);
+        terminal::finish_success_indented(&spinner, package);
     }
 
     // Note: We skip `go mod tidy` here - it would remove deps since there's no .go file yet.
     // Tidy runs automatically when `poly-bench run` generates the benchmark code.
 
-    println!("  {} Go dependencies ready", "✓".green());
+    terminal::success_indented("Go dependencies ready");
 
-    println!();
     Ok(())
 }
 
@@ -281,7 +266,7 @@ fn install_ts_deps(
     ts_config: &manifest::TsConfig,
     project_name: &str,
 ) -> Result<()> {
-    println!("{} TypeScript dependencies", "→".blue().bold());
+    terminal::section("TypeScript dependencies");
 
     let ts_root = resolve_ts_root(project_root);
     std::fs::create_dir_all(&ts_root)
@@ -292,25 +277,29 @@ fn install_ts_deps(
         let package_json_content = templates::package_json_pretty(project_name);
         std::fs::write(&package_json_path, package_json_content)
             .map_err(|e| miette::miette!("Failed to write package.json: {}", e))?;
-        println!("  {} Created package.json", "✓".green());
+        terminal::success_indented("Created package.json");
     }
 
     if !ts_config.dependencies.is_empty() {
         update_package_json_deps(&ts_root, ts_config)?;
     }
 
-    println!("  {} Running npm install...", "→".blue());
-    let status = Command::new("npm")
-        .args(["install"])
-        .current_dir(&ts_root)
-        .status()
-        .map_err(|e| miette::miette!("Failed to run npm install: {}", e))?;
+    let spinner = terminal::indented_spinner("Running npm install...");
+    let output = terminal::run_command_with_spinner(
+        &spinner,
+        Command::new("npm")
+            .args(["install"])
+            .current_dir(&ts_root),
+    )
+    .map_err(|e| miette::miette!("Failed to run npm install: {}", e))?;
 
-    if status.success() {
-        println!("  {} TypeScript dependencies ready", "✓".green());
+    if output.status.success() {
+        terminal::finish_success_indented(&spinner, "TypeScript dependencies ready");
+    } else {
+        let err_msg = terminal::first_error_line(&output.stderr);
+        terminal::finish_warning_indented(&spinner, &format!("npm install failed: {}", err_msg));
     }
 
-    println!();
     Ok(())
 }
 

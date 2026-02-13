@@ -7,8 +7,7 @@
 //! Use this when the .polybench directory is deleted, corrupted, or after cloning
 //! a repo where it was gitignored.
 
-use crate::{manifest, runtime_env_go, runtime_env_ts, templates};
-use colored::Colorize;
+use crate::{manifest, runtime_env_go, runtime_env_ts, templates, terminal};
 use miette::Result;
 use std::path::Path;
 use std::process::Command;
@@ -42,12 +41,9 @@ pub fn build_project(options: &BuildOptions) -> Result<()> {
 
     let manifest = crate::load_manifest(&project_root)?;
 
-    println!(
-        "{} Building runtime environment for '{}'",
-        "▶".green().bold(),
-        manifest.project.name
-    );
-    println!();
+    let spinner = terminal::step_spinner(&format!("Building runtime environment for '{}'...", manifest.project.name));
+    terminal::ensure_min_display(&spinner);
+    spinner.finish_and_clear();
 
     // Build Go environment
     if manifest.has_go() {
@@ -60,10 +56,7 @@ pub fn build_project(options: &BuildOptions) -> Result<()> {
     }
 
     println!();
-    println!(
-        "{} Runtime environment ready!",
-        "✓".green().bold()
-    );
+    terminal::success("Runtime environment ready!");
 
     Ok(())
 }
@@ -74,7 +67,7 @@ fn build_go_env(
     go_config: &manifest::GoConfig,
     options: &BuildOptions,
 ) -> Result<()> {
-    println!("{} Go environment", "→".blue().bold());
+    terminal::section("Go environment");
 
     let go_env = runtime_env_go(project_root);
 
@@ -92,45 +85,40 @@ fn build_go_env(
             .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
         
         if go_mod_exists && options.force {
-            println!("  {} Regenerated go.mod", "✓".green());
+            terminal::success_indented("Regenerated go.mod");
         } else {
-            println!("  {} Created go.mod", "✓".green());
+            terminal::success_indented("Created go.mod");
         }
     } else {
-        println!("  {} go.mod exists (use --force to regenerate)", "·".dimmed());
+        terminal::info_indented("go.mod exists (use --force to regenerate)");
     }
 
     // Install dependencies if not skipped
     if !options.skip_install && !go_config.dependencies.is_empty() {
-        println!("  {} Installing {} Go dependencies...", "→".blue(), go_config.dependencies.len());
-        
         for (package, version) in &go_config.dependencies {
             let go_get_arg = go_get_spec_for_transitives(package, version);
+            let spinner = terminal::indented_spinner(&format!("Installing {}...", package));
             
-            let output = Command::new("go")
-                .args(["get", &go_get_arg])
-                .current_dir(&go_env)
-                .output()
-                .map_err(|e| miette::miette!("Failed to run go get: {}", e))?;
+            let output = terminal::run_command_with_spinner(
+                &spinner,
+                Command::new("go")
+                    .args(["get", &go_get_arg])
+                    .current_dir(&go_env),
+            )
+            .map_err(|e| miette::miette!("Failed to run go get: {}", e))?;
 
             if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                eprintln!(
-                    "  {} Failed to install {}: {}",
-                    "⚠".yellow(),
-                    package,
-                    stderr.trim()
-                );
+                let err_msg = terminal::first_error_line(&output.stderr);
+                terminal::finish_warning_indented(&spinner, &format!("Failed to install {}: {}", package, err_msg));
             } else {
-                println!("  {} Installed {}", "✓".green(), package);
+                terminal::finish_success_indented(&spinner, package);
             }
         }
     } else if options.skip_install {
-        println!("  {} Skipping go get (--skip-install)", "·".dimmed());
+        terminal::info_indented("Skipping go get (--skip-install)");
     }
 
-    println!("  {} Go environment ready", "✓".green());
-    println!();
+    terminal::success_indented("Go environment ready");
 
     Ok(())
 }
@@ -142,7 +130,7 @@ fn build_ts_env(
     project_name: &str,
     options: &BuildOptions,
 ) -> Result<()> {
-    println!("{} TypeScript environment", "→".blue().bold());
+    terminal::section("TypeScript environment");
 
     let ts_env = runtime_env_ts(project_root);
 
@@ -160,12 +148,12 @@ fn build_ts_env(
             .map_err(|e| miette::miette!("Failed to write package.json: {}", e))?;
         
         if package_json_exists && options.force {
-            println!("  {} Regenerated package.json", "✓".green());
+            terminal::success_indented("Regenerated package.json");
         } else {
-            println!("  {} Created package.json", "✓".green());
+            terminal::success_indented("Created package.json");
         }
     } else {
-        println!("  {} package.json exists (use --force to regenerate)", "·".dimmed());
+        terminal::info_indented("package.json exists (use --force to regenerate)");
     }
 
     let tsconfig_path = ts_env.join("tsconfig.json");
@@ -178,61 +166,50 @@ fn build_ts_env(
             .map_err(|e| miette::miette!("Failed to write tsconfig.json: {}", e))?;
         
         if tsconfig_exists && options.force {
-            println!("  {} Regenerated tsconfig.json", "✓".green());
+            terminal::success_indented("Regenerated tsconfig.json");
         } else {
-            println!("  {} Created tsconfig.json", "✓".green());
+            terminal::success_indented("Created tsconfig.json");
         }
     } else {
-        println!("  {} tsconfig.json exists (use --force to regenerate)", "·".dimmed());
+        terminal::info_indented("tsconfig.json exists (use --force to regenerate)");
     }
 
     // Add user dependencies from manifest to package.json
     if !ts_config.dependencies.is_empty() {
         update_package_json_deps(&ts_env, ts_config)?;
-        println!(
-            "  {} Added {} dependencies to package.json",
-            "✓".green(),
-            ts_config.dependencies.len()
-        );
+        terminal::success_indented(&format!("Added {} dependencies to package.json", ts_config.dependencies.len()));
     }
 
     // Run npm install if not skipped
     if !options.skip_install {
-        println!("  {} Running npm install...", "→".blue());
+        let spinner = terminal::indented_spinner("Running npm install...");
         
-        let output = Command::new("npm")
-            .args(["install"])
-            .current_dir(&ts_env)
-            .output();
+        let output = terminal::run_command_with_spinner(
+            &spinner,
+            Command::new("npm")
+                .args(["install"])
+                .current_dir(&ts_env),
+        );
 
         match output {
             Ok(out) if out.status.success() => {
-                println!("  {} Installed npm dependencies", "✓".green());
+                terminal::finish_success_indented(&spinner, "npm dependencies installed");
             }
             Ok(out) => {
-                let stderr = String::from_utf8_lossy(&out.stderr);
-                eprintln!(
-                    "  {} npm install failed: {}",
-                    "⚠".yellow(),
-                    stderr.trim()
-                );
+                let err_msg = terminal::first_error_line(&out.stderr);
+                terminal::finish_warning_indented(&spinner, &format!("npm install failed: {}", err_msg));
                 eprintln!("    Run 'npm install' manually in {}", ts_env.display());
             }
             Err(e) => {
-                eprintln!(
-                    "  {} Could not run npm: {}",
-                    "⚠".yellow(),
-                    e
-                );
+                terminal::finish_warning_indented(&spinner, &format!("Could not run npm: {}", e));
                 eprintln!("    Run 'npm install' manually in {}", ts_env.display());
             }
         }
     } else {
-        println!("  {} Skipping npm install (--skip-install)", "·".dimmed());
+        terminal::info_indented("Skipping npm install (--skip-install)");
     }
 
-    println!("  {} TypeScript environment ready", "✓".green());
-    println!();
+    terminal::success_indented("TypeScript environment ready");
 
     Ok(())
 }

@@ -69,7 +69,7 @@ impl Runtime for GoRuntime {
         Lang::Go
     }
 
-    async fn initialize(&mut self, suite: &SuiteIR) -> Result<()> {
+    async fn initialize(&mut self, _suite: &SuiteIR) -> Result<()> {
         // Go plugins only work on Linux, so we'll use subprocess execution on all platforms
         let compiler = GoCompiler::new()?;
         self.compiler = Some(compiler);

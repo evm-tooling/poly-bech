@@ -8,6 +8,7 @@
 
 pub mod manifest;
 pub mod templates;
+pub mod terminal;
 pub mod init;
 pub mod deps;
 pub mod build;
