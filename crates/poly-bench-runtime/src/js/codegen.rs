@@ -1,6 +1,6 @@
 //! TypeScript/JavaScript code generation
 
-use poly_bench_dsl::Lang;
+use poly_bench_dsl::{Lang, BenchMode};
 use poly_bench_ir::{BenchmarkIR, SuiteIR, BenchmarkSpec, FixtureIR};
 use poly_bench_stdlib as stdlib;
 use miette::{Result, miette};
@@ -45,26 +45,124 @@ interface BenchResult {
     samples: number[];
 }
 
-// Performance timing helper
-const now = typeof performance !== 'undefined' 
-    ? () => performance.now() * 1e6  // Convert ms to ns
-    : () => Date.now() * 1e6;
+// High-resolution timing - use best available timer
+const now = (() => {
+    // Node.js: Use process.hrtime.bigint() for nanosecond precision
+    if (typeof process !== 'undefined' && (process as any).hrtime && (process as any).hrtime.bigint) {
+        return () => Number((process as any).hrtime.bigint());
+    }
+    // Deno/Browser: performance.now() in ms, convert to ns
+    if (typeof performance !== 'undefined') {
+        return () => performance.now() * 1e6;
+    }
+    // Last resort: Date.now() in ms
+    return () => Date.now() * 1e6;
+})();
 
-function runBenchmark(fn: () => void, iterations: number, warmup: number): BenchResult {
-    const samples: number[] = [];
+// Global sink to prevent dead code elimination
+let __polybench_sink: any;
+
+// Fixed iterations benchmark with sink pattern
+function runBenchmark(fn: () => any, iterations: number, warmup: number, useSink: boolean = true): BenchResult {
+    const samples: number[] = new Array(iterations);
     
     // Warmup
     for (let i = 0; i < warmup; i++) {
-        fn();
+        if (useSink) {
+            __polybench_sink = fn();
+        } else {
+            fn();
+        }
     }
     
     // Timed run
     let totalNanos = 0;
     for (let i = 0; i < iterations; i++) {
         const start = now();
-        fn();
+        if (useSink) {
+            __polybench_sink = fn();
+        } else {
+            fn();
+        }
         const elapsed = now() - start;
-        samples.push(elapsed);
+        samples[i] = elapsed;
+        totalNanos += elapsed;
+    }
+    
+    const nanosPerOp = totalNanos / iterations;
+    const opsPerSec = 1e9 / nanosPerOp;
+    
+    return {
+        iterations,
+        totalNanos,
+        nanosPerOp,
+        opsPerSec,
+        samples,
+    };
+}
+
+// Auto-calibrating benchmark with sink pattern
+function runBenchmarkAuto(fn: () => any, targetTimeMs: number, minIters: number, maxIters: number, useSink: boolean = true): BenchResult {
+    const targetNanos = targetTimeMs * 1e6;
+    
+    // Calibration phase
+    let iterations = 1;
+    while (iterations < maxIters) {
+        const start = now();
+        for (let i = 0; i < iterations; i++) {
+            if (useSink) {
+                __polybench_sink = fn();
+            } else {
+                fn();
+            }
+        }
+        const elapsed = now() - start;
+        
+        if (elapsed >= targetNanos) {
+            break;
+        }
+        
+        if (elapsed > 0) {
+            let newIters = Math.floor(iterations * (targetNanos / elapsed) * 1.2);
+            if (newIters <= iterations) {
+                newIters = iterations * 2;
+            }
+            iterations = newIters;
+        } else {
+            iterations *= 10;
+        }
+        
+        if (iterations > maxIters) {
+            iterations = maxIters;
+        }
+    }
+    
+    if (iterations < minIters) {
+        iterations = minIters;
+    }
+    
+    // Warmup (10% of iterations, min 10)
+    const warmup = Math.max(Math.floor(iterations / 10), 10);
+    for (let i = 0; i < warmup; i++) {
+        if (useSink) {
+            __polybench_sink = fn();
+        } else {
+            fn();
+        }
+    }
+    
+    // Timed run
+    const samples: number[] = new Array(iterations);
+    let totalNanos = 0;
+    for (let i = 0; i < iterations; i++) {
+        const start = now();
+        if (useSink) {
+            __polybench_sink = fn();
+        } else {
+            fn();
+        }
+        const elapsed = now() - start;
+        samples[i] = elapsed;
         totalNanos += elapsed;
     }
     
@@ -95,8 +193,8 @@ function runBenchmark(fn: () => void, iterations: number, warmup: number): Bench
         for bench in &suite.benchmarks {
             if bench.has_lang(Lang::TypeScript) {
                 code.push_str(&format!(
-                    "    [\"{}\", () => bench_{}({}, {})],\n",
-                    bench.full_name, bench.full_name, bench.iterations, bench.warmup
+                    "    [\"{}\", () => bench_{}()],\n",
+                    bench.full_name, bench.full_name
                 ));
             }
         }
@@ -223,13 +321,28 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec) -> Result<()> {
         code.push_str(&format!("// {}\n", desc));
     }
 
-    code.push_str(&format!(r#"function bench_{}(iterations: number, warmup: number): BenchResult {{
-    return runBenchmark(() => {{
-        {}
-    }}, iterations, warmup);
+    let use_sink = if bench.use_sink { "true" } else { "false" };
+
+    match bench.mode {
+        BenchMode::Auto => {
+            code.push_str(&format!(r#"function bench_{}(): BenchResult {{
+    return runBenchmarkAuto(() => {{
+        return {}
+    }}, {}, {}, {}, {});
 }}
 
-"#, bench.full_name, impl_code));
+"#, bench.full_name, impl_code, bench.target_time_ms, bench.min_iterations, bench.max_iterations, use_sink));
+        }
+        BenchMode::Fixed => {
+            code.push_str(&format!(r#"function bench_{}(): BenchResult {{
+    return runBenchmark(() => {{
+        return {}
+    }}, {}, {}, {});
+}}
+
+"#, bench.full_name, impl_code, bench.iterations, bench.warmup, use_sink));
+        }
+    }
 
     Ok(())
 }

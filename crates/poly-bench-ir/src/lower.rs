@@ -2,7 +2,7 @@
 //!
 //! Transforms the parsed AST into a normalized IR suitable for execution.
 
-use poly_bench_dsl::{File, Suite, Fixture, Benchmark, Lang, ExecutionOrder, ChartDirective};
+use poly_bench_dsl::{File, Suite, Fixture, Benchmark, Lang, ExecutionOrder, ChartDirective, BenchMode};
 use crate::{BenchmarkIR, SuiteIR, FixtureIR, FixtureParamIR, BenchmarkSpec, AnvilConfigIR, ChartDirectiveIR};
 use crate::fixtures::{decode_hex, load_hex_file, extract_fixture_refs};
 use crate::imports::{extract_go_imports, extract_ts_imports, ParsedSetup};
@@ -60,7 +60,7 @@ fn lower_suite(suite: &Suite, base_dir: Option<&Path>, stdlib_imports: &HashSet<
     
     ir.description = suite.description.clone();
     ir.default_iterations = suite.iterations.unwrap_or(1000);
-    ir.default_warmup = suite.warmup.unwrap_or(100);
+    ir.default_warmup = suite.warmup.unwrap_or(1000); // Increased from 100 for better JIT optimization
     
     // Phase 4: Suite-level configuration
     ir.timeout = suite.timeout;
@@ -68,6 +68,13 @@ fn lower_suite(suite: &Suite, base_dir: Option<&Path>, stdlib_imports: &HashSet<
     ir.order = suite.order.unwrap_or(ExecutionOrder::Sequential);
     ir.compare = suite.compare;
     ir.baseline = suite.baseline;
+    
+    // Benchmark accuracy settings
+    ir.mode = suite.mode.unwrap_or(BenchMode::Auto);  // Auto-calibration by default
+    ir.target_time_ms = suite.target_time_ms.unwrap_or(3000);  // 3 seconds
+    ir.min_iterations = suite.min_iterations.unwrap_or(10);
+    ir.max_iterations = suite.max_iterations.unwrap_or(1_000_000);
+    ir.sink = suite.sink;  // Already defaults to true in AST
     
     // Copy stdlib imports to suite
     ir.stdlib_imports = stdlib_imports.clone();
@@ -184,6 +191,13 @@ fn lower_benchmark(
     // Phase 2: Benchmark configuration
     spec.timeout = benchmark.timeout;
     spec.tags = benchmark.tags.clone();
+    
+    // Benchmark accuracy settings (benchmark overrides suite, or inherit from suite)
+    spec.mode = benchmark.mode.unwrap_or(suite_ir.mode);
+    spec.target_time_ms = benchmark.target_time_ms.unwrap_or(suite_ir.target_time_ms);
+    spec.min_iterations = benchmark.min_iterations.unwrap_or(suite_ir.min_iterations);
+    spec.max_iterations = benchmark.max_iterations.unwrap_or(suite_ir.max_iterations);
+    spec.use_sink = benchmark.sink.unwrap_or(suite_ir.sink);
     
     // Copy skip conditions
     for (lang, code_block) in &benchmark.skip {

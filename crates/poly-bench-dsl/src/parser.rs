@@ -269,6 +269,37 @@ impl Parser {
                 let lang = self.expect_lang_from_string()?;
                 suite.baseline = Some(lang);
             }
+            // Benchmark accuracy settings
+            TokenKind::Mode => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let mode = self.expect_bench_mode()?;
+                suite.mode = Some(mode);
+            }
+            TokenKind::Sink => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_bool()?;
+                suite.sink = value;
+            }
+            TokenKind::TargetTime => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_duration()?;
+                suite.target_time_ms = Some(value);
+            }
+            TokenKind::MinIterations => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_number()?;
+                suite.min_iterations = Some(value);
+            }
+            TokenKind::MaxIterations => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_number()?;
+                suite.max_iterations = Some(value);
+            }
             // globalSetup can now be inside suite
             TokenKind::GlobalSetup => {
                 let global_setup = self.parse_global_setup()?;
@@ -864,6 +895,37 @@ impl Parser {
                 let validate_map = self.parse_lang_code_map()?;
                 benchmark.validate = validate_map;
             }
+            // Benchmark accuracy settings (overrides)
+            TokenKind::Mode => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let mode = self.expect_bench_mode()?;
+                benchmark.mode = Some(mode);
+            }
+            TokenKind::Sink => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_bool()?;
+                benchmark.sink = Some(value);
+            }
+            TokenKind::TargetTime => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_duration()?;
+                benchmark.target_time_ms = Some(value);
+            }
+            TokenKind::MinIterations => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_number()?;
+                benchmark.min_iterations = Some(value);
+            }
+            TokenKind::MaxIterations => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_number()?;
+                benchmark.max_iterations = Some(value);
+            }
             // Phase 3: Lifecycle hooks
             TokenKind::Before => {
                 self.advance();
@@ -906,7 +968,7 @@ impl Parser {
             }
             _ => {
                 return Err(self.make_error(ParseError::ExpectedToken {
-                    expected: "benchmark property (iterations, warmup, timeout, tags, skip, validate, before, after, each) or language implementation".to_string(),
+                    expected: "benchmark property (iterations, warmup, timeout, tags, skip, validate, mode, sink, targetTime, minIterations, maxIterations, before, after, each) or language implementation".to_string(),
                     found: format!("{:?}", token.kind),
                     span: token.span.clone(),
                 }));
@@ -1066,6 +1128,11 @@ impl Parser {
                     TokenKind::Tags |
                     TokenKind::Skip |
                     TokenKind::Validate |
+                    TokenKind::Mode |
+                    TokenKind::Sink |
+                    TokenKind::TargetTime |
+                    TokenKind::MinIterations |
+                    TokenKind::MaxIterations |
                     TokenKind::Before |
                     TokenKind::After |
                     TokenKind::Each |
@@ -1292,6 +1359,44 @@ impl Parser {
             _ => {
                 Err(self.make_error(ParseError::ExpectedToken {
                     expected: "execution order (sequential, parallel, random)".to_string(),
+                    found: format!("{:?}", token.kind),
+                    span: token.span,
+                }))
+            }
+        }
+    }
+
+    /// Expect a benchmark mode (auto/fixed) from string or identifier
+    fn expect_bench_mode(&mut self) -> Result<BenchMode> {
+        let token = self.peek().clone();
+        match &token.kind {
+            TokenKind::String(s) => {
+                BenchMode::from_str(s).map(|mode| {
+                    self.advance();
+                    mode
+                }).ok_or_else(|| {
+                    self.make_error(ParseError::ExpectedToken {
+                        expected: "benchmark mode (\"auto\" or \"fixed\")".to_string(),
+                        found: s.clone(),
+                        span: token.span.clone(),
+                    })
+                })
+            }
+            TokenKind::Identifier(s) => {
+                BenchMode::from_str(s).map(|mode| {
+                    self.advance();
+                    mode
+                }).ok_or_else(|| {
+                    self.make_error(ParseError::ExpectedToken {
+                        expected: "benchmark mode (auto or fixed)".to_string(),
+                        found: s.clone(),
+                        span: token.span.clone(),
+                    })
+                })
+            }
+            _ => {
+                Err(self.make_error(ParseError::ExpectedToken {
+                    expected: "benchmark mode (auto or fixed)".to_string(),
                     found: format!("{:?}", token.kind),
                     span: token.span,
                 }))

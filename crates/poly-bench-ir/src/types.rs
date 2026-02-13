@@ -1,6 +1,6 @@
 //! IR types - normalized benchmark specifications
 
-use poly_bench_dsl::{Lang, ExecutionOrder, ChartType};
+use poly_bench_dsl::{Lang, ExecutionOrder, ChartType, BenchMode};
 use serde::{Serialize, Deserialize};
 use std::collections::{HashMap, HashSet};
 
@@ -84,6 +84,18 @@ pub struct SuiteIR {
     /// Baseline language for comparison ratios
     pub baseline: Option<Lang>,
     
+    // Benchmark accuracy settings
+    /// Benchmark execution mode (auto-calibration vs fixed iterations)
+    pub mode: BenchMode,
+    /// Target time for auto-calibration in milliseconds
+    pub target_time_ms: u64,
+    /// Minimum iterations for auto-calibration
+    pub min_iterations: u64,
+    /// Maximum iterations for auto-calibration
+    pub max_iterations: u64,
+    /// Enable sink/black-box pattern to prevent dead code elimination
+    pub sink: bool,
+    
     /// Standard library modules imported (e.g., "constants", "anvil")
     pub stdlib_imports: HashSet<String>,
     
@@ -111,12 +123,18 @@ impl SuiteIR {
             name,
             description: None,
             default_iterations: 1000,
-            default_warmup: 100,
+            default_warmup: 1000, // Increased from 100 for better JIT optimization
             timeout: None,
             requires: Vec::new(),
             order: ExecutionOrder::Sequential,
             compare: false,
             baseline: None,
+            // Benchmark accuracy defaults
+            mode: BenchMode::Auto,          // Auto-calibration by default
+            target_time_ms: 3000,           // 3 seconds target
+            min_iterations: 10,             // At least 10 iterations
+            max_iterations: 1_000_000,      // Cap at 1M iterations
+            sink: true,                     // Enabled by default to prevent DCE
             stdlib_imports: HashSet::new(),
             imports: HashMap::new(),
             declarations: HashMap::new(),
@@ -230,7 +248,7 @@ pub struct BenchmarkSpec {
     pub full_name: String,
     /// Optional description
     pub description: Option<String>,
-    /// Number of iterations to run
+    /// Number of iterations to run (for fixed mode)
     pub iterations: u64,
     /// Number of warmup iterations
     pub warmup: u64,
@@ -244,6 +262,18 @@ pub struct BenchmarkSpec {
     pub skip_conditions: HashMap<Lang, String>,
     /// Per-language result validations
     pub validations: HashMap<Lang, String>,
+    
+    // Benchmark accuracy settings (resolved from suite + benchmark overrides)
+    /// Benchmark execution mode
+    pub mode: BenchMode,
+    /// Target time for auto-calibration in milliseconds
+    pub target_time_ms: u64,
+    /// Minimum iterations for auto-calibration
+    pub min_iterations: u64,
+    /// Maximum iterations for auto-calibration
+    pub max_iterations: u64,
+    /// Enable sink/black-box pattern
+    pub use_sink: bool,
     
     // Phase 3: Lifecycle hooks
     /// Pre-benchmark hook (runs once before iterations)
@@ -271,6 +301,12 @@ impl BenchmarkSpec {
             tags: Vec::new(),
             skip_conditions: HashMap::new(),
             validations: HashMap::new(),
+            // Benchmark accuracy defaults (will be overwritten by lower.rs)
+            mode: BenchMode::Auto,
+            target_time_ms: 3000,
+            min_iterations: 10,
+            max_iterations: 1_000_000,
+            use_sink: true,
             before_hooks: HashMap::new(),
             after_hooks: HashMap::new(),
             each_hooks: HashMap::new(),

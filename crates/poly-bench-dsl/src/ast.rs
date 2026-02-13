@@ -122,6 +122,44 @@ impl Default for ExecutionOrder {
     }
 }
 
+/// Benchmark execution mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BenchMode {
+    /// Auto-calibrate iterations based on target time (default)
+    Auto,
+    /// Fixed number of iterations (legacy behavior)
+    Fixed,
+}
+
+impl BenchMode {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "auto" => Some(BenchMode::Auto),
+            "fixed" => Some(BenchMode::Fixed),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            BenchMode::Auto => "auto",
+            BenchMode::Fixed => "fixed",
+        }
+    }
+}
+
+impl Default for BenchMode {
+    fn default() -> Self {
+        BenchMode::Auto
+    }
+}
+
+impl std::fmt::Display for BenchMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 /// Structured setup block with explicit sections (Phase 1)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StructuredSetup {
@@ -467,6 +505,18 @@ pub struct Suite {
     /// Baseline language for comparison ratios
     pub baseline: Option<Lang>,
     
+    // Benchmark accuracy settings
+    /// Benchmark execution mode (auto-calibration vs fixed iterations)
+    pub mode: Option<BenchMode>,
+    /// Target time for auto-calibration in milliseconds (e.g., "3s" = 3000)
+    pub target_time_ms: Option<u64>,
+    /// Minimum iterations for auto-calibration
+    pub min_iterations: Option<u64>,
+    /// Maximum iterations for auto-calibration
+    pub max_iterations: Option<u64>,
+    /// Enable sink/black-box pattern to prevent dead code elimination (default: true)
+    pub sink: bool,
+    
     /// Global setup block for suite-level initialization (runs once before all benchmarks)
     pub global_setup: Option<GlobalSetup>,
     
@@ -493,6 +543,11 @@ impl Suite {
             order: None,
             compare: false,
             baseline: None,
+            mode: None,
+            target_time_ms: None,
+            min_iterations: None,
+            max_iterations: None,
+            sink: true, // Enabled by default to prevent DCE
             global_setup: None,
             setups: HashMap::new(),
             fixtures: Vec::new(),
@@ -569,6 +624,18 @@ pub struct Benchmark {
     /// Per-language result validation expressions
     pub validate: HashMap<Lang, CodeBlock>,
     
+    // Benchmark accuracy settings (overrides suite-level)
+    /// Override benchmark execution mode
+    pub mode: Option<BenchMode>,
+    /// Override target time for auto-calibration
+    pub target_time_ms: Option<u64>,
+    /// Override minimum iterations
+    pub min_iterations: Option<u64>,
+    /// Override maximum iterations
+    pub max_iterations: Option<u64>,
+    /// Override sink/black-box setting (None = inherit from suite)
+    pub sink: Option<bool>,
+    
     // Phase 3: Lifecycle hooks
     /// Pre-benchmark hook (runs once before iterations)
     pub before: HashMap<Lang, CodeBlock>,
@@ -593,6 +660,11 @@ impl Benchmark {
             tags: Vec::new(),
             skip: HashMap::new(),
             validate: HashMap::new(),
+            mode: None,
+            target_time_ms: None,
+            min_iterations: None,
+            max_iterations: None,
+            sink: None,
             before: HashMap::new(),
             after: HashMap::new(),
             each: HashMap::new(),

@@ -38,6 +38,13 @@ pub enum TokenKind {
     Compare,     // compare
     Baseline,    // baseline
 
+    // Benchmark accuracy keywords
+    Mode,           // mode (auto/fixed)
+    Sink,           // sink (true/false)
+    TargetTime,     // targetTime
+    MinIterations,  // minIterations
+    MaxIterations,  // maxIterations
+
     // Phase 5: Fixture keywords
     Shape,       // shape
 
@@ -117,6 +124,11 @@ impl TokenKind {
                 | TokenKind::Order
                 | TokenKind::Compare
                 | TokenKind::Baseline
+                | TokenKind::Mode
+                | TokenKind::Sink
+                | TokenKind::TargetTime
+                | TokenKind::MinIterations
+                | TokenKind::MaxIterations
                 | TokenKind::Shape
                 | TokenKind::Async
                 | TokenKind::Use
@@ -197,6 +209,13 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         "order" => Some(TokenKind::Order),
         "compare" => Some(TokenKind::Compare),
         "baseline" => Some(TokenKind::Baseline),
+        
+        // Benchmark accuracy keywords
+        "mode" => Some(TokenKind::Mode),
+        "sink" => Some(TokenKind::Sink),
+        "targetTime" => Some(TokenKind::TargetTime),
+        "minIterations" => Some(TokenKind::MinIterations),
+        "maxIterations" => Some(TokenKind::MaxIterations),
         
         // Phase 5: Fixture keywords
         "shape" => Some(TokenKind::Shape),

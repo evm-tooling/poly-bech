@@ -1,6 +1,6 @@
 //! Go runtime executor
 
-use poly_bench_dsl::Lang;
+use poly_bench_dsl::{Lang, BenchMode};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use crate::go::{codegen, compiler::GoCompiler};
 use crate::measurement::Measurement;
@@ -232,6 +232,11 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     all_imports.insert("\"fmt\"");
     all_imports.insert("\"time\"");
     
+    // Add runtime import for sink pattern (KeepAlive)
+    if spec.use_sink {
+        all_imports.insert("\"runtime\"");
+    }
+    
     // Add user imports from the pre-extracted imports in SuiteIR
     if let Some(user_imports) = suite.imports.get(&Lang::Go) {
         for import_spec in user_imports {
@@ -329,49 +334,169 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     let after_hook = spec.after_hooks.get(&Lang::Go);
     let each_hook = spec.each_hooks.get(&Lang::Go);
 
-    code.push_str(&format!(r#"
+    // Generate sink variable declaration if enabled
+    let sink_decl = if spec.use_sink { "\tvar __sink interface{}\n" } else { "" };
+    
+    // Generate the benchmark call with or without sink
+    let bench_call = if spec.use_sink {
+        format!("__sink = {}", impl_code)
+    } else {
+        format!("_ = {}", impl_code)
+    };
+    
+    // Generate sink keepalive at end of timed loop if enabled
+    let sink_keepalive = if spec.use_sink {
+        "\t\truntime.KeepAlive(__sink)\n"
+    } else {
+        ""
+    };
+
+    // Generate main function based on mode
+    match spec.mode {
+        BenchMode::Auto => {
+            // Auto-calibration mode
+            code.push_str(&format!(r#"
+func main() {{
+	targetNanos := int64({})
+	minIters := {}
+	maxIters := {}
+	warmupRatio := 10 // warmup is 1/10th of iterations
+{}
+"#, spec.target_time_ms * 1_000_000, spec.min_iterations, spec.max_iterations, sink_decl));
+
+            // Before hook
+            if let Some(before) = before_hook {
+                code.push_str("\n\t// Before hook\n");
+                for line in before.lines() {
+                    code.push_str(&format!("\t{}\n", line));
+                }
+            }
+
+            // Calibration phase
+            code.push_str(r#"
+	// Calibration phase: determine optimal iteration count
+	iterations := 1
+	for iterations < maxIters {
+		start := time.Now()
+		for i := 0; i < iterations; i++ {
+"#);
+            if let Some(each) = each_hook {
+                for line in each.lines() {
+                    code.push_str(&format!("\t\t\t{}\n", line));
+                }
+            }
+            code.push_str(&format!("\t\t\t{}\n", bench_call));
+            code.push_str(sink_keepalive);
+            code.push_str(r#"		}
+		elapsed := time.Since(start).Nanoseconds()
+		if elapsed >= targetNanos {
+			break
+		}
+		if elapsed > 0 {
+			// Scale up to reach target time (with 20% buffer)
+			newIters := int(float64(iterations) * float64(targetNanos) / float64(elapsed) * 1.2)
+			if newIters <= iterations {
+				newIters = iterations * 2
+			}
+			iterations = newIters
+		} else {
+			iterations *= 10
+		}
+		if iterations > maxIters {
+			iterations = maxIters
+		}
+	}
+	if iterations < minIters {
+		iterations = minIters
+	}
+
+	// Warmup phase (10% of calibrated iterations, minimum 10)
+	warmup := iterations / warmupRatio
+	if warmup < 10 {
+		warmup = 10
+	}
+	for i := 0; i < warmup; i++ {
+"#);
+            if let Some(each) = each_hook {
+                for line in each.lines() {
+                    code.push_str(&format!("\t\t{}\n", line));
+                }
+            }
+            code.push_str(&format!("\t\t{}\n", bench_call));
+            code.push_str(sink_keepalive);
+            code.push_str("\t}\n");
+
+            // Timed run
+            code.push_str(r#"
+	// Timed run
+	samples := make([]uint64, iterations)
+	var totalNanos uint64
+	for i := 0; i < iterations; i++ {
+"#);
+            if let Some(each) = each_hook {
+                for line in each.lines() {
+                    code.push_str(&format!("\t\t{}\n", line));
+                }
+            }
+            code.push_str("\t\tstart := time.Now()\n");
+            code.push_str(&format!("\t\t{}\n", bench_call));
+            code.push_str(sink_keepalive);
+            code.push_str(r#"		elapsed := time.Since(start).Nanoseconds()
+		samples[i] = uint64(elapsed)
+		totalNanos += uint64(elapsed)
+	}
+"#);
+        }
+        BenchMode::Fixed => {
+            // Fixed iteration mode (original behavior)
+            code.push_str(&format!(r#"
 func main() {{
 	iterations := {}
 	warmup := {}
 	samples := make([]uint64, iterations)
-"#, spec.iterations, spec.warmup));
+{}
+"#, spec.iterations, spec.warmup, sink_decl));
 
-    // Phase 3: Before hook (runs once before benchmark)
-    if let Some(before) = before_hook {
-        code.push_str("\n\t// Before hook\n");
-        for line in before.lines() {
-            code.push_str(&format!("\t{}\n", line));
+            // Before hook
+            if let Some(before) = before_hook {
+                code.push_str("\n\t// Before hook\n");
+                for line in before.lines() {
+                    code.push_str(&format!("\t{}\n", line));
+                }
+            }
+
+            // Warmup loop
+            code.push_str("\n\t// Warmup\n");
+            code.push_str("\tfor i := 0; i < warmup; i++ {\n");
+            if let Some(each) = each_hook {
+                for line in each.lines() {
+                    code.push_str(&format!("\t\t{}\n", line));
+                }
+            }
+            code.push_str(&format!("\t\t{}\n", bench_call));
+            code.push_str(sink_keepalive);
+            code.push_str("\t}\n");
+
+            // Timed run
+            code.push_str("\n\t// Timed run\n");
+            code.push_str("\tvar totalNanos uint64\n");
+            code.push_str("\tfor i := 0; i < iterations; i++ {\n");
+            if let Some(each) = each_hook {
+                for line in each.lines() {
+                    code.push_str(&format!("\t\t{}\n", line));
+                }
+            }
+            code.push_str("\t\tstart := time.Now()\n");
+            code.push_str(&format!("\t\t{}\n", bench_call));
+            code.push_str(sink_keepalive);
+            code.push_str("\t\telapsed := time.Since(start).Nanoseconds()\n");
+            code.push_str("\t\tsamples[i] = uint64(elapsed)\n");
+            code.push_str("\t\ttotalNanos += uint64(elapsed)\n");
+            code.push_str("\t}\n");
         }
     }
 
-    // Warmup loop
-    code.push_str("\n\t// Warmup\n");
-    code.push_str("\tfor i := 0; i < warmup; i++ {\n");
-    if let Some(each) = each_hook {
-        for line in each.lines() {
-            code.push_str(&format!("\t\t{}\n", line));
-        }
-    }
-    code.push_str(&format!("\t\t_ = {}\n", impl_code));
-    code.push_str("\t}\n");
-
-    // Timed run
-    code.push_str("\n\t// Timed run\n");
-    code.push_str("\tvar totalNanos uint64\n");
-    code.push_str("\tfor i := 0; i < iterations; i++ {\n");
-    if let Some(each) = each_hook {
-        for line in each.lines() {
-            code.push_str(&format!("\t\t{}\n", line));
-        }
-    }
-    code.push_str("\t\tstart := time.Now()\n");
-    code.push_str(&format!("\t\t_ = {}\n", impl_code));
-    code.push_str("\t\telapsed := time.Since(start).Nanoseconds()\n");
-    code.push_str("\t\tsamples[i] = uint64(elapsed)\n");
-    code.push_str("\t\ttotalNanos += uint64(elapsed)\n");
-    code.push_str("\t}\n");
-
-    // Phase 3: After hook (runs once after benchmark)
+    // After hook (common for both modes)
     if let Some(after) = after_hook {
         code.push_str("\n\t// After hook\n");
         for line in after.lines() {

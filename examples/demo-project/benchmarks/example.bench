@@ -2,9 +2,15 @@ use std::constants
 use std::charting
 
 suite example {
-    description: "Example benchmark to get you started"
-    iterations: 5000
-    warmup: 100
+    description: "Example benchmark showcasing auto-calibration and sink patterns"
+    
+    mode: auto
+    targetTime: 3000
+    minIterations: 10
+    maxIterations: 1000000
+    sink: true
+    warmup: 1000
+    
     compare: true
     baseline: "go"
 
@@ -55,17 +61,26 @@ suite example {
         ts: sha256SumTs(data)
     }
 
-    bench sha256Bench2 {
+    bench sha256BenchFixed {
+        mode: fixed
+        iterations: 10000
+        warmup: 500
+        
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
     }
 
-        bench sha256Bench3 {
+    bench sha256BenchQuick {
+        targetTime: 1000
+        minIterations: 100
+        
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
     }
 
-    bench sha256Bench4 {
+    bench sha256BenchNoSink {
+        sink: false
+        
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
     }
