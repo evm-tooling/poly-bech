@@ -101,49 +101,89 @@ function runBenchmark(fn: () => any, iterations: number, warmup: number, useSink
     };
 }
 
-// Auto-calibrating benchmark with sink pattern
-function runBenchmarkAuto(fn: () => any, targetTimeMs: number, minIters: number, maxIters: number, useSink: boolean = true): BenchResult {
+// Auto-calibrating benchmark (time-based, like Go's testing.B)
+// Total time is approximately targetTimeMs
+function runBenchmarkAuto(fn: () => any, targetTimeMs: number, useSink: boolean = true): BenchResult {
     const targetNanos = targetTimeMs * 1e6;
     
-    // Calibration phase
-    let iterations = 1;
-    while (iterations < maxIters) {
-        const start = now();
-        for (let i = 0; i < iterations; i++) {
+    // Brief warmup (100 iterations)
+    for (let i = 0; i < 100; i++) {
+        if (useSink) {
+            __polybench_sink = fn();
+        } else {
+            fn();
+        }
+    }
+    
+    // Adaptive measurement phase - no per-iteration timing
+    let batchSize = 1;
+    let totalIterations = 0;
+    let totalNanos = 0;
+    
+    while (totalNanos < targetNanos) {
+        const batchStart = now();
+        for (let i = 0; i < batchSize; i++) {
             if (useSink) {
                 __polybench_sink = fn();
             } else {
                 fn();
             }
         }
-        const elapsed = now() - start;
+        const batchElapsed = now() - batchStart;
         
-        if (elapsed >= targetNanos) {
+        totalIterations += batchSize;
+        totalNanos += batchElapsed;
+        
+        if (totalNanos >= targetNanos) {
             break;
         }
         
-        if (elapsed > 0) {
-            let newIters = Math.floor(iterations * (targetNanos / elapsed) * 1.2);
-            if (newIters <= iterations) {
-                newIters = iterations * 2;
+        if (batchElapsed > 0) {
+            const remainingNanos = targetNanos - totalNanos;
+            let newSize = Math.floor(batchSize * (remainingNanos / batchElapsed) * 1.2);
+            if (newSize <= batchSize) {
+                newSize = batchSize * 2;
             }
-            iterations = newIters;
+            newSize = Math.min(newSize, batchSize * 100);
+            newSize = Math.max(newSize, batchSize + 1);
+            batchSize = newSize;
         } else {
-            iterations *= 10;
-        }
-        
-        if (iterations > maxIters) {
-            iterations = maxIters;
+            batchSize *= 10;
         }
     }
     
-    if (iterations < minIters) {
-        iterations = minIters;
+    const nanosPerOp = totalNanos / totalIterations;
+    const opsPerSec = 1e9 / nanosPerOp;
+    
+    // Collect samples for statistical analysis
+    const sampleCount = Math.min(1000, totalIterations);
+    const samples: number[] = new Array(sampleCount);
+    for (let i = 0; i < sampleCount; i++) {
+        const start = now();
+        if (useSink) {
+            __polybench_sink = fn();
+        } else {
+            fn();
+        }
+        samples[i] = now() - start;
     }
     
-    // Warmup (10% of iterations, min 10)
-    const warmup = Math.max(Math.floor(iterations / 10), 10);
+    return {
+        iterations: totalIterations,
+        totalNanos,
+        nanosPerOp,
+        opsPerSec,
+        samples,
+    };
+}
+
+// Fixed iterations benchmark with per-iteration hook
+function runBenchmarkWithHook(fn: () => any, eachHook: () => void, iterations: number, warmup: number, useSink: boolean = true): BenchResult {
+    const samples: number[] = new Array(iterations);
+    
+    // Warmup
     for (let i = 0; i < warmup; i++) {
+        eachHook();
         if (useSink) {
             __polybench_sink = fn();
         } else {
@@ -152,9 +192,9 @@ function runBenchmarkAuto(fn: () => any, targetTimeMs: number, minIters: number,
     }
     
     // Timed run
-    const samples: number[] = new Array(iterations);
     let totalNanos = 0;
     for (let i = 0; i < iterations; i++) {
+        eachHook(); // Run before timing
         const start = now();
         if (useSink) {
             __polybench_sink = fn();
@@ -171,6 +211,84 @@ function runBenchmarkAuto(fn: () => any, targetTimeMs: number, minIters: number,
     
     return {
         iterations,
+        totalNanos,
+        nanosPerOp,
+        opsPerSec,
+        samples,
+    };
+}
+
+// Auto-calibrating benchmark with per-iteration hook (time-based, like Go's testing.B)
+function runBenchmarkAutoWithHook(fn: () => any, eachHook: () => void, targetTimeMs: number, useSink: boolean = true): BenchResult {
+    const targetNanos = targetTimeMs * 1e6;
+    
+    // Brief warmup (100 iterations)
+    for (let i = 0; i < 100; i++) {
+        eachHook();
+        if (useSink) {
+            __polybench_sink = fn();
+        } else {
+            fn();
+        }
+    }
+    
+    // Adaptive measurement phase - no per-iteration timing
+    let batchSize = 1;
+    let totalIterations = 0;
+    let totalNanos = 0;
+    
+    while (totalNanos < targetNanos) {
+        const batchStart = now();
+        for (let i = 0; i < batchSize; i++) {
+            eachHook();
+            if (useSink) {
+                __polybench_sink = fn();
+            } else {
+                fn();
+            }
+        }
+        const batchElapsed = now() - batchStart;
+        
+        totalIterations += batchSize;
+        totalNanos += batchElapsed;
+        
+        if (totalNanos >= targetNanos) {
+            break;
+        }
+        
+        if (batchElapsed > 0) {
+            const remainingNanos = targetNanos - totalNanos;
+            let newSize = Math.floor(batchSize * (remainingNanos / batchElapsed) * 1.2);
+            if (newSize <= batchSize) {
+                newSize = batchSize * 2;
+            }
+            newSize = Math.min(newSize, batchSize * 100);
+            newSize = Math.max(newSize, batchSize + 1);
+            batchSize = newSize;
+        } else {
+            batchSize *= 10;
+        }
+    }
+    
+    const nanosPerOp = totalNanos / totalIterations;
+    const opsPerSec = 1e9 / nanosPerOp;
+    
+    // Collect samples for statistical analysis
+    const sampleCount = Math.min(1000, totalIterations);
+    const samples: number[] = new Array(sampleCount);
+    for (let i = 0; i < sampleCount; i++) {
+        eachHook();
+        const start = now();
+        if (useSink) {
+            __polybench_sink = fn();
+        } else {
+            fn();
+        }
+        samples[i] = now() - start;
+    }
+    
+    return {
+        iterations: totalIterations,
         totalNanos,
         nanosPerOp,
         opsPerSec,
@@ -322,25 +440,119 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec) -> Result<()> {
     }
 
     let use_sink = if bench.use_sink { "true" } else { "false" };
+    
+    // Check for lifecycle hooks
+    let before_hook = bench.before_hooks.get(&Lang::TypeScript);
+    let after_hook = bench.after_hooks.get(&Lang::TypeScript);
+    let each_hook = bench.each_hooks.get(&Lang::TypeScript);
+    
+    // Generate before/after wrapper if needed
+    let has_before_or_after = before_hook.is_some() || after_hook.is_some();
+    
+    // Generate hook code
+    let before_code = before_hook
+        .map(|h| format!("    // Before hook\n    {}\n", h.trim()))
+        .unwrap_or_default();
+    let after_code = after_hook
+        .map(|h| format!("\n    // After hook\n    {}", h.trim()))
+        .unwrap_or_default();
 
     match bench.mode {
         BenchMode::Auto => {
-            code.push_str(&format!(r#"function bench_{}(): BenchResult {{
-    return runBenchmarkAuto(() => {{
+            if let Some(each) = each_hook {
+                // Auto mode with each hook
+                if has_before_or_after {
+                    code.push_str(&format!(r#"function bench_{}(): BenchResult {{
+{}    const result = runBenchmarkAutoWithHook(() => {{
         return {}
-    }}, {}, {}, {}, {});
+    }}, () => {{
+        {}
+    }}, {}, {});{}
+    return result;
 }}
 
-"#, bench.full_name, impl_code, bench.target_time_ms, bench.min_iterations, bench.max_iterations, use_sink));
+"#, bench.full_name, before_code, impl_code, each.trim(), 
+    bench.target_time_ms, use_sink, after_code));
+                } else {
+                    code.push_str(&format!(r#"function bench_{}(): BenchResult {{
+    return runBenchmarkAutoWithHook(() => {{
+        return {}
+    }}, () => {{
+        {}
+    }}, {}, {});
+}}
+
+"#, bench.full_name, impl_code, each.trim(), 
+    bench.target_time_ms, use_sink));
+                }
+            } else if has_before_or_after {
+                // Auto mode with before/after but no each hook
+                code.push_str(&format!(r#"function bench_{}(): BenchResult {{
+{}    const result = runBenchmarkAuto(() => {{
+        return {}
+    }}, {}, {});{}
+    return result;
+}}
+
+"#, bench.full_name, before_code, impl_code, 
+    bench.target_time_ms, use_sink, after_code));
+            } else {
+                // Auto mode without hooks
+                code.push_str(&format!(r#"function bench_{}(): BenchResult {{
+    return runBenchmarkAuto(() => {{
+        return {}
+    }}, {}, {});
+}}
+
+"#, bench.full_name, impl_code, bench.target_time_ms, use_sink));
+            }
         }
         BenchMode::Fixed => {
-            code.push_str(&format!(r#"function bench_{}(): BenchResult {{
+            if let Some(each) = each_hook {
+                // Fixed mode with each hook
+                if has_before_or_after {
+                    code.push_str(&format!(r#"function bench_{}(): BenchResult {{
+{}    const result = runBenchmarkWithHook(() => {{
+        return {}
+    }}, () => {{
+        {}
+    }}, {}, {}, {});{}
+    return result;
+}}
+
+"#, bench.full_name, before_code, impl_code, each.trim(), 
+    bench.iterations, bench.warmup, use_sink, after_code));
+                } else {
+                    code.push_str(&format!(r#"function bench_{}(): BenchResult {{
+    return runBenchmarkWithHook(() => {{
+        return {}
+    }}, () => {{
+        {}
+    }}, {}, {}, {});
+}}
+
+"#, bench.full_name, impl_code, each.trim(), bench.iterations, bench.warmup, use_sink));
+                }
+            } else if has_before_or_after {
+                // Fixed mode with before/after but no each hook
+                code.push_str(&format!(r#"function bench_{}(): BenchResult {{
+{}    const result = runBenchmark(() => {{
+        return {}
+    }}, {}, {}, {});{}
+    return result;
+}}
+
+"#, bench.full_name, before_code, impl_code, bench.iterations, bench.warmup, use_sink, after_code));
+            } else {
+                // Fixed mode without hooks
+                code.push_str(&format!(r#"function bench_{}(): BenchResult {{
     return runBenchmark(() => {{
         return {}
     }}, {}, {}, {});
 }}
 
 "#, bench.full_name, impl_code, bench.iterations, bench.warmup, use_sink));
+            }
         }
     }
 

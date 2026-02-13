@@ -44,6 +44,10 @@ pub enum TokenKind {
     TargetTime,     // targetTime
     MinIterations,  // minIterations
     MaxIterations,  // maxIterations
+    
+    // Statistical analysis keywords
+    OutlierDetection,  // outlierDetection (true/false)
+    CvThreshold,       // cvThreshold (percentage)
 
     // Phase 5: Fixture keywords
     Shape,       // shape
@@ -129,6 +133,8 @@ impl TokenKind {
                 | TokenKind::TargetTime
                 | TokenKind::MinIterations
                 | TokenKind::MaxIterations
+                | TokenKind::OutlierDetection
+                | TokenKind::CvThreshold
                 | TokenKind::Shape
                 | TokenKind::Async
                 | TokenKind::Use
@@ -216,6 +222,10 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         "targetTime" => Some(TokenKind::TargetTime),
         "minIterations" => Some(TokenKind::MinIterations),
         "maxIterations" => Some(TokenKind::MaxIterations),
+        
+        // Statistical analysis keywords
+        "outlierDetection" => Some(TokenKind::OutlierDetection),
+        "cvThreshold" => Some(TokenKind::CvThreshold),
         
         // Phase 5: Fixture keywords
         "shape" => Some(TokenKind::Shape),

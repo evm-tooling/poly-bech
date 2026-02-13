@@ -2,14 +2,17 @@ use std::constants
 use std::charting
 
 suite example {
-    description: "Example benchmark showcasing auto-calibration and sink patterns"
+    description: "Example benchmark showcasing auto-calibration, sink patterns, statistical analysis, and lifecycle hooks"
     
     mode: auto
-    targetTime: 3000
-    minIterations: 10
+    targetTime: 20000
+    minIterations: 10000
     maxIterations: 1000000
-    sink: true
+    sink: false
     warmup: 1000
+    
+    outlierDetection: false
+    cvThreshold: 5.0
     
     compare: true
     baseline: "go"
@@ -17,10 +20,13 @@ suite example {
     setup go {
         import (
             "crypto/sha256"
+            "sync"
         )
 
         declare {
             var x float64 = std_PI
+            var setupCounter int
+            var mu sync.Mutex
         }
 
         init {
@@ -34,12 +40,28 @@ suite example {
             func sha256SumGo1(data float64) float64 {
                 return data * x
             }
+            
+            func incrementCounter() {
+                mu.Lock()
+                setupCounter++
+                mu.Unlock()
+            }
+            
+            func resetCounter() {
+                mu.Lock()
+                setupCounter = 0
+                mu.Unlock()
+            }
         }
     }
 
     setup ts {
         import {
             import { createHash } from 'node:crypto';
+        }
+
+        declare {
+            let setupCounter = 0;
         }
 
         init {
@@ -49,6 +71,14 @@ suite example {
             function sha256SumTs(data: Uint8Array): Buffer {
                 return createHash('sha256').update(Buffer.from(data)).digest()
             }
+            
+            function incrementCounter(): void {
+                setupCounter++;
+            }
+            
+            function resetCounter(): void {
+                setupCounter = 0;
+            }
         }
     }
 
@@ -57,33 +87,15 @@ suite example {
     }
 
     bench sha256Bench {
-        go: sha256SumGo(data)
-        ts: sha256SumTs(data)
-    }
-
-    bench sha256BenchFixed {
-        mode: fixed
-        iterations: 10000
-        warmup: 500
-        
-        go: sha256SumGo(data)
-        ts: sha256SumTs(data)
-    }
-
-    bench sha256BenchQuick {
-        targetTime: 1000
-        minIterations: 100
-        
-        go: sha256SumGo(data)
-        ts: sha256SumTs(data)
-    }
-
-    bench sha256BenchNoSink {
+        description: "Basic SHA256 benchmark using suite defaults (auto mode, outlier detection enabled)"
+        mode: auto
+        targetTime: 20000
         sink: false
-        
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
     }
+
+    
 
     after {
         charting.drawBarChart(

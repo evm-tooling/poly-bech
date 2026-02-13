@@ -223,93 +223,136 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
     } else {
         ""
     };
+    
+    // Generate hook code
+    let before_hook = bench.before_hooks.get(&Lang::Go)
+        .map(|h| format!("\t// Before hook\n\t{}\n\n", h.trim()))
+        .unwrap_or_default();
+    let after_hook = bench.after_hooks.get(&Lang::Go)
+        .map(|h| format!("\n\t// After hook\n\t{}\n", h.trim()))
+        .unwrap_or_default();
+    let each_hook = bench.each_hooks.get(&Lang::Go)
+        .map(|h| format!("\t\t\t{}\n", h.trim()))
+        .unwrap_or_default();
+    let each_hook_warmup = if !each_hook.is_empty() {
+        each_hook.clone()
+    } else {
+        String::new()
+    };
 
     match bench.mode {
         BenchMode::Auto => {
-            // Auto-calibration mode
+            // Auto-calibration mode: like Go's testing.B
+            // Total time is approximately targetTime - no per-iteration timing
             code.push_str(&format!(r#"func bench_{}(iterations int) BenchResult {{
-	// Auto-calibration mode: iterations parameter is a hint, actual count may vary
+	// Auto-calibration mode: iterations parameter is ignored, runs for targetTime
 	targetNanos := int64({})
-	minIters := {}
-	maxIters := {}
 {}
-	// Calibration phase
-	iters := 1
-	for iters < maxIters {{
-		start := time.Now()
-		for i := 0; i < iters; i++ {{
-			{}
-{}		}}
-		elapsed := time.Since(start).Nanoseconds()
-		if elapsed >= targetNanos {{
-			break
-		}}
-		if elapsed > 0 {{
-			newIters := int(float64(iters) * float64(targetNanos) / float64(elapsed) * 1.2)
-			if newIters <= iters {{
-				newIters = iters * 2
-			}}
-			iters = newIters
-		}} else {{
-			iters *= 10
-		}}
-		if iters > maxIters {{
-			iters = maxIters
-		}}
-	}}
-	if iters < minIters {{
-		iters = minIters
-	}}
-	
-	// Warmup (10% of calibrated iterations)
-	warmup := iters / 10
-	if warmup < 10 {{
-		warmup = 10
-	}}
-	for i := 0; i < warmup; i++ {{
-		{}
+{}	// Brief warmup (100 iterations)
+	for i := 0; i < 100; i++ {{
+{}		{}
 {}	}}
 	
-	// Timed run
-	samples := make([]uint64, iters)
-	var totalNanos uint64
-	for i := 0; i < iters; i++ {{
-		start := time.Now()
-		{}
-{}		elapsed := time.Since(start).Nanoseconds()
-		samples[i] = uint64(elapsed)
-		totalNanos += uint64(elapsed)
+	// Adaptive measurement phase - no per-iteration timing
+	batchSize := 1
+	totalIterations := 0
+	var totalNanos int64
+	
+	for totalNanos < targetNanos {{
+		batchStart := time.Now()
+		for i := 0; i < batchSize; i++ {{
+{}			{}
+{}		}}
+		batchElapsed := time.Since(batchStart).Nanoseconds()
+		
+		totalIterations += batchSize
+		totalNanos += batchElapsed
+		
+		if totalNanos >= targetNanos {{
+			break
+		}}
+		
+		if batchElapsed > 0 {{
+			remainingNanos := targetNanos - totalNanos
+			// Calculate predicted batch size to fill remaining time
+			predicted := int(float64(batchSize) * float64(remainingNanos) / float64(batchElapsed))
+			
+			var newSize int
+			if remainingNanos < batchElapsed {{
+				// Less time remaining than last batch took - use exact prediction, no growth
+				newSize = predicted
+				if newSize < 1 {{
+					newSize = 1
+				}}
+			}} else if remainingNanos < targetNanos / 5 {{
+				// Near target (<20% remaining): conservative, slight buffer only
+				newSize = int(float64(predicted) * 0.9)
+				if newSize < 1 {{
+					newSize = 1
+				}}
+			}} else {{
+				// Early phase: grow faster but cap growth
+				newSize = int(float64(predicted) * 1.1)
+				if newSize <= batchSize {{
+					newSize = batchSize * 2
+				}}
+				// Cap at 10x growth per iteration
+				if newSize > batchSize * 10 {{
+					newSize = batchSize * 10
+				}}
+			}}
+			if newSize < 1 {{
+				newSize = 1
+			}}
+			batchSize = newSize
+		}} else {{
+			batchSize *= 10
+		}}
 	}}
 	
-	nanosPerOp := float64(totalNanos) / float64(iters)
+	nanosPerOp := float64(totalNanos) / float64(totalIterations)
 	opsPerSec := 1e9 / nanosPerOp
 	
+	// Collect samples for statistical analysis
+	sampleCount := 1000
+	if sampleCount > totalIterations {{
+		sampleCount = totalIterations
+	}}
+	samples := make([]uint64, sampleCount)
+	for i := 0; i < sampleCount; i++ {{
+{}		start := time.Now()
+		{}
+{}		samples[i] = uint64(time.Since(start).Nanoseconds())
+	}}
+{}
 	return BenchResult{{
-		Iterations:  uint64(iters),
-		TotalNanos:  totalNanos,
+		Iterations:  uint64(totalIterations),
+		TotalNanos:  uint64(totalNanos),
 		NanosPerOp:  nanosPerOp,
 		OpsPerSec:   opsPerSec,
 		Samples:     samples,
 	}}
 }}
 
-"#, bench.full_name, bench.target_time_ms * 1_000_000, bench.min_iterations, bench.max_iterations, 
-    sink_decl, bench_call, sink_keepalive, bench_call, sink_keepalive, bench_call, sink_keepalive));
+"#, bench.full_name, bench.target_time_ms * 1_000_000, 
+    sink_decl, before_hook, each_hook_warmup, bench_call, sink_keepalive,
+    each_hook, bench_call, sink_keepalive,
+    each_hook, bench_call, sink_keepalive, after_hook));
         }
         BenchMode::Fixed => {
-            // Fixed iteration mode (original behavior with sink pattern)
+            // Fixed iteration mode with hooks
             code.push_str(&format!(r#"func bench_{}(iterations int) BenchResult {{
 	samples := make([]uint64, iterations)
 {}
-	// Warmup
+{}	// Warmup
 	for i := 0; i < {}; i++ {{
-		{}
+{}		{}
 {}	}}
 	
 	// Timed run
 	var totalNanos uint64
 	for i := 0; i < iterations; i++ {{
-		start := time.Now()
+{}		start := time.Now()
 		{}
 {}		elapsed := time.Since(start).Nanoseconds()
 		samples[i] = uint64(elapsed)
@@ -318,7 +361,7 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 	
 	nanosPerOp := float64(totalNanos) / float64(iterations)
 	opsPerSec := 1e9 / nanosPerOp
-	
+{}
 	return BenchResult{{
 		Iterations:  uint64(iterations),
 		TotalNanos:  totalNanos,
@@ -328,7 +371,9 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 	}}
 }}
 
-"#, bench.full_name, sink_decl, bench.warmup, bench_call, sink_keepalive, bench_call, sink_keepalive));
+"#, bench.full_name, sink_decl, before_hook, bench.warmup, 
+    each_hook_warmup, bench_call, sink_keepalive,
+    each_hook, bench_call, sink_keepalive, after_hook));
         }
     }
 

@@ -76,6 +76,10 @@ fn lower_suite(suite: &Suite, base_dir: Option<&Path>, stdlib_imports: &HashSet<
     ir.max_iterations = suite.max_iterations.unwrap_or(1_000_000);
     ir.sink = suite.sink;  // Already defaults to true in AST
     
+    // Statistical analysis settings
+    ir.outlier_detection = suite.outlier_detection;  // Already defaults to true in AST
+    ir.cv_threshold = suite.cv_threshold.unwrap_or(crate::DEFAULT_CV_THRESHOLD);
+    
     // Copy stdlib imports to suite
     ir.stdlib_imports = stdlib_imports.clone();
 
@@ -198,6 +202,8 @@ fn lower_benchmark(
     spec.min_iterations = benchmark.min_iterations.unwrap_or(suite_ir.min_iterations);
     spec.max_iterations = benchmark.max_iterations.unwrap_or(suite_ir.max_iterations);
     spec.use_sink = benchmark.sink.unwrap_or(suite_ir.sink);
+    spec.outlier_detection = benchmark.outlier_detection.unwrap_or(suite_ir.outlier_detection);
+    spec.cv_threshold = benchmark.cv_threshold.unwrap_or(suite_ir.cv_threshold);
     
     // Copy skip conditions
     for (lang, code_block) in &benchmark.skip {

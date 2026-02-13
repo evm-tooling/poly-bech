@@ -35,41 +35,94 @@ pub struct Measurement {
     pub allocs_per_op: Option<u64>,
     /// Raw sample times in nanoseconds (for detailed analysis)
     pub raw_samples: Option<Vec<u64>>,
+    /// Coefficient of variation (std_dev / mean * 100) - measures result stability
+    pub cv_percent: Option<f64>,
+    /// Number of outliers removed via IQR method
+    pub outliers_removed: Option<u64>,
+    /// Whether the benchmark result is considered stable (CV < threshold)
+    pub is_stable: Option<bool>,
 }
 
+/// Default CV threshold percentage (5%) - results with CV above this are considered unstable
+pub const DEFAULT_CV_THRESHOLD: f64 = 5.0;
+
 impl Measurement {
-    /// Create a new measurement from raw timing data
+    /// Create a new measurement from raw timing data with outlier detection
     pub fn from_samples(raw_samples: Vec<u64>, iterations: u64) -> Self {
-        let total_nanos: u64 = raw_samples.iter().sum();
-        let nanos_per_op = total_nanos as f64 / iterations as f64;
+        Self::from_samples_with_options(raw_samples, iterations, true, DEFAULT_CV_THRESHOLD)
+    }
+    
+    /// Create a new measurement from raw timing data with configurable outlier detection
+    pub fn from_samples_with_options(
+        raw_samples: Vec<u64>,
+        iterations: u64,
+        remove_outliers: bool,
+        cv_threshold: f64,
+    ) -> Self {
+        let original_count = raw_samples.len();
+        
+        // Sort samples first
+        let mut sorted = raw_samples.clone();
+        sorted.sort_unstable();
+        
+        // Optionally remove outliers using IQR method
+        let (filtered_samples, outliers_removed) = if remove_outliers && sorted.len() >= 4 {
+            let filtered = remove_outliers_iqr(&sorted);
+            let removed = original_count.saturating_sub(filtered.len()) as u64;
+            (filtered, removed)
+        } else {
+            (sorted.clone(), 0)
+        };
+        
+        // Use filtered samples for statistics if available, otherwise original
+        let samples_for_stats = if filtered_samples.is_empty() {
+            &sorted
+        } else {
+            &filtered_samples
+        };
+        
+        // Calculate totals from filtered samples
+        let total_nanos: u64 = samples_for_stats.iter().sum();
+        let effective_iterations = samples_for_stats.len() as u64;
+        let nanos_per_op = if effective_iterations > 0 {
+            total_nanos as f64 / effective_iterations as f64
+        } else {
+            0.0
+        };
         let ops_per_sec = if nanos_per_op > 0.0 {
             1_000_000_000.0 / nanos_per_op
         } else {
             0.0
         };
 
-        let mut sorted = raw_samples.clone();
-        sorted.sort_unstable();
-
-        let min_nanos = sorted.first().copied();
-        let max_nanos = sorted.last().copied();
-        let p50_nanos = percentile(&sorted, 50);
-        let p75_nanos = percentile(&sorted, 75);
-        let p99_nanos = percentile(&sorted, 99);
-        let p995_nanos = percentile_f(&sorted, 99.5);
+        let min_nanos = samples_for_stats.first().copied();
+        let max_nanos = samples_for_stats.last().copied();
+        let p50_nanos = percentile(samples_for_stats, 50);
+        let p75_nanos = percentile(samples_for_stats, 75);
+        let p99_nanos = percentile(samples_for_stats, 99);
+        let p995_nanos = percentile_f(samples_for_stats, 99.5);
         
-        // Calculate relative margin of error (RME)
-        let rme_percent = if sorted.len() > 1 {
+        // Calculate standard deviation and CV
+        let (rme_percent, cv_percent, is_stable) = if samples_for_stats.len() > 1 {
             let mean = nanos_per_op;
-            let variance: f64 = sorted.iter()
+            let variance: f64 = samples_for_stats.iter()
                 .map(|&x| (x as f64 - mean).powi(2))
-                .sum::<f64>() / (sorted.len() - 1) as f64;
+                .sum::<f64>() / (samples_for_stats.len() - 1) as f64;
             let std_dev = variance.sqrt();
-            let std_error = std_dev / (sorted.len() as f64).sqrt();
+            let std_error = std_dev / (samples_for_stats.len() as f64).sqrt();
+            
             // 95% confidence interval uses t-value ~1.96 for large samples
-            Some((std_error / mean) * 100.0 * 1.96)
+            let rme = (std_error / mean) * 100.0 * 1.96;
+            
+            // Coefficient of variation: (std_dev / mean) * 100
+            let cv = if mean > 0.0 { (std_dev / mean) * 100.0 } else { 0.0 };
+            
+            // Stability check: CV below threshold
+            let stable = cv <= cv_threshold;
+            
+            (Some(rme), Some(cv), Some(stable))
         } else {
-            None
+            (None, None, None)
         };
         
         let sample_count = raw_samples.len() as u64;
@@ -90,6 +143,9 @@ impl Measurement {
             bytes_per_op: None,
             allocs_per_op: None,
             raw_samples: Some(raw_samples),
+            cv_percent,
+            outliers_removed: Some(outliers_removed),
+            is_stable,
         }
     }
 
@@ -118,6 +174,9 @@ impl Measurement {
             bytes_per_op: None,
             allocs_per_op: None,
             raw_samples: None,
+            cv_percent: None,
+            outliers_removed: None,
+            is_stable: None,
         }
     }
 
@@ -171,6 +230,34 @@ fn percentile_f(sorted: &[u64], p: f64) -> Option<u64> {
     }
     let idx = ((sorted.len() as f64 * p / 100.0) as usize).min(sorted.len() - 1);
     Some(sorted[idx])
+}
+
+/// Remove outliers using the IQR (Interquartile Range) method
+/// 
+/// Outliers are defined as values outside [Q1 - 1.5*IQR, Q3 + 1.5*IQR]
+/// where IQR = Q3 - Q1.
+fn remove_outliers_iqr(sorted: &[u64]) -> Vec<u64> {
+    if sorted.len() < 4 {
+        return sorted.to_vec();
+    }
+    
+    // Calculate Q1 (25th percentile) and Q3 (75th percentile)
+    let q1_idx = sorted.len() / 4;
+    let q3_idx = (sorted.len() * 3) / 4;
+    
+    let q1 = sorted[q1_idx] as f64;
+    let q3 = sorted[q3_idx] as f64;
+    let iqr = q3 - q1;
+    
+    // Define bounds for outlier detection
+    let lower_bound = (q1 - 1.5 * iqr).max(0.0) as u64;
+    let upper_bound = (q3 + 1.5 * iqr) as u64;
+    
+    // Filter out outliers
+    sorted.iter()
+        .copied()
+        .filter(|&s| s >= lower_bound && s <= upper_bound)
+        .collect()
 }
 
 /// Comparison between two measurements

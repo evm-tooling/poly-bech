@@ -290,6 +290,15 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
         // Only output sink: false since true is the default
         write!(out, "{}sink: false\n", inner).unwrap();
     }
+    
+    // Statistical analysis settings - only output non-default values
+    if !suite.outlier_detection {
+        // Only output outlierDetection: false since true is the default
+        write!(out, "{}outlierDetection: false\n", inner).unwrap();
+    }
+    if let Some(cv_threshold) = suite.cv_threshold {
+        write!(out, "{}cvThreshold: {}\n", inner, cv_threshold).unwrap();
+    }
 
     // Add blank line after properties if there are any setups, fixtures, or benchmarks
     let has_content = suite.global_setup.is_some() || !suite.setups.is_empty() || !suite.fixtures.is_empty() || !suite.benchmarks.is_empty();
@@ -497,6 +506,13 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
     if let Some(sink) = bench.sink {
         // Only output if explicitly set to override suite default
         write!(out, "{}sink: {}\n", inner, if sink { "true" } else { "false" }).unwrap();
+    }
+    if let Some(outlier_detection) = bench.outlier_detection {
+        // Only output if explicitly set to override suite default
+        write!(out, "{}outlierDetection: {}\n", inner, if outlier_detection { "true" } else { "false" }).unwrap();
+    }
+    if let Some(cv_threshold) = bench.cv_threshold {
+        write!(out, "{}cvThreshold: {}\n", inner, cv_threshold).unwrap();
     }
 
     for lang in &lang_order {

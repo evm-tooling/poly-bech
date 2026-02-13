@@ -96,6 +96,12 @@ pub struct SuiteIR {
     /// Enable sink/black-box pattern to prevent dead code elimination
     pub sink: bool,
     
+    // Statistical analysis settings
+    /// Enable IQR-based outlier detection
+    pub outlier_detection: bool,
+    /// Coefficient of variation threshold percentage for stability check
+    pub cv_threshold: f64,
+    
     /// Standard library modules imported (e.g., "constants", "anvil")
     pub stdlib_imports: HashSet<String>,
     
@@ -117,6 +123,9 @@ pub struct SuiteIR {
     pub benchmarks: Vec<BenchmarkSpec>,
 }
 
+/// Default CV threshold percentage (5%) - matches poly-bench-runtime
+pub const DEFAULT_CV_THRESHOLD: f64 = 5.0;
+
 impl SuiteIR {
     pub fn new(name: String) -> Self {
         Self {
@@ -135,6 +144,9 @@ impl SuiteIR {
             min_iterations: 10,             // At least 10 iterations
             max_iterations: 1_000_000,      // Cap at 1M iterations
             sink: true,                     // Enabled by default to prevent DCE
+            // Statistical analysis defaults
+            outlier_detection: true,        // Enabled by default for statistical accuracy
+            cv_threshold: DEFAULT_CV_THRESHOLD, // 5% threshold
             stdlib_imports: HashSet::new(),
             imports: HashMap::new(),
             declarations: HashMap::new(),
@@ -274,6 +286,10 @@ pub struct BenchmarkSpec {
     pub max_iterations: u64,
     /// Enable sink/black-box pattern
     pub use_sink: bool,
+    /// Enable IQR-based outlier detection
+    pub outlier_detection: bool,
+    /// Coefficient of variation threshold percentage for stability check
+    pub cv_threshold: f64,
     
     // Phase 3: Lifecycle hooks
     /// Pre-benchmark hook (runs once before iterations)
@@ -307,6 +323,8 @@ impl BenchmarkSpec {
             min_iterations: 10,
             max_iterations: 1_000_000,
             use_sink: true,
+            outlier_detection: true,
+            cv_threshold: DEFAULT_CV_THRESHOLD,
             before_hooks: HashMap::new(),
             after_hooks: HashMap::new(),
             each_hooks: HashMap::new(),

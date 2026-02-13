@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="440" viewBox="0 0 760 440">
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="440" viewBox="0 0 520 440">
 <defs>
 <linearGradient id="goGrad" x1="0" y1="0" x2="1" y2="0">
 <stop offset="0%" stop-color="#00ADD8" stop-opacity="0.95"/>
@@ -9,57 +9,28 @@
 <stop offset="100%" stop-color="#1D4ED8" stop-opacity="0.85"/>
 </linearGradient>
 </defs>
-<rect width="760" height="440" fill="#FAFAFA" rx="12"/>
-<rect x=".5" y=".5" width="759" height="439" fill="none" stroke="#E5E7EB" rx="12"/>
-<text x="380" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="700" fill="#111827">Performance Comparison</text>
-<text x="380" y="48" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#6B7280">Go vs TypeScript SHA256 Benchmarks</text>
-<g transform="translate(96,260)">
+<rect width="520" height="440" fill="#FAFAFA" rx="12"/>
+<rect x=".5" y=".5" width="519" height="439" fill="none" stroke="#E5E7EB" rx="12"/>
+<text x="260" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="700" fill="#111827">Performance Comparison</text>
+<text x="260" y="48" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#6B7280">Go vs TypeScript SHA256 Benchmarks</text>
+<g transform="translate(216,260)">
   <line x1="-10" y1="0" x2="98" y2="0" stroke="#E5E7EB" stroke-width="1"/>
-  <rect x="0" y="-5.9" width="40" height="5.9" fill="url(#goGrad)" rx="3"/>
-  <text x="20" y="16" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="500" fill="#00ADD8">Go</text>
-  <rect x="48" y="-178.1" width="40" height="178.1" fill="url(#tsGrad)" rx="3"/>
-  <text x="68" y="-182.1" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="400" fill="#9CA3AF">11.46ms</text>
-  <text x="68" y="16" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="500" fill="#3178C6">TS</text>
-  <text x="44" y="34" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="500" fill="#111827">sha256Bench3</text>
-  <text x="44" y="48" text-anchor="middle" font-family="sans-serif" font-size="8" font-weight="600" fill="#00ADD8">30.1x faster</text>
-</g>
-<g transform="translate(256,260)">
-  <line x1="-10" y1="0" x2="98" y2="0" stroke="#E5E7EB" stroke-width="1"/>
-  <rect x="0" y="-6.0" width="40" height="6.0" fill="url(#goGrad)" rx="3"/>
+  <rect x="0" y="-19.2" width="40" height="19.2" fill="url(#goGrad)" rx="3"/>
+  <text x="20" y="-23.2" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#0E7490">67.99µs</text>
   <text x="20" y="16" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="500" fill="#00ADD8">Go</text>
   <rect x="48" y="-180.0" width="40" height="180.0" fill="url(#tsGrad)" rx="3"/>
-  <text x="68" y="-184.0" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="400" fill="#9CA3AF">11.58ms</text>
-  <text x="68" y="16" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="500" fill="#3178C6">TS</text>
-  <text x="44" y="34" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="500" fill="#111827">sha256Bench4</text>
-  <text x="44" y="48" text-anchor="middle" font-family="sans-serif" font-size="8" font-weight="600" fill="#00ADD8">29.8x faster</text>
-</g>
-<g transform="translate(416,260)">
-  <line x1="-10" y1="0" x2="98" y2="0" stroke="#E5E7EB" stroke-width="1"/>
-  <rect x="0" y="-6.0" width="40" height="6.0" fill="url(#goGrad)" rx="3"/>
-  <text x="20" y="16" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="500" fill="#00ADD8">Go</text>
-  <rect x="48" y="-170.4" width="40" height="170.4" fill="url(#tsGrad)" rx="3"/>
-  <text x="68" y="-174.4" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="400" fill="#9CA3AF">10.96ms</text>
+  <text x="68" y="-184.0" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="400" fill="#9CA3AF">637.04µs</text>
   <text x="68" y="16" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="500" fill="#3178C6">TS</text>
   <text x="44" y="34" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="500" fill="#111827">sha256Bench</text>
-  <text x="44" y="48" text-anchor="middle" font-family="sans-serif" font-size="8" font-weight="600" fill="#00ADD8">28.2x faster</text>
+  <text x="44" y="48" text-anchor="middle" font-family="sans-serif" font-size="8" font-weight="600" fill="#00ADD8">9.4x faster</text>
 </g>
-<g transform="translate(576,260)">
-  <line x1="-10" y1="0" x2="98" y2="0" stroke="#E5E7EB" stroke-width="1"/>
-  <rect x="0" y="-6.0" width="40" height="6.0" fill="url(#goGrad)" rx="3"/>
-  <text x="20" y="16" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="500" fill="#00ADD8">Go</text>
-  <rect x="48" y="-140.7" width="40" height="140.7" fill="url(#tsGrad)" rx="3"/>
-  <text x="68" y="-144.7" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="400" fill="#9CA3AF">9.05ms</text>
-  <text x="68" y="16" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="500" fill="#3178C6">TS</text>
-  <text x="44" y="34" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="500" fill="#111827">sha256Bench2</text>
-  <text x="44" y="48" text-anchor="middle" font-family="sans-serif" font-size="8" font-weight="600" fill="#00ADD8">23.4x faster</text>
-</g>
-<g transform="translate(380,320)">
-  <rect x="-140" width="14" height="14" fill="#00ADD8" rx="3"/><text x="-122" y="11" font-family="sans-serif" font-size="11" fill="#111827">Go (4 wins)</text>
+<g transform="translate(260,320)">
+  <rect x="-140" width="14" height="14" fill="#00ADD8" rx="3"/><text x="-122" y="11" font-family="sans-serif" font-size="11" fill="#111827">Go (1 wins)</text>
   <rect x="30" width="14" height="14" fill="#3178C6" rx="3"/><text x="48" y="11" font-family="sans-serif" font-size="11" fill="#111827">TypeScript (0 wins)</text>
 </g>
-<rect x="40" y="360" width="680" height="70" fill="#F9FAFB" stroke="#E5E7EB" rx="6"/>
+<rect x="40" y="360" width="440" height="70" fill="#F9FAFB" stroke="#E5E7EB" rx="6"/>
 <text x="52" y="378" font-family="sans-serif" font-size="10" font-weight="600" fill="#111827">SUMMARY STATISTICS</text>
-<text x="52" y="394" font-family="sans-serif" font-size="10" fill="#6B7280">• Go is 27.75x faster on average (geometric mean)</text>
-<text x="52" y="408" font-family="monospace" font-size="9" fill="#9CA3AF">• Avg p50: Go 83ns / TS 875ns  |  Avg p99: Go 104ns / TS 4.47µs</text>
-<text x="52" y="422" font-family="monospace" font-size="9" fill="#9CA3AF">• Avg ops/sec: Go 13.0M / TS 469.1K  |  Total benchmarks: 4</text>
+<text x="52" y="394" font-family="sans-serif" font-size="10" fill="#6B7280">• Go is 8.06x faster on average (geometric mean)</text>
+<text x="52" y="408" font-family="monospace" font-size="9" fill="#9CA3AF">• Avg p50: Go 83ns / TS 667ns  |  Avg p99: Go 84ns / TS 833ns</text>
+<text x="52" y="422" font-family="monospace" font-size="9" fill="#9CA3AF">• Avg ops/sec: Go 12.0M / TS 1.5M  |  Total benchmarks: 1</text>
 </svg>

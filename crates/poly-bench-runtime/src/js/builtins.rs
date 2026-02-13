@@ -62,14 +62,29 @@ pub const BENCHMARK_HARNESS: &str = r#"
         };
     }
 
-    // Run a benchmark with auto-calibration
-    function runBenchmarkAuto(fn, targetTimeMs, minIters, maxIters, useSink = true) {
+    // Run a benchmark with auto-calibration (time-based, like Go's testing.B)
+    // Total benchmark time is approximately targetTimeMs
+    function runBenchmarkAuto(fn, targetTimeMs, useSink = true) {
         const targetNanos = targetTimeMs * 1e6;
         
-        // Calibration phase: determine optimal iteration count
+        // Brief warmup (fixed 100 iterations to warm JIT)
+        for (let i = 0; i < 100; i++) {
+            if (useSink) {
+                globalThis.__polybench_sink = fn();
+            } else {
+                fn();
+            }
+        }
+        
+        // Adaptive measurement phase (like Go's testing.B)
+        // Run batches, scale up N, stop when total elapsed >= targetTime
         let iterations = 1;
-        while (iterations < maxIters) {
-            const start = now();
+        let totalIterations = 0;
+        let totalNanos = 0;
+        
+        while (totalNanos < targetNanos) {
+            // Run batch without per-iteration timing (fast)
+            const batchStart = now();
             for (let i = 0; i < iterations; i++) {
                 if (useSink) {
                     globalThis.__polybench_sink = fn();
@@ -77,62 +92,49 @@ pub const BENCHMARK_HARNESS: &str = r#"
                     fn();
                 }
             }
-            const elapsed = now() - start;
+            const batchElapsed = now() - batchStart;
             
-            if (elapsed >= targetNanos) {
+            totalIterations += iterations;
+            totalNanos += batchElapsed;
+            
+            if (totalNanos >= targetNanos) {
                 break;
             }
             
-            if (elapsed > 0) {
-                // Scale up to reach target time (with 20% buffer)
-                let newIters = Math.floor(iterations * (targetNanos / elapsed) * 1.2);
+            // Scale up for next batch (like Go's predictN)
+            if (batchElapsed > 0) {
+                const remainingNanos = targetNanos - totalNanos;
+                let newIters = Math.floor(iterations * (remainingNanos / batchElapsed) * 1.2);
                 if (newIters <= iterations) {
                     newIters = iterations * 2;
                 }
+                newIters = Math.min(newIters, iterations * 100);
+                newIters = Math.max(newIters, iterations + 1);
                 iterations = newIters;
             } else {
                 iterations *= 10;
             }
-            
-            if (iterations > maxIters) {
-                iterations = maxIters;
-            }
         }
         
-        if (iterations < minIters) {
-            iterations = minIters;
-        }
+        const nanosPerOp = totalNanos / totalIterations;
+        const opsPerSec = 1e9 / nanosPerOp;
         
-        // Warmup phase (10% of calibrated iterations, minimum 10)
-        const warmup = Math.max(Math.floor(iterations / 10), 10);
-        for (let i = 0; i < warmup; i++) {
-            if (useSink) {
-                globalThis.__polybench_sink = fn();
-            } else {
-                fn();
-            }
-        }
-        
-        // Timed phase
-        const samples = new Array(iterations);
-        let totalNanos = 0;
-        for (let i = 0; i < iterations; i++) {
+        // Generate representative samples for statistics (sample small subset)
+        // Run a few more iterations with per-iteration timing for variance
+        const sampleCount = Math.min(1000, totalIterations);
+        const samples = new Array(sampleCount);
+        for (let i = 0; i < sampleCount; i++) {
             const start = now();
             if (useSink) {
                 globalThis.__polybench_sink = fn();
             } else {
                 fn();
             }
-            const elapsed = now() - start;
-            samples[i] = elapsed;
-            totalNanos += elapsed;
+            samples[i] = now() - start;
         }
         
-        const nanosPerOp = totalNanos / iterations;
-        const opsPerSec = 1e9 / nanosPerOp;
-        
         return {
-            iterations: iterations,
+            iterations: totalIterations,
             totalNanos: totalNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
@@ -179,76 +181,74 @@ pub const BENCHMARK_HARNESS: &str = r#"
         };
     }
 
-    // Run an async benchmark with auto-calibration
-    async function runBenchmarkAutoAsync(fn, targetTimeMs, minIters, maxIters, useSink = true) {
+    // Run an async benchmark with auto-calibration (time-based)
+    async function runBenchmarkAutoAsync(fn, targetTimeMs, useSink = true) {
         const targetNanos = targetTimeMs * 1e6;
         
-        // Calibration phase
-        let iterations = 1;
-        while (iterations < maxIters) {
-            const start = now();
-            for (let i = 0; i < iterations; i++) {
+        // Brief warmup (fixed 100 iterations)
+        for (let i = 0; i < 100; i++) {
+            if (useSink) {
+                globalThis.__polybench_sink = await fn();
+            } else {
+                await fn();
+            }
+        }
+        
+        // Adaptive measurement phase - no per-iteration timing
+        let batchSize = 1;
+        let totalIterations = 0;
+        let totalNanos = 0;
+        
+        while (totalNanos < targetNanos) {
+            const batchStart = now();
+            for (let i = 0; i < batchSize; i++) {
                 if (useSink) {
                     globalThis.__polybench_sink = await fn();
                 } else {
                     await fn();
                 }
             }
-            const elapsed = now() - start;
+            const batchElapsed = now() - batchStart;
             
-            if (elapsed >= targetNanos) {
+            totalIterations += batchSize;
+            totalNanos += batchElapsed;
+            
+            if (totalNanos >= targetNanos) {
                 break;
             }
             
-            if (elapsed > 0) {
-                let newIters = Math.floor(iterations * (targetNanos / elapsed) * 1.2);
-                if (newIters <= iterations) {
-                    newIters = iterations * 2;
+            if (batchElapsed > 0) {
+                const remainingNanos = targetNanos - totalNanos;
+                let newSize = Math.floor(batchSize * (remainingNanos / batchElapsed) * 1.2);
+                if (newSize <= batchSize) {
+                    newSize = batchSize * 2;
                 }
-                iterations = newIters;
+                newSize = Math.min(newSize, batchSize * 100);
+                newSize = Math.max(newSize, batchSize + 1);
+                batchSize = newSize;
             } else {
-                iterations *= 10;
-            }
-            
-            if (iterations > maxIters) {
-                iterations = maxIters;
+                batchSize *= 10;
             }
         }
         
-        if (iterations < minIters) {
-            iterations = minIters;
-        }
+        const nanosPerOp = totalNanos / totalIterations;
+        const opsPerSec = 1e9 / nanosPerOp;
         
-        // Warmup phase
-        const warmup = Math.max(Math.floor(iterations / 10), 10);
-        for (let i = 0; i < warmup; i++) {
-            if (useSink) {
-                globalThis.__polybench_sink = await fn();
-            } else {
-                await fn();
-            }
-        }
-        
-        // Timed phase
-        const samples = new Array(iterations);
-        let totalNanos = 0;
-        for (let i = 0; i < iterations; i++) {
+        // Collect samples for statistical analysis
+        const sampleCount = Math.min(1000, totalIterations);
+        const samples = new Array(sampleCount);
+        for (let i = 0; i < sampleCount; i++) {
             const start = now();
             if (useSink) {
                 globalThis.__polybench_sink = await fn();
             } else {
                 await fn();
             }
-            const elapsed = now() - start;
-            samples[i] = elapsed;
-            totalNanos += elapsed;
+            samples[i] = now() - start;
         }
         
-        const nanosPerOp = totalNanos / iterations;
-        const opsPerSec = 1e9 / nanosPerOp;
-        
         return {
-            iterations: iterations,
+            iterations: totalIterations,
             totalNanos: totalNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
