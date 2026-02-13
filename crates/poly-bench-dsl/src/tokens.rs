@@ -48,6 +48,7 @@ pub enum TokenKind {
     // Statistical analysis keywords
     OutlierDetection,  // outlierDetection (true/false)
     CvThreshold,       // cvThreshold (percentage)
+    Count,             // count (number) - run benchmark N times for statistical consistency
     
     // Observability keywords (Phase 2B)
     Memory,            // memory (true/false) - enable memory profiling
@@ -139,6 +140,7 @@ impl TokenKind {
                 | TokenKind::MaxIterations
                 | TokenKind::OutlierDetection
                 | TokenKind::CvThreshold
+                | TokenKind::Count
                 | TokenKind::Memory
                 | TokenKind::Concurrency
                 | TokenKind::Shape
@@ -232,6 +234,7 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         // Statistical analysis keywords
         "outlierDetection" => Some(TokenKind::OutlierDetection),
         "cvThreshold" => Some(TokenKind::CvThreshold),
+        "count" => Some(TokenKind::Count),
         
         // Observability keywords (Phase 2B)
         "memory" => Some(TokenKind::Memory),
