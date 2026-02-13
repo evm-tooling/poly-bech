@@ -768,6 +768,68 @@ fn suite_body_completions() -> Vec<CompletionItem> {
             "Suite-level tags",
             CompletionItemKind::PROPERTY,
         ),
+        
+        // Auto-calibration settings
+        completion_item(
+            "mode",
+            "mode: ${1|auto,fixed|}",
+            "Execution mode: auto (time-based) or fixed (iteration count)",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "targetTime",
+            "targetTime: ${1:3000ms}",
+            "Target duration for auto-calibration mode",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "minIterations",
+            "minIterations: ${1:100}",
+            "Minimum iterations for auto-calibration",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "maxIterations",
+            "maxIterations: ${1:1000000}",
+            "Maximum iterations for auto-calibration",
+            CompletionItemKind::PROPERTY,
+        ),
+        
+        // Performance settings
+        completion_item(
+            "sink",
+            "sink: ${1|true,false|}",
+            "Use sink/black-box pattern to prevent dead code elimination",
+            CompletionItemKind::PROPERTY,
+        ),
+        
+        // Statistical settings
+        completion_item(
+            "outlierDetection",
+            "outlierDetection: ${1|true,false|}",
+            "Enable IQR-based outlier detection and removal",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "cvThreshold",
+            "cvThreshold: ${1:5}",
+            "Coefficient of variation threshold (%) for stability warnings",
+            CompletionItemKind::PROPERTY,
+        ),
+        
+        // Observability settings (Phase 2B)
+        completion_item(
+            "memory",
+            "memory: ${1|true,false|}",
+            "Enable memory allocation profiling",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "concurrency",
+            "concurrency: ${1:1}",
+            "Number of concurrent goroutines/workers for parallel execution",
+            CompletionItemKind::PROPERTY,
+        ),
     ]
 }
 
@@ -972,6 +1034,68 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "Per-iteration hook for TypeScript",
             CompletionItemKind::KEYWORD,
         ),
+        
+        // Auto-calibration overrides
+        completion_item(
+            "mode",
+            "mode: ${1|auto,fixed|}",
+            "Override execution mode for this benchmark",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "targetTime",
+            "targetTime: ${1:3000ms}",
+            "Override target duration for auto-calibration",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "minIterations",
+            "minIterations: ${1:100}",
+            "Override minimum iterations for auto-calibration",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "maxIterations",
+            "maxIterations: ${1:1000000}",
+            "Override maximum iterations for auto-calibration",
+            CompletionItemKind::PROPERTY,
+        ),
+        
+        // Performance overrides
+        completion_item(
+            "sink",
+            "sink: ${1|true,false|}",
+            "Override sink/black-box pattern for this benchmark",
+            CompletionItemKind::PROPERTY,
+        ),
+        
+        // Statistical overrides
+        completion_item(
+            "outlierDetection",
+            "outlierDetection: ${1|true,false|}",
+            "Override outlier detection for this benchmark",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "cvThreshold",
+            "cvThreshold: ${1:5}",
+            "Override CV threshold for this benchmark",
+            CompletionItemKind::PROPERTY,
+        ),
+        
+        // Observability overrides (Phase 2B)
+        completion_item(
+            "memory",
+            "memory: ${1|true,false|}",
+            "Enable memory profiling for this benchmark",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "concurrency",
+            "concurrency: ${1:4}",
+            "Number of concurrent goroutines/workers",
+            CompletionItemKind::PROPERTY,
+        ),
     ]
 }
 
@@ -981,6 +1105,12 @@ fn fixture_body_completions() -> Vec<CompletionItem> {
             "hex",
             "hex: \"$0\"",
             "Hex-encoded data",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "hex: @file",
+            "hex: @file(\"${1:path/to/file.hex}\")",
+            "Load hex data from external file",
             CompletionItemKind::PROPERTY,
         ),
         completion_item(
@@ -1021,9 +1151,30 @@ fn after_colon_completions(keyword: &str) -> Vec<CompletionItem> {
             simple_completion("\"go\"", CompletionItemKind::ENUM_MEMBER),
             simple_completion("\"ts\"", CompletionItemKind::ENUM_MEMBER),
         ],
-        "compare" => vec![
+        "compare" | "sink" | "outlierDetection" | "memory" => vec![
             simple_completion("true", CompletionItemKind::ENUM_MEMBER),
             simple_completion("false", CompletionItemKind::ENUM_MEMBER),
+        ],
+        "mode" => vec![
+            simple_completion("auto", CompletionItemKind::ENUM_MEMBER),
+            simple_completion("fixed", CompletionItemKind::ENUM_MEMBER),
+        ],
+        "timeUnit" => vec![
+            simple_completion("\"auto\"", CompletionItemKind::ENUM_MEMBER),
+            simple_completion("\"ns\"", CompletionItemKind::ENUM_MEMBER),
+            simple_completion("\"us\"", CompletionItemKind::ENUM_MEMBER),
+            simple_completion("\"ms\"", CompletionItemKind::ENUM_MEMBER),
+            simple_completion("\"s\"", CompletionItemKind::ENUM_MEMBER),
+        ],
+        "sortBy" => vec![
+            simple_completion("\"speedup\"", CompletionItemKind::ENUM_MEMBER),
+            simple_completion("\"name\"", CompletionItemKind::ENUM_MEMBER),
+            simple_completion("\"time\"", CompletionItemKind::ENUM_MEMBER),
+            simple_completion("\"ops\"", CompletionItemKind::ENUM_MEMBER),
+        ],
+        "sortOrder" => vec![
+            simple_completion("\"asc\"", CompletionItemKind::ENUM_MEMBER),
+            simple_completion("\"desc\"", CompletionItemKind::ENUM_MEMBER),
         ],
         _ => vec![],
     }

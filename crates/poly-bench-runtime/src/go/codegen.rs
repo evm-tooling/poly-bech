@@ -25,9 +25,14 @@ pub fn generate(ir: &BenchmarkIR) -> Result<String> {
     // Collect stdlib imports
     let stdlib_imports = stdlib::get_stdlib_imports(&ir.stdlib_imports, Lang::Go);
     
-    // Check if any benchmark uses sink pattern
+    // Check if any benchmark uses sink pattern or memory profiling
     let needs_runtime = ir.suites.iter().any(|suite| {
-        suite.benchmarks.iter().any(|bench| bench.use_sink && bench.has_lang(Lang::Go))
+        suite.benchmarks.iter().any(|bench| (bench.use_sink || bench.memory) && bench.has_lang(Lang::Go))
+    });
+    
+    // Check if any benchmark uses concurrency
+    let needs_sync = ir.suites.iter().any(|suite| {
+        suite.benchmarks.iter().any(|bench| bench.concurrency > 1 && bench.has_lang(Lang::Go))
     });
 
     // Generate unified import block with deduplication
@@ -36,6 +41,9 @@ pub fn generate(ir: &BenchmarkIR) -> Result<String> {
     all_imports.insert("\"time\"");
     if needs_runtime {
         all_imports.insert("\"runtime\"");
+    }
+    if needs_sync {
+        all_imports.insert("\"sync\"");
     }
     for import_spec in &user_imports {
         all_imports.insert(import_spec);
@@ -216,10 +224,29 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
     let bench_call = if bench.use_sink {
         format!("__sink = {}", impl_code)
     } else {
-        format!("_ = {}", impl_code)
+        // For sink: false, just call the function directly without assignment
+        // This handles void functions that return nothing
+        impl_code.to_string()
     };
     let sink_keepalive = if bench.use_sink {
         "\t\truntime.KeepAlive(__sink)\n"
+    } else {
+        ""
+    };
+    
+    // Memory profiling support
+    let memory_decl = if bench.memory {
+        "\tvar memBefore, memAfter runtime.MemStats\n"
+    } else {
+        ""
+    };
+    let memory_before = if bench.memory {
+        "\truntime.GC()\n\truntime.ReadMemStats(&memBefore)\n\n"
+    } else {
+        ""
+    };
+    let memory_after = if bench.memory {
+        "\n\truntime.GC()\n\truntime.ReadMemStats(&memAfter)\n"
     } else {
         ""
     };
@@ -240,6 +267,18 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
         String::new()
     };
 
+    // Memory result fields
+    let memory_result = if bench.memory {
+        "\t\tBytesPerOp:  (memAfter.TotalAlloc - memBefore.TotalAlloc) / uint64(totalIterations),\n\t\tAllocsPerOp: (memAfter.Mallocs - memBefore.Mallocs) / uint64(totalIterations),\n"
+    } else {
+        ""
+    };
+    
+    // Concurrent execution: if concurrency > 1, generate parallel benchmark
+    if bench.concurrency > 1 {
+        return generate_concurrent_benchmark(code, bench, &before_hook, &after_hook, &bench_call, &sink_decl, &memory_decl, &memory_before, &memory_after);
+    }
+
     match bench.mode {
         BenchMode::Auto => {
             // Auto-calibration mode: like Go's testing.B
@@ -247,8 +286,8 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
             code.push_str(&format!(r#"func bench_{}(iterations int) BenchResult {{
 	// Auto-calibration mode: iterations parameter is ignored, runs for targetTime
 	targetNanos := int64({})
-{}
-{}	// Brief warmup (100 iterations)
+{}{}
+{}{}	// Brief warmup (100 iterations)
 	for i := 0; i < 100; i++ {{
 {}		{}
 {}	}}
@@ -309,7 +348,7 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 			batchSize *= 10
 		}}
 	}}
-	
+{}
 	nanosPerOp := float64(totalNanos) / float64(totalIterations)
 	opsPerSec := 1e9 / nanosPerOp
 	
@@ -330,21 +369,30 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 		TotalNanos:  uint64(totalNanos),
 		NanosPerOp:  nanosPerOp,
 		OpsPerSec:   opsPerSec,
-		Samples:     samples,
+{}		Samples:     samples,
 	}}
 }}
 
 "#, bench.full_name, bench.target_time_ms * 1_000_000, 
-    sink_decl, before_hook, each_hook_warmup, bench_call, sink_keepalive,
+    sink_decl, memory_decl, before_hook, memory_before, each_hook_warmup, bench_call, sink_keepalive,
     each_hook, bench_call, sink_keepalive,
-    each_hook, bench_call, sink_keepalive, after_hook));
+    memory_after,
+    each_hook, bench_call, sink_keepalive, after_hook,
+    memory_result));
         }
         BenchMode::Fixed => {
+            // Memory result for fixed mode
+            let memory_result_fixed = if bench.memory {
+                "\t\tBytesPerOp:  (memAfter.TotalAlloc - memBefore.TotalAlloc) / uint64(iterations),\n\t\tAllocsPerOp: (memAfter.Mallocs - memBefore.Mallocs) / uint64(iterations),\n"
+            } else {
+                ""
+            };
+            
             // Fixed iteration mode with hooks
             code.push_str(&format!(r#"func bench_{}(iterations int) BenchResult {{
 	samples := make([]uint64, iterations)
-{}
-{}	// Warmup
+{}{}
+{}{}	// Warmup
 	for i := 0; i < {}; i++ {{
 {}		{}
 {}	}}
@@ -358,7 +406,7 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 		samples[i] = uint64(elapsed)
 		totalNanos += uint64(elapsed)
 	}}
-	
+{}
 	nanosPerOp := float64(totalNanos) / float64(iterations)
 	opsPerSec := 1e9 / nanosPerOp
 {}
@@ -367,16 +415,114 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 		TotalNanos:  totalNanos,
 		NanosPerOp:  nanosPerOp,
 		OpsPerSec:   opsPerSec,
-		Samples:     samples,
+{}		Samples:     samples,
 	}}
 }}
 
-"#, bench.full_name, sink_decl, before_hook, bench.warmup, 
+"#, bench.full_name, sink_decl, memory_decl, before_hook, memory_before, bench.warmup, 
     each_hook_warmup, bench_call, sink_keepalive,
-    each_hook, bench_call, sink_keepalive, after_hook));
+    each_hook, bench_call, sink_keepalive,
+    memory_after, after_hook, memory_result_fixed));
         }
     }
 
+    Ok(())
+}
+
+/// Generate a concurrent benchmark function using goroutines
+fn generate_concurrent_benchmark(
+    code: &mut String,
+    bench: &BenchmarkSpec,
+    before_hook: &str,
+    after_hook: &str,
+    bench_call: &str,
+    sink_decl: &str,
+    memory_decl: &str,
+    memory_before: &str,
+    memory_after: &str,
+) -> Result<()> {
+    let concurrency = bench.concurrency;
+    
+    // For concurrent mode, we use fixed iterations split across goroutines
+    // Memory result (note: memory tracking in concurrent mode is less accurate)
+    let memory_result = if bench.memory {
+        "\t\tBytesPerOp:  (memAfter.TotalAlloc - memBefore.TotalAlloc) / uint64(totalIterations),\n\t\tAllocsPerOp: (memAfter.Mallocs - memBefore.Mallocs) / uint64(totalIterations),\n"
+    } else {
+        ""
+    };
+    
+    // KeepAlive for sink after goroutines complete
+    let sink_keepalive = if bench.use_sink { "\truntime.KeepAlive(__sink)\n" } else { "" };
+    
+    code.push_str(&format!(r#"func bench_{}(iterations int) BenchResult {{
+	// Concurrent benchmark: {} goroutines
+	concurrency := {}
+	iterPerGoroutine := iterations / concurrency
+	if iterPerGoroutine < 1 {{
+		iterPerGoroutine = 1
+	}}
+	totalIterations := iterPerGoroutine * concurrency
+	
+{}{}
+{}{}	// Brief concurrent warmup
+	var wgWarmup sync.WaitGroup
+	for g := 0; g < concurrency; g++ {{
+		wgWarmup.Add(1)
+		go func() {{
+			defer wgWarmup.Done()
+			for i := 0; i < 10; i++ {{
+				{}
+			}}
+		}}()
+	}}
+	wgWarmup.Wait()
+	
+	// Timed concurrent run
+	var wg sync.WaitGroup
+	start := time.Now()
+	
+	for g := 0; g < concurrency; g++ {{
+		wg.Add(1)
+		go func() {{
+			defer wg.Done()
+			for i := 0; i < iterPerGoroutine; i++ {{
+				{}
+			}}
+		}}()
+	}}
+	wg.Wait()
+{}
+	totalNanos := time.Since(start).Nanoseconds()
+{}
+	nanosPerOp := float64(totalNanos) / float64(totalIterations)
+	opsPerSec := 1e9 / nanosPerOp
+	
+	// Collect samples (sequential, for statistical analysis)
+	sampleCount := 100
+	if sampleCount > totalIterations {{
+		sampleCount = totalIterations
+	}}
+	samples := make([]uint64, sampleCount)
+	for i := 0; i < sampleCount; i++ {{
+		sampleStart := time.Now()
+		{}
+		samples[i] = uint64(time.Since(sampleStart).Nanoseconds())
+	}}
+{}
+	return BenchResult{{
+		Iterations:  uint64(totalIterations),
+		TotalNanos:  uint64(totalNanos),
+		NanosPerOp:  nanosPerOp,
+		OpsPerSec:   opsPerSec,
+{}		Samples:     samples,
+	}}
+}}
+
+"#, bench.full_name, concurrency, concurrency,
+    sink_decl, memory_decl, before_hook, memory_before,
+    bench_call, bench_call, sink_keepalive,
+    memory_after, bench_call, after_hook, memory_result));
+    
     Ok(())
 }
 

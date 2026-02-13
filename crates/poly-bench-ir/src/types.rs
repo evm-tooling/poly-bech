@@ -102,6 +102,12 @@ pub struct SuiteIR {
     /// Coefficient of variation threshold percentage for stability check
     pub cv_threshold: f64,
     
+    // Observability settings (Phase 2B)
+    /// Enable memory allocation profiling
+    pub memory: bool,
+    /// Number of concurrent goroutines/workers for parallel execution
+    pub concurrency: u32,
+    
     /// Standard library modules imported (e.g., "constants", "anvil")
     pub stdlib_imports: HashSet<String>,
     
@@ -147,6 +153,9 @@ impl SuiteIR {
             // Statistical analysis defaults
             outlier_detection: true,        // Enabled by default for statistical accuracy
             cv_threshold: DEFAULT_CV_THRESHOLD, // 5% threshold
+            // Observability defaults
+            memory: false,                  // Memory profiling disabled by default
+            concurrency: 1,                 // Single-threaded by default
             stdlib_imports: HashSet::new(),
             imports: HashMap::new(),
             declarations: HashMap::new(),
@@ -291,6 +300,12 @@ pub struct BenchmarkSpec {
     /// Coefficient of variation threshold percentage for stability check
     pub cv_threshold: f64,
     
+    // Observability settings (Phase 2B)
+    /// Enable memory allocation profiling
+    pub memory: bool,
+    /// Number of concurrent goroutines/workers for parallel execution
+    pub concurrency: u32,
+    
     // Phase 3: Lifecycle hooks
     /// Pre-benchmark hook (runs once before iterations)
     pub before_hooks: HashMap<Lang, String>,
@@ -325,6 +340,8 @@ impl BenchmarkSpec {
             use_sink: true,
             outlier_detection: true,
             cv_threshold: DEFAULT_CV_THRESHOLD,
+            memory: false,
+            concurrency: 1,
             before_hooks: HashMap::new(),
             after_hooks: HashMap::new(),
             each_hooks: HashMap::new(),

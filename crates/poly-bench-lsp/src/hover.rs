@@ -671,6 +671,79 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             Other languages are compared against this baseline."
         ),
 
+        // Auto-calibration settings
+        "mode" => Some(
+            "**mode:** `auto | fixed`\n\n\
+            Execution mode for benchmarks:\n\n\
+            - `auto` - Time-based calibration. Runs until `targetTime` is reached,\n  \
+              automatically determining iteration count. *(Default)*\n\
+            - `fixed` - Uses explicit `iterations` count.\n\n\
+            Auto mode provides more accurate measurements for fast operations."
+        ),
+        "targetTime" => Some(
+            "**targetTime:** `<duration>`\n\n\
+            Target duration for auto-calibration mode.\n\n\
+            The benchmark will run approximately this long, automatically\n\
+            scaling the iteration count.\n\n\
+            Examples: `3000ms`, `10s`, `1m`\n\n\
+            Default: `3000ms` (3 seconds)"
+        ),
+        "minIterations" => Some(
+            "**minIterations:** `<number>`\n\n\
+            Minimum iterations for auto-calibration mode.\n\n\
+            Even if targetTime is reached quickly, at least this many\n\
+            iterations will be run.\n\n\
+            Default: `10`"
+        ),
+        "maxIterations" => Some(
+            "**maxIterations:** `<number>`\n\n\
+            Maximum iterations for auto-calibration mode.\n\n\
+            The benchmark will not exceed this iteration count,\n\
+            even if targetTime hasn't been reached.\n\n\
+            Default: `1000000`"
+        ),
+        "sink" => Some(
+            "**sink:** `true | false`\n\n\
+            Use sink/black-box pattern to prevent dead code elimination.\n\n\
+            When enabled, the result of the benchmark expression is passed\n\
+            to a sink function that prevents compiler optimizations from\n\
+            eliminating the benchmarked code.\n\n\
+            Default: `true`"
+        ),
+        "outlierDetection" => Some(
+            "**outlierDetection:** `true | false`\n\n\
+            Enable IQR-based outlier detection and removal.\n\n\
+            When enabled, statistical outliers are identified using the\n\
+            interquartile range (IQR) method and excluded from results.\n\
+            This improves measurement stability.\n\n\
+            Default: `true`"
+        ),
+        "cvThreshold" => Some(
+            "**cvThreshold:** `<number>`\n\n\
+            Coefficient of variation threshold (%) for stability warnings.\n\n\
+            If the CV of measurements exceeds this threshold, a warning\n\
+            is shown indicating the results may be unstable.\n\n\
+            Default: `5` (5%)"
+        ),
+        "memory" => Some(
+            "**memory:** `true | false`\n\n\
+            Enable memory allocation profiling.\n\n\
+            When enabled, tracks memory allocations during benchmark execution:\n\
+            - **Go:** Uses `runtime.ReadMemStats` to measure bytes/allocs per op\n\
+            - **TypeScript:** Uses `process.memoryUsage()` to track heap usage\n\n\
+            Results appear in output when `showMemory: true` is set on charts.\n\n\
+            Default: `false`"
+        ),
+        "concurrency" => Some(
+            "**concurrency:** `<number>`\n\n\
+            Number of concurrent goroutines/workers for parallel execution.\n\n\
+            When set > 1, the benchmark runs with multiple parallel workers,\n\
+            measuring throughput instead of single-threaded latency.\n\n\
+            - **Go:** Uses goroutines with sync.WaitGroup\n\
+            - **TypeScript:** Not yet supported\n\n\
+            Default: `1` (single-threaded)"
+        ),
+
         // Lifecycle hooks
         "skip" => Some(
             "**skip** `<lang>:` `<condition>`\n\n\
@@ -702,9 +775,19 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
 
         // Fixture keywords
         "hex" => Some(
-            "**hex:** `\"0x...\"`\n\n\
+            "**hex:** `\"0x...\"` or `@file(\"path\")`\n\n\
             Hex-encoded binary data.\n\n\
-            Portable format that works across all languages."
+            Portable format that works across all languages.\n\n\
+            **Inline:** `hex: \"deadbeef\"`\n\
+            **From file:** `hex: @file(\"testdata/input.hex\")`"
+        ),
+        "@file" | "file" => Some(
+            "**@file** `(\"path/to/file\")`\n\n\
+            Load hex data from an external file.\n\n\
+            The file should contain hex-encoded binary data.\n\n\
+            **Example:**\n\
+            ```\nfixture largeData {\n    hex: @file(\"testdata/large_input.hex\")\n}\n```\n\n\
+            Paths are relative to the .bench file location."
         ),
         "shape" => Some(
             "**shape:** `\"type\"`\n\n\
