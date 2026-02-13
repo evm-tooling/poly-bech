@@ -1,6 +1,6 @@
 //! Go plugin source code generation
 
-use poly_bench_dsl::Lang;
+use poly_bench_dsl::{Lang, BenchMode};
 use poly_bench_ir::{BenchmarkIR, SuiteIR, BenchmarkSpec, FixtureIR};
 use poly_bench_stdlib as stdlib;
 use miette::{Result, miette};
@@ -25,10 +25,18 @@ pub fn generate(ir: &BenchmarkIR) -> Result<String> {
     // Collect stdlib imports
     let stdlib_imports = stdlib::get_stdlib_imports(&ir.stdlib_imports, Lang::Go);
     
+    // Check if any benchmark uses sink pattern
+    let needs_runtime = ir.suites.iter().any(|suite| {
+        suite.benchmarks.iter().any(|bench| bench.use_sink && bench.has_lang(Lang::Go))
+    });
+
     // Generate unified import block with deduplication
     let mut all_imports: std::collections::HashSet<&str> = std::collections::HashSet::new();
     all_imports.insert("\"encoding/json\"");
     all_imports.insert("\"time\"");
+    if needs_runtime {
+        all_imports.insert("\"runtime\"");
+    }
     for import_spec in &user_imports {
         all_imports.insert(import_spec);
     }
@@ -203,20 +211,107 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
         code.push_str(&format!("// {}\n", desc));
     }
 
-    code.push_str(&format!(r#"func bench_{}(iterations int) BenchResult {{
-	samples := make([]uint64, iterations)
+    // Generate sink variable and benchmark call based on use_sink setting
+    let sink_decl = if bench.use_sink { "\tvar __sink interface{}\n" } else { "" };
+    let bench_call = if bench.use_sink {
+        format!("__sink = {}", impl_code)
+    } else {
+        format!("_ = {}", impl_code)
+    };
+    let sink_keepalive = if bench.use_sink {
+        "\t\truntime.KeepAlive(__sink)\n"
+    } else {
+        ""
+    };
+
+    match bench.mode {
+        BenchMode::Auto => {
+            // Auto-calibration mode
+            code.push_str(&format!(r#"func bench_{}(iterations int) BenchResult {{
+	// Auto-calibration mode: iterations parameter is a hint, actual count may vary
+	targetNanos := int64({})
+	minIters := {}
+	maxIters := {}
+{}
+	// Calibration phase
+	iters := 1
+	for iters < maxIters {{
+		start := time.Now()
+		for i := 0; i < iters; i++ {{
+			{}
+{}		}}
+		elapsed := time.Since(start).Nanoseconds()
+		if elapsed >= targetNanos {{
+			break
+		}}
+		if elapsed > 0 {{
+			newIters := int(float64(iters) * float64(targetNanos) / float64(elapsed) * 1.2)
+			if newIters <= iters {{
+				newIters = iters * 2
+			}}
+			iters = newIters
+		}} else {{
+			iters *= 10
+		}}
+		if iters > maxIters {{
+			iters = maxIters
+		}}
+	}}
+	if iters < minIters {{
+		iters = minIters
+	}}
 	
+	// Warmup (10% of calibrated iterations)
+	warmup := iters / 10
+	if warmup < 10 {{
+		warmup = 10
+	}}
+	for i := 0; i < warmup; i++ {{
+		{}
+{}	}}
+	
+	// Timed run
+	samples := make([]uint64, iters)
+	var totalNanos uint64
+	for i := 0; i < iters; i++ {{
+		start := time.Now()
+		{}
+{}		elapsed := time.Since(start).Nanoseconds()
+		samples[i] = uint64(elapsed)
+		totalNanos += uint64(elapsed)
+	}}
+	
+	nanosPerOp := float64(totalNanos) / float64(iters)
+	opsPerSec := 1e9 / nanosPerOp
+	
+	return BenchResult{{
+		Iterations:  uint64(iters),
+		TotalNanos:  totalNanos,
+		NanosPerOp:  nanosPerOp,
+		OpsPerSec:   opsPerSec,
+		Samples:     samples,
+	}}
+}}
+
+"#, bench.full_name, bench.target_time_ms * 1_000_000, bench.min_iterations, bench.max_iterations, 
+    sink_decl, bench_call, sink_keepalive, bench_call, sink_keepalive, bench_call, sink_keepalive));
+        }
+        BenchMode::Fixed => {
+            // Fixed iteration mode (original behavior with sink pattern)
+            code.push_str(&format!(r#"func bench_{}(iterations int) BenchResult {{
+	samples := make([]uint64, iterations)
+{}
 	// Warmup
 	for i := 0; i < {}; i++ {{
-		_ = {}
-	}}
+		{}
+{}	}}
 	
 	// Timed run
 	var totalNanos uint64
 	for i := 0; i < iterations; i++ {{
 		start := time.Now()
-		_ = {}
-		elapsed := time.Since(start).Nanoseconds()
+		{}
+{}		elapsed := time.Since(start).Nanoseconds()
 		samples[i] = uint64(elapsed)
 		totalNanos += uint64(elapsed)
 	}}
@@ -233,7 +328,9 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 	}}
 }}
 
-"#, bench.full_name, bench.warmup, impl_code, impl_code));
+"#, bench.full_name, sink_decl, bench.warmup, bench_call, sink_keepalive, bench_call, sink_keepalive));
+        }
+    }
 
     Ok(())
 }

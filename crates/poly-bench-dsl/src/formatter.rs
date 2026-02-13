@@ -272,6 +272,24 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
     if let Some(baseline) = suite.baseline {
         write!(out, "{}baseline: \"{}\"\n", inner, baseline.as_str()).unwrap();
     }
+    
+    // Benchmark accuracy settings - only output non-default values
+    if let Some(mode) = suite.mode {
+        write!(out, "{}mode: \"{}\"\n", inner, mode.as_str()).unwrap();
+    }
+    if let Some(target_time) = suite.target_time_ms {
+        write!(out, "{}targetTime: {}ms\n", inner, target_time).unwrap();
+    }
+    if let Some(min_iters) = suite.min_iterations {
+        write!(out, "{}minIterations: {}\n", inner, min_iters).unwrap();
+    }
+    if let Some(max_iters) = suite.max_iterations {
+        write!(out, "{}maxIterations: {}\n", inner, max_iters).unwrap();
+    }
+    if !suite.sink {
+        // Only output sink: false since true is the default
+        write!(out, "{}sink: false\n", inner).unwrap();
+    }
 
     // Add blank line after properties if there are any setups, fixtures, or benchmarks
     let has_content = suite.global_setup.is_some() || !suite.setups.is_empty() || !suite.fixtures.is_empty() || !suite.benchmarks.is_empty();
@@ -461,6 +479,24 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
     if !bench.tags.is_empty() {
         let tags: Vec<_> = bench.tags.iter().map(|t| format!("\"{}\"", escape_string(t))).collect();
         write!(out, "{}tags: [{}]\n", inner, tags.join(", ")).unwrap();
+    }
+    
+    // Benchmark accuracy overrides - only output if set (Option::Some)
+    if let Some(mode) = bench.mode {
+        write!(out, "{}mode: \"{}\"\n", inner, mode.as_str()).unwrap();
+    }
+    if let Some(target_time) = bench.target_time_ms {
+        write!(out, "{}targetTime: {}ms\n", inner, target_time).unwrap();
+    }
+    if let Some(min_iters) = bench.min_iterations {
+        write!(out, "{}minIterations: {}\n", inner, min_iters).unwrap();
+    }
+    if let Some(max_iters) = bench.max_iterations {
+        write!(out, "{}maxIterations: {}\n", inner, max_iters).unwrap();
+    }
+    if let Some(sink) = bench.sink {
+        // Only output if explicitly set to override suite default
+        write!(out, "{}sink: {}\n", inner, if sink { "true" } else { "false" }).unwrap();
     }
 
     for lang in &lang_order {
