@@ -522,6 +522,8 @@ pub struct Suite {
     pub outlier_detection: bool,
     /// Coefficient of variation threshold percentage for stability check (default: 5.0)
     pub cv_threshold: Option<f64>,
+    /// Number of times to run each benchmark for statistical consistency (default: 1)
+    pub count: Option<u64>,
     
     // Observability settings (Phase 2B)
     /// Enable memory allocation profiling (default: false)
@@ -562,6 +564,7 @@ impl Suite {
             sink: true, // Enabled by default to prevent DCE
             outlier_detection: true, // Enabled by default for statistical accuracy
             cv_threshold: None, // Uses default (5.0%) when None
+            count: None, // Uses default (1) when None - single run
             memory: false, // Memory profiling disabled by default
             concurrency: 1, // Single-threaded by default
             global_setup: None,
@@ -655,6 +658,8 @@ pub struct Benchmark {
     pub outlier_detection: Option<bool>,
     /// Override CV threshold (None = inherit from suite)
     pub cv_threshold: Option<f64>,
+    /// Override count setting (None = inherit from suite)
+    pub count: Option<u64>,
     
     // Observability settings (Phase 2B)
     /// Override memory profiling setting (None = inherit from suite)
@@ -693,6 +698,7 @@ impl Benchmark {
             sink: None,
             outlier_detection: None,
             cv_threshold: None,
+            count: None,
             memory: None,
             concurrency: None,
             before: HashMap::new(),

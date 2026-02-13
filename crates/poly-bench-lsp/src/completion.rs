@@ -817,6 +817,14 @@ fn suite_body_completions() -> Vec<CompletionItem> {
             CompletionItemKind::PROPERTY,
         ),
         
+        // Statistical consistency settings
+        completion_item(
+            "count",
+            "count: ${1:10}",
+            "Number of times to run each benchmark for statistical consistency (results use median)",
+            CompletionItemKind::PROPERTY,
+        ),
+        
         // Observability settings (Phase 2B)
         completion_item(
             "memory",
@@ -1080,6 +1088,12 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "cvThreshold",
             "cvThreshold: ${1:5}",
             "Override CV threshold for this benchmark",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
+            "count",
+            "count: ${1:10}",
+            "Override: number of times to run this benchmark for statistical consistency",
             CompletionItemKind::PROPERTY,
         ),
         

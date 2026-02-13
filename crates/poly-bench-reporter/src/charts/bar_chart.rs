@@ -1,4 +1,6 @@
-//! Bar chart generator - individual vertical bar chart per benchmark with Go vs TS comparison
+//! Bar chart generator - horizontal bar chart with Go vs TS comparison
+//! Each benchmark is displayed as a row with two horizontal bars (Go and TS)
+//! Uses smart scaling to prevent extreme values from making other bars invisible
 
 use poly_bench_dsl::Lang;
 use poly_bench_executor::BenchmarkResults;
@@ -14,16 +16,19 @@ use super::{
     GO_COLOR, TS_COLOR, TEXT_COLOR, TEXT_SECONDARY, TEXT_MUTED, BORDER_COLOR,
 };
 
-// Layout constants for individual bar chart groups
-const BAR_WIDTH: i32 = 40;
-const BAR_GAP: i32 = 8;           // Gap between Go and TS bars within a benchmark
-const CHART_HEIGHT: i32 = 180;    // Height of each mini chart area
-const CHART_SPACING_X: i32 = 160; // Horizontal spacing between chart centers
-const CHARTS_PER_ROW: i32 = 4;    // Max charts per row before wrapping
-const CHART_SPACING_Y: i32 = 220; // Vertical spacing between chart rows
+// Layout constants for horizontal bar chart
+const BAR_HEIGHT: i32 = 20;       // Height of each bar
+const BAR_GAP: i32 = 4;           // Gap between Go and TS bars within a benchmark
+const ROW_HEIGHT: i32 = 70;       // Total height per benchmark row (Go + TS bars + spacing)
+const LABEL_WIDTH: i32 = 180;     // Width reserved for benchmark name labels
+const VALUE_LABEL_WIDTH: i32 = 120; // Width reserved for value labels on right
 const STATS_BOX_HEIGHT: i32 = 80;
 const LEGEND_HEIGHT: i32 = 40;
-const MIN_STATS_WIDTH: i32 = 520; // Minimum width to fit stats text
+const MIN_CHART_WIDTH: i32 = 600; // Minimum width for the chart area
+
+// Scaling constants to prevent tiny bars
+const MIN_BAR_WIDTH_RATIO: f64 = 0.05; // Minimum bar width as ratio of max (5%)
+const LOG_SCALE_THRESHOLD: f64 = 100.0; // Use log scaling if max/min ratio exceeds this
 
 /// Suite configuration for display
 pub struct SuiteConfig {
@@ -33,7 +38,8 @@ pub struct SuiteConfig {
     pub order: Option<String>,
 }
 
-/// Generate a bar chart SVG with individual charts per benchmark
+/// Generate a horizontal bar chart SVG with each benchmark as a row
+/// Uses smart scaling to prevent extreme values from making other bars invisible
 pub fn generate(
     results: &BenchmarkResults,
     directive: &ChartDirectiveIR,
@@ -62,7 +68,7 @@ pub fn generate(
     }
 
     // Extract directive parameters with defaults
-    let bar_width = directive.bar_height.unwrap_or(BAR_WIDTH);
+    let bar_height = directive.bar_height.unwrap_or(BAR_HEIGHT);
     let bar_gap = directive.bar_gap.unwrap_or(BAR_GAP);
     let time_unit = directive.time_unit.as_deref();
     let precision = directive.precision;
@@ -70,18 +76,12 @@ pub fn generate(
     
     // Calculate dynamic dimensions based on number of benchmarks
     let num_benchmarks = filtered.len() as i32;
-    let charts_per_row = directive.width.map(|w| (w / CHART_SPACING_X).max(1)).unwrap_or(CHARTS_PER_ROW);
-    let num_rows = (num_benchmarks + charts_per_row - 1) / charts_per_row;
     
-    // Calculate width - ensure it's wide enough for stats
-    let actual_charts_in_first_row = num_benchmarks.min(charts_per_row);
-    let margin_x = 60;
-    let content_width = actual_charts_in_first_row * CHART_SPACING_X;
-    
-    // Stats box needs minimum width to avoid overflow
+    // Calculate width
+    let margin_x = 20;
     let stats_box_needed = (directive.show_stats || directive.show_distribution || directive.show_geo_mean) && !compact;
-    let min_width = if stats_box_needed { MIN_STATS_WIDTH } else { 300 };
-    let width = directive.width.unwrap_or(content_width + margin_x * 2).max(min_width);
+    let width = directive.width.unwrap_or(MIN_CHART_WIDTH + margin_x * 2).max(MIN_CHART_WIDTH);
+    let bar_area_width = width - LABEL_WIDTH - VALUE_LABEL_WIDTH - margin_x * 2;
     
     // Calculate summary stats for legend
     let (go_wins, ts_wins, ties) = count_wins(&filtered);
@@ -91,22 +91,35 @@ pub fn generate(
     let legend_space = LEGEND_HEIGHT;
     let stats_box_space = if stats_box_needed { STATS_BOX_HEIGHT } else { 0 };
     let config_space = if directive.show_config && suite_config.is_some() && !compact { 24 } else { 0 };
-    let chart_area_height = num_rows * CHART_SPACING_Y;
+    let chart_area_height = num_benchmarks * ROW_HEIGHT;
     let height = DEFAULT_MARGIN_TOP + chart_area_height + legend_space + stats_box_space + config_space + DEFAULT_MARGIN_BOTTOM;
 
-    // Find max total time for scale (using total_nanos from measurements)
-    let max_total_nanos: f64 = filtered.iter()
+    // Collect all values for smart scaling
+    let all_values: Vec<f64> = filtered.iter()
         .filter_map(|b| b.comparison.as_ref())
-        .flat_map(|c| [c.first.total_nanos as f64, c.second.total_nanos as f64])
-        .fold(1.0, f64::max);
+        .flat_map(|c| {
+            let first_val = c.first.median_across_runs.unwrap_or(c.first.nanos_per_op);
+            let second_val = c.second.median_across_runs.unwrap_or(c.second.nanos_per_op);
+            [first_val, second_val]
+        })
+        .collect();
+    
+    let max_value = all_values.iter().cloned().fold(1.0, f64::max);
+    let min_value = all_values.iter().cloned().fold(f64::MAX, f64::min).max(0.001);
+    let value_ratio = max_value / min_value;
+    
+    // Determine scaling mode: use log scale if ratio is extreme
+    let use_log_scale = value_ratio > LOG_SCALE_THRESHOLD;
 
     // Build subtitle
+    let scale_note = if use_log_scale { " (log scale)" } else { "" };
     let subtitle = directive.description.clone().unwrap_or_else(|| {
-        match results.summary.winner {
+        let winner_text = match results.summary.winner {
             Some(Lang::Go) => format!("Go is {:.1}x faster overall", results.summary.geo_mean_speedup),
             Some(Lang::TypeScript) => format!("TypeScript is {:.1}x faster overall", 1.0 / results.summary.geo_mean_speedup),
             _ => "Similar performance".to_string(),
-        }
+        };
+        format!("{}{}", winner_text, scale_note)
     });
 
     let title = directive.title.clone().unwrap_or_else(|| "Benchmark Results".to_string());
@@ -117,112 +130,212 @@ pub fn generate(
     // Title
     svg.push_str(&svg_title(width, &title, Some(&subtitle)));
 
-    // Draw individual bar chart for each benchmark
+    // Draw horizontal bar chart rows
     let start_y = DEFAULT_MARGIN_TOP + 20;
     
     for (i, bench) in filtered.iter().enumerate() {
         if let Some(ref cmp) = bench.comparison {
-            let row = i as i32 / charts_per_row;
-            let col = i as i32 % charts_per_row;
+            let row_y = start_y + (i as i32 * ROW_HEIGHT);
             
-            // Calculate center position for this chart
-            // For single benchmark, center in the available width
-            let center_x = if num_benchmarks == 1 {
-                width / 2
+            // Get values - use median when available (for count > 1), otherwise nanos_per_op
+            let go_value = cmp.first.median_across_runs.unwrap_or(cmp.first.nanos_per_op);
+            let ts_value = cmp.second.median_across_runs.unwrap_or(cmp.second.nanos_per_op);
+            
+            // Calculate bar widths with smart scaling
+            let (go_bar_width, ts_bar_width) = if use_log_scale {
+                // Log scale: ensures small values are still visible
+                let log_max = max_value.ln();
+                let log_min = min_value.ln();
+                let log_range = log_max - log_min;
+                
+                let go_log = go_value.max(min_value).ln();
+                let ts_log = ts_value.max(min_value).ln();
+                
+                let go_ratio = (go_log - log_min) / log_range;
+                let ts_ratio = (ts_log - log_min) / log_range;
+                
+                // Map to bar width with minimum visible width
+                let go_w = (go_ratio * bar_area_width as f64).max(bar_area_width as f64 * MIN_BAR_WIDTH_RATIO);
+                let ts_w = (ts_ratio * bar_area_width as f64).max(bar_area_width as f64 * MIN_BAR_WIDTH_RATIO);
+                (go_w, ts_w)
             } else {
-                margin_x + (col * CHART_SPACING_X) + CHART_SPACING_X / 2
+                // Linear scale with minimum bar width
+                let go_ratio = go_value / max_value;
+                let ts_ratio = ts_value / max_value;
+                
+                let go_w = (go_ratio * bar_area_width as f64).max(bar_area_width as f64 * MIN_BAR_WIDTH_RATIO);
+                let ts_w = (ts_ratio * bar_area_width as f64).max(bar_area_width as f64 * MIN_BAR_WIDTH_RATIO);
+                (go_w, ts_w)
             };
-            let chart_bottom_y = start_y + (row * CHART_SPACING_Y) + CHART_HEIGHT;
-            
-            // Calculate bar heights based on total time (linear scale)
-            let go_total_nanos = cmp.first.total_nanos as f64;
-            let ts_total_nanos = cmp.second.total_nanos as f64;
-            
-            let go_bar_height = (go_total_nanos / max_total_nanos * CHART_HEIGHT as f64).max(3.0);
-            let ts_bar_height = (ts_total_nanos / max_total_nanos * CHART_HEIGHT as f64).max(3.0);
 
             let go_winner = cmp.winner == ComparisonWinner::First;
             let ts_winner = cmp.winner == ComparisonWinner::Second;
             
-            // Width of the bar group
-            let group_width = bar_width * 2 + bar_gap;
-            let group_start_x = center_x - group_width / 2;
+            // Draw row group
+            svg.push_str(&format!("<g transform=\"translate({},{})\">\n", margin_x, row_y));
             
-            // Draw chart group
-            svg.push_str(&format!("<g transform=\"translate({},{})\">\n", group_start_x, chart_bottom_y));
-            
-            // Baseline
+            // Benchmark name label (left side)
+            let name_display = if bench.name.len() > 20 {
+                format!("{}...", &bench.name[..17])
+            } else {
+                bench.name.clone()
+            };
             svg.push_str(&format!(
-                "  <line x1=\"-10\" y1=\"0\" x2=\"{}\" y2=\"0\" stroke=\"{}\" stroke-width=\"1\"/>\n",
-                group_width + 10, BORDER_COLOR
+                "  <text x=\"{}\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"11\" font-weight=\"500\" fill=\"{}\">{}</text>\n",
+                LABEL_WIDTH - 10, bar_height + bar_gap / 2, TEXT_COLOR, escape_xml(&name_display)
             ));
             
-            // Go bar
-            svg.push_str(&format!(
-                "  <rect x=\"0\" y=\"{:.1}\" width=\"{}\" height=\"{:.1}\" fill=\"url(#goGrad)\" rx=\"3\"/>\n",
-                -go_bar_height, bar_width, go_bar_height
-            ));
-            
-            // Go value label (above bar)
-            let go_total_str = format_duration_with_unit(go_total_nanos, time_unit, precision);
-            if go_bar_height > 15.0 || num_benchmarks == 1 {
-                svg.push_str(&format!(
-                    "  <text x=\"{}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"{}\" fill=\"{}\">{}</text>\n",
-                    bar_width / 2, -go_bar_height - 4.0,
-                    if go_winner { "600" } else { "400" },
-                    if go_winner { "#0E7490" } else { TEXT_MUTED },
-                    go_total_str
-                ));
-            }
-            
-            // Go label below bar
-            svg.push_str(&format!(
-                "  <text x=\"{}\" y=\"16\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"500\" fill=\"{}\">Go</text>\n",
-                bar_width / 2, GO_COLOR
-            ));
-
-            // TypeScript bar
-            let ts_x = bar_width + bar_gap;
-            svg.push_str(&format!(
-                "  <rect x=\"{}\" y=\"{:.1}\" width=\"{}\" height=\"{:.1}\" fill=\"url(#tsGrad)\" rx=\"3\"/>\n",
-                ts_x, -ts_bar_height, bar_width, ts_bar_height
-            ));
-            
-            // TS value label (above bar)
-            let ts_total_str = format_duration_with_unit(ts_total_nanos, time_unit, precision);
-            if ts_bar_height > 15.0 || num_benchmarks == 1 {
-                svg.push_str(&format!(
-                    "  <text x=\"{}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"{}\" fill=\"{}\">{}</text>\n",
-                    ts_x + bar_width / 2, -ts_bar_height - 4.0,
-                    if ts_winner { "600" } else { "400" },
-                    if ts_winner { "#1E40AF" } else { TEXT_MUTED },
-                    ts_total_str
-                ));
-            }
-            
-            // TS label below bar
-            svg.push_str(&format!(
-                "  <text x=\"{}\" y=\"16\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"500\" fill=\"{}\">TS</text>\n",
-                ts_x + bar_width / 2, TS_COLOR
-            ));
-
-            // Benchmark name below (horizontal, centered)
-            svg.push_str(&format!(
-                "  <text x=\"{}\" y=\"34\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"10\" font-weight=\"500\" fill=\"{}\">{}</text>\n",
-                group_width / 2, TEXT_COLOR, escape_xml(&bench.name)
-            ));
-
-            // Winner indicator (speedup text below benchmark name)
-            if !compact && (go_winner || ts_winner) {
+            // Winner indicator (speedup) below name
+            if go_winner || ts_winner {
                 let winner_color = if go_winner { GO_COLOR } else { TS_COLOR };
                 let speedup = if go_winner {
-                    ts_total_nanos / go_total_nanos
+                    ts_value / go_value
                 } else {
-                    go_total_nanos / ts_total_nanos
+                    go_value / ts_value
                 };
+                let winner_label = if go_winner { "Go" } else { "TS" };
                 svg.push_str(&format!(
-                    "  <text x=\"{}\" y=\"48\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"8\" font-weight=\"600\" fill=\"{}\">{:.1}x faster</text>\n",
-                    group_width / 2, winner_color, speedup
+                    "  <text x=\"{}\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"600\" fill=\"{}\">{} {:.1}x faster</text>\n",
+                    LABEL_WIDTH - 10, bar_height * 2 + bar_gap + 4, winner_color, winner_label, speedup
+                ));
+            }
+            
+            // Go bar (top)
+            let go_bar_y = 0;
+            svg.push_str(&format!(
+                "  <rect x=\"{}\" y=\"{}\" width=\"{:.1}\" height=\"{}\" fill=\"url(#goGrad)\" rx=\"3\"/>\n",
+                LABEL_WIDTH, go_bar_y, go_bar_width, bar_height
+            ));
+            
+            // Go label on bar
+            svg.push_str(&format!(
+                "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"500\" fill=\"white\">Go</text>\n",
+                LABEL_WIDTH + 6, go_bar_y + bar_height - 5
+            ));
+            
+            // Go value label (right of bar)
+            let go_label = if let (Some(median), Some(ci_upper)) = (cmp.first.median_across_runs, cmp.first.ci_95_upper) {
+                let ci_half = ci_upper - median;
+                format!("{} ±{}", 
+                    format_duration_with_unit(median, time_unit, precision),
+                    format_duration_with_unit(ci_half, time_unit, precision))
+            } else {
+                format_duration_with_unit(go_value, time_unit, precision)
+            };
+            svg.push_str(&format!(
+                "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"{}\" fill=\"{}\">{}</text>\n",
+                LABEL_WIDTH + bar_area_width + 8, go_bar_y + bar_height - 5,
+                if go_winner { "600" } else { "400" },
+                if go_winner { "#0E7490" } else { TEXT_MUTED },
+                escape_xml(&go_label)
+            ));
+            
+            // Go error bar (horizontal, at end of bar)
+            if let (Some(ci_lower), Some(ci_upper)) = (cmp.first.ci_95_lower, cmp.first.ci_95_upper) {
+                let ci_range = ci_upper - ci_lower;
+                let error_bar_half_width = if use_log_scale {
+                    // Scale error bar for log scale
+                    ((ci_range / go_value) * go_bar_width / 2.0).max(3.0).min(20.0)
+                } else {
+                    (ci_range / max_value * bar_area_width as f64 / 2.0).max(3.0).min(20.0)
+                };
+                let error_bar_x = LABEL_WIDTH as f64 + go_bar_width;
+                let error_bar_y = go_bar_y + bar_height / 2;
+                let cap_height = 3;
+                
+                // Horizontal error bar line
+                svg.push_str(&format!(
+                    "  <line x1=\"{:.1}\" y1=\"{}\" x2=\"{:.1}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n",
+                    error_bar_x - error_bar_half_width, error_bar_y,
+                    error_bar_x + error_bar_half_width, error_bar_y,
+                    GO_COLOR
+                ));
+                // Left cap
+                svg.push_str(&format!(
+                    "  <line x1=\"{:.1}\" y1=\"{}\" x2=\"{:.1}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n",
+                    error_bar_x - error_bar_half_width, error_bar_y - cap_height,
+                    error_bar_x - error_bar_half_width, error_bar_y + cap_height,
+                    GO_COLOR
+                ));
+                // Right cap
+                svg.push_str(&format!(
+                    "  <line x1=\"{:.1}\" y1=\"{}\" x2=\"{:.1}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n",
+                    error_bar_x + error_bar_half_width, error_bar_y - cap_height,
+                    error_bar_x + error_bar_half_width, error_bar_y + cap_height,
+                    GO_COLOR
+                ));
+            }
+
+            // TypeScript bar (bottom)
+            let ts_bar_y = bar_height + bar_gap;
+            svg.push_str(&format!(
+                "  <rect x=\"{}\" y=\"{}\" width=\"{:.1}\" height=\"{}\" fill=\"url(#tsGrad)\" rx=\"3\"/>\n",
+                LABEL_WIDTH, ts_bar_y, ts_bar_width, bar_height
+            ));
+            
+            // TS label on bar
+            svg.push_str(&format!(
+                "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"500\" fill=\"white\">TS</text>\n",
+                LABEL_WIDTH + 6, ts_bar_y + bar_height - 5
+            ));
+            
+            // TS value label (right of bar)
+            let ts_label = if let (Some(median), Some(ci_upper)) = (cmp.second.median_across_runs, cmp.second.ci_95_upper) {
+                let ci_half = ci_upper - median;
+                format!("{} ±{}", 
+                    format_duration_with_unit(median, time_unit, precision),
+                    format_duration_with_unit(ci_half, time_unit, precision))
+            } else {
+                format_duration_with_unit(ts_value, time_unit, precision)
+            };
+            svg.push_str(&format!(
+                "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"{}\" fill=\"{}\">{}</text>\n",
+                LABEL_WIDTH + bar_area_width + 8, ts_bar_y + bar_height - 5,
+                if ts_winner { "600" } else { "400" },
+                if ts_winner { "#1E40AF" } else { TEXT_MUTED },
+                escape_xml(&ts_label)
+            ));
+            
+            // TS error bar (horizontal, at end of bar)
+            if let (Some(ci_lower), Some(ci_upper)) = (cmp.second.ci_95_lower, cmp.second.ci_95_upper) {
+                let ci_range = ci_upper - ci_lower;
+                let error_bar_half_width = if use_log_scale {
+                    ((ci_range / ts_value) * ts_bar_width / 2.0).max(3.0).min(20.0)
+                } else {
+                    (ci_range / max_value * bar_area_width as f64 / 2.0).max(3.0).min(20.0)
+                };
+                let error_bar_x = LABEL_WIDTH as f64 + ts_bar_width;
+                let error_bar_y = ts_bar_y + bar_height / 2;
+                let cap_height = 3;
+                
+                // Horizontal error bar line
+                svg.push_str(&format!(
+                    "  <line x1=\"{:.1}\" y1=\"{}\" x2=\"{:.1}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n",
+                    error_bar_x - error_bar_half_width, error_bar_y,
+                    error_bar_x + error_bar_half_width, error_bar_y,
+                    TS_COLOR
+                ));
+                // Left cap
+                svg.push_str(&format!(
+                    "  <line x1=\"{:.1}\" y1=\"{}\" x2=\"{:.1}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n",
+                    error_bar_x - error_bar_half_width, error_bar_y - cap_height,
+                    error_bar_x - error_bar_half_width, error_bar_y + cap_height,
+                    TS_COLOR
+                ));
+                // Right cap
+                svg.push_str(&format!(
+                    "  <line x1=\"{:.1}\" y1=\"{}\" x2=\"{:.1}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n",
+                    error_bar_x + error_bar_half_width, error_bar_y - cap_height,
+                    error_bar_x + error_bar_half_width, error_bar_y + cap_height,
+                    TS_COLOR
+                ));
+            }
+            
+            // Separator line between benchmarks
+            if i < filtered.len() - 1 {
+                svg.push_str(&format!(
+                    "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"0.5\" opacity=\"0.3\"/>\n",
+                    ROW_HEIGHT - 5, width - margin_x * 2, ROW_HEIGHT - 5, BORDER_COLOR
                 ));
             }
             
@@ -231,11 +344,11 @@ pub fn generate(
     }
 
     // Legend
-    let legend_y = start_y + (num_rows * CHART_SPACING_Y) + 20;
+    let legend_y = start_y + chart_area_height + 20;
     svg.push_str(&format!("<g transform=\"translate({},{})\">\n", width / 2, legend_y));
     
     // Go indicator
-    let go_label = if directive.show_win_counts {
+    let go_legend_label = if directive.show_win_counts {
         format!("Go ({} wins)", go_wins)
     } else {
         "Go".to_string()
@@ -243,11 +356,11 @@ pub fn generate(
     svg.push_str(&format!(
         "  <rect x=\"-140\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
          <text x=\"-122\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
-        GO_COLOR, TEXT_COLOR, escape_xml(&go_label)
+        GO_COLOR, TEXT_COLOR, escape_xml(&go_legend_label)
     ));
     
     // TS indicator
-    let ts_label = if directive.show_win_counts {
+    let ts_legend_label = if directive.show_win_counts {
         format!("TypeScript ({} wins)", ts_wins)
     } else {
         "TypeScript".to_string()
@@ -255,7 +368,7 @@ pub fn generate(
     svg.push_str(&format!(
         "  <rect x=\"30\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
          <text x=\"48\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
-        TS_COLOR, TEXT_COLOR, escape_xml(&ts_label)
+        TS_COLOR, TEXT_COLOR, escape_xml(&ts_legend_label)
     ));
     
     // Ties indicator
@@ -263,6 +376,14 @@ pub fn generate(
         svg.push_str(&format!(
             "  <text x=\"180\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">Ties: {}</text>\n",
             TEXT_MUTED, ties
+        ));
+    }
+    
+    // Log scale indicator
+    if use_log_scale {
+        svg.push_str(&format!(
+            "  <text x=\"250\" y=\"11\" font-family=\"sans-serif\" font-size=\"10\" font-style=\"italic\" fill=\"{}\">(logarithmic scale)</text>\n",
+            TEXT_MUTED
         ));
     }
     

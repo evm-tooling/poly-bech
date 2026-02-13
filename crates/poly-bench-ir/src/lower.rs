@@ -79,6 +79,7 @@ fn lower_suite(suite: &Suite, base_dir: Option<&Path>, stdlib_imports: &HashSet<
     // Statistical analysis settings
     ir.outlier_detection = suite.outlier_detection;  // Already defaults to true in AST
     ir.cv_threshold = suite.cv_threshold.unwrap_or(crate::DEFAULT_CV_THRESHOLD);
+    ir.count = suite.count.unwrap_or(1);  // Default: single run (backward compatible)
     
     // Observability settings (Phase 2B)
     ir.memory = suite.memory;  // Already defaults to false in AST
@@ -208,6 +209,7 @@ fn lower_benchmark(
     spec.use_sink = benchmark.sink.unwrap_or(suite_ir.sink);
     spec.outlier_detection = benchmark.outlier_detection.unwrap_or(suite_ir.outlier_detection);
     spec.cv_threshold = benchmark.cv_threshold.unwrap_or(suite_ir.cv_threshold);
+    spec.count = benchmark.count.unwrap_or(suite_ir.count);
     
     // Observability settings (Phase 2B)
     spec.memory = benchmark.memory.unwrap_or(suite_ir.memory);

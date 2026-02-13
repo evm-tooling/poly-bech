@@ -101,6 +101,8 @@ pub struct SuiteIR {
     pub outlier_detection: bool,
     /// Coefficient of variation threshold percentage for stability check
     pub cv_threshold: f64,
+    /// Number of times to run each benchmark for statistical consistency
+    pub count: u64,
     
     // Observability settings (Phase 2B)
     /// Enable memory allocation profiling
@@ -153,6 +155,7 @@ impl SuiteIR {
             // Statistical analysis defaults
             outlier_detection: true,        // Enabled by default for statistical accuracy
             cv_threshold: DEFAULT_CV_THRESHOLD, // 5% threshold
+            count: 1,                       // Single run by default (backward compatible)
             // Observability defaults
             memory: false,                  // Memory profiling disabled by default
             concurrency: 1,                 // Single-threaded by default
@@ -299,6 +302,8 @@ pub struct BenchmarkSpec {
     pub outlier_detection: bool,
     /// Coefficient of variation threshold percentage for stability check
     pub cv_threshold: f64,
+    /// Number of times to run this benchmark for statistical consistency
+    pub count: u64,
     
     // Observability settings (Phase 2B)
     /// Enable memory allocation profiling
@@ -340,6 +345,7 @@ impl BenchmarkSpec {
             use_sink: true,
             outlier_detection: true,
             cv_threshold: DEFAULT_CV_THRESHOLD,
+            count: 1,
             memory: false,
             concurrency: 1,
             before_hooks: HashMap::new(),

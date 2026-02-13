@@ -260,20 +260,41 @@ fn print_suite_with_options(suite: &SuiteResults, options: &ReportOptions) {
 
 /// Print the vitest/tinybench style distribution table
 fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOptions) {
-    // Table header
-    println!("   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>9} {:>7} {:>8}",
-        "name".dimmed(),
-        "hz".dimmed(),
-        "min".dimmed(),
-        "max".dimmed(),
-        "mean".dimmed(),
-        "p75".dimmed(),
-        "p99".dimmed(),
-        "p995".dimmed(),
-        "rme".dimmed(),
-        "cv".dimmed(),
-        "samples".dimmed()
-    );
+    // Check if any measurement has multiple runs
+    let has_multi_run = benchmarks.iter()
+        .flat_map(|b| b.measurements.values())
+        .any(|m| m.run_count.unwrap_or(1) > 1);
+
+    // Table header - show median and 95% CI columns when multi-run
+    if has_multi_run {
+        println!("   {:<40} {:>12} {:>10} {:>12} {:>8} {:>8} {:>8} {:>8} {:>9} {:>7} {:>6}",
+            "name".dimmed(),
+            "hz".dimmed(),
+            "median".dimmed(),
+            "95% CI".dimmed(),
+            "min".dimmed(),
+            "max".dimmed(),
+            "p75".dimmed(),
+            "p99".dimmed(),
+            "rme".dimmed(),
+            "cv".dimmed(),
+            "runs".dimmed()
+        );
+    } else {
+        println!("   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>9} {:>7} {:>8}",
+            "name".dimmed(),
+            "hz".dimmed(),
+            "min".dimmed(),
+            "max".dimmed(),
+            "mean".dimmed(),
+            "p75".dimmed(),
+            "p99".dimmed(),
+            "p995".dimmed(),
+            "rme".dimmed(),
+            "cv".dimmed(),
+            "samples".dimmed()
+        );
+    }
 
     // Determine fastest/slowest for each language
     let go_fastest: Option<&str> = benchmarks.iter()
@@ -307,39 +328,77 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
                 String::new()
             };
             
-            // Calculate stats from percentiles or estimate
-            let min_ns = m.min_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
-            let max_ns = m.max_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
-            let mean_ns = m.nanos_per_op;
-            let p75_ns = m.p75_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
-            let p99_ns = m.p99_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
-            let p995_ns = m.p995_nanos.unwrap_or(m.p99_nanos.unwrap_or(m.nanos_per_op as u64)) as f64;
-            let rme = m.rme_percent.unwrap_or(0.0);
-            let cv = m.cv_percent.unwrap_or(0.0);
-            let samples = m.samples.unwrap_or(1000);
-            
-            // Show stability warning if CV is high
-            let cv_str = if m.is_stable == Some(false) {
-                format!("{:.1}%", cv).yellow().to_string()
-            } else {
-                format!("{:.1}%", cv)
-            };
-            
             let name = format!("· go: {}", bench.name);
-            println!("   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}% {:>7} {:>8}{}",
-                name.green(),
-                format_hz(m.ops_per_sec),
-                format_ms(min_ns),
-                format_ms(max_ns),
-                format_ms(mean_ns),
-                format_ms(p75_ns),
-                format_ms(p99_ns),
-                format_ms(p995_ns),
-                format!("±{:.2}", rme),
-                cv_str,
-                samples,
-                badge
-            );
+            
+            if has_multi_run && m.run_count.unwrap_or(1) > 1 {
+                // Multi-run format: show median and 95% CI
+                let median_ns = m.median_across_runs.unwrap_or(m.nanos_per_op);
+                let ci_str = if let (Some(lower), Some(upper)) = (m.ci_95_lower, m.ci_95_upper) {
+                    format!("±{}", format_ms((upper - lower) / 2.0))
+                } else {
+                    "-".to_string()
+                };
+                let min_ns = m.min_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let max_ns = m.max_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let p75_ns = m.p75_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let p99_ns = m.p99_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let rme = m.rme_percent.unwrap_or(0.0);
+                let cv = m.cv_percent.unwrap_or(0.0);
+                let runs = m.run_count.unwrap_or(1);
+                
+                let cv_str = if m.is_stable == Some(false) {
+                    format!("{:.1}%", cv).yellow().to_string()
+                } else {
+                    format!("{:.1}%", cv)
+                };
+                
+                println!("   {:<40} {:>12} {:>10} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8}% {:>7} {:>6}{}",
+                    name.green(),
+                    format_hz(m.ops_per_sec),
+                    format_ms(median_ns),
+                    ci_str,
+                    format_ms(min_ns),
+                    format_ms(max_ns),
+                    format_ms(p75_ns),
+                    format_ms(p99_ns),
+                    format!("±{:.2}", rme),
+                    cv_str,
+                    runs,
+                    badge
+                );
+            } else {
+                // Single-run format (existing)
+                let min_ns = m.min_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let max_ns = m.max_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let mean_ns = m.nanos_per_op;
+                let p75_ns = m.p75_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let p99_ns = m.p99_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let p995_ns = m.p995_nanos.unwrap_or(m.p99_nanos.unwrap_or(m.nanos_per_op as u64)) as f64;
+                let rme = m.rme_percent.unwrap_or(0.0);
+                let cv = m.cv_percent.unwrap_or(0.0);
+                let samples = m.samples.unwrap_or(1000);
+                
+                let cv_str = if m.is_stable == Some(false) {
+                    format!("{:.1}%", cv).yellow().to_string()
+                } else {
+                    format!("{:.1}%", cv)
+                };
+                
+                println!("   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}% {:>7} {:>8}{}",
+                    name.green(),
+                    format_hz(m.ops_per_sec),
+                    format_ms(min_ns),
+                    format_ms(max_ns),
+                    format_ms(mean_ns),
+                    format_ms(p75_ns),
+                    format_ms(p99_ns),
+                    format_ms(p995_ns),
+                    format!("±{:.2}", rme),
+                    cv_str,
+                    samples,
+                    badge
+                );
+            }
         }
         
         // TypeScript row
@@ -352,38 +411,77 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
                 String::new()
             };
             
-            let min_ns = m.min_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
-            let max_ns = m.max_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
-            let mean_ns = m.nanos_per_op;
-            let p75_ns = m.p75_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
-            let p99_ns = m.p99_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
-            let p995_ns = m.p995_nanos.unwrap_or(m.p99_nanos.unwrap_or(m.nanos_per_op as u64)) as f64;
-            let rme = m.rme_percent.unwrap_or(0.0);
-            let cv = m.cv_percent.unwrap_or(0.0);
-            let samples = m.samples.unwrap_or(1000);
-            
-            // Show stability warning if CV is high
-            let cv_str = if m.is_stable == Some(false) {
-                format!("{:.1}%", cv).yellow().to_string()
-            } else {
-                format!("{:.1}%", cv)
-            };
-            
             let name = format!("· ts: {}", bench.name);
-            println!("   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}% {:>7} {:>8}{}",
-                name.cyan(),
-                format_hz(m.ops_per_sec),
-                format_ms(min_ns),
-                format_ms(max_ns),
-                format_ms(mean_ns),
-                format_ms(p75_ns),
-                format_ms(p99_ns),
-                format_ms(p995_ns),
-                format!("±{:.2}", rme),
-                cv_str,
-                samples,
-                badge
-            );
+            
+            if has_multi_run && m.run_count.unwrap_or(1) > 1 {
+                // Multi-run format: show median and 95% CI
+                let median_ns = m.median_across_runs.unwrap_or(m.nanos_per_op);
+                let ci_str = if let (Some(lower), Some(upper)) = (m.ci_95_lower, m.ci_95_upper) {
+                    format!("±{}", format_ms((upper - lower) / 2.0))
+                } else {
+                    "-".to_string()
+                };
+                let min_ns = m.min_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let max_ns = m.max_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let p75_ns = m.p75_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let p99_ns = m.p99_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let rme = m.rme_percent.unwrap_or(0.0);
+                let cv = m.cv_percent.unwrap_or(0.0);
+                let runs = m.run_count.unwrap_or(1);
+                
+                let cv_str = if m.is_stable == Some(false) {
+                    format!("{:.1}%", cv).yellow().to_string()
+                } else {
+                    format!("{:.1}%", cv)
+                };
+                
+                println!("   {:<40} {:>12} {:>10} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8}% {:>7} {:>6}{}",
+                    name.cyan(),
+                    format_hz(m.ops_per_sec),
+                    format_ms(median_ns),
+                    ci_str,
+                    format_ms(min_ns),
+                    format_ms(max_ns),
+                    format_ms(p75_ns),
+                    format_ms(p99_ns),
+                    format!("±{:.2}", rme),
+                    cv_str,
+                    runs,
+                    badge
+                );
+            } else {
+                // Single-run format (existing)
+                let min_ns = m.min_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let max_ns = m.max_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let mean_ns = m.nanos_per_op;
+                let p75_ns = m.p75_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let p99_ns = m.p99_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let p995_ns = m.p995_nanos.unwrap_or(m.p99_nanos.unwrap_or(m.nanos_per_op as u64)) as f64;
+                let rme = m.rme_percent.unwrap_or(0.0);
+                let cv = m.cv_percent.unwrap_or(0.0);
+                let samples = m.samples.unwrap_or(1000);
+                
+                let cv_str = if m.is_stable == Some(false) {
+                    format!("{:.1}%", cv).yellow().to_string()
+                } else {
+                    format!("{:.1}%", cv)
+                };
+                
+                println!("   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}% {:>7} {:>8}{}",
+                    name.cyan(),
+                    format_hz(m.ops_per_sec),
+                    format_ms(min_ns),
+                    format_ms(max_ns),
+                    format_ms(mean_ns),
+                    format_ms(p75_ns),
+                    format_ms(p99_ns),
+                    format_ms(p995_ns),
+                    format!("±{:.2}", rme),
+                    cv_str,
+                    samples,
+                    badge
+                );
+            }
         }
 
         // Comparison row
