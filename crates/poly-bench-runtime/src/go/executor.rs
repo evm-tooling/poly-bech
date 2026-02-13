@@ -354,15 +354,13 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     // Generate main function based on mode
     match spec.mode {
         BenchMode::Auto => {
-            // Auto-calibration mode
+            // Auto-calibration mode: like Go's testing.B
+            // Total time is approximately targetTime (measurement during calibration)
             code.push_str(&format!(r#"
 func main() {{
 	targetNanos := int64({})
-	minIters := {}
-	maxIters := {}
-	warmupRatio := 10 // warmup is 1/10th of iterations
 {}
-"#, spec.target_time_ms * 1_000_000, spec.min_iterations, spec.max_iterations, sink_decl));
+"#, spec.target_time_ms * 1_000_000, sink_decl));
 
             // Before hook
             if let Some(before) = before_hook {
@@ -372,51 +370,9 @@ func main() {{
                 }
             }
 
-            // Calibration phase
-            code.push_str(r#"
-	// Calibration phase: determine optimal iteration count
-	iterations := 1
-	for iterations < maxIters {
-		start := time.Now()
-		for i := 0; i < iterations; i++ {
-"#);
-            if let Some(each) = each_hook {
-                for line in each.lines() {
-                    code.push_str(&format!("\t\t\t{}\n", line));
-                }
-            }
-            code.push_str(&format!("\t\t\t{}\n", bench_call));
-            code.push_str(sink_keepalive);
-            code.push_str(r#"		}
-		elapsed := time.Since(start).Nanoseconds()
-		if elapsed >= targetNanos {
-			break
-		}
-		if elapsed > 0 {
-			// Scale up to reach target time (with 20% buffer)
-			newIters := int(float64(iterations) * float64(targetNanos) / float64(elapsed) * 1.2)
-			if newIters <= iterations {
-				newIters = iterations * 2
-			}
-			iterations = newIters
-		} else {
-			iterations *= 10
-		}
-		if iterations > maxIters {
-			iterations = maxIters
-		}
-	}
-	if iterations < minIters {
-		iterations = minIters
-	}
-
-	// Warmup phase (10% of calibrated iterations, minimum 10)
-	warmup := iterations / warmupRatio
-	if warmup < 10 {
-		warmup = 10
-	}
-	for i := 0; i < warmup; i++ {
-"#);
+            // Brief warmup (fixed 100 iterations)
+            code.push_str("\n\t// Brief warmup (100 iterations)\n");
+            code.push_str("\tfor i := 0; i < 100; i++ {\n");
             if let Some(each) = each_hook {
                 for line in each.lines() {
                     code.push_str(&format!("\t\t{}\n", line));
@@ -426,25 +382,96 @@ func main() {{
             code.push_str(sink_keepalive);
             code.push_str("\t}\n");
 
-            // Timed run
+            // Adaptive measurement phase (like Go's testing.B) - NO per-iteration timing
             code.push_str(r#"
-	// Timed run
-	samples := make([]uint64, iterations)
-	var totalNanos uint64
-	for i := 0; i < iterations; i++ {
+	// Adaptive measurement phase (like Go's testing.B)
+	// Run batches, scale up N, stop when totalElapsed >= targetTime
+	batchSize := 1
+	totalIterations := 0
+	var totalNanos int64
+	
+	for totalNanos < targetNanos {
+		// Run batch without per-iteration timing (fast)
+		batchStart := time.Now()
+		for i := 0; i < batchSize; i++ {
+"#);
+            if let Some(each) = each_hook {
+                for line in each.lines() {
+                    code.push_str(&format!("\t\t\t{}\n", line));
+                }
+            }
+            code.push_str(&format!("\t\t\t{}\n", bench_call));
+            code.push_str(sink_keepalive);
+            code.push_str(r#"		}
+		batchElapsed := time.Since(batchStart).Nanoseconds()
+		
+		totalIterations += batchSize
+		totalNanos += batchElapsed
+		
+		if totalNanos >= targetNanos {
+			break
+		}
+		
+		// Scale up for next batch (like Go's predictN)
+		// Conservative scaling to avoid overshooting target time
+		if batchElapsed > 0 {
+			remainingNanos := targetNanos - totalNanos
+			// Calculate predicted batch size to fill remaining time
+			predicted := int(float64(batchSize) * float64(remainingNanos) / float64(batchElapsed))
+			
+			var newSize int
+			if remainingNanos < batchElapsed {
+				// Less time remaining than last batch took - use exact prediction, no growth
+				newSize = predicted
+				if newSize < 1 {
+					newSize = 1
+				}
+			} else if remainingNanos < targetNanos / 5 {
+				// Near target (<20% remaining): conservative, slight buffer only
+				newSize = int(float64(predicted) * 0.9)
+				if newSize < 1 {
+					newSize = 1
+				}
+			} else {
+				// Early phase: grow faster but cap growth
+				newSize = int(float64(predicted) * 1.1)
+				if newSize <= batchSize {
+					newSize = batchSize * 2
+				}
+				// Cap at 10x growth per iteration
+				if newSize > batchSize * 10 {
+					newSize = batchSize * 10
+				}
+			}
+			if newSize < 1 {
+				newSize = 1
+			}
+			batchSize = newSize
+		} else {
+			batchSize *= 10
+		}
+	}
+	
+	// Collect samples for statistical analysis (small subset)
+	sampleCount := 1000
+	if sampleCount > totalIterations {
+		sampleCount = totalIterations
+	}
+	samples := make([]uint64, sampleCount)
+	for i := 0; i < sampleCount; i++ {
+		start := time.Now()
 "#);
             if let Some(each) = each_hook {
                 for line in each.lines() {
                     code.push_str(&format!("\t\t{}\n", line));
                 }
             }
-            code.push_str("\t\tstart := time.Now()\n");
             code.push_str(&format!("\t\t{}\n", bench_call));
             code.push_str(sink_keepalive);
-            code.push_str(r#"		elapsed := time.Since(start).Nanoseconds()
-		samples[i] = uint64(elapsed)
-		totalNanos += uint64(elapsed)
+            code.push_str(r#"		samples[i] = uint64(time.Since(start).Nanoseconds())
 	}
+	
+	iterations := totalIterations
 "#);
         }
         BenchMode::Fixed => {
@@ -510,7 +537,7 @@ func main() {{
 	
 	result := BenchResult{
 		Iterations:  uint64(iterations),
-		TotalNanos:  totalNanos,
+		TotalNanos:  uint64(totalNanos),
 		NanosPerOp:  nanosPerOp,
 		OpsPerSec:   opsPerSec,
 		Samples:     samples,

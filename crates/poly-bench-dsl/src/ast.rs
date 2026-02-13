@@ -517,6 +517,12 @@ pub struct Suite {
     /// Enable sink/black-box pattern to prevent dead code elimination (default: true)
     pub sink: bool,
     
+    // Statistical analysis settings
+    /// Enable IQR-based outlier detection (default: true)
+    pub outlier_detection: bool,
+    /// Coefficient of variation threshold percentage for stability check (default: 5.0)
+    pub cv_threshold: Option<f64>,
+    
     /// Global setup block for suite-level initialization (runs once before all benchmarks)
     pub global_setup: Option<GlobalSetup>,
     
@@ -548,6 +554,8 @@ impl Suite {
             min_iterations: None,
             max_iterations: None,
             sink: true, // Enabled by default to prevent DCE
+            outlier_detection: true, // Enabled by default for statistical accuracy
+            cv_threshold: None, // Uses default (5.0%) when None
             global_setup: None,
             setups: HashMap::new(),
             fixtures: Vec::new(),
@@ -635,6 +643,10 @@ pub struct Benchmark {
     pub max_iterations: Option<u64>,
     /// Override sink/black-box setting (None = inherit from suite)
     pub sink: Option<bool>,
+    /// Override outlier detection setting (None = inherit from suite)
+    pub outlier_detection: Option<bool>,
+    /// Override CV threshold (None = inherit from suite)
+    pub cv_threshold: Option<f64>,
     
     // Phase 3: Lifecycle hooks
     /// Pre-benchmark hook (runs once before iterations)
@@ -665,6 +677,8 @@ impl Benchmark {
             min_iterations: None,
             max_iterations: None,
             sink: None,
+            outlier_detection: None,
+            cv_threshold: None,
             before: HashMap::new(),
             after: HashMap::new(),
             each: HashMap::new(),

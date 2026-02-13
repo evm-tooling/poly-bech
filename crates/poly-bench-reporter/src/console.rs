@@ -135,6 +135,18 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
         (summary.ties * 100) / summary.total_benchmarks.max(1)
     );
     println!("  {:<20} {:.2}x", "Geometric Mean:", summary.geo_mean_speedup);
+    
+    // Statistical quality indicators
+    if summary.total_outliers_removed > 0 {
+        println!("  {:<20} {}", "Outliers Removed:", summary.total_outliers_removed);
+    }
+    if summary.unstable_count > 0 {
+        println!("  {:<20} {} {}", 
+            "Unstable Results:", 
+            format!("{}", summary.unstable_count).yellow(),
+            "(CV > threshold)".dimmed()
+        );
+    }
     println!();
 
     // Config section (if enabled and config provided)
@@ -179,7 +191,7 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
     }
 
     // Legend
-    println!("{}", "─".repeat(100));
+    println!("{}", "─".repeat(110));
     println!("{}", "LEGEND".dimmed());
     println!("  {} = Go result  |  {} = TypeScript result",
         "go".green(),
@@ -196,10 +208,12 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
         "p99".dimmed(),
         "p995".dimmed()
     );
-    println!("  {} = relative margin of error  |  {} = number of samples",
+    println!("  {} = relative margin of error  |  {} = coefficient of variation (stability)  |  {} = number of samples",
         "rme".dimmed(),
+        "cv".dimmed(),
         "samples".dimmed()
     );
+    println!("  {} = CV above threshold (results may be unstable)", "yellow cv".yellow());
     println!();
 
     Ok(())
@@ -247,7 +261,7 @@ fn print_suite_with_options(suite: &SuiteResults, options: &ReportOptions) {
 /// Print the vitest/tinybench style distribution table
 fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOptions) {
     // Table header
-    println!("   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>9} {:>8}",
+    println!("   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>9} {:>7} {:>8}",
         "name".dimmed(),
         "hz".dimmed(),
         "min".dimmed(),
@@ -257,6 +271,7 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
         "p99".dimmed(),
         "p995".dimmed(),
         "rme".dimmed(),
+        "cv".dimmed(),
         "samples".dimmed()
     );
 
@@ -300,10 +315,18 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
             let p99_ns = m.p99_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
             let p995_ns = m.p995_nanos.unwrap_or(m.p99_nanos.unwrap_or(m.nanos_per_op as u64)) as f64;
             let rme = m.rme_percent.unwrap_or(0.0);
+            let cv = m.cv_percent.unwrap_or(0.0);
             let samples = m.samples.unwrap_or(1000);
             
+            // Show stability warning if CV is high
+            let cv_str = if m.is_stable == Some(false) {
+                format!("{:.1}%", cv).yellow().to_string()
+            } else {
+                format!("{:.1}%", cv)
+            };
+            
             let name = format!("· go: {}", bench.name);
-            println!("   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}% {:>8}{}",
+            println!("   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}% {:>7} {:>8}{}",
                 name.green(),
                 format_hz(m.ops_per_sec),
                 format_ms(min_ns),
@@ -313,6 +336,7 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
                 format_ms(p99_ns),
                 format_ms(p995_ns),
                 format!("±{:.2}", rme),
+                cv_str,
                 samples,
                 badge
             );
@@ -335,10 +359,18 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
             let p99_ns = m.p99_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
             let p995_ns = m.p995_nanos.unwrap_or(m.p99_nanos.unwrap_or(m.nanos_per_op as u64)) as f64;
             let rme = m.rme_percent.unwrap_or(0.0);
+            let cv = m.cv_percent.unwrap_or(0.0);
             let samples = m.samples.unwrap_or(1000);
             
+            // Show stability warning if CV is high
+            let cv_str = if m.is_stable == Some(false) {
+                format!("{:.1}%", cv).yellow().to_string()
+            } else {
+                format!("{:.1}%", cv)
+            };
+            
             let name = format!("· ts: {}", bench.name);
-            println!("   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}% {:>8}{}",
+            println!("   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}% {:>7} {:>8}{}",
                 name.cyan(),
                 format_hz(m.ops_per_sec),
                 format_ms(min_ns),
@@ -348,6 +380,7 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
                 format_ms(p99_ns),
                 format_ms(p995_ns),
                 format!("±{:.2}", rme),
+                cv_str,
                 samples,
                 badge
             );

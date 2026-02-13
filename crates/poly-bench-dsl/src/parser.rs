@@ -300,6 +300,18 @@ impl Parser {
                 let value = self.expect_number()?;
                 suite.max_iterations = Some(value);
             }
+            TokenKind::OutlierDetection => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_bool()?;
+                suite.outlier_detection = value;
+            }
+            TokenKind::CvThreshold => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_float()?;
+                suite.cv_threshold = Some(value);
+            }
             // globalSetup can now be inside suite
             TokenKind::GlobalSetup => {
                 let global_setup = self.parse_global_setup()?;
@@ -925,6 +937,18 @@ impl Parser {
                 self.expect(TokenKind::Colon)?;
                 let value = self.expect_number()?;
                 benchmark.max_iterations = Some(value);
+            }
+            TokenKind::OutlierDetection => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_bool()?;
+                benchmark.outlier_detection = Some(value);
+            }
+            TokenKind::CvThreshold => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_float()?;
+                benchmark.cv_threshold = Some(value);
             }
             // Phase 3: Lifecycle hooks
             TokenKind::Before => {

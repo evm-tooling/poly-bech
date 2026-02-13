@@ -97,6 +97,10 @@ pub struct SuiteSummary {
     pub geo_mean_speedup: f64,
     /// Winner
     pub winner: Option<Lang>,
+    /// Number of benchmarks with unstable results (CV > threshold)
+    pub unstable_count: usize,
+    /// Total outliers removed across all measurements
+    pub total_outliers_removed: u64,
 }
 
 impl SuiteSummary {
@@ -105,8 +109,20 @@ impl SuiteSummary {
         let mut ts_wins = 0;
         let mut ties = 0;
         let mut log_speedups = Vec::new();
+        let mut unstable_count = 0;
+        let mut total_outliers_removed = 0u64;
 
         for bench in benchmarks {
+            // Count stability issues across all measurements
+            for measurement in bench.measurements.values() {
+                if let Some(false) = measurement.is_stable {
+                    unstable_count += 1;
+                }
+                if let Some(outliers) = measurement.outliers_removed {
+                    total_outliers_removed += outliers;
+                }
+            }
+            
             if let Some(ref comparison) = bench.comparison {
                 match comparison.winner {
                     ComparisonWinner::First => go_wins += 1,
@@ -146,6 +162,8 @@ impl SuiteSummary {
             ties,
             geo_mean_speedup,
             winner,
+            unstable_count,
+            total_outliers_removed,
         }
     }
 }
@@ -169,6 +187,10 @@ pub struct OverallSummary {
     pub winner: Option<Lang>,
     /// Winner description
     pub winner_description: String,
+    /// Number of measurements with unstable results (CV > threshold)
+    pub unstable_count: usize,
+    /// Total outliers removed across all measurements
+    pub total_outliers_removed: u64,
 }
 
 impl OverallSummary {
@@ -178,6 +200,8 @@ impl OverallSummary {
         let mut go_wins = 0;
         let mut ts_wins = 0;
         let mut ties = 0;
+        let mut unstable_count = 0;
+        let mut total_outliers_removed = 0u64;
         let mut log_speedups = Vec::new();
 
         for suite in suites {
@@ -185,6 +209,8 @@ impl OverallSummary {
             go_wins += suite.summary.go_wins;
             ts_wins += suite.summary.ts_wins;
             ties += suite.summary.ties;
+            unstable_count += suite.summary.unstable_count;
+            total_outliers_removed += suite.summary.total_outliers_removed;
 
             for bench in &suite.benchmarks {
                 if let Some(ref comparison) = bench.comparison {
@@ -221,6 +247,8 @@ impl OverallSummary {
             geo_mean_speedup,
             winner,
             winner_description,
+            unstable_count,
+            total_outliers_removed,
         }
     }
 }

@@ -4,7 +4,7 @@
 //! requires significant setup. This provides a working implementation that
 //! can be upgraded to embedded V8 later.
 
-use poly_bench_dsl::Lang;
+use poly_bench_dsl::{Lang, BenchMode};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use crate::js::{codegen, builtins, transpiler};
 use crate::measurement::Measurement;
@@ -255,6 +255,7 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
     // Generate benchmark execution with hooks
     // Check if the implementation code contains await (needs async function)
     let impl_is_async = impl_code.contains("await");
+    let use_auto_mode = spec.mode == BenchMode::Auto;
     
     if each_hook.is_some() {
         // Custom benchmark loop with each hook
@@ -262,6 +263,7 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         let each_is_async = each.contains("await");
         let needs_async = impl_is_async || each_is_async;
         
+        // Note: async hooks not yet supported with auto mode
         if needs_async {
             script.push_str("const __result = await __polybench.runBenchmarkWithHookAsync(\n");
         } else {
@@ -289,8 +291,20 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         script.push_str("    },\n");
         script.push_str(&format!("    {}, {}\n", spec.iterations, spec.warmup));
         script.push_str(");\n");
+    } else if use_auto_mode {
+        // Auto-calibration mode: only uses targetTime (no min/max iteration caps)
+        let use_sink = if spec.use_sink { "true" } else { "false" };
+        if impl_is_async {
+            script.push_str("const __result = await __polybench.runBenchmarkAutoAsync(async function() {\n");
+        } else {
+            script.push_str("const __result = __polybench.runBenchmarkAuto(function() {\n");
+        }
+        script.push_str("    ");
+        script.push_str(impl_code);
+        script.push_str(";\n");
+        script.push_str(&format!("}}, {}, {});\n", spec.target_time_ms, use_sink));
     } else {
-        // Standard benchmark execution
+        // Fixed iteration mode
         if impl_is_async {
             script.push_str("const __result = await __polybench.runBenchmarkAsync(async function() {\n");
         } else {

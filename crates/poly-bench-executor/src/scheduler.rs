@@ -1,6 +1,6 @@
 //! Benchmark execution scheduler
 
-use poly_bench_dsl::Lang;
+use poly_bench_dsl::{Lang, BenchMode};
 use poly_bench_ir::BenchmarkIR;
 use poly_bench_runtime::go::GoRuntime;
 use poly_bench_runtime::js::JsRuntime;
@@ -11,6 +11,7 @@ use super::{ProjectRoots, AnvilService, AnvilConfig};
 use colored::Colorize;
 use miette::Result;
 use std::collections::HashMap;
+use std::time::Instant;
 
 /// Run all benchmarks in the IR
 pub async fn run(
@@ -104,39 +105,61 @@ pub async fn run(
                 spec_clone.iterations = override_iters;
             }
 
-            print!("  {} {} ", "→".dimmed(), spec.name);
+            // Print benchmark args
+            let mode_str = match spec.mode {
+                BenchMode::Auto => format!("auto, targetTime={}ms", spec.target_time_ms),
+                BenchMode::Fixed => format!("fixed, iterations={}", spec.iterations),
+            };
+            println!("  {} {} [{}]", "→".dimmed(), spec.name.bold(), mode_str.dimmed());
 
             let mut measurements: HashMap<Lang, Measurement> = HashMap::new();
+            let bench_start = Instant::now();
 
             // Run Go benchmark
             if spec.has_lang(Lang::Go) {
                 if let Some(ref mut rt) = go_runtime {
+                    let lang_start = Instant::now();
                     match rt.run_benchmark(&spec_clone, suite).await {
                         Ok(m) => {
-                            print!("{} ", format!("Go: {}", Measurement::format_duration(m.nanos_per_op)).green());
+                            let elapsed = lang_start.elapsed();
+                            print!("    {} {} ({})", 
+                                "Go:".green(), 
+                                Measurement::format_duration(m.nanos_per_op),
+                                format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
+                            );
                             measurements.insert(Lang::Go, m);
                         }
                         Err(e) => {
-                            print!("{} ", format!("Go: {}", e).red());
+                            print!("    {} {}", "Go:".red(), format!("{}", e).red());
                         }
                     }
+                    println!();
                 }
             }
 
             // Run TypeScript benchmark
             if spec.has_lang(Lang::TypeScript) {
                 if let Some(ref mut rt) = js_runtime {
+                    let lang_start = Instant::now();
                     match rt.run_benchmark(&spec_clone, suite).await {
                         Ok(m) => {
-                            print!("{} ", format!("TS: {}", Measurement::format_duration(m.nanos_per_op)).cyan());
+                            let elapsed = lang_start.elapsed();
+                            print!("    {} {} ({})",
+                                "TS:".cyan(),
+                                Measurement::format_duration(m.nanos_per_op),
+                                format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
+                            );
                             measurements.insert(Lang::TypeScript, m);
                         }
                         Err(e) => {
-                            print!("{} ", format!("TS: {}", e).red());
+                            print!("    {} {}", "TS:".red(), format!("{}", e).red());
                         }
                     }
+                    println!();
                 }
             }
+
+            let bench_elapsed = bench_start.elapsed();
 
             // Show comparison if both ran
             if let (Some(go_m), Some(ts_m)) = (
@@ -144,17 +167,20 @@ pub async fn run(
                 measurements.get(&Lang::TypeScript),
             ) {
                 let ratio = go_m.nanos_per_op / ts_m.nanos_per_op;
-                let (winner, speedup) = if (ratio - 1.0).abs() < 0.05 {
+                let (winner, _speedup) = if (ratio - 1.0).abs() < 0.05 {
                     ("tie".dimmed().to_string(), 1.0)
                 } else if ratio > 1.0 {
                     (format!("TS {}x faster", format!("{:.2}", ratio)).cyan().to_string(), ratio)
                 } else {
                     (format!("Go {}x faster", format!("{:.2}", 1.0 / ratio)).green().to_string(), 1.0 / ratio)
                 };
-                print!("[{}]", winner);
+                println!("    {} [{}]", 
+                    format!("total: {:.2}s", bench_elapsed.as_secs_f64()).dimmed(),
+                    winner
+                );
+            } else {
+                println!("    {}", format!("total: {:.2}s", bench_elapsed.as_secs_f64()).dimmed());
             }
-
-            println!();
 
             benchmark_results.push(BenchmarkResult::new(
                 spec.name.clone(),
