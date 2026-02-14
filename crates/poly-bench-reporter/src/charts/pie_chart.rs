@@ -7,8 +7,8 @@ use poly_bench_ir::ChartDirectiveIR;
 
 use super::{
     calculate_geo_mean, count_wins, escape_xml, filter_benchmarks, format_duration_with_unit,
-    format_ops_per_sec, sort_benchmarks, svg_header, svg_title, BORDER_COLOR, GO_COLOR, TEXT_COLOR,
-    TEXT_MUTED, TEXT_SECONDARY, TS_COLOR,
+    format_ops_per_sec, sort_benchmarks, svg_header, svg_title, BORDER_COLOR, GO_COLOR, RUST_COLOR,
+    TEXT_COLOR, TEXT_MUTED, TEXT_SECONDARY, TS_COLOR,
 };
 
 // Layout constants for individual pie charts
@@ -69,7 +69,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
     let width = directive.width.unwrap_or(content_width).max(min_width);
 
     // Calculate summary statistics
-    let (go_wins, ts_wins, ties) = count_wins(&filtered);
+    let (go_wins, ts_wins, rust_wins, ties) = count_wins(&filtered);
     let geo_mean = calculate_geo_mean(&filtered);
 
     // Height calculation
@@ -255,27 +255,39 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
     let go_label =
         if directive.show_win_counts { format!("Go ({} wins)", go_wins) } else { "Go".to_string() };
     svg.push_str(&format!(
-        "  <rect x=\"-140\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
-         <text x=\"-122\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
+        "  <rect x=\"-200\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
+         <text x=\"-182\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
         GO_COLOR, TEXT_COLOR, escape_xml(&go_label)
     ));
 
     // TS indicator
     let ts_label = if directive.show_win_counts {
-        format!("TypeScript ({} wins)", ts_wins)
+        format!("TS ({} wins)", ts_wins)
     } else {
-        "TypeScript".to_string()
+        "TS".to_string()
     };
     svg.push_str(&format!(
-        "  <rect x=\"30\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
-         <text x=\"48\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
+        "  <rect x=\"-60\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
+         <text x=\"-42\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
         TS_COLOR, TEXT_COLOR, escape_xml(&ts_label)
+    ));
+
+    // Rust indicator
+    let rust_label = if directive.show_win_counts {
+        format!("Rust ({} wins)", rust_wins)
+    } else {
+        "Rust".to_string()
+    };
+    svg.push_str(&format!(
+        "  <rect x=\"60\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
+         <text x=\"78\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
+        RUST_COLOR, TEXT_COLOR, escape_xml(&rust_label)
     ));
 
     // Ties indicator
     if ties > 0 && directive.show_win_counts {
         svg.push_str(&format!(
-            "  <text x=\"180\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">Ties: {}</text>\n",
+            "  <text x=\"160\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">Ties: {}</text>\n",
             TEXT_MUTED, ties
         ));
     }

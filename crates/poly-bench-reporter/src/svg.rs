@@ -90,6 +90,7 @@ pub fn generate_speedup_chart(results: &BenchmarkResults) -> Result<String> {
         Some(Lang::TypeScript) => {
             format!("TypeScript is {:.1}x faster overall", 1.0 / summary.geo_mean_speedup)
         }
+        Some(Lang::Rust) => format!("Rust is {:.1}x faster overall", summary.geo_mean_speedup),
         _ => "Similar performance".to_string(),
     };
 

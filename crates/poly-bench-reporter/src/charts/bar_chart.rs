@@ -1,24 +1,23 @@
-//! Bar chart generator - horizontal bar chart with Go vs TS comparison
-//! Each benchmark is displayed as a row with two horizontal bars (Go and TS)
+//! Bar chart generator - horizontal bar chart with Go vs TS vs Rust comparison
+//! Each benchmark is displayed as a row with horizontal bars for each language
 //! Uses smart scaling to prevent extreme values from making other bars invisible
 
 use miette::Result;
 use poly_bench_dsl::Lang;
 use poly_bench_executor::BenchmarkResults;
 use poly_bench_ir::ChartDirectiveIR;
-use poly_bench_runtime::measurement::ComparisonWinner;
 
 use super::{
     calculate_geo_mean, count_wins, escape_xml, filter_benchmarks, format_duration_with_unit,
     format_ops_per_sec, sort_benchmarks, svg_header, svg_title, BORDER_COLOR,
-    DEFAULT_MARGIN_BOTTOM, DEFAULT_MARGIN_TOP, GO_COLOR, TEXT_COLOR, TEXT_MUTED, TEXT_SECONDARY,
+    DEFAULT_MARGIN_BOTTOM, DEFAULT_MARGIN_TOP, GO_COLOR, RUST_COLOR, TEXT_COLOR, TEXT_MUTED, TEXT_SECONDARY,
     TS_COLOR,
 };
 
 // Layout constants for horizontal bar chart
-const BAR_HEIGHT: i32 = 20; // Height of each bar
-const BAR_GAP: i32 = 4; // Gap between Go and TS bars within a benchmark
-const ROW_HEIGHT: i32 = 70; // Total height per benchmark row (Go + TS bars + spacing)
+const BAR_HEIGHT: i32 = 18; // Height of each bar
+const BAR_GAP: i32 = 3; // Gap between bars within a benchmark
+const ROW_HEIGHT: i32 = 95; // Total height per benchmark row (Go + TS + Rust bars + spacing)
 const LABEL_WIDTH: i32 = 180; // Width reserved for benchmark name labels
 const VALUE_LABEL_WIDTH: i32 = 120; // Width reserved for value labels on right
 const STATS_BOX_HEIGHT: i32 = 80;
@@ -46,12 +45,12 @@ pub fn generate(
 ) -> Result<String> {
     let mut svg = String::new();
 
-    // Collect all benchmarks with comparisons
+    // Collect all benchmarks with at least one measurement
     let all_benchmarks: Vec<_> = results
         .suites
         .iter()
         .flat_map(|s| s.benchmarks.iter())
-        .filter(|b| b.comparison.is_some())
+        .filter(|b| !b.measurements.is_empty())
         .collect();
 
     if all_benchmarks.is_empty() {
@@ -87,7 +86,7 @@ pub fn generate(
     let bar_area_width = width - LABEL_WIDTH - VALUE_LABEL_WIDTH - margin_x * 2;
 
     // Calculate summary stats for legend
-    let (go_wins, ts_wins, ties) = count_wins(&filtered);
+    let (go_wins, ts_wins, rust_wins, ties) = count_wins(&filtered);
     let geo_mean = calculate_geo_mean(&filtered);
 
     // Height calculation
@@ -103,14 +102,21 @@ pub fn generate(
         config_space +
         DEFAULT_MARGIN_BOTTOM;
 
-    // Collect all values for smart scaling
+    // Collect all values for smart scaling (Go, TS, and Rust)
     let all_values: Vec<f64> = filtered
         .iter()
-        .filter_map(|b| b.comparison.as_ref())
-        .flat_map(|c| {
-            let first_val = c.first.median_across_runs.unwrap_or(c.first.nanos_per_op);
-            let second_val = c.second.median_across_runs.unwrap_or(c.second.nanos_per_op);
-            [first_val, second_val]
+        .flat_map(|b| {
+            let mut values = Vec::new();
+            if let Some(m) = b.measurements.get(&Lang::Go) {
+                values.push(m.median_across_runs.unwrap_or(m.nanos_per_op));
+            }
+            if let Some(m) = b.measurements.get(&Lang::TypeScript) {
+                values.push(m.median_across_runs.unwrap_or(m.nanos_per_op));
+            }
+            if let Some(m) = b.measurements.get(&Lang::Rust) {
+                values.push(m.median_across_runs.unwrap_or(m.nanos_per_op));
+            }
+            values
         })
         .collect();
 
@@ -148,225 +154,187 @@ pub fn generate(
     // Draw horizontal bar chart rows
     let start_y = DEFAULT_MARGIN_TOP + 20;
 
+    // Helper to calculate bar width
+    let calc_bar_width = |value: f64| -> f64 {
+        if use_log_scale {
+            let log_max = max_value.ln();
+            let log_min = min_value.ln();
+            let log_range = log_max - log_min;
+            let log_val = value.max(min_value).ln();
+            let ratio = (log_val - log_min) / log_range;
+            (ratio * bar_area_width as f64).max(bar_area_width as f64 * MIN_BAR_WIDTH_RATIO)
+        } else {
+            let ratio = value / max_value;
+            (ratio * bar_area_width as f64).max(bar_area_width as f64 * MIN_BAR_WIDTH_RATIO)
+        }
+    };
+
     for (i, bench) in filtered.iter().enumerate() {
-        if let Some(ref cmp) = bench.comparison {
-            let row_y = start_y + (i as i32 * ROW_HEIGHT);
+        // Get measurements for each language
+        let go_m = bench.measurements.get(&Lang::Go);
+        let ts_m = bench.measurements.get(&Lang::TypeScript);
+        let rust_m = bench.measurements.get(&Lang::Rust);
 
-            // Get values - use median when available (for count > 1), otherwise nanos_per_op
-            let go_value = cmp.first.median_across_runs.unwrap_or(cmp.first.nanos_per_op);
-            let ts_value = cmp.second.median_across_runs.unwrap_or(cmp.second.nanos_per_op);
+        // Need at least one measurement to show
+        if go_m.is_none() && ts_m.is_none() && rust_m.is_none() {
+            continue;
+        }
 
-            // Calculate bar widths with smart scaling
-            let (go_bar_width, ts_bar_width) = if use_log_scale {
-                // Log scale: ensures small values are still visible
-                let log_max = max_value.ln();
-                let log_min = min_value.ln();
-                let log_range = log_max - log_min;
+        let row_y = start_y + (i as i32 * ROW_HEIGHT);
 
-                let go_log = go_value.max(min_value).ln();
-                let ts_log = ts_value.max(min_value).ln();
+        // Determine winner across all languages
+        let mut times: Vec<(&str, f64, &str)> = vec![]; // (name, nanos, color)
+        if let Some(m) = go_m {
+            times.push(("Go", m.median_across_runs.unwrap_or(m.nanos_per_op), GO_COLOR));
+        }
+        if let Some(m) = ts_m {
+            times.push(("TS", m.median_across_runs.unwrap_or(m.nanos_per_op), TS_COLOR));
+        }
+        if let Some(m) = rust_m {
+            times.push(("Rust", m.median_across_runs.unwrap_or(m.nanos_per_op), RUST_COLOR));
+        }
 
-                let go_ratio = (go_log - log_min) / log_range;
-                let ts_ratio = (ts_log - log_min) / log_range;
+        times.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        let winner_name = if times.len() >= 2 && times[1].1 / times[0].1 >= 1.05 {
+            Some(times[0].0)
+        } else {
+            None
+        };
 
-                // Map to bar width with minimum visible width
-                let go_w = (go_ratio * bar_area_width as f64)
-                    .max(bar_area_width as f64 * MIN_BAR_WIDTH_RATIO);
-                let ts_w = (ts_ratio * bar_area_width as f64)
-                    .max(bar_area_width as f64 * MIN_BAR_WIDTH_RATIO);
-                (go_w, ts_w)
-            } else {
-                // Linear scale with minimum bar width
-                let go_ratio = go_value / max_value;
-                let ts_ratio = ts_value / max_value;
+        // Draw row group
+        svg.push_str(&format!("<g transform=\"translate({},{})\">\n", margin_x, row_y));
 
-                let go_w = (go_ratio * bar_area_width as f64)
-                    .max(bar_area_width as f64 * MIN_BAR_WIDTH_RATIO);
-                let ts_w = (ts_ratio * bar_area_width as f64)
-                    .max(bar_area_width as f64 * MIN_BAR_WIDTH_RATIO);
-                (go_w, ts_w)
-            };
+        // Benchmark name label (left side)
+        let name_display = if bench.name.len() > 20 {
+            format!("{}...", &bench.name[..17])
+        } else {
+            bench.name.clone()
+        };
+        svg.push_str(&format!(
+            "  <text x=\"{}\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"11\" font-weight=\"500\" fill=\"{}\">{}</text>\n",
+            LABEL_WIDTH - 10, bar_height + bar_gap / 2, TEXT_COLOR, escape_xml(&name_display)
+        ));
 
-            let go_winner = cmp.winner == ComparisonWinner::First;
-            let ts_winner = cmp.winner == ComparisonWinner::Second;
-
-            // Draw row group
-            svg.push_str(&format!("<g transform=\"translate({},{})\">\n", margin_x, row_y));
-
-            // Benchmark name label (left side)
-            let name_display = if bench.name.len() > 20 {
-                format!("{}...", &bench.name[..17])
-            } else {
-                bench.name.clone()
-            };
-            svg.push_str(&format!(
-                "  <text x=\"{}\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"11\" font-weight=\"500\" fill=\"{}\">{}</text>\n",
-                LABEL_WIDTH - 10, bar_height + bar_gap / 2, TEXT_COLOR, escape_xml(&name_display)
-            ));
-
-            // Winner indicator (speedup) below name
-            if go_winner || ts_winner {
-                let winner_color = if go_winner { GO_COLOR } else { TS_COLOR };
-                let speedup = if go_winner { ts_value / go_value } else { go_value / ts_value };
-                let winner_label = if go_winner { "Go" } else { "TS" };
+        // Winner indicator (speedup) below name
+        if let Some(winner) = winner_name {
+            if times.len() >= 2 {
+                let speedup = times[1].1 / times[0].1;
+                let winner_color = times[0].2;
                 svg.push_str(&format!(
                     "  <text x=\"{}\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"600\" fill=\"{}\">{} {:.1}x faster</text>\n",
-                    LABEL_WIDTH - 10, bar_height * 2 + bar_gap + 4, winner_color, winner_label, speedup
+                    LABEL_WIDTH - 10, bar_height * 2 + bar_gap + 4, winner_color, winner, speedup
                 ));
             }
+        }
 
-            // Go bar (top)
-            let go_bar_y = 0;
+        let mut current_bar_y = 0;
+
+        // Go bar
+        if let Some(m) = go_m {
+            let value = m.median_across_runs.unwrap_or(m.nanos_per_op);
+            let bar_width = calc_bar_width(value);
+            let is_winner = winner_name == Some("Go");
+
             svg.push_str(&format!(
                 "  <rect x=\"{}\" y=\"{}\" width=\"{:.1}\" height=\"{}\" fill=\"url(#goGrad)\" rx=\"3\"/>\n",
-                LABEL_WIDTH, go_bar_y, go_bar_width, bar_height
+                LABEL_WIDTH, current_bar_y, bar_width, bar_height
             ));
-
-            // Go label on bar
             svg.push_str(&format!(
                 "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"500\" fill=\"white\">Go</text>\n",
-                LABEL_WIDTH + 6, go_bar_y + bar_height - 5
+                LABEL_WIDTH + 6, current_bar_y + bar_height - 5
             ));
 
-            // Go value label (right of bar)
-            let go_label = if let (Some(median), Some(ci_upper)) =
-                (cmp.first.median_across_runs, cmp.first.ci_95_upper)
-            {
-                let ci_half = ci_upper - median;
-                format!(
-                    "{} ±{}",
-                    format_duration_with_unit(median, time_unit, precision),
-                    format_duration_with_unit(ci_half, time_unit, precision)
-                )
+            // Value label
+            let label = if let (Some(median), Some(ci_upper)) = (m.median_across_runs, m.ci_95_upper) {
+                format!("{} ±{}", format_duration_with_unit(median, time_unit, precision), 
+                        format_duration_with_unit(ci_upper - median, time_unit, precision))
             } else {
-                format_duration_with_unit(go_value, time_unit, precision)
+                format_duration_with_unit(value, time_unit, precision)
             };
             svg.push_str(&format!(
                 "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"{}\" fill=\"{}\">{}</text>\n",
-                LABEL_WIDTH + bar_area_width + 8, go_bar_y + bar_height - 5,
-                if go_winner { "600" } else { "400" },
-                if go_winner { "#0E7490" } else { TEXT_MUTED },
-                escape_xml(&go_label)
+                LABEL_WIDTH + bar_area_width + 8, current_bar_y + bar_height - 5,
+                if is_winner { "600" } else { "400" },
+                if is_winner { "#0E7490" } else { TEXT_MUTED },
+                escape_xml(&label)
             ));
 
-            // Go error bar (horizontal, at end of bar)
-            if let (Some(ci_lower), Some(ci_upper)) = (cmp.first.ci_95_lower, cmp.first.ci_95_upper)
-            {
-                let ci_range = ci_upper - ci_lower;
-                let error_bar_half_width = if use_log_scale {
-                    // Scale error bar for log scale
-                    ((ci_range / go_value) * go_bar_width / 2.0).max(3.0).min(20.0)
-                } else {
-                    (ci_range / max_value * bar_area_width as f64 / 2.0).max(3.0).min(20.0)
-                };
-                let error_bar_x = LABEL_WIDTH as f64 + go_bar_width;
-                let error_bar_y = go_bar_y + bar_height / 2;
-                let cap_height = 3;
+            current_bar_y += bar_height + bar_gap;
+        }
 
-                // Horizontal error bar line
-                svg.push_str(&format!(
-                    "  <line x1=\"{:.1}\" y1=\"{}\" x2=\"{:.1}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n",
-                    error_bar_x - error_bar_half_width, error_bar_y,
-                    error_bar_x + error_bar_half_width, error_bar_y,
-                    GO_COLOR
-                ));
-                // Left cap
-                svg.push_str(&format!(
-                    "  <line x1=\"{:.1}\" y1=\"{}\" x2=\"{:.1}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n",
-                    error_bar_x - error_bar_half_width, error_bar_y - cap_height,
-                    error_bar_x - error_bar_half_width, error_bar_y + cap_height,
-                    GO_COLOR
-                ));
-                // Right cap
-                svg.push_str(&format!(
-                    "  <line x1=\"{:.1}\" y1=\"{}\" x2=\"{:.1}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n",
-                    error_bar_x + error_bar_half_width, error_bar_y - cap_height,
-                    error_bar_x + error_bar_half_width, error_bar_y + cap_height,
-                    GO_COLOR
-                ));
-            }
+        // TypeScript bar
+        if let Some(m) = ts_m {
+            let value = m.median_across_runs.unwrap_or(m.nanos_per_op);
+            let bar_width = calc_bar_width(value);
+            let is_winner = winner_name == Some("TS");
 
-            // TypeScript bar (bottom)
-            let ts_bar_y = bar_height + bar_gap;
             svg.push_str(&format!(
                 "  <rect x=\"{}\" y=\"{}\" width=\"{:.1}\" height=\"{}\" fill=\"url(#tsGrad)\" rx=\"3\"/>\n",
-                LABEL_WIDTH, ts_bar_y, ts_bar_width, bar_height
+                LABEL_WIDTH, current_bar_y, bar_width, bar_height
             ));
-
-            // TS label on bar
             svg.push_str(&format!(
                 "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"500\" fill=\"white\">TS</text>\n",
-                LABEL_WIDTH + 6, ts_bar_y + bar_height - 5
+                LABEL_WIDTH + 6, current_bar_y + bar_height - 5
             ));
 
-            // TS value label (right of bar)
-            let ts_label = if let (Some(median), Some(ci_upper)) =
-                (cmp.second.median_across_runs, cmp.second.ci_95_upper)
-            {
-                let ci_half = ci_upper - median;
-                format!(
-                    "{} ±{}",
-                    format_duration_with_unit(median, time_unit, precision),
-                    format_duration_with_unit(ci_half, time_unit, precision)
-                )
+            // Value label
+            let label = if let (Some(median), Some(ci_upper)) = (m.median_across_runs, m.ci_95_upper) {
+                format!("{} ±{}", format_duration_with_unit(median, time_unit, precision), 
+                        format_duration_with_unit(ci_upper - median, time_unit, precision))
             } else {
-                format_duration_with_unit(ts_value, time_unit, precision)
+                format_duration_with_unit(value, time_unit, precision)
             };
             svg.push_str(&format!(
                 "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"{}\" fill=\"{}\">{}</text>\n",
-                LABEL_WIDTH + bar_area_width + 8, ts_bar_y + bar_height - 5,
-                if ts_winner { "600" } else { "400" },
-                if ts_winner { "#1E40AF" } else { TEXT_MUTED },
-                escape_xml(&ts_label)
+                LABEL_WIDTH + bar_area_width + 8, current_bar_y + bar_height - 5,
+                if is_winner { "600" } else { "400" },
+                if is_winner { "#1E40AF" } else { TEXT_MUTED },
+                escape_xml(&label)
             ));
 
-            // TS error bar (horizontal, at end of bar)
-            if let (Some(ci_lower), Some(ci_upper)) =
-                (cmp.second.ci_95_lower, cmp.second.ci_95_upper)
-            {
-                let ci_range = ci_upper - ci_lower;
-                let error_bar_half_width = if use_log_scale {
-                    ((ci_range / ts_value) * ts_bar_width / 2.0).max(3.0).min(20.0)
-                } else {
-                    (ci_range / max_value * bar_area_width as f64 / 2.0).max(3.0).min(20.0)
-                };
-                let error_bar_x = LABEL_WIDTH as f64 + ts_bar_width;
-                let error_bar_y = ts_bar_y + bar_height / 2;
-                let cap_height = 3;
-
-                // Horizontal error bar line
-                svg.push_str(&format!(
-                    "  <line x1=\"{:.1}\" y1=\"{}\" x2=\"{:.1}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n",
-                    error_bar_x - error_bar_half_width, error_bar_y,
-                    error_bar_x + error_bar_half_width, error_bar_y,
-                    TS_COLOR
-                ));
-                // Left cap
-                svg.push_str(&format!(
-                    "  <line x1=\"{:.1}\" y1=\"{}\" x2=\"{:.1}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n",
-                    error_bar_x - error_bar_half_width, error_bar_y - cap_height,
-                    error_bar_x - error_bar_half_width, error_bar_y + cap_height,
-                    TS_COLOR
-                ));
-                // Right cap
-                svg.push_str(&format!(
-                    "  <line x1=\"{:.1}\" y1=\"{}\" x2=\"{:.1}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n",
-                    error_bar_x + error_bar_half_width, error_bar_y - cap_height,
-                    error_bar_x + error_bar_half_width, error_bar_y + cap_height,
-                    TS_COLOR
-                ));
-            }
-
-            // Separator line between benchmarks
-            if i < filtered.len() - 1 {
-                svg.push_str(&format!(
-                    "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"0.5\" opacity=\"0.3\"/>\n",
-                    ROW_HEIGHT - 5, width - margin_x * 2, ROW_HEIGHT - 5, BORDER_COLOR
-                ));
-            }
-
-            svg.push_str("</g>\n");
+            current_bar_y += bar_height + bar_gap;
         }
+
+        // Rust bar
+        if let Some(m) = rust_m {
+            let value = m.median_across_runs.unwrap_or(m.nanos_per_op);
+            let bar_width = calc_bar_width(value);
+            let is_winner = winner_name == Some("Rust");
+
+            svg.push_str(&format!(
+                "  <rect x=\"{}\" y=\"{}\" width=\"{:.1}\" height=\"{}\" fill=\"url(#rustGrad)\" rx=\"3\"/>\n",
+                LABEL_WIDTH, current_bar_y, bar_width, bar_height
+            ));
+            svg.push_str(&format!(
+                "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"500\" fill=\"white\">Rust</text>\n",
+                LABEL_WIDTH + 6, current_bar_y + bar_height - 5
+            ));
+
+            // Value label
+            let label = if let (Some(median), Some(ci_upper)) = (m.median_across_runs, m.ci_95_upper) {
+                format!("{} ±{}", format_duration_with_unit(median, time_unit, precision), 
+                        format_duration_with_unit(ci_upper - median, time_unit, precision))
+            } else {
+                format_duration_with_unit(value, time_unit, precision)
+            };
+            svg.push_str(&format!(
+                "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"{}\" fill=\"{}\">{}</text>\n",
+                LABEL_WIDTH + bar_area_width + 8, current_bar_y + bar_height - 5,
+                if is_winner { "600" } else { "400" },
+                if is_winner { "#B7410E" } else { TEXT_MUTED },
+                escape_xml(&label)
+            ));
+        }
+
+        // Separator line between benchmarks
+        if i < filtered.len() - 1 {
+            svg.push_str(&format!(
+                "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"0.5\" opacity=\"0.3\"/>\n",
+                ROW_HEIGHT - 5, width - margin_x * 2, ROW_HEIGHT - 5, BORDER_COLOR
+            ));
+        }
+
+        svg.push_str("</g>\n");
     }
 
     // Legend
@@ -377,27 +345,39 @@ pub fn generate(
     let go_legend_label =
         if directive.show_win_counts { format!("Go ({} wins)", go_wins) } else { "Go".to_string() };
     svg.push_str(&format!(
-        "  <rect x=\"-140\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
-         <text x=\"-122\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
+        "  <rect x=\"-200\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
+         <text x=\"-182\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
         GO_COLOR, TEXT_COLOR, escape_xml(&go_legend_label)
     ));
 
     // TS indicator
     let ts_legend_label = if directive.show_win_counts {
-        format!("TypeScript ({} wins)", ts_wins)
+        format!("TS ({} wins)", ts_wins)
     } else {
-        "TypeScript".to_string()
+        "TS".to_string()
     };
     svg.push_str(&format!(
-        "  <rect x=\"30\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
-         <text x=\"48\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
+        "  <rect x=\"-60\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
+         <text x=\"-42\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
         TS_COLOR, TEXT_COLOR, escape_xml(&ts_legend_label)
+    ));
+
+    // Rust indicator
+    let rust_legend_label = if directive.show_win_counts {
+        format!("Rust ({} wins)", rust_wins)
+    } else {
+        "Rust".to_string()
+    };
+    svg.push_str(&format!(
+        "  <rect x=\"60\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
+         <text x=\"78\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
+        RUST_COLOR, TEXT_COLOR, escape_xml(&rust_legend_label)
     ));
 
     // Ties indicator
     if ties > 0 && directive.show_win_counts {
         svg.push_str(&format!(
-            "  <text x=\"180\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">Ties: {}</text>\n",
+            "  <text x=\"160\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">Ties: {}</text>\n",
             TEXT_MUTED, ties
         ));
     }
@@ -405,7 +385,7 @@ pub fn generate(
     // Log scale indicator
     if use_log_scale {
         svg.push_str(&format!(
-            "  <text x=\"250\" y=\"11\" font-family=\"sans-serif\" font-size=\"10\" font-style=\"italic\" fill=\"{}\">(logarithmic scale)</text>\n",
+            "  <text x=\"220\" y=\"11\" font-family=\"sans-serif\" font-size=\"10\" font-style=\"italic\" fill=\"{}\">(logarithmic scale)</text>\n",
             TEXT_MUTED
         ));
     }
