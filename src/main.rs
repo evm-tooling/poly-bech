@@ -169,7 +169,11 @@ enum Commands {
     Upgrade,
 
     /// Start the language server (for editors)
-    Lsp,
+    Lsp {
+        /// Accepted for editor compatibility; stdio is always used
+        #[arg(long, hide = true)]
+        stdio: bool,
+    },
 }
 
 #[tokio::main]
@@ -191,7 +195,7 @@ async fn main() -> Result<()> {
     };
 
     // LSP mode: no welcome or other stdout; use stdio for LSP protocol
-    if let Commands::Lsp = &command {
+    if let Commands::Lsp { .. } = &command {
         return cmd_lsp().await;
     }
 
@@ -249,7 +253,7 @@ async fn main() -> Result<()> {
         Commands::Upgrade => {
             cmd_upgrade()?;
         }
-        Commands::Lsp => {
+        Commands::Lsp { .. } => {
             // Handled above; unreachable here
             unreachable!()
         }
