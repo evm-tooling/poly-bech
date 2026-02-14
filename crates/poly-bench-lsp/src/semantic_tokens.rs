@@ -282,6 +282,7 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
                     // Skip this comment token
                 } else {
                     // Find end of line
+                    #[allow(clippy::all)]
                     let remaining: String =
                         doc.source[i..].chars().take_while(|&x| x != '\n').collect();
 
