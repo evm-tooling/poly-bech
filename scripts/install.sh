@@ -63,11 +63,27 @@ trap "rm -rf '$TMP'" EXIT
 
 echo "==> Downloading poly-bench from GitHub..."
 if command -v curl >/dev/null 2>&1; then
-  curl -sSL -o "$TMP/$BINARY_NAME" "$DOWNLOAD_URL"
+  HTTP_CODE="$(curl -sSL -w "%{http_code}" -o "$TMP/$BINARY_NAME" "$DOWNLOAD_URL")"
+  if [ "$HTTP_CODE" != "200" ]; then
+    echo "Download failed (HTTP $HTTP_CODE). No release asset at: $DOWNLOAD_URL"
+    echo "Ensure a release exists with asset '$ASSET', or install from source: cargo install poly-bench"
+    exit 1
+  fi
 elif command -v wget >/dev/null 2>&1; then
-  wget -q -O "$TMP/$BINARY_NAME" "$DOWNLOAD_URL"
+  if ! wget -q -O "$TMP/$BINARY_NAME" "$DOWNLOAD_URL"; then
+    echo "Download failed. No release asset at: $DOWNLOAD_URL"
+    echo "Ensure a release exists with asset '$ASSET', or install from source: cargo install poly-bench"
+    exit 1
+  fi
 else
   echo "Need curl or wget to download."
+  exit 1
+fi
+
+# Refuse to install if we got HTML (e.g. 404 page)
+if head -c 200 "$TMP/$BINARY_NAME" | grep -qE '<!DOCTYPE|Not Found'; then
+  echo "Download returned an error page instead of the binary. No release asset at: $DOWNLOAD_URL"
+  echo "Create a release and run the release-build workflow to attach binaries, or install from source: cargo install poly-bench"
   exit 1
 fi
 
