@@ -1,9 +1,16 @@
 # Build and attach poly-bench binaries when a release is published (e.g. prerelease created by make release).
+# Can also be run manually to attach assets to an existing release (e.g. v0.0.2).
 name: Release build
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag to attach binaries to (e.g. v0.0.2)"
+        required: true
+        type: string
 
 jobs:
   build:
@@ -48,7 +55,7 @@ jobs:
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: ${{ github.event.release.tag_name || github.event.inputs.tag_name }}
           files: ${{ matrix.artifact }}
           fail_on_unmatched_files: true
         env:
