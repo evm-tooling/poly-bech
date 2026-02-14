@@ -524,8 +524,8 @@ fn resolve_project_roots(
         if roots.go_root.is_none() && dir.join("go.mod").exists() {
             roots.go_root = Some(dir.clone());
         }
-        if roots.node_root.is_none() &&
-            (dir.join("package.json").exists() || dir.join("node_modules").exists())
+        if roots.node_root.is_none()
+            && (dir.join("package.json").exists() || dir.join("node_modules").exists())
         {
             roots.node_root = Some(dir.clone());
         }

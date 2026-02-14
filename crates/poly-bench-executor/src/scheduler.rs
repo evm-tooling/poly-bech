@@ -6,7 +6,9 @@ use colored::Colorize;
 use miette::Result;
 use poly_bench_dsl::{BenchMode, Lang};
 use poly_bench_ir::BenchmarkIR;
-use poly_bench_runtime::{go::GoRuntime, js::JsRuntime, rust::RustRuntime, measurement::Measurement, traits::Runtime};
+use poly_bench_runtime::{
+    go::GoRuntime, js::JsRuntime, measurement::Measurement, rust::RustRuntime, traits::Runtime,
+};
 use std::{
     collections::HashMap,
     io::Write,
@@ -518,9 +520,12 @@ pub async fn run(
                 if (ratio - 1.0).abs() < 0.05 {
                     comparison_parts.push("Go≈TS".dimmed().to_string());
                 } else if ratio > 1.0 {
-                    comparison_parts.push(format!("TS {}x vs Go", format!("{:.2}", ratio)).cyan().to_string());
+                    comparison_parts
+                        .push(format!("TS {}x vs Go", format!("{:.2}", ratio)).cyan().to_string());
                 } else {
-                    comparison_parts.push(format!("Go {}x vs TS", format!("{:.2}", 1.0 / ratio)).green().to_string());
+                    comparison_parts.push(
+                        format!("Go {}x vs TS", format!("{:.2}", 1.0 / ratio)).green().to_string(),
+                    );
                 }
             }
             if let (Some(go_m), Some(rust_m)) =
@@ -530,9 +535,15 @@ pub async fn run(
                 if (ratio - 1.0).abs() < 0.05 {
                     comparison_parts.push("Go≈Rust".dimmed().to_string());
                 } else if ratio > 1.0 {
-                    comparison_parts.push(format!("Rust {}x vs Go", format!("{:.2}", ratio)).yellow().to_string());
+                    comparison_parts.push(
+                        format!("Rust {}x vs Go", format!("{:.2}", ratio)).yellow().to_string(),
+                    );
                 } else {
-                    comparison_parts.push(format!("Go {}x vs Rust", format!("{:.2}", 1.0 / ratio)).green().to_string());
+                    comparison_parts.push(
+                        format!("Go {}x vs Rust", format!("{:.2}", 1.0 / ratio))
+                            .green()
+                            .to_string(),
+                    );
                 }
             }
             if let (Some(ts_m), Some(rust_m)) =
@@ -542,9 +553,13 @@ pub async fn run(
                 if (ratio - 1.0).abs() < 0.05 {
                     comparison_parts.push("TS≈Rust".dimmed().to_string());
                 } else if ratio > 1.0 {
-                    comparison_parts.push(format!("Rust {}x vs TS", format!("{:.2}", ratio)).yellow().to_string());
+                    comparison_parts.push(
+                        format!("Rust {}x vs TS", format!("{:.2}", ratio)).yellow().to_string(),
+                    );
                 } else {
-                    comparison_parts.push(format!("TS {}x vs Rust", format!("{:.2}", 1.0 / ratio)).cyan().to_string());
+                    comparison_parts.push(
+                        format!("TS {}x vs Rust", format!("{:.2}", 1.0 / ratio)).cyan().to_string(),
+                    );
                 }
             }
 

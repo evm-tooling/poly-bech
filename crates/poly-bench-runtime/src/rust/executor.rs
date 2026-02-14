@@ -59,7 +59,11 @@ impl Runtime for RustRuntime {
         Ok(())
     }
 
-    async fn run_benchmark(&mut self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<Measurement> {
+    async fn run_benchmark(
+        &mut self,
+        spec: &BenchmarkSpec,
+        suite: &SuiteIR,
+    ) -> Result<Measurement> {
         self.run_via_subprocess(spec, suite).await
     }
 
@@ -78,8 +82,7 @@ impl RustRuntime {
         let source = generate_standalone_benchmark(spec, suite)?;
 
         let (src_path, working_dir) = if let Some(ref project_root) = self.project_root {
-            let is_runtime_env =
-                project_root.as_os_str().to_string_lossy().contains("runtime-env");
+            let is_runtime_env = project_root.as_os_str().to_string_lossy().contains("runtime-env");
             let src_path = if is_runtime_env {
                 project_root.join("src").join("main.rs")
             } else {
@@ -88,13 +91,13 @@ impl RustRuntime {
                     .map_err(|e| miette!("Failed to create .polybench/rust directory: {}", e))?;
                 bench_dir.join("src").join("main.rs")
             };
-            
+
             // Ensure src directory exists
             if let Some(parent) = src_path.parent() {
                 std::fs::create_dir_all(parent)
                     .map_err(|e| miette!("Failed to create src directory: {}", e))?;
             }
-            
+
             // Ensure Cargo.toml exists (create minimal one if missing)
             let cargo_path = project_root.join("Cargo.toml");
             if !cargo_path.exists() {
@@ -102,23 +105,23 @@ impl RustRuntime {
                 std::fs::write(&cargo_path, cargo_toml)
                     .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
             }
-            
+
             (src_path, project_root.clone())
         } else {
             // Create temp directory for standalone execution
             let temp_dir = std::env::temp_dir().join("polybench-rust");
             std::fs::create_dir_all(&temp_dir)
                 .map_err(|e| miette!("Failed to create temp directory: {}", e))?;
-            
+
             let src_dir = temp_dir.join("src");
             std::fs::create_dir_all(&src_dir)
                 .map_err(|e| miette!("Failed to create src directory: {}", e))?;
-            
+
             // Create minimal Cargo.toml
             let cargo_toml = generate_minimal_cargo_toml();
             std::fs::write(temp_dir.join("Cargo.toml"), cargo_toml)
                 .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
-            
+
             (src_dir.join("main.rs"), temp_dir)
         };
 
@@ -236,16 +239,14 @@ serde_json = "1"
             if import_trimmed.starts_with("use ") {
                 let rest = &import_trimmed[4..];
                 // Extract the crate name (first identifier before :: or ;)
-                let crate_name: String = rest
-                    .chars()
-                    .take_while(|c| c.is_alphanumeric() || *c == '_')
-                    .collect();
-                
+                let crate_name: String =
+                    rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+
                 // Skip std/core/alloc
                 if crate_name == "std" || crate_name == "core" || crate_name == "alloc" {
                     continue;
                 }
-                
+
                 // Add common crate versions (could be extended with a dependency map)
                 // Some crates require features - return the full dependency spec
                 let dep_spec = match crate_name.as_str() {
@@ -262,7 +263,7 @@ serde_json = "1"
                         continue;
                     }
                 };
-                
+
                 cargo.push_str(&format!("{}\n", dep_spec));
             }
         }
@@ -368,7 +369,7 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
             spec.concurrency,
             &spec.iterations.to_string(),
         ));
-        
+
         // Sample collection
         code.push_str(&shared::generate_sample_collection(
             &bench_call,

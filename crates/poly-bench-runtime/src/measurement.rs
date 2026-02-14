@@ -109,8 +109,8 @@ impl Measurement {
         let (rme_percent, cv_percent, is_stable) = if samples_for_stats.len() > 1 {
             let mean = nanos_per_op;
             let variance: f64 =
-                samples_for_stats.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>() /
-                    (samples_for_stats.len() - 1) as f64;
+                samples_for_stats.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>()
+                    / (samples_for_stats.len() - 1) as f64;
             let std_dev = variance.sqrt();
             let std_error = std_dev / (samples_for_stats.len() as f64).sqrt();
 

@@ -369,10 +369,10 @@ pub fn check_embedded_blocks(
         .filter(|b| {
             matches!(
                 b.block_type,
-                BlockType::SetupImport |
-                    BlockType::SetupDeclare |
-                    BlockType::SetupHelpers |
-                    BlockType::SetupInit
+                BlockType::SetupImport
+                    | BlockType::SetupDeclare
+                    | BlockType::SetupHelpers
+                    | BlockType::SetupInit
             )
         })
         .collect();
@@ -400,10 +400,10 @@ pub fn check_embedded_blocks(
         .filter(|b| {
             !matches!(
                 b.block_type,
-                BlockType::SetupImport |
-                    BlockType::SetupDeclare |
-                    BlockType::SetupHelpers |
-                    BlockType::SetupInit
+                BlockType::SetupImport
+                    | BlockType::SetupDeclare
+                    | BlockType::SetupHelpers
+                    | BlockType::SetupInit
             )
         })
         .collect();
@@ -427,10 +427,10 @@ pub fn check_embedded_blocks(
         .filter(|b| {
             matches!(
                 b.block_type,
-                BlockType::SetupImport |
-                    BlockType::SetupDeclare |
-                    BlockType::SetupHelpers |
-                    BlockType::SetupInit
+                BlockType::SetupImport
+                    | BlockType::SetupDeclare
+                    | BlockType::SetupHelpers
+                    | BlockType::SetupInit
             )
         })
         .collect();
@@ -458,10 +458,10 @@ pub fn check_embedded_blocks(
         .filter(|b| {
             !matches!(
                 b.block_type,
-                BlockType::SetupImport |
-                    BlockType::SetupDeclare |
-                    BlockType::SetupHelpers |
-                    BlockType::SetupInit
+                BlockType::SetupImport
+                    | BlockType::SetupDeclare
+                    | BlockType::SetupHelpers
+                    | BlockType::SetupInit
             )
         })
         .collect();
@@ -485,10 +485,10 @@ pub fn check_embedded_blocks(
         .filter(|b| {
             matches!(
                 b.block_type,
-                BlockType::SetupImport |
-                    BlockType::SetupDeclare |
-                    BlockType::SetupHelpers |
-                    BlockType::SetupInit
+                BlockType::SetupImport
+                    | BlockType::SetupDeclare
+                    | BlockType::SetupHelpers
+                    | BlockType::SetupInit
             )
         })
         .collect();
@@ -502,7 +502,9 @@ pub fn check_embedded_blocks(
             &rust_context,
             config.rust_project_root.as_deref(),
         );
-        result.debug_messages.push(format!("  -> {} diagnostics from Rust setup", setup_diags.len()));
+        result
+            .debug_messages
+            .push(format!("  -> {} diagnostics from Rust setup", setup_diags.len()));
         result.rust_blocks_checked += rust_setup_blocks.len();
         for diag in setup_diags {
             result.diagnostics.push(convert_diagnostic(doc, &diag));
@@ -516,18 +518,21 @@ pub fn check_embedded_blocks(
         .filter(|b| {
             !matches!(
                 b.block_type,
-                BlockType::SetupImport |
-                    BlockType::SetupDeclare |
-                    BlockType::SetupHelpers |
-                    BlockType::SetupInit
+                BlockType::SetupImport
+                    | BlockType::SetupDeclare
+                    | BlockType::SetupHelpers
+                    | BlockType::SetupInit
             )
         })
         .collect();
 
     for block in &rust_other_blocks {
         result.debug_messages.push(format!("Checking Rust {:?} block", block.block_type));
-        let rust_diags =
-            rust_bridge::check_rust_block(block, &rust_context, config.rust_project_root.as_deref());
+        let rust_diags = rust_bridge::check_rust_block(
+            block,
+            &rust_context,
+            config.rust_project_root.as_deref(),
+        );
         result.debug_messages.push(format!("  -> {} diagnostics", rust_diags.len()));
         result.rust_blocks_checked += 1;
         for diag in rust_diags {

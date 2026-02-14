@@ -61,8 +61,7 @@ fn find_rust_analyzer() -> Option<String> {
 
     // First, check rustup toolchain directories directly (these are the real binaries, not shims)
     // This avoids issues with rustup shims requiring a default toolchain to be configured
-    let rustup_home = std::env::var("RUSTUP_HOME")
-        .unwrap_or_else(|_| format!("{}/.rustup", home));
+    let rustup_home = std::env::var("RUSTUP_HOME").unwrap_or_else(|_| format!("{}/.rustup", home));
     let toolchains_dir = std::path::Path::new(&rustup_home).join("toolchains");
 
     if let Ok(entries) = std::fs::read_dir(&toolchains_dir) {
@@ -82,10 +81,7 @@ fn find_rust_analyzer() -> Option<String> {
         for entry in toolchains {
             let ra_path = entry.path().join("bin/rust-analyzer");
             if ra_path.exists() {
-                eprintln!(
-                    "[rust-analyzer] Found in rustup toolchain: {}",
-                    ra_path.display()
-                );
+                eprintln!("[rust-analyzer] Found in rustup toolchain: {}", ra_path.display());
                 return Some(ra_path.to_string_lossy().to_string());
             }
         }
@@ -114,10 +110,8 @@ fn find_rust_analyzer() -> Option<String> {
     }
 
     // Check VS Code / Cursor extension directories
-    let extension_dirs = [
-        format!("{}/.vscode/extensions", home),
-        format!("{}/.cursor/extensions", home),
-    ];
+    let extension_dirs =
+        [format!("{}/.vscode/extensions", home), format!("{}/.cursor/extensions", home)];
 
     for ext_dir in &extension_dirs {
         if let Ok(entries) = std::fs::read_dir(ext_dir) {

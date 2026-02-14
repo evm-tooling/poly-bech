@@ -110,54 +110,54 @@ impl TokenKind {
     pub fn is_keyword(&self) -> bool {
         matches!(
             self,
-            TokenKind::Suite |
-                TokenKind::Bench |
-                TokenKind::Setup |
-                TokenKind::Fixture |
-                TokenKind::Hex |
-                TokenKind::Description |
-                TokenKind::Iterations |
-                TokenKind::Warmup |
-                TokenKind::Declare |
-                TokenKind::Init |
-                TokenKind::Helpers |
-                TokenKind::Import |
-                TokenKind::Timeout |
-                TokenKind::Tags |
-                TokenKind::Skip |
-                TokenKind::Validate |
-                TokenKind::Before |
-                TokenKind::After |
-                TokenKind::Each |
-                TokenKind::Requires |
-                TokenKind::Order |
-                TokenKind::Compare |
-                TokenKind::Baseline |
-                TokenKind::Mode |
-                TokenKind::Sink |
-                TokenKind::TargetTime |
-                TokenKind::MinIterations |
-                TokenKind::MaxIterations |
-                TokenKind::OutlierDetection |
-                TokenKind::CvThreshold |
-                TokenKind::Count |
-                TokenKind::Memory |
-                TokenKind::Concurrency |
-                TokenKind::Shape |
-                TokenKind::Async |
-                TokenKind::Use |
-                TokenKind::GlobalSetup
+            TokenKind::Suite
+                | TokenKind::Bench
+                | TokenKind::Setup
+                | TokenKind::Fixture
+                | TokenKind::Hex
+                | TokenKind::Description
+                | TokenKind::Iterations
+                | TokenKind::Warmup
+                | TokenKind::Declare
+                | TokenKind::Init
+                | TokenKind::Helpers
+                | TokenKind::Import
+                | TokenKind::Timeout
+                | TokenKind::Tags
+                | TokenKind::Skip
+                | TokenKind::Validate
+                | TokenKind::Before
+                | TokenKind::After
+                | TokenKind::Each
+                | TokenKind::Requires
+                | TokenKind::Order
+                | TokenKind::Compare
+                | TokenKind::Baseline
+                | TokenKind::Mode
+                | TokenKind::Sink
+                | TokenKind::TargetTime
+                | TokenKind::MinIterations
+                | TokenKind::MaxIterations
+                | TokenKind::OutlierDetection
+                | TokenKind::CvThreshold
+                | TokenKind::Count
+                | TokenKind::Memory
+                | TokenKind::Concurrency
+                | TokenKind::Shape
+                | TokenKind::Async
+                | TokenKind::Use
+                | TokenKind::GlobalSetup
         )
     }
 
     pub fn is_lang(&self) -> bool {
         matches!(
             self,
-            TokenKind::Go |
-                TokenKind::Ts |
-                TokenKind::TypeScript |
-                TokenKind::Rust |
-                TokenKind::Python
+            TokenKind::Go
+                | TokenKind::Ts
+                | TokenKind::TypeScript
+                | TokenKind::Rust
+                | TokenKind::Python
         )
     }
 
@@ -165,11 +165,11 @@ impl TokenKind {
     pub fn is_setup_section(&self) -> bool {
         matches!(
             self,
-            TokenKind::Import |
-                TokenKind::Declare |
-                TokenKind::Init |
-                TokenKind::Helpers |
-                TokenKind::Async
+            TokenKind::Import
+                | TokenKind::Declare
+                | TokenKind::Init
+                | TokenKind::Helpers
+                | TokenKind::Async
         )
     }
 

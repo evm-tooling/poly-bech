@@ -10,8 +10,8 @@ use poly_bench_ir::ChartDirectiveIR;
 use super::{
     calculate_geo_mean, count_wins, escape_xml, filter_benchmarks, format_duration_with_unit,
     format_ops_per_sec, sort_benchmarks, svg_header, svg_title, BORDER_COLOR,
-    DEFAULT_MARGIN_BOTTOM, DEFAULT_MARGIN_TOP, GO_COLOR, RUST_COLOR, TEXT_COLOR, TEXT_MUTED, TEXT_SECONDARY,
-    TS_COLOR,
+    DEFAULT_MARGIN_BOTTOM, DEFAULT_MARGIN_TOP, GO_COLOR, RUST_COLOR, TEXT_COLOR, TEXT_MUTED,
+    TEXT_SECONDARY, TS_COLOR,
 };
 
 // Layout constants for horizontal bar chart
@@ -80,8 +80,8 @@ pub fn generate(
     // Calculate width
     let margin_x = 20;
     let stats_box_needed =
-        (directive.show_stats || directive.show_distribution || directive.show_geo_mean) &&
-            !compact;
+        (directive.show_stats || directive.show_distribution || directive.show_geo_mean)
+            && !compact;
     let width = directive.width.unwrap_or(MIN_CHART_WIDTH + margin_x * 2).max(MIN_CHART_WIDTH);
     let bar_area_width = width - LABEL_WIDTH - VALUE_LABEL_WIDTH - margin_x * 2;
 
@@ -95,12 +95,12 @@ pub fn generate(
     let config_space =
         if directive.show_config && suite_config.is_some() && !compact { 24 } else { 0 };
     let chart_area_height = num_benchmarks * ROW_HEIGHT;
-    let height = DEFAULT_MARGIN_TOP +
-        chart_area_height +
-        legend_space +
-        stats_box_space +
-        config_space +
-        DEFAULT_MARGIN_BOTTOM;
+    let height = DEFAULT_MARGIN_TOP
+        + chart_area_height
+        + legend_space
+        + stats_box_space
+        + config_space
+        + DEFAULT_MARGIN_BOTTOM;
 
     // Collect all values for smart scaling (Go, TS, and Rust)
     let all_values: Vec<f64> = filtered
@@ -245,12 +245,16 @@ pub fn generate(
             ));
 
             // Value label
-            let label = if let (Some(median), Some(ci_upper)) = (m.median_across_runs, m.ci_95_upper) {
-                format!("{} ±{}", format_duration_with_unit(median, time_unit, precision), 
-                        format_duration_with_unit(ci_upper - median, time_unit, precision))
-            } else {
-                format_duration_with_unit(value, time_unit, precision)
-            };
+            let label =
+                if let (Some(median), Some(ci_upper)) = (m.median_across_runs, m.ci_95_upper) {
+                    format!(
+                        "{} ±{}",
+                        format_duration_with_unit(median, time_unit, precision),
+                        format_duration_with_unit(ci_upper - median, time_unit, precision)
+                    )
+                } else {
+                    format_duration_with_unit(value, time_unit, precision)
+                };
             svg.push_str(&format!(
                 "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"{}\" fill=\"{}\">{}</text>\n",
                 LABEL_WIDTH + bar_area_width + 8, current_bar_y + bar_height - 5,
@@ -278,12 +282,16 @@ pub fn generate(
             ));
 
             // Value label
-            let label = if let (Some(median), Some(ci_upper)) = (m.median_across_runs, m.ci_95_upper) {
-                format!("{} ±{}", format_duration_with_unit(median, time_unit, precision), 
-                        format_duration_with_unit(ci_upper - median, time_unit, precision))
-            } else {
-                format_duration_with_unit(value, time_unit, precision)
-            };
+            let label =
+                if let (Some(median), Some(ci_upper)) = (m.median_across_runs, m.ci_95_upper) {
+                    format!(
+                        "{} ±{}",
+                        format_duration_with_unit(median, time_unit, precision),
+                        format_duration_with_unit(ci_upper - median, time_unit, precision)
+                    )
+                } else {
+                    format_duration_with_unit(value, time_unit, precision)
+                };
             svg.push_str(&format!(
                 "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"{}\" fill=\"{}\">{}</text>\n",
                 LABEL_WIDTH + bar_area_width + 8, current_bar_y + bar_height - 5,
@@ -311,12 +319,16 @@ pub fn generate(
             ));
 
             // Value label
-            let label = if let (Some(median), Some(ci_upper)) = (m.median_across_runs, m.ci_95_upper) {
-                format!("{} ±{}", format_duration_with_unit(median, time_unit, precision), 
-                        format_duration_with_unit(ci_upper - median, time_unit, precision))
-            } else {
-                format_duration_with_unit(value, time_unit, precision)
-            };
+            let label =
+                if let (Some(median), Some(ci_upper)) = (m.median_across_runs, m.ci_95_upper) {
+                    format!(
+                        "{} ±{}",
+                        format_duration_with_unit(median, time_unit, precision),
+                        format_duration_with_unit(ci_upper - median, time_unit, precision)
+                    )
+                } else {
+                    format_duration_with_unit(value, time_unit, precision)
+                };
             svg.push_str(&format!(
                 "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"{}\" fill=\"{}\">{}</text>\n",
                 LABEL_WIDTH + bar_area_width + 8, current_bar_y + bar_height - 5,
@@ -351,11 +363,8 @@ pub fn generate(
     ));
 
     // TS indicator
-    let ts_legend_label = if directive.show_win_counts {
-        format!("TS ({} wins)", ts_wins)
-    } else {
-        "TS".to_string()
-    };
+    let ts_legend_label =
+        if directive.show_win_counts { format!("TS ({} wins)", ts_wins) } else { "TS".to_string() };
     svg.push_str(&format!(
         "  <rect x=\"-60\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
          <text x=\"-42\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
@@ -437,29 +446,29 @@ pub fn generate(
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.first.p50_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>() /
-                filtered.len().max(1) as f64;
+                .sum::<f64>()
+                / filtered.len().max(1) as f64;
             let go_p99_avg: f64 = filtered
                 .iter()
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.first.p99_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>() /
-                filtered.len().max(1) as f64;
+                .sum::<f64>()
+                / filtered.len().max(1) as f64;
             let ts_p50_avg: f64 = filtered
                 .iter()
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.second.p50_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>() /
-                filtered.len().max(1) as f64;
+                .sum::<f64>()
+                / filtered.len().max(1) as f64;
             let ts_p99_avg: f64 = filtered
                 .iter()
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.second.p99_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>() /
-                filtered.len().max(1) as f64;
+                .sum::<f64>()
+                / filtered.len().max(1) as f64;
 
             if go_p50_avg > 0.0 || ts_p50_avg > 0.0 {
                 let dist_str = format!(

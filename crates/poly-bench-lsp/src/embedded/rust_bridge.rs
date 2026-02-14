@@ -114,22 +114,13 @@ fn run_rustc(rustc_cmd: &str, code: &str, _cargo_root: Option<&str>) -> Option<S
 
     let check_file = temp_dir.path().join("check.rs");
 
-    if fs::File::create(&check_file)
-        .and_then(|mut f| f.write_all(code.as_bytes()))
-        .is_err()
-    {
+    if fs::File::create(&check_file).and_then(|mut f| f.write_all(code.as_bytes())).is_err() {
         return None;
     }
 
     // Use --emit=metadata for faster checking (no codegen)
     let output = Command::new(rustc_cmd)
-        .args([
-            "--emit=metadata",
-            "--edition=2021",
-            "-o",
-            "/dev/null",
-            check_file.to_str()?,
-        ])
+        .args(["--emit=metadata", "--edition=2021", "-o", "/dev/null", check_file.to_str()?])
         .output()
         .ok()?;
 
@@ -259,11 +250,7 @@ fn build_combined_setup(
 }
 
 /// Wrap Rust code for standalone checking
-fn wrap_rust_code(
-    code: &str,
-    block_type: BlockType,
-    context: &SetupContext,
-) -> (String, usize) {
+fn wrap_rust_code(code: &str, block_type: BlockType, context: &SetupContext) -> (String, usize) {
     let mut wrapped = String::new();
     wrapped.push_str("#![allow(unused_imports, unused_variables, dead_code, unused_mut)]\n\n");
     let mut header_lines = 2;
@@ -316,7 +303,11 @@ fn wrap_rust_code(
             wrapped.push_str(code);
             wrapped.push_str("\n}\n");
         }
-        BlockType::Benchmark | BlockType::Fixture | BlockType::Hook | BlockType::Skip | BlockType::Validate => {
+        BlockType::Benchmark
+        | BlockType::Fixture
+        | BlockType::Hook
+        | BlockType::Skip
+        | BlockType::Validate => {
             // Benchmark code is an expression/statement
             wrapped.push_str("fn main() {\n    let _ = {\n");
             header_lines += 2;
@@ -358,27 +349,18 @@ fn parse_rust_errors(
             let mut col_num: usize = 1;
             if i + 1 < lines.len() {
                 if let Some(loc_caps) = location_regex.captures(lines[i + 1]) {
-                    line_num = loc_caps
-                        .get(1)
-                        .and_then(|m| m.as_str().parse().ok())
-                        .unwrap_or(1);
-                    col_num = loc_caps
-                        .get(2)
-                        .and_then(|m| m.as_str().parse().ok())
-                        .unwrap_or(1);
+                    line_num = loc_caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
+                    col_num = loc_caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
                 }
             }
 
             // Adjust for header lines
-            let adjusted_line = if line_num > header_lines {
-                line_num - header_lines
-            } else {
-                1
-            };
+            let adjusted_line = if line_num > header_lines { line_num - header_lines } else { 1 };
 
             // Map to original span
             let code_lines: Vec<&str> = block.code.lines().collect();
-            let target_line = adjusted_line.saturating_sub(1).min(code_lines.len().saturating_sub(1));
+            let target_line =
+                adjusted_line.saturating_sub(1).min(code_lines.len().saturating_sub(1));
 
             // Calculate byte offset
             let mut offset = 0;
@@ -390,12 +372,12 @@ fn parse_rust_errors(
                 offset += line.len() + 1; // +1 for newline
             }
 
-                diagnostics.push(EmbeddedDiagnostic {
-                    message: message.to_string(),
-                    severity,
-                    start_offset: block.span.start + offset,
-                    end_offset: block.span.start + offset + 1,
-                });
+            diagnostics.push(EmbeddedDiagnostic {
+                message: message.to_string(),
+                severity,
+                start_offset: block.span.start + offset,
+                end_offset: block.span.start + offset + 1,
+            });
         }
         i += 1;
     }
@@ -430,14 +412,8 @@ fn parse_combined_errors(
             let mut col_num: usize = 1;
             if i + 1 < lines.len() {
                 if let Some(loc_caps) = location_regex.captures(lines[i + 1]) {
-                    line_num = loc_caps
-                        .get(1)
-                        .and_then(|m| m.as_str().parse().ok())
-                        .unwrap_or(1);
-                    col_num = loc_caps
-                        .get(2)
-                        .and_then(|m| m.as_str().parse().ok())
-                        .unwrap_or(1);
+                    line_num = loc_caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
+                    col_num = loc_caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
                 }
             }
 
@@ -473,9 +449,7 @@ fn parse_combined_errors(
 
 /// Find the mapping that contains a given line number
 fn find_mapping_for_line(line: usize, mappings: &[SectionMapping]) -> Option<&SectionMapping> {
-    mappings.iter().find(|m| {
-        line >= m.start_line && line < m.start_line + m.line_count
-    })
+    mappings.iter().find(|m| line >= m.start_line && line < m.start_line + m.line_count)
 }
 
 #[cfg(test)]
