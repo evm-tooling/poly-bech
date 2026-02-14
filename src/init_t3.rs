@@ -153,8 +153,7 @@ impl Theme for T3StyleTheme {
         checked: bool,
         active: bool,
     ) -> std::fmt::Result {
-        self.0
-            .format_multi_select_prompt_item(f, text, checked, active)
+        self.0.format_multi_select_prompt_item(f, text, checked, active)
     }
     fn format_sort_prompt_item(
         &self,
@@ -178,26 +177,12 @@ pub fn print_init_logo() {
 pub fn print_init_success_block(project_name: &str) {
     use colored::Colorize;
     println!();
-    println!(
-        "{}",
-        format!("✔ {} scaffolded successfully!", project_name)
-            .green()
-            .bold()
-    );
+    println!("{}", format!("✔ {} scaffolded successfully!", project_name).green().bold());
     println!();
     println!("Adding boilerplate...");
-    println!(
-        "{}",
-        "✔ Successfully setup boilerplate for polybench.toml".green()
-    );
-    println!(
-        "{}",
-        "✔ Successfully setup boilerplate for benchmarks/".green()
-    );
-    println!(
-        "{}",
-        "✔ Successfully setup boilerplate for .polybench/".green()
-    );
+    println!("{}", "✔ Successfully setup boilerplate for polybench.toml".green());
+    println!("{}", "✔ Successfully setup boilerplate for benchmarks/".green());
+    println!("{}", "✔ Successfully setup boilerplate for .polybench/".green());
     println!();
     println!("Next steps:");
     println!("  cd {}", project_name);

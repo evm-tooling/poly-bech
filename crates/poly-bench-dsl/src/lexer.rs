@@ -2,9 +2,11 @@
 //!
 //! Converts source text into a stream of tokens.
 
-use crate::ast::Span;
-use crate::error::ParseError;
-use crate::tokens::{keyword_from_str, Token, TokenKind};
+use crate::{
+    ast::Span,
+    error::ParseError,
+    tokens::{keyword_from_str, Token, TokenKind},
+};
 
 /// Lexer state
 pub struct Lexer<'a> {
@@ -96,8 +98,8 @@ impl<'a> Lexer<'a> {
             c if c.is_ascii_digit() => self.scan_number_or_duration(pos)?,
             c if c.is_ascii_alphabetic() || c == '_' => self.scan_identifier(pos)?,
             // Code characters - treat as identifiers for inline code
-            '+' | '-' | '*' | '/' | '%' | '=' | '<' | '>' | '!' | '&' | '|' | ';' | '?' | '^'
-            | '~' | '`' => {
+            '+' | '-' | '*' | '/' | '%' | '=' | '<' | '>' | '!' | '&' | '|' | ';' | '?' | '^' |
+            '~' | '`' => {
                 // Scan the rest as a code expression
                 self.scan_code_expr(pos, ch)?
             }
@@ -109,11 +111,7 @@ impl<'a> Lexer<'a> {
             }
         };
 
-        Ok(Token::new(
-            kind,
-            Span::new(start_pos, self.current_pos, start_line, start_col),
-            lexeme,
-        ))
+        Ok(Token::new(kind, Span::new(start_pos, self.current_pos, start_line, start_col), lexeme))
     }
 
     /// Advance and return the next character
@@ -291,20 +289,16 @@ impl<'a> Lexer<'a> {
         } else if is_float {
             // Parse as floating point number
             let clean = lexeme.replace('_', "");
-            let value = clean
-                .parse::<f64>()
-                .map_err(|_| ParseError::InvalidNumber {
-                    span: Span::new(start, self.current_pos, self.line, self.col),
-                })?;
+            let value = clean.parse::<f64>().map_err(|_| ParseError::InvalidNumber {
+                span: Span::new(start, self.current_pos, self.line, self.col),
+            })?;
             Ok((TokenKind::Float(value), lexeme.to_string()))
         } else {
             // Parse as regular integer
             let clean = lexeme.replace('_', "");
-            let value = clean
-                .parse::<u64>()
-                .map_err(|_| ParseError::InvalidNumber {
-                    span: Span::new(start, self.current_pos, self.line, self.col),
-                })?;
+            let value = clean.parse::<u64>().map_err(|_| ParseError::InvalidNumber {
+                span: Span::new(start, self.current_pos, self.line, self.col),
+            })?;
             Ok((TokenKind::Number(value), lexeme.to_string()))
         }
     }

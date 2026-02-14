@@ -15,10 +15,7 @@ static GOPLS_CLIENT: OnceCell<Arc<GoplsClient>> = OnceCell::new();
 
 /// Initialize the global gopls client with a workspace root
 pub fn init_gopls_client(workspace_root: &str) -> Option<Arc<GoplsClient>> {
-    GOPLS_CLIENT
-        .get_or_try_init(|| GoplsClient::new(workspace_root).map(Arc::new))
-        .ok()
-        .cloned()
+    GOPLS_CLIENT.get_or_try_init(|| GoplsClient::new(workspace_root).map(Arc::new)).ok().cloned()
 }
 
 /// Configuration for gopls

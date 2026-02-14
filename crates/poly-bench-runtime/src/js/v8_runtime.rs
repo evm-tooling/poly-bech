@@ -4,9 +4,11 @@
 //! requires significant setup. This provides a working implementation that
 //! can be upgraded to embedded V8 later.
 
-use crate::js::{builtins, codegen, transpiler};
-use crate::measurement::Measurement;
-use crate::traits::Runtime;
+use crate::{
+    js::{builtins, codegen, transpiler},
+    measurement::Measurement,
+    traits::Runtime,
+};
 use async_trait::async_trait;
 use miette::{miette, Result};
 use poly_bench_dsl::{BenchMode, Lang};
@@ -95,11 +97,9 @@ impl Runtime for JsRuntime {
 
         // Determine where to write and run the benchmark
         let (script_path, working_dir) = if let Some(ref project_root) = self.project_root {
-            // When using .polybench/runtime-env/ts, write directly there; else use .polybench subdir
-            let is_runtime_env = project_root
-                .as_os_str()
-                .to_string_lossy()
-                .contains("runtime-env");
+            // When using .polybench/runtime-env/ts, write directly there; else use .polybench
+            // subdir
+            let is_runtime_env = project_root.as_os_str().to_string_lossy().contains("runtime-env");
             let script_path = if is_runtime_env {
                 project_root.join("bench.mjs")
             } else {
@@ -111,10 +111,8 @@ impl Runtime for JsRuntime {
             (script_path, project_root.clone())
         } else {
             // Fall back to temp directory
-            let temp_dir = self
-                .temp_dir
-                .as_ref()
-                .ok_or_else(|| miette!("Runtime not initialized"))?;
+            let temp_dir =
+                self.temp_dir.as_ref().ok_or_else(|| miette!("Runtime not initialized"))?;
 
             let script_path = temp_dir.path().join("bench.js");
             (script_path, temp_dir.path().to_path_buf())
@@ -132,10 +130,7 @@ impl Runtime for JsRuntime {
             cmd.env("ANVIL_RPC_URL", url);
         }
 
-        let output = cmd
-            .output()
-            .await
-            .map_err(|e| miette!("Failed to run Node.js: {}", e))?;
+        let output = cmd.output().await.map_err(|e| miette!("Failed to run Node.js: {}", e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -242,10 +237,7 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
                     script.push_str(&format!("const {} = {};\n", fixture_name, stripped));
                 }
             } else if !fixture.data.is_empty() {
-                script.push_str(&builtins::generate_fixture_code(
-                    fixture_name,
-                    &fixture.as_hex(),
-                ));
+                script.push_str(&builtins::generate_fixture_code(fixture_name, &fixture.as_hex()));
             }
         }
     }
@@ -365,13 +357,8 @@ fn parse_benchmark_result(
         .last()
         .ok_or_else(|| miette!("No output from benchmark"))?;
 
-    let result: BenchResultJson = serde_json::from_str(json_line).map_err(|e| {
-        miette!(
-            "Failed to parse benchmark result: {}\nOutput: {}",
-            e,
-            stdout
-        )
-    })?;
+    let result: BenchResultJson = serde_json::from_str(json_line)
+        .map_err(|e| miette!("Failed to parse benchmark result: {}\nOutput: {}", e, stdout))?;
 
     Ok(result.into_measurement_with_options(outlier_detection, cv_threshold))
 }

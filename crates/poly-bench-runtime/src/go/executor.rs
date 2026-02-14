@@ -1,16 +1,13 @@
 //! Go runtime executor
 
-use crate::go::compiler::GoCompiler;
-use crate::measurement::Measurement;
-use crate::traits::Runtime;
+use crate::{go::compiler::GoCompiler, measurement::Measurement, traits::Runtime};
 use async_trait::async_trait;
 use libloading::{Library, Symbol};
 use miette::{miette, Result};
 use poly_bench_dsl::{BenchMode, Lang};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use poly_bench_stdlib as stdlib;
-use std::collections::HashSet;
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf};
 
 use super::shared::{
     self, generate_bench_call, generate_fixtures_for_spec, generate_suite_code, SinkMemoryDecls,
@@ -128,10 +125,7 @@ impl GoRuntime {
         let source = generate_standalone_benchmark(spec, suite)?;
 
         let (src_path, working_dir) = if let Some(ref module_root) = self.module_root {
-            let is_runtime_env = module_root
-                .as_os_str()
-                .to_string_lossy()
-                .contains("runtime-env");
+            let is_runtime_env = module_root.as_os_str().to_string_lossy().contains("runtime-env");
             let src_path = if is_runtime_env {
                 module_root.join("bench_standalone.go")
             } else {
@@ -142,10 +136,8 @@ impl GoRuntime {
             };
             (src_path, module_root.clone())
         } else {
-            let compiler = self
-                .compiler
-                .as_ref()
-                .ok_or_else(|| miette!("Compiler not initialized"))?;
+            let compiler =
+                self.compiler.as_ref().ok_or_else(|| miette!("Compiler not initialized"))?;
 
             let src_path = compiler.temp_path().join("bench_standalone.go");
             (src_path, compiler.temp_path().to_path_buf())
@@ -157,17 +149,14 @@ impl GoRuntime {
         let go_binary = which::which("go").map_err(|_| miette!("Go not found in PATH"))?;
 
         let mut cmd = tokio::process::Command::new(&go_binary);
-        cmd.args(["run", src_path.to_str().unwrap()])
-            .current_dir(&working_dir);
+        cmd.args(["run", src_path.to_str().unwrap()]).current_dir(&working_dir);
 
         if let Some(ref url) = self.anvil_rpc_url {
             cmd.env("ANVIL_RPC_URL", url);
         }
 
-        let output = cmd
-            .output()
-            .await
-            .map_err(|e| miette!("Failed to run Go benchmark: {}", e))?;
+        let output =
+            cmd.output().await.map_err(|e| miette!("Failed to run Go benchmark: {}", e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -175,13 +164,8 @@ impl GoRuntime {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let result: BenchResultJson = serde_json::from_str(&stdout).map_err(|e| {
-            miette!(
-                "Failed to parse benchmark result: {}\nOutput: {}",
-                e,
-                stdout
-            )
-        })?;
+        let result: BenchResultJson = serde_json::from_str(&stdout)
+            .map_err(|e| miette!("Failed to parse benchmark result: {}\nOutput: {}", e, stdout))?;
 
         Ok(result.into_measurement_with_options(spec.outlier_detection, spec.cv_threshold))
     }
@@ -338,11 +322,7 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
 
     // Result calculation and output
     let memory_result = SinkMemoryDecls::memory_result_fields(spec.memory, "iterations");
-    code.push_str(&shared::generate_result_return(
-        "iterations",
-        &memory_result,
-        true,
-    ));
+    code.push_str(&shared::generate_result_return("iterations", &memory_result, true));
     code.push_str("}\n");
 
     Ok(code)
@@ -464,17 +444,10 @@ fn generate_concurrent_main(
 ) -> Result<String> {
     let concurrency = spec.concurrency;
     let memory_result = SinkMemoryDecls::memory_result_fields(spec.memory, "totalIterations");
-    let sink_keepalive = if spec.use_sink {
-        "\n\truntime.KeepAlive(__sink)\n"
-    } else {
-        ""
-    };
+    let sink_keepalive = if spec.use_sink { "\n\truntime.KeepAlive(__sink)\n" } else { "" };
 
     let warmup_call = if spec.use_sink {
-        format!(
-            "_ = {}",
-            spec.get_impl(Lang::Go).unwrap_or(&"nil".to_string())
-        )
+        format!("_ = {}", spec.get_impl(Lang::Go).unwrap_or(&"nil".to_string()))
     } else {
         bench_call.to_string()
     };

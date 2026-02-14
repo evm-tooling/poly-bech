@@ -18,21 +18,11 @@ pub struct Span {
 
 impl Span {
     pub fn new(start: usize, end: usize, line: usize, col: usize) -> Self {
-        Self {
-            start,
-            end,
-            line,
-            col,
-        }
+        Self { start, end, line, col }
     }
 
     pub fn dummy() -> Self {
-        Self {
-            start: 0,
-            end: 0,
-            line: 1,
-            col: 1,
-        }
+        Self { start: 0, end: 0, line: 1, col: 1 }
     }
 }
 
@@ -91,20 +81,12 @@ pub struct CodeBlock {
 
 impl CodeBlock {
     pub fn new(code: String, is_multiline: bool, span: Span) -> Self {
-        Self {
-            code,
-            is_multiline,
-            span,
-        }
+        Self { code, is_multiline, span }
     }
 
     /// Create an empty code block
     pub fn empty() -> Self {
-        Self {
-            code: String::new(),
-            is_multiline: false,
-            span: Span::dummy(),
-        }
+        Self { code: String::new(), is_multiline: false, span: Span::dummy() }
     }
 }
 
@@ -215,10 +197,10 @@ impl StructuredSetup {
 
     /// Check if any section is defined
     pub fn is_empty(&self) -> bool {
-        self.imports.is_none()
-            && self.declarations.is_none()
-            && self.init.is_none()
-            && self.helpers.is_none()
+        self.imports.is_none() &&
+            self.declarations.is_none() &&
+            self.init.is_none() &&
+            self.helpers.is_none()
     }
 }
 
@@ -288,13 +270,7 @@ impl UseStd {
         std_span: Span,
         module_span: Span,
     ) -> Self {
-        Self {
-            module,
-            span,
-            use_span,
-            std_span,
-            module_span,
-        }
+        Self { module, span, use_span, std_span, module_span }
     }
 }
 
@@ -484,9 +460,7 @@ impl ChartDirective {
 
     /// Get the output filename, using default if not specified
     pub fn get_output_file(&self) -> String {
-        self.output_file
-            .clone()
-            .unwrap_or_else(|| self.chart_type.default_filename().to_string())
+        self.output_file.clone().unwrap_or_else(|| self.chart_type.default_filename().to_string())
     }
 }
 
@@ -503,19 +477,11 @@ pub struct File {
 
 impl File {
     pub fn new(suites: Vec<Suite>) -> Self {
-        Self {
-            use_stds: Vec::new(),
-            global_setup: None,
-            suites,
-        }
+        Self { use_stds: Vec::new(), global_setup: None, suites }
     }
 
     pub fn with_use_stds(use_stds: Vec<UseStd>, suites: Vec<Suite>) -> Self {
-        Self {
-            use_stds,
-            global_setup: None,
-            suites,
-        }
+        Self { use_stds, global_setup: None, suites }
     }
 
     pub fn with_global_setup(
@@ -523,11 +489,7 @@ impl File {
         global_setup: Option<GlobalSetup>,
         suites: Vec<Suite>,
     ) -> Self {
-        Self {
-            use_stds,
-            global_setup,
-            suites,
-        }
+        Self { use_stds, global_setup, suites }
     }
 }
 
@@ -765,8 +727,8 @@ impl Benchmark {
 
     /// Check if this benchmark has any lifecycle hooks for a language
     pub fn has_hooks(&self, lang: Lang) -> bool {
-        self.before.contains_key(&lang)
-            || self.after.contains_key(&lang)
-            || self.each.contains_key(&lang)
+        self.before.contains_key(&lang) ||
+            self.after.contains_key(&lang) ||
+            self.each.contains_key(&lang)
     }
 }

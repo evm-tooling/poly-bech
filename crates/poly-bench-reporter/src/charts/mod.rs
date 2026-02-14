@@ -45,10 +45,7 @@ pub const PIE_COLORS: &[&str] = &[
 
 /// Escape XML special characters
 pub fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
 /// Get color for a language
@@ -120,11 +117,8 @@ pub fn svg_title(width: i32, title: &str, subtitle: Option<&str>) -> String {
 
 /// Generate a legend
 pub fn svg_legend(width: i32, y: i32, items: &[(&str, &str)]) -> String {
-    let mut svg = format!(
-        "<g transform=\"translate({},{})\">\n",
-        width / 2 - (items.len() as i32 * 50),
-        y
-    );
+    let mut svg =
+        format!("<g transform=\"translate({},{})\">\n", width / 2 - (items.len() as i32 * 50), y);
 
     for (i, (color, label)) in items.iter().enumerate() {
         let x = i as i32 * 100;
@@ -252,9 +246,7 @@ pub fn sort_benchmarks(benchmarks: &mut [&BenchmarkResult], directive: &ChartDir
                         }
                     })
                     .unwrap_or(1.0);
-                speedup_a
-                    .partial_cmp(&speedup_b)
-                    .unwrap_or(std::cmp::Ordering::Equal)
+                speedup_a.partial_cmp(&speedup_b).unwrap_or(std::cmp::Ordering::Equal)
             }
             "time" => {
                 let time_a = a
@@ -267,9 +259,7 @@ pub fn sort_benchmarks(benchmarks: &mut [&BenchmarkResult], directive: &ChartDir
                     .as_ref()
                     .map(|c| c.first.nanos_per_op.min(c.second.nanos_per_op))
                     .unwrap_or(f64::MAX);
-                time_a
-                    .partial_cmp(&time_b)
-                    .unwrap_or(std::cmp::Ordering::Equal)
+                time_a.partial_cmp(&time_b).unwrap_or(std::cmp::Ordering::Equal)
             }
             "ops" => {
                 let ops_a = a
@@ -282,9 +272,7 @@ pub fn sort_benchmarks(benchmarks: &mut [&BenchmarkResult], directive: &ChartDir
                     .as_ref()
                     .map(|c| c.first.ops_per_sec.max(c.second.ops_per_sec))
                     .unwrap_or(0.0);
-                ops_a
-                    .partial_cmp(&ops_b)
-                    .unwrap_or(std::cmp::Ordering::Equal)
+                ops_a.partial_cmp(&ops_b).unwrap_or(std::cmp::Ordering::Equal)
             }
             "name" | _ => a.name.cmp(&b.name),
         };

@@ -25,11 +25,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
     let mut svg = String::new();
 
     // Collect all benchmarks
-    let all_benchmarks: Vec<_> = results
-        .suites
-        .iter()
-        .flat_map(|s| s.benchmarks.iter())
-        .collect();
+    let all_benchmarks: Vec<_> = results.suites.iter().flat_map(|s| s.benchmarks.iter()).collect();
 
     // Apply filtering and sorting
     let mut filtered = filter_benchmarks(all_benchmarks, directive);
@@ -39,16 +35,9 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
     let benchmarks_with_both: Vec<_> = filtered
         .iter()
         .filter(|b| {
-            let has_go = b
-                .measurements
-                .get(&Lang::Go)
-                .map(|m| m.total_nanos > 0)
-                .unwrap_or(false);
-            let has_ts = b
-                .measurements
-                .get(&Lang::TypeScript)
-                .map(|m| m.total_nanos > 0)
-                .unwrap_or(false);
+            let has_go = b.measurements.get(&Lang::Go).map(|m| m.total_nanos > 0).unwrap_or(false);
+            let has_ts =
+                b.measurements.get(&Lang::TypeScript).map(|m| m.total_nanos > 0).unwrap_or(false);
             has_go || has_ts
         })
         .collect();
@@ -64,10 +53,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
 
     // Calculate dynamic dimensions based on number of benchmarks
     let num_benchmarks = benchmarks_with_both.len() as i32;
-    let pies_per_row = directive
-        .width
-        .map(|w| (w / PIE_SPACING_X).max(1))
-        .unwrap_or(PIES_PER_ROW);
+    let pies_per_row = directive.width.map(|w| (w / PIE_SPACING_X).max(1)).unwrap_or(PIES_PER_ROW);
     let num_rows = (num_benchmarks + pies_per_row - 1) / pies_per_row;
 
     // Calculate width and height
@@ -77,13 +63,9 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
 
     // Stats box needs minimum width to avoid overflow
     let stats_box_needed =
-        (directive.show_stats || directive.show_distribution || directive.show_geo_mean)
-            && !compact;
-    let min_width = if stats_box_needed {
-        MIN_STATS_WIDTH
-    } else {
-        300
-    };
+        (directive.show_stats || directive.show_distribution || directive.show_geo_mean) &&
+            !compact;
+    let min_width = if stats_box_needed { MIN_STATS_WIDTH } else { 300 };
     let width = directive.width.unwrap_or(content_width).max(min_width);
 
     // Calculate summary statistics
@@ -93,8 +75,8 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
     // Height calculation
     let legend_space = LEGEND_HEIGHT;
     let stats_box_space =
-        if (directive.show_stats || directive.show_distribution || directive.show_geo_mean)
-            && !compact
+        if (directive.show_stats || directive.show_distribution || directive.show_geo_mean) &&
+            !compact
         {
             STATS_BOX_HEIGHT
         } else {
@@ -107,10 +89,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
     svg.push_str(&svg_header(width, height));
 
     // Title
-    let title = directive
-        .title
-        .clone()
-        .unwrap_or_else(|| "Time Distribution".to_string());
+    let title = directive.title.clone().unwrap_or_else(|| "Time Distribution".to_string());
     let subtitle = directive
         .description
         .clone()
@@ -134,16 +113,10 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         let center_y = start_y + (row * PIE_SPACING_Y) + PIE_SPACING_Y / 2 - 20;
 
         // Get Go and TS times
-        let go_time = bench
-            .measurements
-            .get(&Lang::Go)
-            .map(|m| m.total_nanos as f64)
-            .unwrap_or(0.0);
-        let ts_time = bench
-            .measurements
-            .get(&Lang::TypeScript)
-            .map(|m| m.total_nanos as f64)
-            .unwrap_or(0.0);
+        let go_time =
+            bench.measurements.get(&Lang::Go).map(|m| m.total_nanos as f64).unwrap_or(0.0);
+        let ts_time =
+            bench.measurements.get(&Lang::TypeScript).map(|m| m.total_nanos as f64).unwrap_or(0.0);
         let total = go_time + ts_time;
 
         if total == 0.0 {
@@ -159,10 +132,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         let ts_faster = ts_time < go_time;
 
         // Draw pie chart group
-        svg.push_str(&format!(
-            "<g transform=\"translate({},{})\">\n",
-            center_x, center_y
-        ));
+        svg.push_str(&format!("<g transform=\"translate({},{})\">\n", center_x, center_y));
 
         // Draw Go slice (starting from top, going clockwise)
         let go_angle = go_pct * 360.0;
@@ -279,18 +249,11 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
 
     // Legend
     let legend_y = start_y + (num_rows * PIE_SPACING_Y) + 20;
-    svg.push_str(&format!(
-        "<g transform=\"translate({},{})\">\n",
-        width / 2,
-        legend_y
-    ));
+    svg.push_str(&format!("<g transform=\"translate({},{})\">\n", width / 2, legend_y));
 
     // Go indicator
-    let go_label = if directive.show_win_counts {
-        format!("Go ({} wins)", go_wins)
-    } else {
-        "Go".to_string()
-    };
+    let go_label =
+        if directive.show_win_counts { format!("Go ({} wins)", go_wins) } else { "Go".to_string() };
     svg.push_str(&format!(
         "  <rect x=\"-140\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
          <text x=\"-122\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
@@ -369,29 +332,29 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.first.p50_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>()
-                / filtered.len().max(1) as f64;
+                .sum::<f64>() /
+                filtered.len().max(1) as f64;
             let go_p99_avg: f64 = filtered
                 .iter()
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.first.p99_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>()
-                / filtered.len().max(1) as f64;
+                .sum::<f64>() /
+                filtered.len().max(1) as f64;
             let ts_p50_avg: f64 = filtered
                 .iter()
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.second.p50_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>()
-                / filtered.len().max(1) as f64;
+                .sum::<f64>() /
+                filtered.len().max(1) as f64;
             let ts_p99_avg: f64 = filtered
                 .iter()
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.second.p99_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>()
-                / filtered.len().max(1) as f64;
+                .sum::<f64>() /
+                filtered.len().max(1) as f64;
 
             if go_p50_avg > 0.0 || ts_p50_avg > 0.0 {
                 let dist_str = format!(

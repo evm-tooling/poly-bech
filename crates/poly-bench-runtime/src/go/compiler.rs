@@ -1,8 +1,10 @@
 //! Go plugin compilation
 
 use miette::{miette, Result};
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 use tempfile::TempDir;
 
 /// Compile Go source to a plugin (.so file)
@@ -22,10 +24,7 @@ impl GoCompiler {
         let temp_dir =
             TempDir::new().map_err(|e| miette!("Failed to create temp directory: {}", e))?;
 
-        Ok(Self {
-            temp_dir,
-            go_binary,
-        })
+        Ok(Self { temp_dir, go_binary })
     }
 
     /// Compile Go source code to a plugin
@@ -46,13 +45,7 @@ impl GoCompiler {
 
         // Compile
         let output = Command::new(&self.go_binary)
-            .args([
-                "build",
-                "-buildmode=plugin",
-                "-o",
-                plugin_path.to_str().unwrap(),
-                ".",
-            ])
+            .args(["build", "-buildmode=plugin", "-o", plugin_path.to_str().unwrap(), "."])
             .current_dir(src_dir)
             .output()
             .map_err(|e| miette!("Failed to run go build: {}", e))?;

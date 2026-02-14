@@ -486,11 +486,7 @@ fn generate_fixture(code: &mut String, fixture: &FixtureIR) -> Result<()> {
         code.push_str(&format!("const {} = {};\n\n", fixture.name, impl_code));
     } else if !fixture.data.is_empty() {
         // Use hex data - provide as both Uint8Array and hex string
-        code.push_str(&format!(
-            "const {} = {};\n",
-            fixture.name,
-            fixture.as_js_uint8array()
-        ));
+        code.push_str(&format!("const {} = {};\n", fixture.name, fixture.as_js_uint8array()));
         code.push_str(&format!(
             "const {}_hex = \"{}\";\n\n",
             fixture.name,
@@ -524,12 +520,10 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec) -> Result<()> {
     let has_before_or_after = before_hook.is_some() || after_hook.is_some();
 
     // Generate hook code
-    let before_code = before_hook
-        .map(|h| format!("    // Before hook\n    {}\n", h.trim()))
-        .unwrap_or_default();
-    let after_code = after_hook
-        .map(|h| format!("\n    // After hook\n    {}", h.trim()))
-        .unwrap_or_default();
+    let before_code =
+        before_hook.map(|h| format!("    // Before hook\n    {}\n", h.trim())).unwrap_or_default();
+    let after_code =
+        after_hook.map(|h| format!("\n    // After hook\n    {}", h.trim())).unwrap_or_default();
 
     match bench.mode {
         BenchMode::Auto => {

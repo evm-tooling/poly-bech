@@ -6,9 +6,11 @@
 use poly_bench_dsl as dsl;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
 
-use super::document::ParsedDocument;
-use super::embedded::{
-    check_embedded_blocks, extract_embedded_blocks, EmbeddedCheckResult, EmbeddedConfig,
+use super::{
+    document::ParsedDocument,
+    embedded::{
+        check_embedded_blocks, extract_embedded_blocks, EmbeddedCheckResult, EmbeddedConfig,
+    },
 };
 
 /// Compute all diagnostics for a document (including embedded Go/TS checks)
@@ -40,14 +42,8 @@ pub fn compute_diagnostics_with_config(
         } else {
             // Default to start of file
             Range {
-                start: Position {
-                    line: 0,
-                    character: 0,
-                },
-                end: Position {
-                    line: 0,
-                    character: 1,
-                },
+                start: Position { line: 0, character: 0 },
+                end: Position { line: 0, character: 1 },
             }
         };
 
@@ -63,10 +59,7 @@ pub fn compute_diagnostics_with_config(
             data: None,
         });
 
-        return DiagnosticsResult {
-            diagnostics,
-            embedded_debug: None,
-        };
+        return DiagnosticsResult { diagnostics, embedded_debug: None };
     }
 
     // Run validation on the AST
@@ -113,15 +106,9 @@ pub fn compute_diagnostics_with_config(
         let embedded_result = check_embedded_blocks(doc, &blocks, config);
         diagnostics.extend(embedded_result.diagnostics.clone());
 
-        DiagnosticsResult {
-            diagnostics,
-            embedded_debug: Some(embedded_result),
-        }
+        DiagnosticsResult { diagnostics, embedded_debug: Some(embedded_result) }
     } else {
-        DiagnosticsResult {
-            diagnostics,
-            embedded_debug: None,
-        }
+        DiagnosticsResult { diagnostics, embedded_debug: None }
     }
 }
 
@@ -147,30 +134,15 @@ fn file_location_to_range(
         if loc.starts_with("line ") {
             if let Ok(line) = loc[5..].parse::<u32>() {
                 return Range {
-                    start: Position {
-                        line: line.saturating_sub(1),
-                        character: 0,
-                    },
-                    end: Position {
-                        line: line.saturating_sub(1),
-                        character: 100,
-                    },
+                    start: Position { line: line.saturating_sub(1), character: 0 },
+                    end: Position { line: line.saturating_sub(1), character: 100 },
                 };
             }
         }
     }
 
     // Default to start of file
-    Range {
-        start: Position {
-            line: 0,
-            character: 0,
-        },
-        end: Position {
-            line: 0,
-            character: 1,
-        },
-    }
+    Range { start: Position { line: 0, character: 0 }, end: Position { line: 0, character: 1 } }
 }
 
 /// Convert a validation location string to an LSP Range
@@ -235,8 +207,6 @@ suite test {
         let doc = ParsedDocument::parse(source, "test.bench", 1);
         let diagnostics = compute_diagnostics(&doc);
 
-        assert!(diagnostics
-            .iter()
-            .any(|d| d.message.contains("no language implementations")));
+        assert!(diagnostics.iter().any(|d| d.message.contains("no language implementations")));
     }
 }

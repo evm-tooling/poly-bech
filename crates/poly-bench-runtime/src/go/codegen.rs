@@ -40,10 +40,7 @@ pub fn generate(ir: &BenchmarkIR) -> Result<String> {
 
     // Check if any benchmark uses concurrency
     let needs_sync = ir.suites.iter().any(|suite| {
-        suite
-            .benchmarks
-            .iter()
-            .any(|bench| bench.concurrency > 1 && bench.has_lang(Lang::Go))
+        suite.benchmarks.iter().any(|bench| bench.concurrency > 1 && bench.has_lang(Lang::Go))
     });
 
     // Generate import block using shared utility
@@ -164,11 +161,7 @@ fn generate_fixture(code: &mut String, fixture: &FixtureIR) -> Result<()> {
         if let Some(ref desc) = fixture.description {
             code.push_str(&format!("// {}\n", desc));
         }
-        code.push_str(&format!(
-            "var {} = {}\n\n",
-            fixture.name,
-            fixture.as_go_bytes()
-        ));
+        code.push_str(&format!("var {} = {}\n\n", fixture.name, fixture.as_go_bytes()));
     }
     Ok(())
 }
@@ -200,9 +193,7 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
         .map(|h| format!("\n\t// After hook\n\t{}\n", h.trim()))
         .unwrap_or_default();
     let each_hook = bench.each_hooks.get(&Lang::Go);
-    let each_hook_code = each_hook
-        .map(|h| format!("\t\t\t{}\n", h.trim()))
-        .unwrap_or_default();
+    let each_hook_code = each_hook.map(|h| format!("\t\t\t{}\n", h.trim())).unwrap_or_default();
 
     // Memory result fields
     let memory_result = SinkMemoryDecls::memory_result_fields(bench.memory, "totalIterations");
@@ -341,11 +332,7 @@ fn generate_concurrent_benchmark(
 ) -> Result<()> {
     let concurrency = bench.concurrency;
     let memory_result = SinkMemoryDecls::memory_result_fields(bench.memory, "totalIterations");
-    let sink_keepalive = if bench.use_sink {
-        "\truntime.KeepAlive(__sink)\n"
-    } else {
-        ""
-    };
+    let sink_keepalive = if bench.use_sink { "\truntime.KeepAlive(__sink)\n" } else { "" };
 
     code.push_str(&format!(
         r#"func bench_{}(iterations int) BenchResult {{

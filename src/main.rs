@@ -30,12 +30,7 @@ struct Cli {
     version: bool,
 
     /// Colorize output [possible values: auto, always, never]
-    #[arg(
-        long,
-        global = true,
-        value_name = "WHEN",
-        help_heading = "Display options"
-    )]
+    #[arg(long, global = true, value_name = "WHEN", help_heading = "Display options")]
     color: Option<String>,
 
     /// Reduce log output
@@ -208,28 +203,13 @@ async fn main() -> Result<()> {
         Commands::Check { file, show_ast } => {
             cmd_check(&file, show_ast).await?;
         }
-        Commands::Run {
-            file,
-            lang,
-            iterations,
-            report,
-            output,
-            go_project,
-            ts_project,
-        } => {
-            cmd_run(
-                file, lang, iterations, &report, output, go_project, ts_project,
-            )
-            .await?;
+        Commands::Run { file, lang, iterations, report, output, go_project, ts_project } => {
+            cmd_run(file, lang, iterations, &report, output, go_project, ts_project).await?;
         }
         Commands::Codegen { file, lang, output } => {
             cmd_codegen(&file, &lang, &output).await?;
         }
-        Commands::Init {
-            name,
-            languages,
-            no_example,
-        } => {
+        Commands::Init { name, languages, no_example } => {
             cmd_init(name.as_deref(), languages, no_example)?;
         }
         Commands::New { name } => {
@@ -241,10 +221,7 @@ async fn main() -> Result<()> {
         Commands::Install => {
             cmd_install()?;
         }
-        Commands::Build {
-            force,
-            skip_install,
-        } => {
+        Commands::Build { force, skip_install } => {
             cmd_build(force, skip_install)?;
         }
         Commands::Fmt { files, write } => {
@@ -276,10 +253,7 @@ async fn cmd_check(file: &PathBuf, show_ast: bool) -> Result<()> {
     let source = std::fs::read_to_string(file)
         .map_err(|e| miette::miette!("Failed to read file {}: {}", file.display(), e))?;
 
-    let filename = file
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown");
+    let filename = file.file_name().and_then(|s| s.to_str()).unwrap_or("unknown");
 
     match dsl::parse(&source, filename) {
         Ok(ast) => {
@@ -364,10 +338,7 @@ async fn cmd_run(
         let source = std::fs::read_to_string(bench_file)
             .map_err(|e| miette::miette!("Failed to read file {}: {}", bench_file.display(), e))?;
 
-        let filename = bench_file
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown");
+        let filename = bench_file.file_name().and_then(|s| s.to_str()).unwrap_or("unknown");
 
         let ast = dsl::parse(&source, filename)?;
 
@@ -381,11 +352,7 @@ async fn cmd_run(
         let project_roots =
             resolve_project_roots(go_project.clone(), ts_project.clone(), bench_file)?;
 
-        println!(
-            "{} Running benchmarks from {}",
-            "▶".green().bold(),
-            bench_file.display()
-        );
+        println!("{} Running benchmarks from {}", "▶".green().bold(), bench_file.display());
 
         // Execute benchmarks
         let results = executor::run(&ir, &langs, iterations, &project_roots).await?;
@@ -413,22 +380,14 @@ async fn cmd_run(
         std::fs::write(&results_path, &json)
             .map_err(|e| miette::miette!("Failed to save results: {}", e))?;
 
-        println!(
-            "\n{} Results saved to {}",
-            "💾".cyan(),
-            results_path.display()
-        );
+        println!("\n{} Results saved to {}", "💾".cyan(), results_path.display());
     }
 
     // Execute chart directives if any
     if !all_chart_directives.is_empty() {
         let chart_output_dir = output.clone().unwrap_or_else(|| default_output_dir.clone());
 
-        println!(
-            "{} Generating {} chart(s)...",
-            "📊".cyan(),
-            all_chart_directives.len()
-        );
+        println!("{} Generating {} chart(s)...", "📊".cyan(), all_chart_directives.len());
 
         let generated_charts =
             reporter::execute_chart_directives(&all_chart_directives, &results, &chart_output_dir)?;
@@ -508,10 +467,7 @@ fn resolve_project_roots(
         })?;
 
         if !canonical.join("go.mod").exists() {
-            return Err(miette::miette!(
-                "No go.mod found in {}",
-                canonical.display()
-            ));
+            return Err(miette::miette!("No go.mod found in {}", canonical.display()));
         }
         roots.go_root = Some(canonical);
     }
@@ -553,8 +509,8 @@ fn resolve_project_roots(
         if roots.go_root.is_none() && dir.join("go.mod").exists() {
             roots.go_root = Some(dir.clone());
         }
-        if roots.node_root.is_none()
-            && (dir.join("package.json").exists() || dir.join("node_modules").exists())
+        if roots.node_root.is_none() &&
+            (dir.join("package.json").exists() || dir.join("node_modules").exists())
         {
             roots.node_root = Some(dir.clone());
         }
@@ -574,10 +530,7 @@ async fn cmd_codegen(file: &PathBuf, lang: &str, output: &PathBuf) -> Result<()>
     let source = std::fs::read_to_string(file)
         .map_err(|e| miette::miette!("Failed to read file {}: {}", file.display(), e))?;
 
-    let filename = file
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown");
+    let filename = file.file_name().and_then(|s| s.to_str()).unwrap_or("unknown");
 
     let ast = dsl::parse(&source, filename)?;
 
@@ -594,22 +547,14 @@ async fn cmd_codegen(file: &PathBuf, lang: &str, output: &PathBuf) -> Result<()>
             let out_path = output.join("benchmark_plugin.go");
             std::fs::write(&out_path, &code)
                 .map_err(|e| miette::miette!("Failed to write generated code: {}", e))?;
-            println!(
-                "{} Generated Go plugin: {}",
-                "✓".green().bold(),
-                out_path.display()
-            );
+            println!("{} Generated Go plugin: {}", "✓".green().bold(), out_path.display());
         }
         "ts" | "typescript" => {
             let code = runtime::js::codegen::generate(&ir)?;
             let out_path = output.join("benchmark.ts");
             std::fs::write(&out_path, &code)
                 .map_err(|e| miette::miette!("Failed to write generated code: {}", e))?;
-            println!(
-                "{} Generated TypeScript: {}",
-                "✓".green().bold(),
-                out_path.display()
-            );
+            println!("{} Generated TypeScript: {}", "✓".green().bold(), out_path.display());
         }
         _ => {
             return Err(miette::miette!("Unknown language: {}", lang));
@@ -633,11 +578,7 @@ fn cmd_upgrade() -> Result<()> {
         }
     };
     if !version_check::is_older(current, &latest) {
-        println!(
-            "{} Already on latest version ({}).",
-            "✓".green().bold(),
-            current
-        );
+        println!("{} Already on latest version ({}).", "✓".green().bold(), current);
         return Ok(());
     }
     println!("Upgrading from {} to {}...", current, latest);
@@ -675,12 +616,7 @@ fn cmd_init(name: Option<&str>, languages: Vec<String>, no_example: bool) -> Res
             (name, languages, true)
         }
     };
-    let options = project::init::InitOptions {
-        name,
-        languages,
-        no_example,
-        quiet,
-    };
+    let options = project::init::InitOptions { name, languages, no_example, quiet };
     project::init::init_project(&options)?;
     if quiet {
         init_t3::print_init_success_block(&options.name);
@@ -692,8 +628,7 @@ fn cmd_init(name: Option<&str>, languages: Vec<String>, no_example: bool) -> Res
 fn init_interactive() -> Result<(String, Vec<String>)> {
     use dialoguer::{Input, MultiSelect};
     use miette::miette;
-    use std::thread;
-    use std::time::Duration;
+    use std::{thread, time::Duration};
 
     init_t3::print_init_logo();
     thread::sleep(Duration::from_millis(120));
@@ -737,7 +672,8 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
         if selected.contains(&0) && selected.contains(&1) && selected.contains(&2) {
             vec!["go".to_string(), "ts".to_string()]
         } else if selected.contains(&0) {
-            // All is checked but not both individual options — use only the checked individual langs
+            // All is checked but not both individual options — use only the checked individual
+            // langs
             let only_langs: Vec<String> = selected
                 .iter()
                 .filter(|&&i| i != 0)
@@ -749,10 +685,7 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
                 only_langs
             }
         } else {
-            selected
-                .into_iter()
-                .map(|i| if i == 1 { "go" } else { "ts" }.to_string())
-                .collect()
+            selected.into_iter().map(|i| if i == 1 { "go" } else { "ts" }.to_string()).collect()
         };
 
     Ok((name, languages))
@@ -786,10 +719,7 @@ fn cmd_install() -> Result<()> {
 }
 
 fn cmd_build(force: bool, skip_install: bool) -> Result<()> {
-    let options = project::build::BuildOptions {
-        force,
-        skip_install,
-    };
+    let options = project::build::BuildOptions { force, skip_install };
     project::build::build_project(&options)
 }
 
@@ -816,10 +746,7 @@ async fn cmd_fmt(files: Vec<PathBuf>, write: bool) -> Result<()> {
     for file in &files {
         let source = std::fs::read_to_string(file)
             .map_err(|e| miette::miette!("Failed to read {}: {}", file.display(), e))?;
-        let filename = file
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown");
+        let filename = file.file_name().and_then(|s| s.to_str()).unwrap_or("unknown");
         match dsl::parse(&source, filename) {
             Ok(ast) => {
                 let formatted = dsl::format_file(&ast);

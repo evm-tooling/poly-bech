@@ -50,18 +50,9 @@ mod tests {
 
     #[test]
     fn test_decode_hex() {
-        assert_eq!(
-            decode_hex("deadbeef").unwrap(),
-            vec![0xde, 0xad, 0xbe, 0xef]
-        );
-        assert_eq!(
-            decode_hex("0xdeadbeef").unwrap(),
-            vec![0xde, 0xad, 0xbe, 0xef]
-        );
-        assert_eq!(
-            decode_hex("  0xDEADBEEF  ").unwrap(),
-            vec![0xde, 0xad, 0xbe, 0xef]
-        );
+        assert_eq!(decode_hex("deadbeef").unwrap(), vec![0xde, 0xad, 0xbe, 0xef]);
+        assert_eq!(decode_hex("0xdeadbeef").unwrap(), vec![0xde, 0xad, 0xbe, 0xef]);
+        assert_eq!(decode_hex("  0xDEADBEEF  ").unwrap(), vec![0xde, 0xad, 0xbe, 0xef]);
     }
 
     #[test]

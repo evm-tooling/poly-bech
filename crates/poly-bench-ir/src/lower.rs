@@ -2,17 +2,17 @@
 //!
 //! Transforms the parsed AST into a normalized IR suitable for execution.
 
-use crate::fixtures::{decode_hex, extract_fixture_refs, load_hex_file};
-use crate::imports::{extract_go_imports, extract_ts_imports, ParsedSetup};
 use crate::{
-    AnvilConfigIR, BenchmarkIR, BenchmarkSpec, ChartDirectiveIR, FixtureIR, FixtureParamIR, SuiteIR,
+    fixtures::{decode_hex, extract_fixture_refs, load_hex_file},
+    imports::{extract_go_imports, extract_ts_imports, ParsedSetup},
+    AnvilConfigIR, BenchmarkIR, BenchmarkSpec, ChartDirectiveIR, FixtureIR, FixtureParamIR,
+    SuiteIR,
 };
 use miette::{miette, Result};
 use poly_bench_dsl::{
     BenchMode, Benchmark, ChartDirective, ExecutionOrder, File, Fixture, Lang, Suite,
 };
-use std::collections::HashSet;
-use std::path::Path;
+use std::{collections::HashSet, path::Path};
 
 /// Lower an AST File to BenchmarkIR
 pub fn lower(ast: &File, base_dir: Option<&Path>) -> Result<BenchmarkIR> {
@@ -54,12 +54,7 @@ pub fn lower(ast: &File, base_dir: Option<&Path>) -> Result<BenchmarkIR> {
         suites.push(suite_ir);
     }
 
-    Ok(BenchmarkIR::with_charts(
-        stdlib_imports,
-        anvil_config,
-        suites,
-        chart_directives,
-    ))
+    Ok(BenchmarkIR::with_charts(stdlib_imports, anvil_config, suites, chart_directives))
 }
 
 /// Lower a single Suite to SuiteIR
@@ -162,10 +157,7 @@ fn lower_fixture(fixture: &Fixture, base_dir: Option<&Path>) -> Result<FixtureIR
         // Parameterized fixture - no static data
         Vec::new()
     } else {
-        return Err(miette!(
-            "Fixture '{}' has no hex data or implementations",
-            fixture.name
-        ));
+        return Err(miette!("Fixture '{}' has no hex data or implementations", fixture.name));
     };
 
     let mut ir = FixtureIR::new(fixture.name.clone(), data);
@@ -176,10 +168,7 @@ fn lower_fixture(fixture: &Fixture, base_dir: Option<&Path>) -> Result<FixtureIR
     ir.params = fixture
         .params
         .iter()
-        .map(|p| FixtureParamIR {
-            name: p.name.clone(),
-            param_type: p.param_type.clone(),
-        })
+        .map(|p| FixtureParamIR { name: p.name.clone(), param_type: p.param_type.clone() })
         .collect();
 
     // Copy language-specific implementations
@@ -214,9 +203,7 @@ fn lower_benchmark(
     spec.min_iterations = benchmark.min_iterations.unwrap_or(suite_ir.min_iterations);
     spec.max_iterations = benchmark.max_iterations.unwrap_or(suite_ir.max_iterations);
     spec.use_sink = benchmark.sink.unwrap_or(suite_ir.sink);
-    spec.outlier_detection = benchmark
-        .outlier_detection
-        .unwrap_or(suite_ir.outlier_detection);
+    spec.outlier_detection = benchmark.outlier_detection.unwrap_or(suite_ir.outlier_detection);
     spec.cv_threshold = benchmark.cv_threshold.unwrap_or(suite_ir.cv_threshold);
     spec.count = benchmark.count.unwrap_or(suite_ir.count);
 
@@ -418,10 +405,7 @@ suite evm {
             "anvil_config should be set from suite-level globalSetup"
         );
         let anvil_cfg = ir.anvil_config.as_ref().unwrap();
-        assert!(
-            anvil_cfg.fork_url.is_none(),
-            "spawnAnvil() without args should have no fork_url"
-        );
+        assert!(anvil_cfg.fork_url.is_none(), "spawnAnvil() without args should have no fork_url");
     }
 
     #[test]

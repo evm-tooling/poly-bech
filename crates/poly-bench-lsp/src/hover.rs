@@ -4,19 +4,23 @@
 //! in poly-bench files, including embedded Go code via gopls and
 //! TypeScript code via typescript-language-server.
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::{
+    sync::atomic::{AtomicU64, Ordering},
+    time::{Duration, Instant},
+};
 
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use poly_bench_dsl::Lang;
 use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position, Url};
 
-use super::document::ParsedDocument;
-use super::embedded::{extract_embedded_blocks, EmbeddedBlock, EmbeddedConfig};
-use super::gopls_client::init_gopls_client;
-use super::tsserver_client::init_tsserver_client;
-use super::virtual_files::{VirtualFile, VirtualFileManager, VirtualTsFileManager};
+use super::{
+    document::ParsedDocument,
+    embedded::{extract_embedded_blocks, EmbeddedBlock, EmbeddedConfig},
+    gopls_client::init_gopls_client,
+    tsserver_client::init_tsserver_client,
+    virtual_files::{VirtualFile, VirtualFileManager, VirtualTsFileManager},
+};
 
 /// Cache TTL for embedded language hover results (in milliseconds)
 const HOVER_CACHE_TTL_MS: u64 = 500;
@@ -43,11 +47,8 @@ static CACHE_CLEANUP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Check if a cached hover result is still valid
 fn get_cached_hover(uri: &Url, position: Position) -> Option<Option<Hover>> {
-    let key = HoverCacheKey {
-        uri: uri.to_string(),
-        line: position.line,
-        character: position.character,
-    };
+    let key =
+        HoverCacheKey { uri: uri.to_string(), line: position.line, character: position.character };
 
     if let Some(cached) = HOVER_CACHE.get(&key) {
         if cached.timestamp.elapsed() < Duration::from_millis(HOVER_CACHE_TTL_MS) {
@@ -65,19 +66,10 @@ fn get_cached_hover(uri: &Url, position: Position) -> Option<Option<Hover>> {
 
 /// Store a hover result in the cache
 fn cache_hover(uri: &Url, position: Position, hover: Option<Hover>) {
-    let key = HoverCacheKey {
-        uri: uri.to_string(),
-        line: position.line,
-        character: position.character,
-    };
+    let key =
+        HoverCacheKey { uri: uri.to_string(), line: position.line, character: position.character };
 
-    HOVER_CACHE.insert(
-        key,
-        CachedHover {
-            hover,
-            timestamp: Instant::now(),
-        },
-    );
+    HOVER_CACHE.insert(key, CachedHover { hover, timestamp: Instant::now() });
 
     // Periodically clean up old entries (every 100 requests)
     let count = CACHE_CLEANUP_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -109,10 +101,7 @@ pub fn get_hover_with_gopls(
     let offset = match doc.position_to_offset(position) {
         Some(o) => o,
         None => {
-            eprintln!(
-                "[hover] Failed to convert position {:?} to offset",
-                position
-            );
+            eprintln!("[hover] Failed to convert position {:?} to offset", position);
             return get_hover(doc, position);
         }
     };
@@ -124,16 +113,10 @@ pub fn get_hover_with_gopls(
 
     // Separate Go and TypeScript blocks
     let go_blocks: Vec<&EmbeddedBlock> = blocks.iter().filter(|b| b.lang == Lang::Go).collect();
-    let ts_blocks: Vec<&EmbeddedBlock> = blocks
-        .iter()
-        .filter(|b| b.lang == Lang::TypeScript)
-        .collect();
+    let ts_blocks: Vec<&EmbeddedBlock> =
+        blocks.iter().filter(|b| b.lang == Lang::TypeScript).collect();
 
-    eprintln!(
-        "[hover] Found {} Go blocks, {} TS blocks",
-        go_blocks.len(),
-        ts_blocks.len()
-    );
+    eprintln!("[hover] Found {} Go blocks, {} TS blocks", go_blocks.len(), ts_blocks.len());
 
     // Check if the offset is within a Go code block
     if let Some(go_block) = find_block_at_offset(&go_blocks, offset) {
@@ -150,14 +133,8 @@ pub fn get_hover_with_gopls(
         // Try to get hover from gopls
         if let Some(go_mod_root) = &config.go_mod_root {
             eprintln!("[hover] go_mod_root: {}", go_mod_root);
-            let hover = get_gopls_hover(
-                doc,
-                uri,
-                offset,
-                &go_blocks,
-                go_mod_root,
-                virtual_file_manager,
-            );
+            let hover =
+                get_gopls_hover(doc, uri, offset, &go_blocks, go_mod_root, virtual_file_manager);
 
             // Cache the result (even if None)
             cache_hover(uri, position, hover.clone());
@@ -230,10 +207,7 @@ fn find_block_at_offset<'a>(
     blocks: &[&'a EmbeddedBlock],
     offset: usize,
 ) -> Option<&'a EmbeddedBlock> {
-    blocks
-        .iter()
-        .find(|b| offset >= b.span.start && offset < b.span.end)
-        .copied()
+    blocks.iter().find(|b| offset >= b.span.start && offset < b.span.end).copied()
 }
 
 /// Get hover information from gopls for embedded Go code
@@ -245,10 +219,7 @@ fn get_gopls_hover(
     go_mod_root: &str,
     virtual_file_manager: &VirtualFileManager,
 ) -> Option<Hover> {
-    eprintln!(
-        "[gopls] get_gopls_hover called for offset {} in {}",
-        bench_offset, bench_uri
-    );
+    eprintln!("[gopls] get_gopls_hover called for offset {} in {}", bench_offset, bench_uri);
 
     // Initialize gopls client if needed
     let client = match init_gopls_client(go_mod_root) {
@@ -264,10 +235,7 @@ fn get_gopls_hover(
     let bench_path = bench_uri.to_file_path().ok()?;
     let bench_path_str = bench_path.to_string_lossy();
 
-    eprintln!(
-        "[gopls] Creating virtual file from {} Go blocks",
-        go_blocks.len()
-    );
+    eprintln!("[gopls] Creating virtual file from {} Go blocks", go_blocks.len());
 
     let virtual_file = virtual_file_manager.get_or_create(
         bench_uri_str,
@@ -289,28 +257,20 @@ fn get_gopls_hover(
             pos
         }
         None => {
-            eprintln!(
-                "[gopls] Failed to translate bench offset {} to Go position",
-                bench_offset
-            );
+            eprintln!("[gopls] Failed to translate bench offset {} to Go position", bench_offset);
             return None;
         }
     };
 
     // Ensure the virtual file is synced with gopls
-    if let Err(e) = client.did_change(
-        virtual_file.uri(),
-        virtual_file.content(),
-        virtual_file.version(),
-    ) {
+    if let Err(e) =
+        client.did_change(virtual_file.uri(), virtual_file.content(), virtual_file.version())
+    {
         eprintln!("[gopls] Failed to sync virtual file: {}", e);
         return None;
     }
 
-    eprintln!(
-        "[gopls] Requesting hover at {}:{}",
-        go_position.line, go_position.character
-    );
+    eprintln!("[gopls] Requesting hover at {}:{}", go_position.line, go_position.character);
 
     // Request hover from gopls
     match client.hover(virtual_file.uri(), go_position.line, go_position.character) {
@@ -353,10 +313,7 @@ fn get_tsserver_hover(
     ts_module_root: &str,
     virtual_ts_file_manager: &VirtualTsFileManager,
 ) -> Option<Hover> {
-    eprintln!(
-        "[tsserver] get_tsserver_hover called for offset {} in {}",
-        bench_offset, bench_uri
-    );
+    eprintln!("[tsserver] get_tsserver_hover called for offset {} in {}", bench_offset, bench_uri);
 
     // Initialize tsserver client if needed
     let client = match init_tsserver_client(ts_module_root) {
@@ -401,19 +358,14 @@ fn get_tsserver_hover(
     };
 
     // Ensure the virtual file is synced with tsserver
-    if let Err(e) = client.did_change(
-        virtual_file.uri(),
-        virtual_file.content(),
-        virtual_file.version(),
-    ) {
+    if let Err(e) =
+        client.did_change(virtual_file.uri(), virtual_file.content(), virtual_file.version())
+    {
         eprintln!("[tsserver] Failed to sync virtual file: {}", e);
         return None;
     }
 
-    eprintln!(
-        "[tsserver] Requesting hover at {}:{}",
-        ts_position.line, ts_position.character
-    );
+    eprintln!("[tsserver] Requesting hover at {}:{}", ts_position.line, ts_position.character);
 
     // Request hover from tsserver
     match client.hover(virtual_file.uri(), ts_position.line, ts_position.character) {
@@ -594,11 +546,8 @@ pub fn get_hover(doc: &ParsedDocument, position: Position) -> Option<Hover> {
                     if !benchmark.tags.is_empty() {
                         content.push_str(&format!("\n\n**Tags:** {}", benchmark.tags.join(", ")));
                     }
-                    let langs: Vec<_> = benchmark
-                        .implementations
-                        .keys()
-                        .map(|l| l.as_str())
-                        .collect();
+                    let langs: Vec<_> =
+                        benchmark.implementations.keys().map(|l| l.as_str()).collect();
                     if !langs.is_empty() {
                         content.push_str(&format!("\n\n**Implementations:** {}", langs.join(", ")));
                     }

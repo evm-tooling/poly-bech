@@ -3,8 +3,7 @@
 //! This module manages a typescript-language-server subprocess and communicates
 //! with it via the Language Server Protocol over stdin/stdout.
 
-use std::process::Command;
-use std::sync::Arc;
+use std::{process::Command, sync::Arc};
 
 use once_cell::sync::OnceCell;
 use serde_json::{json, Value};
@@ -77,9 +76,8 @@ fn find_ts_language_server() -> Option<String> {
     }
 
     // Check if available via npx
-    if let Ok(output) = Command::new("npx")
-        .args(["--no", "typescript-language-server", "--version"])
-        .output()
+    if let Ok(output) =
+        Command::new("npx").args(["--no", "typescript-language-server", "--version"]).output()
     {
         if output.status.success() {
             return Some("npx".to_string());

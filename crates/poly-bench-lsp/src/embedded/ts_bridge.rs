@@ -8,10 +8,7 @@
 //! mapped back to their original source locations.
 
 use regex::Regex;
-use std::fs;
-use std::io::Write;
-use std::path::Path;
-use std::process::Command;
+use std::{fs, io::Write, path::Path, process::Command};
 use tempfile::TempDir;
 
 use super::{BlockType, EmbeddedBlock, EmbeddedDiagnostic, EmbeddedSeverity, SetupContext};
@@ -53,10 +50,7 @@ pub fn check_ts_block(
     // Wrap code appropriately based on block type
     let (wrapped, prefix_lines) = wrap_ts_code(code, block.block_type, context);
 
-    eprintln!(
-        "[ts-check] Checking {:?} block, prefix_lines={}",
-        block.block_type, prefix_lines
-    );
+    eprintln!("[ts-check] Checking {:?} block, prefix_lines={}", block.block_type, prefix_lines);
     eprintln!(
         "[ts-check] Wrapped code ({} lines):\n{}",
         wrapped.lines().count(),
@@ -124,10 +118,7 @@ pub fn check_ts_setup_combined(
 
     // Parse and map errors back to original blocks
     let diagnostics = parse_combined_errors(&error_output, &mappings);
-    eprintln!(
-        "[ts-check] Parsed {} combined diagnostics",
-        diagnostics.len()
-    );
+    eprintln!("[ts-check] Parsed {} combined diagnostics", diagnostics.len());
 
     diagnostics
 }
@@ -191,9 +182,7 @@ fn run_tsc(
         (path, Some(temp))
     };
 
-    fs::File::create(&check_file)
-        .and_then(|mut f| f.write_all(code.as_bytes()))
-        .ok()?;
+    fs::File::create(&check_file).and_then(|mut f| f.write_all(code.as_bytes())).ok()?;
 
     // First, try to use local tsc from node_modules if we have a module root
     let (actual_cmd, actual_use_npx) = if let Some(root) = ts_module_root {
@@ -275,11 +264,7 @@ fn run_tsc(
     );
 
     // tsc outputs errors to stdout, but some errors go to stderr
-    let error_output = if !stdout.is_empty() {
-        stdout.to_string()
-    } else {
-        stderr.to_string()
-    };
+    let error_output = if !stdout.is_empty() { stdout.to_string() } else { stderr.to_string() };
 
     // Clean up the check file if we wrote it to the module root
     if _temp_dir.is_none() {
@@ -305,10 +290,7 @@ fn build_combined_setup(
             combined.push_str(trimmed);
             combined.push_str("\n\n");
 
-            if let Some(block) = blocks
-                .iter()
-                .find(|b| b.block_type == BlockType::SetupImport)
-            {
+            if let Some(block) = blocks.iter().find(|b| b.block_type == BlockType::SetupImport) {
                 let line_count = trimmed.lines().count();
                 mappings.push(SectionMapping {
                     start_line: current_line,
@@ -340,10 +322,7 @@ fn build_combined_setup(
             combined.push_str(trimmed);
             combined.push_str("\n\n");
 
-            if let Some(block) = blocks
-                .iter()
-                .find(|b| b.block_type == BlockType::SetupDeclare)
-            {
+            if let Some(block) = blocks.iter().find(|b| b.block_type == BlockType::SetupDeclare) {
                 let line_count = trimmed.lines().count();
                 mappings.push(SectionMapping {
                     start_line: current_line,
@@ -363,10 +342,7 @@ fn build_combined_setup(
             combined.push_str(trimmed);
             combined.push_str("\n\n");
 
-            if let Some(block) = blocks
-                .iter()
-                .find(|b| b.block_type == BlockType::SetupHelpers)
-            {
+            if let Some(block) = blocks.iter().find(|b| b.block_type == BlockType::SetupHelpers) {
                 let line_count = trimmed.lines().count();
                 mappings.push(SectionMapping {
                     start_line: current_line,
@@ -418,10 +394,7 @@ fn parse_combined_errors(output: &str, mappings: &[SectionMapping]) -> Vec<Embed
     // Match various tsc error formats including our check file names
     let error_re = Regex::new(r"[^\s]*(?:check|snippet|__polybench_check__)\.ts[:\(](\d+)[,:](\d+)\)?[:\s\-]+(?:error|warning)\s+TS\d+:\s*(.+)").unwrap();
 
-    eprintln!(
-        "[ts-combined-parse] Parsing errors, {} mappings:",
-        mappings.len()
-    );
+    eprintln!("[ts-combined-parse] Parsing errors, {} mappings:", mappings.len());
     for (i, m) in mappings.iter().enumerate() {
         eprintln!(
             "[ts-combined-parse]   [{}] start_line={}, line_count={}, span_start={}",
@@ -502,10 +475,7 @@ fn parse_combined_errors(output: &str, mappings: &[SectionMapping]) -> Vec<Embed
                 );
             }
         } else {
-            eprintln!(
-                "[ts-combined-parse]   -> No mapping found for line {}",
-                error_line
-            );
+            eprintln!("[ts-combined-parse]   -> No mapping found for line {}", error_line);
         }
     }
 
@@ -514,9 +484,7 @@ fn parse_combined_errors(output: &str, mappings: &[SectionMapping]) -> Vec<Embed
 
 /// Find which section a line number belongs to
 fn find_section_for_line(line: usize, mappings: &[SectionMapping]) -> Option<&SectionMapping> {
-    mappings
-        .iter()
-        .find(|m| line >= m.start_line && line < m.start_line + m.line_count)
+    mappings.iter().find(|m| line >= m.start_line && line < m.start_line + m.line_count)
 }
 
 /// Build the context prefix (imports + declarations) for TypeScript
@@ -586,10 +554,8 @@ fn wrap_ts_code(code: &str, block_type: BlockType, context: &SetupContext) -> (S
         BlockType::Benchmark | BlockType::Skip | BlockType::Validate => {
             // Benchmark code needs full context
             let (prefix, prefix_lines) = build_ts_context_prefix(context, true);
-            let wrapped = format!(
-                "{}const __result = (() => {{\n  return {};\n}})();",
-                prefix, code
-            );
+            let wrapped =
+                format!("{}const __result = (() => {{\n  return {};\n}})();", prefix, code);
             (wrapped, prefix_lines + 1)
         }
     }

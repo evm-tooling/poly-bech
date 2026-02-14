@@ -15,9 +15,7 @@ const POLY_BENCH_LOGO: &str = r#"
 const SENTINEL_FILENAME: &str = ".welcome_shown";
 
 fn config_dir() -> Option<PathBuf> {
-    std::env::var("HOME")
-        .ok()
-        .map(|h| PathBuf::from(h).join(".polybench"))
+    std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".polybench"))
 }
 
 fn sentinel_path() -> Option<PathBuf> {
@@ -29,7 +27,8 @@ fn welcome_already_shown() -> bool {
     sentinel_path().map(|p| p.exists()).unwrap_or(false)
 }
 
-/// True if this is the first run (sentinel not yet created). Used to show welcome before running a subcommand.
+/// True if this is the first run (sentinel not yet created). Used to show welcome before running a
+/// subcommand.
 pub fn is_first_run() -> bool {
     !welcome_already_shown()
 }

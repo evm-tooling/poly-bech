@@ -3,8 +3,7 @@
 use colored::Colorize;
 use miette::Result;
 use poly_bench_dsl::Lang;
-use poly_bench_executor::comparison::BenchmarkResult;
-use poly_bench_executor::{BenchmarkResults, SuiteResults};
+use poly_bench_executor::{comparison::BenchmarkResult, BenchmarkResults, SuiteResults};
 use poly_bench_runtime::measurement::Measurement;
 
 /// Benchmark configuration for display
@@ -105,18 +104,10 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
     // Winner banner
     match summary.winner {
         Some(Lang::Go) => {
-            println!(
-                "  {} {}",
-                "🏆".green(),
-                summary.winner_description.green().bold()
-            );
+            println!("  {} {}", "🏆".green(), summary.winner_description.green().bold());
         }
         Some(Lang::TypeScript) => {
-            println!(
-                "  {} {}",
-                "🏆".cyan(),
-                summary.winner_description.cyan().bold()
-            );
+            println!("  {} {}", "🏆".cyan(), summary.winner_description.cyan().bold());
         }
         _ => {
             println!("  {} {}", "🤝", summary.winner_description.dimmed());
@@ -145,17 +136,11 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
         summary.ties,
         (summary.ties * 100) / summary.total_benchmarks.max(1)
     );
-    println!(
-        "  {:<20} {:.2}x",
-        "Geometric Mean:", summary.geo_mean_speedup
-    );
+    println!("  {:<20} {:.2}x", "Geometric Mean:", summary.geo_mean_speedup);
 
     // Statistical quality indicators
     if summary.total_outliers_removed > 0 {
-        println!(
-            "  {:<20} {}",
-            "Outliers Removed:", summary.total_outliers_removed
-        );
+        println!("  {:<20} {}", "Outliers Removed:", summary.total_outliers_removed);
     }
     if summary.unstable_count > 0 {
         println!(
@@ -170,10 +155,10 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
     // Config section (if enabled and config provided)
     if options.show_config {
         let config = &options.config;
-        let has_config = config.iterations.is_some()
-            || config.warmup.is_some()
-            || config.timeout_ms.is_some()
-            || config.order.is_some();
+        let has_config = config.iterations.is_some() ||
+            config.warmup.is_some() ||
+            config.timeout_ms.is_some() ||
+            config.order.is_some();
 
         if has_config {
             println!("{}", "CONFIG".bold().underline());
@@ -186,11 +171,8 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
                 println!("  {:<20} {}", "Warmup:", warm);
             }
             if let Some(to) = config.timeout_ms {
-                let timeout_str = if to >= 1000 {
-                    format!("{}s", to / 1000)
-                } else {
-                    format!("{}ms", to)
-                };
+                let timeout_str =
+                    if to >= 1000 { format!("{}s", to / 1000) } else { format!("{}ms", to) };
                 println!("  {:<20} {}", "Timeout:", timeout_str);
             }
             if let Some(ref ord) = config.order {
@@ -211,15 +193,8 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
     // Legend
     println!("{}", "─".repeat(110));
     println!("{}", "LEGEND".dimmed());
-    println!(
-        "  {} = Go result  |  {} = TypeScript result",
-        "go".green(),
-        "ts".cyan()
-    );
-    println!(
-        "  {} = operations per second (higher is better)",
-        "hz".dimmed()
-    );
+    println!("  {} = Go result  |  {} = TypeScript result", "go".green(), "ts".cyan());
+    println!("  {} = operations per second (higher is better)", "hz".dimmed());
     println!(
         "  {} = minimum latency  |  {} = maximum latency  |  {} = mean latency (all in ms)",
         "min".dimmed(),
@@ -237,10 +212,7 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
         "cv".dimmed(),
         "samples".dimmed()
     );
-    println!(
-        "  {} = CV above threshold (results may be unstable)",
-        "yellow cv".yellow()
-    );
+    println!("  {} = CV above threshold (results may be unstable)", "yellow cv".yellow());
     println!();
 
     Ok(())
@@ -330,30 +302,20 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
     // Determine fastest/slowest for each language
     let go_fastest: Option<&str> = benchmarks
         .iter()
-        .filter_map(|b| {
-            b.measurements
-                .get(&Lang::Go)
-                .map(|m| (b.name.as_str(), m.ops_per_sec))
-        })
+        .filter_map(|b| b.measurements.get(&Lang::Go).map(|m| (b.name.as_str(), m.ops_per_sec)))
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(name, _)| name);
 
     let go_slowest: Option<&str> = benchmarks
         .iter()
-        .filter_map(|b| {
-            b.measurements
-                .get(&Lang::Go)
-                .map(|m| (b.name.as_str(), m.ops_per_sec))
-        })
+        .filter_map(|b| b.measurements.get(&Lang::Go).map(|m| (b.name.as_str(), m.ops_per_sec)))
         .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(name, _)| name);
 
     let ts_fastest: Option<&str> = benchmarks
         .iter()
         .filter_map(|b| {
-            b.measurements
-                .get(&Lang::TypeScript)
-                .map(|m| (b.name.as_str(), m.ops_per_sec))
+            b.measurements.get(&Lang::TypeScript).map(|m| (b.name.as_str(), m.ops_per_sec))
         })
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(name, _)| name);
@@ -361,9 +323,7 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
     let ts_slowest: Option<&str> = benchmarks
         .iter()
         .filter_map(|b| {
-            b.measurements
-                .get(&Lang::TypeScript)
-                .map(|m| (b.name.as_str(), m.ops_per_sec))
+            b.measurements.get(&Lang::TypeScript).map(|m| (b.name.as_str(), m.ops_per_sec))
         })
         .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(name, _)| name);
@@ -425,10 +385,8 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
                 let mean_ns = m.nanos_per_op;
                 let p75_ns = m.p75_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
                 let p99_ns = m.p99_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
-                let p995_ns = m
-                    .p995_nanos
-                    .unwrap_or(m.p99_nanos.unwrap_or(m.nanos_per_op as u64))
-                    as f64;
+                let p995_ns =
+                    m.p995_nanos.unwrap_or(m.p99_nanos.unwrap_or(m.nanos_per_op as u64)) as f64;
                 let rme = m.rme_percent.unwrap_or(0.0);
                 let cv = m.cv_percent.unwrap_or(0.0);
                 let samples = m.samples.unwrap_or(1000);
@@ -513,10 +471,8 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
                 let mean_ns = m.nanos_per_op;
                 let p75_ns = m.p75_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
                 let p99_ns = m.p99_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
-                let p995_ns = m
-                    .p995_nanos
-                    .unwrap_or(m.p99_nanos.unwrap_or(m.nanos_per_op as u64))
-                    as f64;
+                let p995_ns =
+                    m.p995_nanos.unwrap_or(m.p99_nanos.unwrap_or(m.nanos_per_op as u64)) as f64;
                 let rme = m.rme_percent.unwrap_or(0.0);
                 let cv = m.cv_percent.unwrap_or(0.0);
                 let samples = m.samples.unwrap_or(1000);
@@ -549,14 +505,10 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
         if let Some(ref cmp) = bench.comparison {
             let winner_str = match cmp.winner {
                 poly_bench_runtime::measurement::ComparisonWinner::First => {
-                    format!("  → Go is {:.2}x faster", cmp.speedup)
-                        .green()
-                        .to_string()
+                    format!("  → Go is {:.2}x faster", cmp.speedup).green().to_string()
                 }
                 poly_bench_runtime::measurement::ComparisonWinner::Second => {
-                    format!("  → TS is {:.2}x faster", 1.0 / cmp.speedup)
-                        .cyan()
-                        .to_string()
+                    format!("  → TS is {:.2}x faster", 1.0 / cmp.speedup).cyan().to_string()
                 }
                 poly_bench_runtime::measurement::ComparisonWinner::Tie => {
                     "  → Similar performance".dimmed().to_string()

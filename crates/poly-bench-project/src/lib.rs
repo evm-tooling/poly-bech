@@ -51,11 +51,7 @@ pub fn is_runtime_env_root(path: &Path) -> bool {
 /// Starts from `start_path` and walks up the directory tree until
 /// a `polybench.toml` file is found.
 pub fn find_project_root(start_path: &Path) -> Option<PathBuf> {
-    let start = if start_path.is_file() {
-        start_path.parent()?
-    } else {
-        start_path
-    };
+    let start = if start_path.is_file() { start_path.parent()? } else { start_path };
 
     let mut current = start.canonicalize().ok()?;
 

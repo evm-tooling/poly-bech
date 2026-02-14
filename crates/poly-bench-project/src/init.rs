@@ -5,8 +5,7 @@ use crate::{
     runtime_env_go, runtime_env_ts, templates, terminal, BENCHMARKS_DIR, MANIFEST_FILENAME,
 };
 use miette::Result;
-use std::path::PathBuf;
-use std::process::Command;
+use std::{path::PathBuf, process::Command};
 
 /// Options for initializing a project
 pub struct InitOptions {
@@ -31,11 +30,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
 
     // Get the actual project name from the directory
     let project_name = if options.name == "." {
-        project_dir
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("my-project")
-            .to_string()
+        project_dir.file_name().and_then(|s| s.to_str()).unwrap_or("my-project").to_string()
     } else {
         options.name.clone()
     };
@@ -129,10 +124,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
 
         // Run npm install to install dev dependencies (@types/node, typescript)
         if options.quiet {
-            let _ = Command::new("npm")
-                .arg("install")
-                .current_dir(&ts_env)
-                .output();
+            let _ = Command::new("npm").arg("install").current_dir(&ts_env).output();
         } else {
             let spinner = terminal::step_spinner("Installing TypeScript dependencies...");
             let npm_result = terminal::run_command_with_spinner(
@@ -162,11 +154,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     let gitignore_content = if gitignore_path.exists() {
         let existing = std::fs::read_to_string(&gitignore_path).unwrap_or_default();
         if !existing.contains(".polybench/") {
-            format!(
-                "{}\n\n# poly-bench\n{}",
-                existing.trim(),
-                templates::gitignore()
-            )
+            format!("{}\n\n# poly-bench\n{}", existing.trim(), templates::gitignore())
         } else {
             existing
         }
@@ -192,10 +180,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
 
     if !options.quiet {
         println!();
-        terminal::success(&format!(
-            "Project '{}' initialized successfully!",
-            project_name
-        ));
+        terminal::success(&format!("Project '{}' initialized successfully!", project_name));
         println!();
         println!("Next steps:");
         if options.name != "." {
@@ -276,18 +261,11 @@ mod tests {
         // Check files exist (runtime-env layout: deps under .polybench/runtime-env/)
         assert!(project_path.join(MANIFEST_FILENAME).exists());
         assert!(project_path.join(BENCHMARKS_DIR).exists());
-        assert!(project_path
-            .join(BENCHMARKS_DIR)
-            .join("example.bench")
-            .exists());
+        assert!(project_path.join(BENCHMARKS_DIR).join("example.bench").exists());
         assert!(crate::runtime_env_go(&project_path).join("go.mod").exists());
         // Note: bench_standalone.go is NOT created on init - only when running benchmarks
-        assert!(crate::runtime_env_ts(&project_path)
-            .join("package.json")
-            .exists());
-        assert!(crate::runtime_env_ts(&project_path)
-            .join("tsconfig.json")
-            .exists());
+        assert!(crate::runtime_env_ts(&project_path).join("package.json").exists());
+        assert!(crate::runtime_env_ts(&project_path).join("tsconfig.json").exists());
         assert!(project_path.join(".gitignore").exists());
         assert!(project_path.join("README.md").exists());
     }
@@ -308,9 +286,7 @@ mod tests {
         assert!(result.is_ok());
 
         assert!(crate::runtime_env_go(&project_path).join("go.mod").exists());
-        assert!(!crate::runtime_env_ts(&project_path)
-            .join("package.json")
-            .exists());
+        assert!(!crate::runtime_env_ts(&project_path).join("package.json").exists());
     }
 
     #[test]

@@ -85,11 +85,8 @@ impl Measurement {
         };
 
         // Use filtered samples for statistics if available, otherwise original
-        let samples_for_stats = if filtered_samples.is_empty() {
-            &sorted
-        } else {
-            &filtered_samples
-        };
+        let samples_for_stats =
+            if filtered_samples.is_empty() { &sorted } else { &filtered_samples };
 
         // Calculate totals from filtered samples
         let total_nanos: u64 = samples_for_stats.iter().sum();
@@ -99,11 +96,7 @@ impl Measurement {
         } else {
             0.0
         };
-        let ops_per_sec = if nanos_per_op > 0.0 {
-            1_000_000_000.0 / nanos_per_op
-        } else {
-            0.0
-        };
+        let ops_per_sec = if nanos_per_op > 0.0 { 1_000_000_000.0 / nanos_per_op } else { 0.0 };
 
         let min_nanos = samples_for_stats.first().copied();
         let max_nanos = samples_for_stats.last().copied();
@@ -115,11 +108,9 @@ impl Measurement {
         // Calculate standard deviation and CV
         let (rme_percent, cv_percent, is_stable) = if samples_for_stats.len() > 1 {
             let mean = nanos_per_op;
-            let variance: f64 = samples_for_stats
-                .iter()
-                .map(|&x| (x as f64 - mean).powi(2))
-                .sum::<f64>()
-                / (samples_for_stats.len() - 1) as f64;
+            let variance: f64 =
+                samples_for_stats.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>() /
+                    (samples_for_stats.len() - 1) as f64;
             let std_dev = variance.sqrt();
             let std_error = std_dev / (samples_for_stats.len() as f64).sqrt();
 
@@ -127,11 +118,7 @@ impl Measurement {
             let rme = (std_error / mean) * 100.0 * 1.96;
 
             // Coefficient of variation: (std_dev / mean) * 100
-            let cv = if mean > 0.0 {
-                (std_dev / mean) * 100.0
-            } else {
-                0.0
-            };
+            let cv = if mean > 0.0 { (std_dev / mean) * 100.0 } else { 0.0 };
 
             // Stability check: CV below threshold
             let stable = cv <= cv_threshold;
@@ -173,11 +160,7 @@ impl Measurement {
     /// Create a measurement from aggregate data (no samples)
     pub fn from_aggregate(iterations: u64, total_nanos: u64) -> Self {
         let nanos_per_op = total_nanos as f64 / iterations as f64;
-        let ops_per_sec = if nanos_per_op > 0.0 {
-            1_000_000_000.0 / nanos_per_op
-        } else {
-            0.0
-        };
+        let ops_per_sec = if nanos_per_op > 0.0 { 1_000_000_000.0 / nanos_per_op } else { 0.0 };
 
         Self {
             iterations,
@@ -267,11 +250,8 @@ impl Measurement {
 
         // Calculate mean and std deviation for CI
         let mean: f64 = nanos_values.iter().sum::<f64>() / run_count as f64;
-        let variance: f64 = nanos_values
-            .iter()
-            .map(|&x| (x - mean).powi(2))
-            .sum::<f64>()
-            / (run_count - 1) as f64;
+        let variance: f64 =
+            nanos_values.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (run_count - 1) as f64;
         let std_dev = variance.sqrt();
         let std_error = std_dev / (run_count as f64).sqrt();
 
@@ -318,27 +298,16 @@ impl Measurement {
         let total_outliers: u64 = runs.iter().filter_map(|r| r.outliers_removed).sum();
 
         // Calculate cross-run CV and RME
-        let cv_percent = if mean > 0.0 {
-            Some((std_dev / mean) * 100.0)
-        } else {
-            None
-        };
-        let rme_percent = if median > 0.0 {
-            Some((std_error / median) * 100.0 * 1.96)
-        } else {
-            None
-        };
+        let cv_percent = if mean > 0.0 { Some((std_dev / mean) * 100.0) } else { None };
+        let rme_percent =
+            if median > 0.0 { Some((std_error / median) * 100.0 * 1.96) } else { None };
         let is_stable = cv_percent.map(|cv| cv <= DEFAULT_CV_THRESHOLD);
 
         Self {
             iterations: total_iterations,
             total_nanos,
             nanos_per_op: median, // Use median as primary value
-            ops_per_sec: if median > 0.0 {
-                1_000_000_000.0 / median
-            } else {
-                0.0
-            },
+            ops_per_sec: if median > 0.0 { 1_000_000_000.0 / median } else { 0.0 },
             min_nanos,
             max_nanos,
             p50_nanos,
@@ -416,11 +385,7 @@ fn remove_outliers_iqr(sorted: &[u64]) -> Vec<u64> {
     let upper_bound = (q3 + 1.5 * iqr) as u64;
 
     // Filter out outliers
-    sorted
-        .iter()
-        .copied()
-        .filter(|&s| s >= lower_bound && s <= upper_bound)
-        .collect()
+    sorted.iter().copied().filter(|&s| s >= lower_bound && s <= upper_bound).collect()
 }
 
 /// Comparison between two measurements
@@ -469,16 +434,7 @@ impl Comparison {
             (ComparisonWinner::First, 1.0 / ratio)
         };
 
-        Self {
-            name,
-            first,
-            first_lang,
-            second,
-            second_lang,
-            ratio,
-            speedup,
-            winner,
-        }
+        Self { name, first, first_lang, second, second_lang, ratio, speedup, winner }
     }
 
     /// Get a description of the speedup

@@ -81,12 +81,9 @@ pub fn generate(
     // Calculate width
     let margin_x = 20;
     let stats_box_needed =
-        (directive.show_stats || directive.show_distribution || directive.show_geo_mean)
-            && !compact;
-    let width = directive
-        .width
-        .unwrap_or(MIN_CHART_WIDTH + margin_x * 2)
-        .max(MIN_CHART_WIDTH);
+        (directive.show_stats || directive.show_distribution || directive.show_geo_mean) &&
+            !compact;
+    let width = directive.width.unwrap_or(MIN_CHART_WIDTH + margin_x * 2).max(MIN_CHART_WIDTH);
     let bar_area_width = width - LABEL_WIDTH - VALUE_LABEL_WIDTH - margin_x * 2;
 
     // Calculate summary stats for legend
@@ -95,23 +92,16 @@ pub fn generate(
 
     // Height calculation
     let legend_space = LEGEND_HEIGHT;
-    let stats_box_space = if stats_box_needed {
-        STATS_BOX_HEIGHT
-    } else {
-        0
-    };
-    let config_space = if directive.show_config && suite_config.is_some() && !compact {
-        24
-    } else {
-        0
-    };
+    let stats_box_space = if stats_box_needed { STATS_BOX_HEIGHT } else { 0 };
+    let config_space =
+        if directive.show_config && suite_config.is_some() && !compact { 24 } else { 0 };
     let chart_area_height = num_benchmarks * ROW_HEIGHT;
-    let height = DEFAULT_MARGIN_TOP
-        + chart_area_height
-        + legend_space
-        + stats_box_space
-        + config_space
-        + DEFAULT_MARGIN_BOTTOM;
+    let height = DEFAULT_MARGIN_TOP +
+        chart_area_height +
+        legend_space +
+        stats_box_space +
+        config_space +
+        DEFAULT_MARGIN_BOTTOM;
 
     // Collect all values for smart scaling
     let all_values: Vec<f64> = filtered
@@ -125,11 +115,7 @@ pub fn generate(
         .collect();
 
     let max_value = all_values.iter().cloned().fold(1.0, f64::max);
-    let min_value = all_values
-        .iter()
-        .cloned()
-        .fold(f64::MAX, f64::min)
-        .max(0.001);
+    let min_value = all_values.iter().cloned().fold(f64::MAX, f64::min).max(0.001);
     let value_ratio = max_value / min_value;
 
     // Determine scaling mode: use log scale if ratio is extreme
@@ -139,10 +125,9 @@ pub fn generate(
     let scale_note = if use_log_scale { " (log scale)" } else { "" };
     let subtitle = directive.description.clone().unwrap_or_else(|| {
         let winner_text = match results.summary.winner {
-            Some(Lang::Go) => format!(
-                "Go is {:.1}x faster overall",
-                results.summary.geo_mean_speedup
-            ),
+            Some(Lang::Go) => {
+                format!("Go is {:.1}x faster overall", results.summary.geo_mean_speedup)
+            }
             Some(Lang::TypeScript) => format!(
                 "TypeScript is {:.1}x faster overall",
                 1.0 / results.summary.geo_mean_speedup
@@ -152,10 +137,7 @@ pub fn generate(
         format!("{}{}", winner_text, scale_note)
     });
 
-    let title = directive
-        .title
-        .clone()
-        .unwrap_or_else(|| "Benchmark Results".to_string());
+    let title = directive.title.clone().unwrap_or_else(|| "Benchmark Results".to_string());
 
     // SVG header
     svg.push_str(&svg_header(width, height));
@@ -171,14 +153,8 @@ pub fn generate(
             let row_y = start_y + (i as i32 * ROW_HEIGHT);
 
             // Get values - use median when available (for count > 1), otherwise nanos_per_op
-            let go_value = cmp
-                .first
-                .median_across_runs
-                .unwrap_or(cmp.first.nanos_per_op);
-            let ts_value = cmp
-                .second
-                .median_across_runs
-                .unwrap_or(cmp.second.nanos_per_op);
+            let go_value = cmp.first.median_across_runs.unwrap_or(cmp.first.nanos_per_op);
+            let ts_value = cmp.second.median_across_runs.unwrap_or(cmp.second.nanos_per_op);
 
             // Calculate bar widths with smart scaling
             let (go_bar_width, ts_bar_width) = if use_log_scale {
@@ -215,10 +191,7 @@ pub fn generate(
             let ts_winner = cmp.winner == ComparisonWinner::Second;
 
             // Draw row group
-            svg.push_str(&format!(
-                "<g transform=\"translate({},{})\">\n",
-                margin_x, row_y
-            ));
+            svg.push_str(&format!("<g transform=\"translate({},{})\">\n", margin_x, row_y));
 
             // Benchmark name label (left side)
             let name_display = if bench.name.len() > 20 {
@@ -234,11 +207,7 @@ pub fn generate(
             // Winner indicator (speedup) below name
             if go_winner || ts_winner {
                 let winner_color = if go_winner { GO_COLOR } else { TS_COLOR };
-                let speedup = if go_winner {
-                    ts_value / go_value
-                } else {
-                    go_value / ts_value
-                };
+                let speedup = if go_winner { ts_value / go_value } else { go_value / ts_value };
                 let winner_label = if go_winner { "Go" } else { "TS" };
                 svg.push_str(&format!(
                     "  <text x=\"{}\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"600\" fill=\"{}\">{} {:.1}x faster</text>\n",
@@ -286,13 +255,9 @@ pub fn generate(
                 let ci_range = ci_upper - ci_lower;
                 let error_bar_half_width = if use_log_scale {
                     // Scale error bar for log scale
-                    ((ci_range / go_value) * go_bar_width / 2.0)
-                        .max(3.0)
-                        .min(20.0)
+                    ((ci_range / go_value) * go_bar_width / 2.0).max(3.0).min(20.0)
                 } else {
-                    (ci_range / max_value * bar_area_width as f64 / 2.0)
-                        .max(3.0)
-                        .min(20.0)
+                    (ci_range / max_value * bar_area_width as f64 / 2.0).max(3.0).min(20.0)
                 };
                 let error_bar_x = LABEL_WIDTH as f64 + go_bar_width;
                 let error_bar_y = go_bar_y + bar_height / 2;
@@ -361,13 +326,9 @@ pub fn generate(
             {
                 let ci_range = ci_upper - ci_lower;
                 let error_bar_half_width = if use_log_scale {
-                    ((ci_range / ts_value) * ts_bar_width / 2.0)
-                        .max(3.0)
-                        .min(20.0)
+                    ((ci_range / ts_value) * ts_bar_width / 2.0).max(3.0).min(20.0)
                 } else {
-                    (ci_range / max_value * bar_area_width as f64 / 2.0)
-                        .max(3.0)
-                        .min(20.0)
+                    (ci_range / max_value * bar_area_width as f64 / 2.0).max(3.0).min(20.0)
                 };
                 let error_bar_x = LABEL_WIDTH as f64 + ts_bar_width;
                 let error_bar_y = ts_bar_y + bar_height / 2;
@@ -410,18 +371,11 @@ pub fn generate(
 
     // Legend
     let legend_y = start_y + chart_area_height + 20;
-    svg.push_str(&format!(
-        "<g transform=\"translate({},{})\">\n",
-        width / 2,
-        legend_y
-    ));
+    svg.push_str(&format!("<g transform=\"translate({},{})\">\n", width / 2, legend_y));
 
     // Go indicator
-    let go_legend_label = if directive.show_win_counts {
-        format!("Go ({} wins)", go_wins)
-    } else {
-        "Go".to_string()
-    };
+    let go_legend_label =
+        if directive.show_win_counts { format!("Go ({} wins)", go_wins) } else { "Go".to_string() };
     svg.push_str(&format!(
         "  <rect x=\"-140\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
          <text x=\"-122\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
@@ -487,10 +441,7 @@ pub fn generate(
             let geo_label = if geo_mean >= 1.0 {
                 format!("Go is {:.2}x faster on average (geometric mean)", geo_mean)
             } else {
-                format!(
-                    "TypeScript is {:.2}x faster on average (geometric mean)",
-                    1.0 / geo_mean
-                )
+                format!("TypeScript is {:.2}x faster on average (geometric mean)", 1.0 / geo_mean)
             };
             svg.push_str(&format!(
                 "<text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"10\" fill=\"{}\">• {}</text>\n",
@@ -506,29 +457,29 @@ pub fn generate(
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.first.p50_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>()
-                / filtered.len().max(1) as f64;
+                .sum::<f64>() /
+                filtered.len().max(1) as f64;
             let go_p99_avg: f64 = filtered
                 .iter()
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.first.p99_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>()
-                / filtered.len().max(1) as f64;
+                .sum::<f64>() /
+                filtered.len().max(1) as f64;
             let ts_p50_avg: f64 = filtered
                 .iter()
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.second.p50_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>()
-                / filtered.len().max(1) as f64;
+                .sum::<f64>() /
+                filtered.len().max(1) as f64;
             let ts_p99_avg: f64 = filtered
                 .iter()
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.second.p99_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>()
-                / filtered.len().max(1) as f64;
+                .sum::<f64>() /
+                filtered.len().max(1) as f64;
 
             if go_p50_avg > 0.0 || ts_p50_avg > 0.0 {
                 let dist_str = format!(

@@ -1,4 +1,5 @@
-//! Fetch latest version from crates.io and compare with current; used for --version warning and upgrade command.
+//! Fetch latest version from crates.io and compare with current; used for --version warning and
+//! upgrade command.
 
 /// Print a warning to stderr if current version is older than the latest on crates.io.
 /// Non-fatal: on network/parse errors, we do nothing.

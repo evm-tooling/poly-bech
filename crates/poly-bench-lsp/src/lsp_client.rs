@@ -3,11 +3,15 @@
 //! This module provides a generic LSP client that can be used to communicate
 //! with any language server over stdin/stdout (JSON-RPC).
 
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
-use std::sync::{Arc, Mutex};
-use std::thread;
+use std::{
+    io::{BufRead, BufReader, Write},
+    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
+    sync::{
+        atomic::{AtomicBool, AtomicI64, Ordering},
+        Arc, Mutex,
+    },
+    thread,
+};
 
 use dashmap::DashMap;
 use serde_json::{json, Value};
@@ -105,10 +109,8 @@ impl<C: LspConfig> LspClient<C> {
             .spawn()
             .map_err(|e| format!("Failed to spawn {}: {}", C::SERVER_NAME, e))?;
 
-        let stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| format!("Failed to get {} stdin", C::SERVER_NAME))?;
+        let stdin =
+            child.stdin.take().ok_or_else(|| format!("Failed to get {} stdin", C::SERVER_NAME))?;
         let stdout = child
             .stdout
             .take()
@@ -232,21 +234,12 @@ impl<C: LspConfig> LspClient<C> {
             "params": params
         });
 
-        eprintln!(
-            "[{}] Sending request: {} (id={})",
-            C::SERVER_NAME,
-            method,
-            id
-        );
+        eprintln!("[{}] Sending request: {} (id={})", C::SERVER_NAME, method, id);
 
         let request_str = serde_json::to_string(&request)
             .map_err(|e| format!("Failed to serialize request: {}", e))?;
 
-        let message = format!(
-            "Content-Length: {}\r\n\r\n{}",
-            request_str.len(),
-            request_str
-        );
+        let message = format!("Content-Length: {}\r\n\r\n{}", request_str.len(), request_str);
 
         let (tx, rx) = std::sync::mpsc::channel();
         self.pending.insert(id, tx);
@@ -266,16 +259,10 @@ impl<C: LspConfig> LspClient<C> {
             }
         }
 
-        let response = rx
-            .recv_timeout(std::time::Duration::from_millis(timeout_ms))
-            .map_err(|e| {
+        let response =
+            rx.recv_timeout(std::time::Duration::from_millis(timeout_ms)).map_err(|e| {
                 self.pending.remove(&id);
-                format!(
-                    "Timeout waiting for {} response ({}ms): {}",
-                    C::SERVER_NAME,
-                    timeout_ms,
-                    e
-                )
+                format!("Timeout waiting for {} response ({}ms): {}", C::SERVER_NAME, timeout_ms, e)
             })?;
 
         if let Some(error) = response.get("error") {
@@ -298,11 +285,8 @@ impl<C: LspConfig> LspClient<C> {
         let notification_str = serde_json::to_string(&notification)
             .map_err(|e| format!("Failed to serialize notification: {}", e))?;
 
-        let message = format!(
-            "Content-Length: {}\r\n\r\n{}",
-            notification_str.len(),
-            notification_str
-        );
+        let message =
+            format!("Content-Length: {}\r\n\r\n{}", notification_str.len(), notification_str);
 
         let mut stdin_guard = self.stdin.lock().map_err(|e| e.to_string())?;
         if let Some(ref mut stdin) = *stdin_guard {
@@ -323,11 +307,7 @@ impl<C: LspConfig> LspClient<C> {
             return Ok(());
         }
 
-        eprintln!(
-            "[{}] Initializing with workspace: {}",
-            C::SERVER_NAME,
-            self.workspace_root
-        );
+        eprintln!("[{}] Initializing with workspace: {}", C::SERVER_NAME, self.workspace_root);
 
         let mut init_params = json!({
             "processId": std::process::id(),
@@ -350,10 +330,7 @@ impl<C: LspConfig> LspClient<C> {
         if let (Some(init_obj), Some(add_obj)) =
             (init_params.as_object_mut(), additional.as_object())
         {
-            if let Some(caps) = init_obj
-                .get_mut("capabilities")
-                .and_then(|c| c.as_object_mut())
-            {
+            if let Some(caps) = init_obj.get_mut("capabilities").and_then(|c| c.as_object_mut()) {
                 for (k, v) in add_obj {
                     caps.insert(k.clone(), v.clone());
                 }
@@ -504,25 +481,15 @@ pub fn parse_hover_response(value: &Value) -> Result<Option<Hover>, String> {
 
     let hover_contents = if let Some(obj) = contents.as_object() {
         // MarkupContent format
-        let kind = obj
-            .get("kind")
-            .and_then(|k| k.as_str())
-            .unwrap_or("plaintext");
+        let kind = obj.get("kind").and_then(|k| k.as_str()).unwrap_or("plaintext");
         let value_str = obj.get("value").and_then(|v| v.as_str()).unwrap_or("");
 
         HoverContents::Markup(MarkupContent {
-            kind: if kind == "markdown" {
-                MarkupKind::Markdown
-            } else {
-                MarkupKind::PlainText
-            },
+            kind: if kind == "markdown" { MarkupKind::Markdown } else { MarkupKind::PlainText },
             value: value_str.to_string(),
         })
     } else if let Some(s) = contents.as_str() {
-        HoverContents::Markup(MarkupContent {
-            kind: MarkupKind::PlainText,
-            value: s.to_string(),
-        })
+        HoverContents::Markup(MarkupContent { kind: MarkupKind::PlainText, value: s.to_string() })
     } else if let Some(arr) = contents.as_array() {
         // Array of MarkedString
         let combined: Vec<String> = arr
@@ -562,8 +529,5 @@ pub fn parse_hover_response(value: &Value) -> Result<Option<Hover>, String> {
         })
     });
 
-    Ok(Some(Hover {
-        contents: hover_contents,
-        range,
-    }))
+    Ok(Some(Hover { contents: hover_contents, range }))
 }

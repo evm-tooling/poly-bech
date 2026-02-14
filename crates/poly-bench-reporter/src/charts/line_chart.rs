@@ -17,11 +17,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
     let mut svg = String::new();
 
     // Collect all benchmarks
-    let all_benchmarks: Vec<_> = results
-        .suites
-        .iter()
-        .flat_map(|s| s.benchmarks.iter())
-        .collect();
+    let all_benchmarks: Vec<_> = results.suites.iter().flat_map(|s| s.benchmarks.iter()).collect();
 
     // Apply filtering and sorting
     let mut filtered = filter_benchmarks(all_benchmarks, directive);
@@ -81,10 +77,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
     svg.push_str(&svg_header(width, height));
 
     // Title
-    let title = directive
-        .title
-        .clone()
-        .unwrap_or_else(|| "Performance Trend".to_string());
+    let title = directive.title.clone().unwrap_or_else(|| "Performance Trend".to_string());
     let subtitle = directive
         .description
         .clone()
@@ -242,14 +235,8 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
     );
 
     // Axis labels
-    let x_label = directive
-        .x_label
-        .clone()
-        .unwrap_or_else(|| "Benchmark".to_string());
-    let y_label = directive
-        .y_label
-        .clone()
-        .unwrap_or_else(|| "Time".to_string());
+    let x_label = directive.x_label.clone().unwrap_or_else(|| "Benchmark".to_string());
+    let y_label = directive.y_label.clone().unwrap_or_else(|| "Time".to_string());
 
     svg.push_str(&format!(
         "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
@@ -264,11 +251,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
 
     // Legend
     let legend_y = DEFAULT_MARGIN_TOP + chart_height + 50;
-    svg.push_str(&svg_legend(
-        width,
-        legend_y,
-        &[(GO_COLOR, "Go"), (TS_COLOR, "TypeScript")],
-    ));
+    svg.push_str(&svg_legend(width, legend_y, &[(GO_COLOR, "Go"), (TS_COLOR, "TypeScript")]));
 
     // Stats box below legend
     if directive.show_stats || directive.show_distribution || directive.show_geo_mean {
@@ -319,29 +302,29 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.first.p50_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>()
-                / filtered.len().max(1) as f64;
+                .sum::<f64>() /
+                filtered.len().max(1) as f64;
             let go_p99_avg: f64 = filtered
                 .iter()
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.first.p99_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>()
-                / filtered.len().max(1) as f64;
+                .sum::<f64>() /
+                filtered.len().max(1) as f64;
             let ts_p50_avg: f64 = filtered
                 .iter()
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.second.p50_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>()
-                / filtered.len().max(1) as f64;
+                .sum::<f64>() /
+                filtered.len().max(1) as f64;
             let ts_p99_avg: f64 = filtered
                 .iter()
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.second.p99_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>()
-                / filtered.len().max(1) as f64;
+                .sum::<f64>() /
+                filtered.len().max(1) as f64;
 
             if go_p50_avg > 0.0 || ts_p50_avg > 0.0 {
                 let dist_str = format!(

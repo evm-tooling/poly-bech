@@ -96,10 +96,7 @@ pub fn get_completions(
         }
         Context::ModuleDotAccess(module_name) => {
             // User typed "anvil." - show all symbols from that module
-            items.extend(stdlib_module_member_completions(
-                &module_name,
-                &stdlib_imports,
-            ));
+            items.extend(stdlib_module_member_completions(&module_name, &stdlib_imports));
         }
         Context::Unknown => {
             // Provide all keywords as fallback
@@ -108,9 +105,9 @@ pub fn get_completions(
             items.extend(stdlib_module_name_completions(&stdlib_imports));
         }
         // Embedded code contexts - only show setup symbols, no DSL keywords
-        Context::InsideEmbeddedInit
-        | Context::InsideEmbeddedHelpers
-        | Context::InsideEmbeddedDeclarations => {
+        Context::InsideEmbeddedInit |
+        Context::InsideEmbeddedHelpers |
+        Context::InsideEmbeddedDeclarations => {
             // Inside embedded Go/TypeScript code blocks
             // Only provide setup-declared symbols for reference
             items.extend(extract_setup_symbols(doc));
@@ -252,10 +249,7 @@ fn stdlib_module_member_completions(module_name: &str, imports: &[String]) -> Ve
         items.push(CompletionItem {
             label: symbol.name.to_string(),
             kind: Some(kind),
-            detail: Some(format!(
-                "{}.{} - {}",
-                module_name, symbol.name, symbol.description
-            )),
+            detail: Some(format!("{}.{} - {}", module_name, symbol.name, symbol.description)),
             documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
                 tower_lsp::lsp_types::MarkupContent {
                     kind: tower_lsp::lsp_types::MarkupKind::Markdown,
@@ -374,11 +368,8 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
             '{' => {
                 depth += 1;
                 // Use current_word if not empty, otherwise use last_word
-                let word_to_push = if !current_word.is_empty() {
-                    current_word.clone()
-                } else {
-                    last_word.clone()
-                };
+                let word_to_push =
+                    if !current_word.is_empty() { current_word.clone() } else { last_word.clone() };
                 if !word_to_push.is_empty() {
                     block_stack.push((word_to_push, depth));
                 }
@@ -510,9 +501,9 @@ fn extract_module_name_before_trigger(line_text: &str) -> Option<String> {
         // Also check if it ends with a known module followed by dot
         // (for cases where the doc was already updated)
         for module in known_modules {
-            if word == module
-                || word.ends_with(&format!("{}.", module))
-                || word == format!("{}.", module)
+            if word == module ||
+                word.ends_with(&format!("{}.", module)) ||
+                word == format!("{}.", module)
             {
                 return Some(module.to_string());
             }
@@ -914,24 +905,14 @@ fn setup_section_completions() -> Vec<CompletionItem> {
 fn bench_body_completions() -> Vec<CompletionItem> {
     vec![
         // Language implementations
-        completion_item(
-            "go:",
-            "go: $0",
-            "Go implementation",
-            CompletionItemKind::PROPERTY,
-        ),
+        completion_item("go:", "go: $0", "Go implementation", CompletionItemKind::PROPERTY),
         completion_item(
             "go: (block)",
             "go: {\n    $0\n}",
             "Go implementation (multi-line)",
             CompletionItemKind::PROPERTY,
         ),
-        completion_item(
-            "ts:",
-            "ts: $0",
-            "TypeScript implementation",
-            CompletionItemKind::PROPERTY,
-        ),
+        completion_item("ts:", "ts: $0", "TypeScript implementation", CompletionItemKind::PROPERTY),
         completion_item(
             "ts: (block)",
             "ts: {\n    $0\n}",
@@ -1119,12 +1100,7 @@ fn bench_body_completions() -> Vec<CompletionItem> {
 
 fn fixture_body_completions() -> Vec<CompletionItem> {
     vec![
-        completion_item(
-            "hex",
-            "hex: \"$0\"",
-            "Hex-encoded data",
-            CompletionItemKind::PROPERTY,
-        ),
+        completion_item("hex", "hex: \"$0\"", "Hex-encoded data", CompletionItemKind::PROPERTY),
         completion_item(
             "hex: @file",
             "hex: @file(\"${1:path/to/file.hex}\")",
@@ -1278,12 +1254,7 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
             CompletionItemKind::KEYWORD,
         ),
         // Language keywords
-        completion_item(
-            "go",
-            "go: $0",
-            "Go language implementation",
-            CompletionItemKind::KEYWORD,
-        ),
+        completion_item("go", "go: $0", "Go language implementation", CompletionItemKind::KEYWORD),
         completion_item(
             "ts",
             "ts: $0",
@@ -1585,11 +1556,7 @@ fn completion_item(
 }
 
 fn simple_completion(label: &str, kind: CompletionItemKind) -> CompletionItem {
-    CompletionItem {
-        label: label.to_string(),
-        kind: Some(kind),
-        ..Default::default()
-    }
+    CompletionItem { label: label.to_string(), kind: Some(kind), ..Default::default() }
 }
 
 /// Extract symbols (functions and variables) declared in setup init/helpers blocks
@@ -1651,8 +1618,8 @@ fn extract_symbols_from_code(code: &str, lang: Lang, source: &str) -> Vec<Comple
                     if let Some(name) = name {
                         let name_str = name.as_str();
                         // Skip common Go keywords/patterns
-                        if !["err", "ok", "_", "nil"].contains(&name_str)
-                            && seen.insert(name_str.to_string())
+                        if !["err", "ok", "_", "nil"].contains(&name_str) &&
+                            seen.insert(name_str.to_string())
                         {
                             items.push(CompletionItem {
                                 label: name_str.to_string(),
