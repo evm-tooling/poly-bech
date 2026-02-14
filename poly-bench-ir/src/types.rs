@@ -389,9 +389,9 @@ impl BenchmarkSpec {
 
     /// Check if this benchmark has any lifecycle hooks for a language
     pub fn has_hooks(&self, lang: Lang) -> bool {
-        self.before_hooks.contains_key(&lang)
-            || self.after_hooks.contains_key(&lang)
-            || self.each_hooks.contains_key(&lang)
+        self.before_hooks.contains_key(&lang) ||
+            self.after_hooks.contains_key(&lang) ||
+            self.each_hooks.contains_key(&lang)
     }
 
     /// Check if this benchmark should be skipped for a language

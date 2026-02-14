@@ -369,10 +369,10 @@ pub fn check_embedded_blocks(
         .filter(|b| {
             matches!(
                 b.block_type,
-                BlockType::SetupImport
-                    | BlockType::SetupDeclare
-                    | BlockType::SetupHelpers
-                    | BlockType::SetupInit
+                BlockType::SetupImport |
+                    BlockType::SetupDeclare |
+                    BlockType::SetupHelpers |
+                    BlockType::SetupInit
             )
         })
         .collect();
@@ -400,10 +400,10 @@ pub fn check_embedded_blocks(
         .filter(|b| {
             !matches!(
                 b.block_type,
-                BlockType::SetupImport
-                    | BlockType::SetupDeclare
-                    | BlockType::SetupHelpers
-                    | BlockType::SetupInit
+                BlockType::SetupImport |
+                    BlockType::SetupDeclare |
+                    BlockType::SetupHelpers |
+                    BlockType::SetupInit
             )
         })
         .collect();
@@ -427,10 +427,10 @@ pub fn check_embedded_blocks(
         .filter(|b| {
             matches!(
                 b.block_type,
-                BlockType::SetupImport
-                    | BlockType::SetupDeclare
-                    | BlockType::SetupHelpers
-                    | BlockType::SetupInit
+                BlockType::SetupImport |
+                    BlockType::SetupDeclare |
+                    BlockType::SetupHelpers |
+                    BlockType::SetupInit
             )
         })
         .collect();
@@ -458,10 +458,10 @@ pub fn check_embedded_blocks(
         .filter(|b| {
             !matches!(
                 b.block_type,
-                BlockType::SetupImport
-                    | BlockType::SetupDeclare
-                    | BlockType::SetupHelpers
-                    | BlockType::SetupInit
+                BlockType::SetupImport |
+                    BlockType::SetupDeclare |
+                    BlockType::SetupHelpers |
+                    BlockType::SetupInit
             )
         })
         .collect();
@@ -485,10 +485,10 @@ pub fn check_embedded_blocks(
         .filter(|b| {
             matches!(
                 b.block_type,
-                BlockType::SetupImport
-                    | BlockType::SetupDeclare
-                    | BlockType::SetupHelpers
-                    | BlockType::SetupInit
+                BlockType::SetupImport |
+                    BlockType::SetupDeclare |
+                    BlockType::SetupHelpers |
+                    BlockType::SetupInit
             )
         })
         .collect();
@@ -518,10 +518,10 @@ pub fn check_embedded_blocks(
         .filter(|b| {
             !matches!(
                 b.block_type,
-                BlockType::SetupImport
-                    | BlockType::SetupDeclare
-                    | BlockType::SetupHelpers
-                    | BlockType::SetupInit
+                BlockType::SetupImport |
+                    BlockType::SetupDeclare |
+                    BlockType::SetupHelpers |
+                    BlockType::SetupInit
             )
         })
         .collect();

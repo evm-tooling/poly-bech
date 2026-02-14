@@ -599,41 +599,41 @@ fn enhance_rust_hover_content(contents: HoverContents) -> HoverContents {
 
                 // Check if this looks like a module path (single identifier, no spaces)
                 // These appear at the start before signatures
-                if !seen_signature
-                    && !in_signature
-                    && !trimmed.contains(' ')
-                    && trimmed.chars().all(|c| c.is_alphanumeric() || c == '_' || c == ':')
+                if !seen_signature &&
+                    !in_signature &&
+                    !trimmed.contains(' ') &&
+                    trimmed.chars().all(|c| c.is_alphanumeric() || c == '_' || c == ':')
                 {
                     // Skip module paths like "tiny_keccak::keccak::Keccak"
                     continue;
                 }
 
                 // Detect function/struct/type signatures
-                let is_signature_start = trimmed.starts_with("fn ")
-                    || trimmed.starts_with("pub fn ")
-                    || trimmed.starts_with("async fn ")
-                    || trimmed.starts_with("pub async fn ")
-                    || trimmed.starts_with("unsafe fn ")
-                    || trimmed.starts_with("pub unsafe fn ")
-                    || trimmed.starts_with("struct ")
-                    || trimmed.starts_with("pub struct ")
-                    || trimmed.starts_with("type ")
-                    || trimmed.starts_with("pub type ")
-                    || trimmed.starts_with("const ")
-                    || trimmed.starts_with("pub const ")
-                    || trimmed.starts_with("static ")
-                    || trimmed.starts_with("pub static ")
-                    || trimmed.starts_with("impl ")
-                    || trimmed.starts_with("impl<")
-                    || trimmed.starts_with("trait ")
-                    || trimmed.starts_with("pub trait ")
-                    || trimmed.starts_with("enum ")
-                    || trimmed.starts_with("pub enum ")
-                    || trimmed.starts_with("mod ")
-                    || trimmed.starts_with("pub mod ")
-                    || trimmed.starts_with("use ")
-                    || trimmed.starts_with("pub use ")
-                    || trimmed.starts_with("extern crate ");
+                let is_signature_start = trimmed.starts_with("fn ") ||
+                    trimmed.starts_with("pub fn ") ||
+                    trimmed.starts_with("async fn ") ||
+                    trimmed.starts_with("pub async fn ") ||
+                    trimmed.starts_with("unsafe fn ") ||
+                    trimmed.starts_with("pub unsafe fn ") ||
+                    trimmed.starts_with("struct ") ||
+                    trimmed.starts_with("pub struct ") ||
+                    trimmed.starts_with("type ") ||
+                    trimmed.starts_with("pub type ") ||
+                    trimmed.starts_with("const ") ||
+                    trimmed.starts_with("pub const ") ||
+                    trimmed.starts_with("static ") ||
+                    trimmed.starts_with("pub static ") ||
+                    trimmed.starts_with("impl ") ||
+                    trimmed.starts_with("impl<") ||
+                    trimmed.starts_with("trait ") ||
+                    trimmed.starts_with("pub trait ") ||
+                    trimmed.starts_with("enum ") ||
+                    trimmed.starts_with("pub enum ") ||
+                    trimmed.starts_with("mod ") ||
+                    trimmed.starts_with("pub mod ") ||
+                    trimmed.starts_with("use ") ||
+                    trimmed.starts_with("pub use ") ||
+                    trimmed.starts_with("extern crate ");
 
                 if is_signature_start {
                     // Flush any previous signature
@@ -643,11 +643,11 @@ fn enhance_rust_hover_content(contents: HoverContents) -> HoverContents {
                     }
                     in_signature = true;
                     code_lines.push(*line);
-                } else if in_signature
-                    && (trimmed.starts_with("where")
-                        || trimmed.ends_with(',')
-                        || trimmed.ends_with('{')
-                        || trimmed.ends_with('>'))
+                } else if in_signature &&
+                    (trimmed.starts_with("where") ||
+                        trimmed.ends_with(',') ||
+                        trimmed.ends_with('{') ||
+                        trimmed.ends_with('>'))
                 {
                     // Continue collecting signature lines
                     code_lines.push(*line);
@@ -697,9 +697,9 @@ fn enhance_rust_hover_content(contents: HoverContents) -> HoverContents {
             if formatted_parts.is_empty() && !value.trim().is_empty() {
                 let trimmed_value = value.trim();
                 // If it looks like code, wrap in code block
-                if trimmed_value.contains("fn ")
-                    || trimmed_value.contains("struct ")
-                    || trimmed_value.contains("::")
+                if trimmed_value.contains("fn ") ||
+                    trimmed_value.contains("struct ") ||
+                    trimmed_value.contains("::")
                 {
                     // Truncate if needed
                     let display_value = if trimmed_value.len() > 500 {

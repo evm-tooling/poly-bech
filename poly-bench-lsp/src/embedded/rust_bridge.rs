@@ -303,11 +303,11 @@ fn wrap_rust_code(code: &str, block_type: BlockType, context: &SetupContext) -> 
             wrapped.push_str(code);
             wrapped.push_str("\n}\n");
         }
-        BlockType::Benchmark
-        | BlockType::Fixture
-        | BlockType::Hook
-        | BlockType::Skip
-        | BlockType::Validate => {
+        BlockType::Benchmark |
+        BlockType::Fixture |
+        BlockType::Hook |
+        BlockType::Skip |
+        BlockType::Validate => {
             // Benchmark code is an expression/statement
             wrapped.push_str("fn main() {\n    let _ = {\n");
             header_lines += 2;

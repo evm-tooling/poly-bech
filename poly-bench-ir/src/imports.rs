@@ -355,12 +355,12 @@ fn is_import_complete(import_text: &str) -> bool {
 
     // Must have a module path (quoted string after 'from' or standalone)
     // Check for 'from' followed by quotes, or just quotes for side-effect imports
-    let has_from_clause = import_text.contains(" from ")
-        && (count_quotes(import_text, '\'') >= 2 || count_quotes(import_text, '"') >= 2);
+    let has_from_clause = import_text.contains(" from ") &&
+        (count_quotes(import_text, '\'') >= 2 || count_quotes(import_text, '"') >= 2);
 
     // Side effect import: import 'pkg' (no 'from', just the quoted path)
-    let is_side_effect = !import_text.contains(" from ")
-        && (count_quotes(import_text, '\'') >= 2 || count_quotes(import_text, '"') >= 2);
+    let is_side_effect = !import_text.contains(" from ") &&
+        (count_quotes(import_text, '\'') >= 2 || count_quotes(import_text, '"') >= 2);
 
     has_from_clause || is_side_effect
 }

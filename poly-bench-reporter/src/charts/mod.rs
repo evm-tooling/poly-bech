@@ -155,72 +155,73 @@ pub fn filter_benchmarks<'a>(
     benchmarks: Vec<&'a BenchmarkResult>,
     directive: &ChartDirectiveIR,
 ) -> Vec<&'a BenchmarkResult> {
-    let mut filtered: Vec<&BenchmarkResult> =
-        benchmarks
-            .into_iter()
-            .filter(|bench| {
-                // Apply include filter
-                if !directive.include_benchmarks.is_empty() {
-                    if !directive.include_benchmarks.iter().any(|name: &String| {
-                        bench.name.to_lowercase().contains(&name.to_lowercase())
-                    }) {
-                        return false;
-                    }
-                }
-
-                // Apply exclude filter
-                if directive
-                    .exclude_benchmarks
+    let mut filtered: Vec<&BenchmarkResult> = benchmarks
+        .into_iter()
+        .filter(|bench| {
+            // Apply include filter
+            if !directive.include_benchmarks.is_empty() {
+                if !directive
+                    .include_benchmarks
                     .iter()
                     .any(|name: &String| bench.name.to_lowercase().contains(&name.to_lowercase()))
                 {
                     return false;
                 }
+            }
 
-                // Apply min_speedup filter
-                if let Some(min_speedup) = directive.min_speedup {
-                    if let Some(ref comparison) = bench.comparison {
-                        let speedup = if comparison.first.nanos_per_op > 0.0 {
-                            comparison.second.nanos_per_op / comparison.first.nanos_per_op
-                        } else {
-                            1.0
-                        };
-                        if speedup.abs() < min_speedup {
-                            return false;
-                        }
+            // Apply exclude filter
+            if directive
+                .exclude_benchmarks
+                .iter()
+                .any(|name: &String| bench.name.to_lowercase().contains(&name.to_lowercase()))
+            {
+                return false;
+            }
+
+            // Apply min_speedup filter
+            if let Some(min_speedup) = directive.min_speedup {
+                if let Some(ref comparison) = bench.comparison {
+                    let speedup = if comparison.first.nanos_per_op > 0.0 {
+                        comparison.second.nanos_per_op / comparison.first.nanos_per_op
+                    } else {
+                        1.0
+                    };
+                    if speedup.abs() < min_speedup {
+                        return false;
                     }
                 }
+            }
 
-                // Apply filter_winner filter
-                // Note: Currently filter_winner is designed for 2-language comparisons
-                // For multi-language scenarios, the comparison module would need to be updated
-                if let Some(ref winner_filter) = directive.filter_winner {
-                    if let Some(ref comparison) = bench.comparison {
-                        let wf = winner_filter.to_lowercase();
-                        match wf.as_str() {
-                            "go" => {
-                                if comparison.winner != ComparisonWinner::First {
-                                    return false;
-                                }
+            // Apply filter_winner filter
+            // Note: Currently filter_winner is designed for 2-language comparisons
+            // For multi-language scenarios, the comparison module would need to be updated
+            if let Some(ref winner_filter) = directive.filter_winner {
+                if let Some(ref comparison) = bench.comparison {
+                    let wf = winner_filter.to_lowercase();
+                    match wf.as_str() {
+                        "go" => {
+                            if comparison.winner != ComparisonWinner::First {
+                                return false;
                             }
-                            "ts" | "typescript" => {
-                                if comparison.winner != ComparisonWinner::Second {
-                                    return false;
-                                }
-                            }
-                            // Rust filtering would require multi-language comparison support
-                            "rust" => {
-                                // For now, Rust wins would need to be added to the comparison module
-                                // This is a placeholder for future multi-language support
-                            }
-                            "all" | _ => {} // No filter
                         }
+                        "ts" | "typescript" => {
+                            if comparison.winner != ComparisonWinner::Second {
+                                return false;
+                            }
+                        }
+                        // Rust filtering would require multi-language comparison support
+                        "rust" => {
+                            // For now, Rust wins would need to be added to the comparison module
+                            // This is a placeholder for future multi-language support
+                        }
+                        "all" | _ => {} // No filter
                     }
                 }
+            }
 
-                true
-            })
-            .collect();
+            true
+        })
+        .collect();
 
     // Apply limit
     if let Some(limit) = directive.limit {

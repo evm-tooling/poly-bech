@@ -80,8 +80,8 @@ pub fn generate(
     // Calculate width
     let margin_x = 20;
     let stats_box_needed =
-        (directive.show_stats || directive.show_distribution || directive.show_geo_mean)
-            && !compact;
+        (directive.show_stats || directive.show_distribution || directive.show_geo_mean) &&
+            !compact;
     let width = directive.width.unwrap_or(MIN_CHART_WIDTH + margin_x * 2).max(MIN_CHART_WIDTH);
     let bar_area_width = width - LABEL_WIDTH - VALUE_LABEL_WIDTH - margin_x * 2;
 
@@ -95,12 +95,12 @@ pub fn generate(
     let config_space =
         if directive.show_config && suite_config.is_some() && !compact { 24 } else { 0 };
     let chart_area_height = num_benchmarks * ROW_HEIGHT;
-    let height = DEFAULT_MARGIN_TOP
-        + chart_area_height
-        + legend_space
-        + stats_box_space
-        + config_space
-        + DEFAULT_MARGIN_BOTTOM;
+    let height = DEFAULT_MARGIN_TOP +
+        chart_area_height +
+        legend_space +
+        stats_box_space +
+        config_space +
+        DEFAULT_MARGIN_BOTTOM;
 
     // Collect all values for smart scaling (Go, TS, and Rust)
     let all_values: Vec<f64> = filtered
@@ -446,29 +446,29 @@ pub fn generate(
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.first.p50_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>()
-                / filtered.len().max(1) as f64;
+                .sum::<f64>() /
+                filtered.len().max(1) as f64;
             let go_p99_avg: f64 = filtered
                 .iter()
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.first.p99_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>()
-                / filtered.len().max(1) as f64;
+                .sum::<f64>() /
+                filtered.len().max(1) as f64;
             let ts_p50_avg: f64 = filtered
                 .iter()
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.second.p50_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>()
-                / filtered.len().max(1) as f64;
+                .sum::<f64>() /
+                filtered.len().max(1) as f64;
             let ts_p99_avg: f64 = filtered
                 .iter()
                 .filter_map(|b| b.comparison.as_ref())
                 .filter_map(|c| c.second.p99_nanos)
                 .map(|n| n as f64)
-                .sum::<f64>()
-                / filtered.len().max(1) as f64;
+                .sum::<f64>() /
+                filtered.len().max(1) as f64;
 
             if go_p50_avg > 0.0 || ts_p50_avg > 0.0 {
                 let dist_str = format!(
