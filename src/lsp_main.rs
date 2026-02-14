@@ -3,8 +3,8 @@
 //! This binary implements an LSP server for `.bench` files,
 //! providing diagnostics, hover, completion, and semantic tokens.
 
-use tower_lsp::{LspService, Server};
 use poly_bench_lsp::Backend;
+use tower_lsp::{LspService, Server};
 
 #[tokio::main]
 async fn main() {

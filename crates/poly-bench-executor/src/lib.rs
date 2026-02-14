@@ -1,12 +1,12 @@
 //! Benchmark execution orchestration
 
 mod anvil;
-mod scheduler;
 pub mod comparison;
+mod scheduler;
 
 use std::path::PathBuf;
 
-pub use anvil::{AnvilService, AnvilConfig};
+pub use anvil::{AnvilConfig, AnvilService};
 
 /// Project roots for different languages
 #[derive(Debug, Clone, Default)]
@@ -17,5 +17,5 @@ pub struct ProjectRoots {
     pub node_root: Option<PathBuf>,
 }
 
+pub use comparison::{BenchmarkResult, BenchmarkResults, SuiteResults};
 pub use scheduler::run;
-pub use comparison::{BenchmarkResults, SuiteResults, BenchmarkResult};

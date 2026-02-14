@@ -6,7 +6,7 @@
 //! Note: Stdlib-specific validation (e.g., validating use std::module names)
 //! is handled by higher-level crates that depend on both dsl and stdlib.
 
-use crate::{Suite, Benchmark, Lang, StructuredSetup, UseStd, File, CodeBlock};
+use crate::{Benchmark, CodeBlock, File, Lang, StructuredSetup, Suite, UseStd};
 use std::collections::HashSet;
 
 /// A validation warning (non-fatal issue)
@@ -87,7 +87,7 @@ impl ValidationResult {
 }
 
 /// Validate a complete file and return any errors or warnings.
-/// 
+///
 /// Note: This performs core DSL validation only. Stdlib module validation
 /// should be done by crates that have access to the stdlib definitions.
 pub fn validate_file(file: &File) -> ValidationResult {
@@ -115,11 +115,8 @@ fn validate_use_stds_duplicates(use_stds: &[UseStd], result: &mut ValidationResu
     for use_std in use_stds {
         if !seen.insert(&use_std.module) {
             result.add_warning(
-                ValidationWarning::new(format!(
-                    "Duplicate import of std::{}",
-                    use_std.module
-                ))
-                .with_location(format!("line {}", use_std.span.line)),
+                ValidationWarning::new(format!("Duplicate import of std::{}", use_std.module))
+                    .with_location(format!("line {}", use_std.span.line)),
             );
         }
     }
@@ -155,10 +152,10 @@ pub fn validate_suite(suite: &Suite) -> ValidationResult {
 /// Validate charting directives: check that std::charting is imported when charting is used
 pub fn validate_charting_imports(file: &File) -> ValidationResult {
     let mut result = ValidationResult::new();
-    
+
     // Check if charting module is imported
     let has_charting_import = file.use_stds.iter().any(|u| u.module == "charting");
-    
+
     // Check each suite for chart directives
     for suite in &file.suites {
         if !suite.chart_directives.is_empty() && !has_charting_import {
@@ -171,7 +168,7 @@ pub fn validate_charting_imports(file: &File) -> ValidationResult {
             );
         }
     }
-    
+
     result
 }
 
@@ -187,8 +184,7 @@ fn validate_requires(suite: &Suite, result: &mut ValidationResult) {
                 result.add_error(
                     ValidationError::new(format!(
                         "Benchmark '{}' missing required language implementation '{}'",
-                        benchmark.name,
-                        lang
+                        benchmark.name, lang
                     ))
                     .with_location(format!("suite.{}.bench.{}", suite.name, benchmark.name)),
                 );
@@ -216,8 +212,10 @@ fn validate_structured_setup(
     // Warning: Go setup should have init section
     if lang == Lang::Go && setup.init.is_none() && !setup.is_empty() {
         result.add_warning(
-            ValidationWarning::new("Go setup has no init section - consider adding one for initialization code")
-                .with_location(location.clone()),
+            ValidationWarning::new(
+                "Go setup has no init section - consider adding one for initialization code",
+            )
+            .with_location(location.clone()),
         );
     }
 
@@ -512,9 +510,12 @@ suite test {
 "#;
         let ast = parse(source, "test.bench").unwrap();
         let result = validate_suite(&ast.suites[0]);
-        
+
         assert!(!result.is_ok());
-        assert!(result.errors.iter().any(|e| e.message.contains("missing required language")));
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.message.contains("missing required language")));
     }
 
     #[test]
@@ -527,9 +528,12 @@ suite test {
 "#;
         let ast = parse(source, "test.bench").unwrap();
         let result = validate_suite(&ast.suites[0]);
-        
+
         assert!(!result.is_ok());
-        assert!(result.errors.iter().any(|e| e.message.contains("no language implementations")));
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.message.contains("no language implementations")));
     }
 
     #[test]
@@ -546,8 +550,11 @@ suite test {
 "#;
         let ast = parse(source, "test.bench").unwrap();
         let result = validate_file(&ast);
-        
+
         assert!(result.has_warnings());
-        assert!(result.warnings.iter().any(|w| w.message.contains("Duplicate import")));
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("Duplicate import")));
     }
 }

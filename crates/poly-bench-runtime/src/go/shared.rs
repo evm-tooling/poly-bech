@@ -33,41 +33,41 @@ impl<'a> CollectedImports<'a> {
         needs_sync: bool,
     ) -> Self {
         let mut all_imports: HashSet<&'a str> = HashSet::new();
-        
+
         // Base imports
         all_imports.insert("\"encoding/json\"");
         all_imports.insert("\"time\"");
-        
+
         if needs_runtime {
             all_imports.insert("\"runtime\"");
         }
         if needs_sync {
             all_imports.insert("\"sync\"");
         }
-        
+
         for import_spec in user_imports {
             all_imports.insert(import_spec);
         }
-        
+
         for import_spec in stdlib_imports {
             all_imports.insert(import_spec);
         }
-        
+
         Self { all_imports }
     }
-    
+
     /// Generate the import block code
     pub fn generate_import_block(&self) -> String {
         let mut code = String::new();
         code.push_str("import (\n");
-        
+
         let mut sorted_imports: Vec<_> = self.all_imports.iter().collect();
         sorted_imports.sort();
-        
+
         for import_spec in sorted_imports {
             code.push_str(&format!("\t{}\n", import_spec));
         }
-        
+
         code.push_str(")\n\n");
         code
     }
@@ -86,14 +86,34 @@ impl SinkMemoryDecls {
     /// Create declarations based on benchmark spec
     pub fn from_spec(spec: &BenchmarkSpec) -> Self {
         Self {
-            sink_decl: if spec.use_sink { "\tvar __sink interface{}\n" } else { "" },
-            sink_keepalive: if spec.use_sink { "\t\truntime.KeepAlive(__sink)\n" } else { "" },
-            memory_decl: if spec.memory { "\tvar memBefore, memAfter runtime.MemStats\n" } else { "" },
-            memory_before: if spec.memory { "\n\truntime.GC()\n\truntime.ReadMemStats(&memBefore)\n" } else { "" },
-            memory_after: if spec.memory { "\n\truntime.GC()\n\truntime.ReadMemStats(&memAfter)\n" } else { "" },
+            sink_decl: if spec.use_sink {
+                "\tvar __sink interface{}\n"
+            } else {
+                ""
+            },
+            sink_keepalive: if spec.use_sink {
+                "\t\truntime.KeepAlive(__sink)\n"
+            } else {
+                ""
+            },
+            memory_decl: if spec.memory {
+                "\tvar memBefore, memAfter runtime.MemStats\n"
+            } else {
+                ""
+            },
+            memory_before: if spec.memory {
+                "\n\truntime.GC()\n\truntime.ReadMemStats(&memBefore)\n"
+            } else {
+                ""
+            },
+            memory_after: if spec.memory {
+                "\n\truntime.GC()\n\truntime.ReadMemStats(&memAfter)\n"
+            } else {
+                ""
+            },
         }
     }
-    
+
     /// Get memory result fields for BenchResult struct
     pub fn memory_result_fields(use_memory: bool, iter_var: &str) -> String {
         if use_memory {
@@ -125,7 +145,8 @@ pub fn format_hook(hook: Option<&String>, prefix: &str, indent: &str) -> String 
         }
         result.push('\n');
         result
-    }).unwrap_or_default()
+    })
+    .unwrap_or_default()
 }
 
 /// Generate the auto-calibration measurement loop
@@ -135,13 +156,17 @@ pub fn generate_auto_mode_loop(
     each_hook: Option<&String>,
     target_time_ms: u64,
 ) -> String {
-    let each_hook_code = each_hook.map(|h| {
-        h.trim().lines()
-            .map(|line| format!("\t\t\t{}\n", line))
-            .collect::<String>()
-    }).unwrap_or_default();
-    
-    format!(r#"	// Adaptive measurement phase (like Go's testing.B)
+    let each_hook_code = each_hook
+        .map(|h| {
+            h.trim()
+                .lines()
+                .map(|line| format!("\t\t\t{}\n", line))
+                .collect::<String>()
+        })
+        .unwrap_or_default();
+
+    format!(
+        r#"	// Adaptive measurement phase (like Go's testing.B)
 	// Run batches, scale up N, stop when totalElapsed >= targetTime
 	targetNanos := int64({})
 	batchSize := 1
@@ -196,7 +221,12 @@ pub fn generate_auto_mode_loop(
 			batchSize *= 10
 		}}
 	}}
-"#, target_time_ms * 1_000_000, each_hook_code, bench_call, sink_keepalive)
+"#,
+        target_time_ms * 1_000_000,
+        each_hook_code,
+        bench_call,
+        sink_keepalive
+    )
 }
 
 /// Generate sample collection code
@@ -207,13 +237,17 @@ pub fn generate_sample_collection(
     sample_count: &str,
     total_var: &str,
 ) -> String {
-    let each_hook_code = each_hook.map(|h| {
-        h.trim().lines()
-            .map(|line| format!("\t\t{}\n", line))
-            .collect::<String>()
-    }).unwrap_or_default();
-    
-    format!(r#"	// Collect samples for statistical analysis
+    let each_hook_code = each_hook
+        .map(|h| {
+            h.trim()
+                .lines()
+                .map(|line| format!("\t\t{}\n", line))
+                .collect::<String>()
+        })
+        .unwrap_or_default();
+
+    format!(
+        r#"	// Collect samples for statistical analysis
 	sampleCount := {sample_count}
 	if sampleCount > {total_var} {{
 		sampleCount = {total_var}
@@ -224,7 +258,9 @@ pub fn generate_sample_collection(
 		{}
 {}		samples[i] = uint64(time.Since(start).Nanoseconds())
 	}}
-"#, each_hook_code, bench_call, sink_keepalive)
+"#,
+        each_hook_code, bench_call, sink_keepalive
+    )
 }
 
 /// Generate the warmup loop
@@ -234,17 +270,23 @@ pub fn generate_warmup_loop(
     each_hook: Option<&String>,
     warmup_count: &str,
 ) -> String {
-    let each_hook_code = each_hook.map(|h| {
-        h.trim().lines()
-            .map(|line| format!("\t\t{}\n", line))
-            .collect::<String>()
-    }).unwrap_or_default();
-    
-    format!(r#"	// Warmup
+    let each_hook_code = each_hook
+        .map(|h| {
+            h.trim()
+                .lines()
+                .map(|line| format!("\t\t{}\n", line))
+                .collect::<String>()
+        })
+        .unwrap_or_default();
+
+    format!(
+        r#"	// Warmup
 	for i := 0; i < {warmup_count}; i++ {{
 {}		{}
 {}	}}
-"#, each_hook_code, bench_call, sink_keepalive)
+"#,
+        each_hook_code, bench_call, sink_keepalive
+    )
 }
 
 /// Generate fixed iteration measurement loop
@@ -254,13 +296,17 @@ pub fn generate_fixed_mode_loop(
     each_hook: Option<&String>,
     iter_var: &str,
 ) -> String {
-    let each_hook_code = each_hook.map(|h| {
-        h.trim().lines()
-            .map(|line| format!("\t\t{}\n", line))
-            .collect::<String>()
-    }).unwrap_or_default();
-    
-    format!(r#"	// Timed run
+    let each_hook_code = each_hook
+        .map(|h| {
+            h.trim()
+                .lines()
+                .map(|line| format!("\t\t{}\n", line))
+                .collect::<String>()
+        })
+        .unwrap_or_default();
+
+    format!(
+        r#"	// Timed run
 	var totalNanos uint64
 	for i := 0; i < {iter_var}; i++ {{
 {}		start := time.Now()
@@ -269,7 +315,9 @@ pub fn generate_fixed_mode_loop(
 		samples[i] = uint64(elapsed)
 		totalNanos += uint64(elapsed)
 	}}
-"#, each_hook_code, bench_call, sink_keepalive)
+"#,
+        each_hook_code, bench_call, sink_keepalive
+    )
 }
 
 /// Generate concurrent execution code
@@ -279,7 +327,8 @@ pub fn generate_concurrent_execution(
     concurrency: u32,
     iter_var: &str,
 ) -> String {
-    format!(r#"	// Concurrent benchmark: {concurrency} goroutines
+    format!(
+        r#"	// Concurrent benchmark: {concurrency} goroutines
 	concurrency := {concurrency}
 	iterPerGoroutine := {iter_var} / concurrency
 	if iterPerGoroutine < 1 {{
@@ -316,13 +365,14 @@ pub fn generate_concurrent_execution(
 	wg.Wait()
 	
 	totalNanos := time.Since(start).Nanoseconds()
-"#)
+"#
+    )
 }
 
 /// Generate suite-level code (declarations, init, helpers)
 pub fn generate_suite_code(suite: &SuiteIR, lang: Lang) -> String {
     let mut code = String::new();
-    
+
     // Add declarations
     if let Some(declarations) = suite.declarations.get(&lang) {
         if !declarations.trim().is_empty() {
@@ -358,38 +408,49 @@ pub fn generate_suite_code(suite: &SuiteIR, lang: Lang) -> String {
             code.push('\n');
         }
     }
-    
+
     code
 }
 
 /// Generate fixture code for a single benchmark's fixture references
 pub fn generate_fixtures_for_spec(spec: &BenchmarkSpec, suite: &SuiteIR, lang: Lang) -> String {
     let mut code = String::new();
-    
+
     for fixture_name in &spec.fixture_refs {
         if let Some(fixture) = suite.get_fixture(fixture_name) {
             if let Some(fixture_impl) = fixture.implementations.get(&lang) {
                 // Wrap in IIFE if it contains return statement
                 if fixture_impl.contains("return") {
-                    code.push_str(&format!("var {} = func() []byte {{\n{}\n}}()\n", fixture_name, fixture_impl));
+                    code.push_str(&format!(
+                        "var {} = func() []byte {{\n{}\n}}()\n",
+                        fixture_name, fixture_impl
+                    ));
                 } else {
                     code.push_str(&format!("var {} = {}\n", fixture_name, fixture_impl));
                 }
             } else if !fixture.data.is_empty() {
-                code.push_str(&format!("var {} = {}\n", fixture_name, fixture.as_go_bytes()));
+                code.push_str(&format!(
+                    "var {} = {}\n",
+                    fixture_name,
+                    fixture.as_go_bytes()
+                ));
             }
         }
     }
-    
+
     if !code.is_empty() {
         code.push('\n');
     }
-    
+
     code
 }
 
 /// Generate result calculation and return
-pub fn generate_result_return(iter_var: &str, memory_result: &str, include_println: bool) -> String {
+pub fn generate_result_return(
+    iter_var: &str,
+    memory_result: &str,
+    include_println: bool,
+) -> String {
     let output = if include_println {
         r#"
 	jsonBytes, _ := json.Marshal(result)
@@ -401,8 +462,9 @@ pub fn generate_result_return(iter_var: &str, memory_result: &str, include_print
 	return string(jsonBytes)
 "#
     };
-    
-    format!(r#"
+
+    format!(
+        r#"
 	nanosPerOp := float64(totalNanos) / float64({iter_var})
 	opsPerSec := 1e9 / nanosPerOp
 	
@@ -413,32 +475,33 @@ pub fn generate_result_return(iter_var: &str, memory_result: &str, include_print
 		OpsPerSec:   opsPerSec,
 {memory_result}		Samples:     samples,
 	}}
-{output}"#)
+{output}"#
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_bench_result_struct() {
         assert!(BENCH_RESULT_STRUCT.contains("type BenchResult struct"));
         assert!(BENCH_RESULT_STRUCT.contains("Iterations"));
         assert!(BENCH_RESULT_STRUCT.contains("json:"));
     }
-    
+
     #[test]
     fn test_generate_bench_call() {
         assert_eq!(generate_bench_call("foo()", true), "__sink = foo()");
         assert_eq!(generate_bench_call("foo()", false), "foo()");
     }
-    
+
     #[test]
     fn test_memory_result_fields() {
         let result = SinkMemoryDecls::memory_result_fields(true, "iterations");
         assert!(result.contains("BytesPerOp"));
         assert!(result.contains("AllocsPerOp"));
-        
+
         let result = SinkMemoryDecls::memory_result_fields(false, "iterations");
         assert!(result.is_empty());
     }

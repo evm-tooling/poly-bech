@@ -3,12 +3,12 @@
 //! The IR is a normalized, validated representation of benchmarks
 //! that is easier to work with for code generation and execution.
 
-mod types;
-mod lower;
 mod fixtures;
 pub mod imports;
+mod lower;
+mod types;
 
-pub use types::*;
-pub use lower::lower;
 pub use fixtures::*;
-pub use imports::{ParsedSetup, extract_go_imports, extract_ts_imports};
+pub use imports::{extract_go_imports, extract_ts_imports, ParsedSetup};
+pub use lower::lower;
+pub use types::*;

@@ -74,7 +74,16 @@ impl Theme for T3StyleTheme {
         prompt: &str,
         sel: &str,
     ) -> std::fmt::Result {
-        write!(f, "\n{}\n{}  {}\n{}  {}\n{}\n", pipe_grey(), diamond_grey(), prompt, pipe_grey(), sel, pipe_grey())
+        write!(
+            f,
+            "\n{}\n{}  {}\n{}  {}\n{}\n",
+            pipe_grey(),
+            diamond_grey(),
+            prompt,
+            pipe_grey(),
+            sel,
+            pipe_grey()
+        )
     }
     fn format_password_prompt(&self, f: &mut dyn Write, prompt: &str) -> std::fmt::Result {
         self.0.format_password_prompt(f, prompt)
@@ -107,7 +116,16 @@ impl Theme for T3StyleTheme {
         selections: &[&str],
     ) -> std::fmt::Result {
         let sel_str = selections.join(", ");
-        write!(f, "\n{}\n{}  {}\n{}  {}\n{}\n", pipe_grey(), diamond_grey(), prompt, pipe_grey(), sel_str, pipe_grey())
+        write!(
+            f,
+            "\n{}\n{}  {}\n{}  {}\n{}\n",
+            pipe_grey(),
+            diamond_grey(),
+            prompt,
+            pipe_grey(),
+            sel_str,
+            pipe_grey()
+        )
     }
     fn format_sort_prompt(&self, f: &mut dyn Write, prompt: &str) -> std::fmt::Result {
         self.0.format_sort_prompt(f, prompt)
@@ -135,7 +153,8 @@ impl Theme for T3StyleTheme {
         checked: bool,
         active: bool,
     ) -> std::fmt::Result {
-        self.0.format_multi_select_prompt_item(f, text, checked, active)
+        self.0
+            .format_multi_select_prompt_item(f, text, checked, active)
     }
     fn format_sort_prompt_item(
         &self,
@@ -159,12 +178,26 @@ pub fn print_init_logo() {
 pub fn print_init_success_block(project_name: &str) {
     use colored::Colorize;
     println!();
-    println!("{}", format!("✔ {} scaffolded successfully!", project_name).green().bold());
+    println!(
+        "{}",
+        format!("✔ {} scaffolded successfully!", project_name)
+            .green()
+            .bold()
+    );
     println!();
     println!("Adding boilerplate...");
-    println!("{}", "✔ Successfully setup boilerplate for polybench.toml".green());
-    println!("{}", "✔ Successfully setup boilerplate for benchmarks/".green());
-    println!("{}", "✔ Successfully setup boilerplate for .polybench/".green());
+    println!(
+        "{}",
+        "✔ Successfully setup boilerplate for polybench.toml".green()
+    );
+    println!(
+        "{}",
+        "✔ Successfully setup boilerplate for benchmarks/".green()
+    );
+    println!(
+        "{}",
+        "✔ Successfully setup boilerplate for .polybench/".green()
+    );
     println!();
     println!("Next steps:");
     println!("  cd {}", project_name);

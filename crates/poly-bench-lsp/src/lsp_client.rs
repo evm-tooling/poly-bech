@@ -22,18 +22,22 @@ pub trait LspConfig: Send + Sync + 'static {
     const SERVER_NAME: &'static str;
     /// Language ID for document open notifications
     const LANGUAGE_ID: &'static str;
-    
+
     /// Find the language server executable
     fn find_executable() -> Option<String>;
-    
+
     /// Get the arguments to pass to the server
     fn server_args() -> Vec<String>;
-    
+
     /// Whether the server needs special spawning (e.g., via npx)
-    fn needs_special_spawn() -> bool { false }
-    
+    fn needs_special_spawn() -> bool {
+        false
+    }
+
     /// Additional capabilities for initialization
-    fn additional_capabilities() -> Value { json!({}) }
+    fn additional_capabilities() -> Value {
+        json!({})
+    }
 }
 
 /// Generic LSP client for communicating with language servers
@@ -61,9 +65,9 @@ pub struct LspClient<C: LspConfig> {
 impl<C: LspConfig> LspClient<C> {
     /// Create a new LSP client
     pub fn new(workspace_root: &str) -> Result<Self, String> {
-        let server_path = C::find_executable()
-            .ok_or_else(|| format!("{} not found in PATH", C::SERVER_NAME))?;
-        
+        let server_path =
+            C::find_executable().ok_or_else(|| format!("{} not found in PATH", C::SERVER_NAME))?;
+
         eprintln!("[{}] Found server at: {}", C::SERVER_NAME, server_path);
 
         Ok(Self {
@@ -82,14 +86,14 @@ impl<C: LspConfig> LspClient<C> {
     /// Start the server if not already running
     fn ensure_started(&self) -> Result<(), String> {
         let mut process_guard = self.process.lock().map_err(|e| e.to_string())?;
-        
+
         if process_guard.is_some() {
             return Ok(());
         }
 
-        let server_path = C::find_executable()
-            .ok_or_else(|| format!("{} not found", C::SERVER_NAME))?;
-        
+        let server_path =
+            C::find_executable().ok_or_else(|| format!("{} not found", C::SERVER_NAME))?;
+
         eprintln!("[{}] Starting subprocess...", C::SERVER_NAME);
 
         let args = C::server_args();
@@ -101,9 +105,13 @@ impl<C: LspConfig> LspClient<C> {
             .spawn()
             .map_err(|e| format!("Failed to spawn {}: {}", C::SERVER_NAME, e))?;
 
-        let stdin = child.stdin.take()
+        let stdin = child
+            .stdin
+            .take()
             .ok_or_else(|| format!("Failed to get {} stdin", C::SERVER_NAME))?;
-        let stdout = child.stdout.take()
+        let stdout = child
+            .stdout
+            .take()
             .ok_or_else(|| format!("Failed to get {} stdout", C::SERVER_NAME))?;
 
         *self.stdin.lock().map_err(|e| e.to_string())? = Some(stdin);
@@ -119,15 +127,15 @@ impl<C: LspConfig> LspClient<C> {
     fn start_reader_thread(&self, stdout: ChildStdout) {
         let pending = self.pending.clone();
         let server_name = C::SERVER_NAME;
-        
+
         thread::spawn(move || {
             eprintln!("[{}-reader] Reader thread started", server_name);
             let mut reader = BufReader::new(stdout);
-            
+
             loop {
                 // Read headers until we find Content-Length
                 let mut content_length: Option<usize> = None;
-                
+
                 loop {
                     let mut header_line = String::new();
                     match reader.read_line(&mut header_line) {
@@ -143,11 +151,11 @@ impl<C: LspConfig> LspClient<C> {
                     }
 
                     let trimmed = header_line.trim();
-                    
+
                     if trimmed.is_empty() {
                         break;
                     }
-                    
+
                     if let Some(len_str) = trimmed.strip_prefix("Content-Length:") {
                         if let Ok(len) = len_str.trim().parse::<usize>() {
                             content_length = Some(len);
@@ -187,7 +195,10 @@ impl<C: LspConfig> LspClient<C> {
 
                 if let Some(id) = response.get("id") {
                     if let Some(id_num) = id.as_i64() {
-                        eprintln!("[{}-reader] Received response for request {}", server_name, id_num);
+                        eprintln!(
+                            "[{}-reader] Received response for request {}",
+                            server_name, id_num
+                        );
                         if let Some((_, sender)) = pending.remove(&id_num) {
                             let _ = sender.send(response);
                         }
@@ -205,7 +216,12 @@ impl<C: LspConfig> LspClient<C> {
     }
 
     /// Send an LSP request and wait for response with custom timeout
-    pub fn send_request_with_timeout(&self, method: &str, params: Value, timeout_ms: u64) -> Result<Value, String> {
+    pub fn send_request_with_timeout(
+        &self,
+        method: &str,
+        params: Value,
+        timeout_ms: u64,
+    ) -> Result<Value, String> {
         self.ensure_started()?;
 
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
@@ -216,12 +232,21 @@ impl<C: LspConfig> LspClient<C> {
             "params": params
         });
 
-        eprintln!("[{}] Sending request: {} (id={})", C::SERVER_NAME, method, id);
+        eprintln!(
+            "[{}] Sending request: {} (id={})",
+            C::SERVER_NAME,
+            method,
+            id
+        );
 
         let request_str = serde_json::to_string(&request)
             .map_err(|e| format!("Failed to serialize request: {}", e))?;
 
-        let message = format!("Content-Length: {}\r\n\r\n{}", request_str.len(), request_str);
+        let message = format!(
+            "Content-Length: {}\r\n\r\n{}",
+            request_str.len(),
+            request_str
+        );
 
         let (tx, rx) = std::sync::mpsc::channel();
         self.pending.insert(id, tx);
@@ -229,9 +254,11 @@ impl<C: LspConfig> LspClient<C> {
         {
             let mut stdin_guard = self.stdin.lock().map_err(|e| e.to_string())?;
             if let Some(ref mut stdin) = *stdin_guard {
-                stdin.write_all(message.as_bytes())
+                stdin
+                    .write_all(message.as_bytes())
                     .map_err(|e| format!("Failed to write to {}: {}", C::SERVER_NAME, e))?;
-                stdin.flush()
+                stdin
+                    .flush()
                     .map_err(|e| format!("Failed to flush {} stdin: {}", C::SERVER_NAME, e))?;
             } else {
                 self.pending.remove(&id);
@@ -239,10 +266,16 @@ impl<C: LspConfig> LspClient<C> {
             }
         }
 
-        let response = rx.recv_timeout(std::time::Duration::from_millis(timeout_ms))
+        let response = rx
+            .recv_timeout(std::time::Duration::from_millis(timeout_ms))
             .map_err(|e| {
                 self.pending.remove(&id);
-                format!("Timeout waiting for {} response ({}ms): {}", C::SERVER_NAME, timeout_ms, e)
+                format!(
+                    "Timeout waiting for {} response ({}ms): {}",
+                    C::SERVER_NAME,
+                    timeout_ms,
+                    e
+                )
             })?;
 
         if let Some(error) = response.get("error") {
@@ -265,13 +298,19 @@ impl<C: LspConfig> LspClient<C> {
         let notification_str = serde_json::to_string(&notification)
             .map_err(|e| format!("Failed to serialize notification: {}", e))?;
 
-        let message = format!("Content-Length: {}\r\n\r\n{}", notification_str.len(), notification_str);
+        let message = format!(
+            "Content-Length: {}\r\n\r\n{}",
+            notification_str.len(),
+            notification_str
+        );
 
         let mut stdin_guard = self.stdin.lock().map_err(|e| e.to_string())?;
         if let Some(ref mut stdin) = *stdin_guard {
-            stdin.write_all(message.as_bytes())
+            stdin
+                .write_all(message.as_bytes())
                 .map_err(|e| format!("Failed to write to {}: {}", C::SERVER_NAME, e))?;
-            stdin.flush()
+            stdin
+                .flush()
                 .map_err(|e| format!("Failed to flush {} stdin: {}", C::SERVER_NAME, e))?;
         }
 
@@ -284,7 +323,11 @@ impl<C: LspConfig> LspClient<C> {
             return Ok(());
         }
 
-        eprintln!("[{}] Initializing with workspace: {}", C::SERVER_NAME, self.workspace_root);
+        eprintln!(
+            "[{}] Initializing with workspace: {}",
+            C::SERVER_NAME,
+            self.workspace_root
+        );
 
         let mut init_params = json!({
             "processId": std::process::id(),
@@ -304,8 +347,13 @@ impl<C: LspConfig> LspClient<C> {
 
         // Merge additional capabilities
         let additional = C::additional_capabilities();
-        if let (Some(init_obj), Some(add_obj)) = (init_params.as_object_mut(), additional.as_object()) {
-            if let Some(caps) = init_obj.get_mut("capabilities").and_then(|c| c.as_object_mut()) {
+        if let (Some(init_obj), Some(add_obj)) =
+            (init_params.as_object_mut(), additional.as_object())
+        {
+            if let Some(caps) = init_obj
+                .get_mut("capabilities")
+                .and_then(|c| c.as_object_mut())
+            {
                 for (k, v) in add_obj {
                     caps.insert(k.clone(), v.clone());
                 }
@@ -327,14 +375,17 @@ impl<C: LspConfig> LspClient<C> {
             self.initialize()?;
         }
 
-        self.send_notification("textDocument/didOpen", json!({
-            "textDocument": {
-                "uri": uri,
-                "languageId": C::LANGUAGE_ID,
-                "version": version,
-                "text": content
-            }
-        }))?;
+        self.send_notification(
+            "textDocument/didOpen",
+            json!({
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": C::LANGUAGE_ID,
+                    "version": version,
+                    "text": content
+                }
+            }),
+        )?;
 
         self.open_files.insert(uri.to_string(), version);
         Ok(())
@@ -346,15 +397,18 @@ impl<C: LspConfig> LspClient<C> {
             return self.did_open(uri, content, version);
         }
 
-        self.send_notification("textDocument/didChange", json!({
-            "textDocument": {
-                "uri": uri,
-                "version": version
-            },
-            "contentChanges": [{
-                "text": content
-            }]
-        }))?;
+        self.send_notification(
+            "textDocument/didChange",
+            json!({
+                "textDocument": {
+                    "uri": uri,
+                    "version": version
+                },
+                "contentChanges": [{
+                    "text": content
+                }]
+            }),
+        )?;
 
         self.open_files.insert(uri.to_string(), version);
         Ok(())
@@ -366,11 +420,14 @@ impl<C: LspConfig> LspClient<C> {
             return Ok(());
         }
 
-        self.send_notification("textDocument/didClose", json!({
-            "textDocument": {
-                "uri": uri
-            }
-        }))?;
+        self.send_notification(
+            "textDocument/didClose",
+            json!({
+                "textDocument": {
+                    "uri": uri
+                }
+            }),
+        )?;
 
         self.open_files.remove(uri);
         Ok(())
@@ -382,15 +439,18 @@ impl<C: LspConfig> LspClient<C> {
             self.initialize()?;
         }
 
-        let result = self.send_request("textDocument/hover", json!({
-            "textDocument": {
-                "uri": uri
-            },
-            "position": {
-                "line": line,
-                "character": character
-            }
-        }))?;
+        let result = self.send_request(
+            "textDocument/hover",
+            json!({
+                "textDocument": {
+                    "uri": uri
+                },
+                "position": {
+                    "line": line,
+                    "character": character
+                }
+            }),
+        )?;
 
         if result.is_null() {
             return Ok(None);
@@ -444,11 +504,18 @@ pub fn parse_hover_response(value: &Value) -> Result<Option<Hover>, String> {
 
     let hover_contents = if let Some(obj) = contents.as_object() {
         // MarkupContent format
-        let kind = obj.get("kind").and_then(|k| k.as_str()).unwrap_or("plaintext");
+        let kind = obj
+            .get("kind")
+            .and_then(|k| k.as_str())
+            .unwrap_or("plaintext");
         let value_str = obj.get("value").and_then(|v| v.as_str()).unwrap_or("");
-        
+
         HoverContents::Markup(MarkupContent {
-            kind: if kind == "markdown" { MarkupKind::Markdown } else { MarkupKind::PlainText },
+            kind: if kind == "markdown" {
+                MarkupKind::Markdown
+            } else {
+                MarkupKind::PlainText
+            },
             value: value_str.to_string(),
         })
     } else if let Some(s) = contents.as_str() {
@@ -458,7 +525,8 @@ pub fn parse_hover_response(value: &Value) -> Result<Option<Hover>, String> {
         })
     } else if let Some(arr) = contents.as_array() {
         // Array of MarkedString
-        let combined: Vec<String> = arr.iter()
+        let combined: Vec<String> = arr
+            .iter()
             .filter_map(|item| {
                 if let Some(s) = item.as_str() {
                     Some(s.to_string())
@@ -469,7 +537,7 @@ pub fn parse_hover_response(value: &Value) -> Result<Option<Hover>, String> {
                 }
             })
             .collect();
-        
+
         HoverContents::Markup(MarkupContent {
             kind: MarkupKind::Markdown,
             value: combined.join("\n\n"),

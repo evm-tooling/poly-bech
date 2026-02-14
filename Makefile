@@ -59,6 +59,7 @@ help:
 # CI / quality targets
 # ============================================================================
 
+# Format all workspace Rust (examples/ has no crates, so not formatted)
 fmt:
 	@cargo fmt --all
 

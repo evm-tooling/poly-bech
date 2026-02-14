@@ -126,7 +126,7 @@ pub struct OutputConfig {
     /// Output directory for reports and charts
     #[serde(default = "default_output_dir")]
     pub output_dir: String,
-    
+
     /// Whether to auto-save benchmark results to JSON
     #[serde(default = "default_auto_save")]
     pub auto_save_results: bool,
@@ -211,17 +211,23 @@ impl Manifest {
 
     /// Add a Go dependency
     pub fn add_go_dependency(&mut self, package: &str, version: &str) -> Result<()> {
-        let go = self.go.as_mut()
+        let go = self
+            .go
+            .as_mut()
             .ok_or_else(|| miette::miette!("Go is not enabled in this project"))?;
-        go.dependencies.insert(package.to_string(), version.to_string());
+        go.dependencies
+            .insert(package.to_string(), version.to_string());
         Ok(())
     }
 
     /// Add a TypeScript dependency
     pub fn add_ts_dependency(&mut self, package: &str, version: &str) -> Result<()> {
-        let ts = self.ts.as_mut()
+        let ts = self
+            .ts
+            .as_mut()
             .ok_or_else(|| miette::miette!("TypeScript is not enabled in this project"))?;
-        ts.dependencies.insert(package.to_string(), version.to_string());
+        ts.dependencies
+            .insert(package.to_string(), version.to_string());
         Ok(())
     }
 }
@@ -253,7 +259,7 @@ mod tests {
     #[test]
     fn test_manifest_new() {
         let manifest = Manifest::new("my-project", &["go".to_string(), "ts".to_string()]);
-        
+
         assert_eq!(manifest.project.name, "my-project");
         assert!(manifest.has_go());
         assert!(manifest.has_ts());
@@ -264,7 +270,7 @@ mod tests {
         let manifest = Manifest::new("test-project", &["go".to_string()]);
         let toml_str = toml::to_string_pretty(&manifest).unwrap();
         let parsed: Manifest = toml::from_str(&toml_str).unwrap();
-        
+
         assert_eq!(parsed.project.name, "test-project");
         assert!(parsed.has_go());
         assert!(!parsed.has_ts());
@@ -273,12 +279,19 @@ mod tests {
     #[test]
     fn test_add_dependency() {
         let mut manifest = Manifest::new("test", &["go".to_string(), "ts".to_string()]);
-        
-        manifest.add_go_dependency("github.com/pkg/errors", "v0.9.1").unwrap();
+
+        manifest
+            .add_go_dependency("github.com/pkg/errors", "v0.9.1")
+            .unwrap();
         manifest.add_ts_dependency("viem", "^2.0.0").unwrap();
-        
+
         assert_eq!(
-            manifest.go.as_ref().unwrap().dependencies.get("github.com/pkg/errors"),
+            manifest
+                .go
+                .as_ref()
+                .unwrap()
+                .dependencies
+                .get("github.com/pkg/errors"),
             Some(&"v0.9.1".to_string())
         );
         assert_eq!(

@@ -3,13 +3,13 @@
 //! Executes chart directives after benchmarks complete, generating SVG charts
 //! from the benchmark results.
 
+use miette::{miette, Result};
 use poly_bench_dsl::ChartType;
-use poly_bench_ir::ChartDirectiveIR;
 use poly_bench_executor::BenchmarkResults;
-use miette::{Result, miette};
+use poly_bench_ir::ChartDirectiveIR;
 use std::path::Path;
 
-use crate::charts::{bar_chart, pie_chart, line_chart};
+use crate::charts::{bar_chart, line_chart, pie_chart};
 
 /// Information about a generated chart
 #[derive(Debug, Clone)]
@@ -76,12 +76,13 @@ fn execute_single_directive(
 
 /// Filter results to only include benchmarks from a specific suite
 fn filter_results_by_suite(results: &BenchmarkResults, suite_name: &str) -> BenchmarkResults {
-    let filtered_suites: Vec<_> = results.suites
+    let filtered_suites: Vec<_> = results
+        .suites
         .iter()
         .filter(|s| s.name == suite_name)
         .cloned()
         .collect();
-    
+
     BenchmarkResults::new(filtered_suites)
 }
 
@@ -104,18 +105,16 @@ fn generate_line_chart(directive: &ChartDirectiveIR, results: &BenchmarkResults)
 #[cfg(test)]
 mod tests {
     use super::*;
-    use poly_bench_executor::comparison::{SuiteResults, BenchmarkResult};
+    use poly_bench_executor::comparison::{BenchmarkResult, SuiteResults};
     use std::collections::HashMap;
 
     fn make_test_results() -> BenchmarkResults {
-        let benchmarks = vec![
-            BenchmarkResult::new(
-                "bench1".to_string(),
-                "suite_bench1".to_string(),
-                None,
-                HashMap::new(),
-            ),
-        ];
+        let benchmarks = vec![BenchmarkResult::new(
+            "bench1".to_string(),
+            "suite_bench1".to_string(),
+            None,
+            HashMap::new(),
+        )];
         let suite = SuiteResults::new("suite".to_string(), None, benchmarks);
         BenchmarkResults::new(vec![suite])
     }
@@ -125,7 +124,7 @@ mod tests {
         let results = make_test_results();
         let filtered = filter_results_by_suite(&results, "suite");
         assert_eq!(filtered.suites.len(), 1);
-        
+
         let filtered_empty = filter_results_by_suite(&results, "nonexistent");
         assert_eq!(filtered_empty.suites.len(), 0);
     }

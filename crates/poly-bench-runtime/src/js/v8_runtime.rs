@@ -4,14 +4,14 @@
 //! requires significant setup. This provides a working implementation that
 //! can be upgraded to embedded V8 later.
 
-use poly_bench_dsl::{Lang, BenchMode};
-use poly_bench_ir::{BenchmarkSpec, SuiteIR};
-use crate::js::{codegen, builtins, transpiler};
+use crate::js::{builtins, codegen, transpiler};
 use crate::measurement::Measurement;
 use crate::traits::Runtime;
-use poly_bench_stdlib as stdlib;
 use async_trait::async_trait;
-use miette::{Result, miette};
+use miette::{miette, Result};
+use poly_bench_dsl::{BenchMode, Lang};
+use poly_bench_ir::{BenchmarkSpec, SuiteIR};
+use poly_bench_stdlib as stdlib;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
@@ -42,12 +42,12 @@ impl JsRuntime {
             anvil_rpc_url: None,
         })
     }
-    
+
     /// Set the project root directory where package.json/node_modules is located
     pub fn set_project_root(&mut self, path: Option<PathBuf>) {
         self.project_root = path;
     }
-    
+
     /// Set the Anvil RPC URL to pass to subprocess
     pub fn set_anvil_rpc_url(&mut self, url: String) {
         self.anvil_rpc_url = Some(url);
@@ -72,8 +72,8 @@ impl Runtime for JsRuntime {
 
     async fn initialize(&mut self, suite: &SuiteIR) -> Result<()> {
         // Create temp directory
-        let temp_dir = TempDir::new()
-            .map_err(|e| miette!("Failed to create temp directory: {}", e))?;
+        let temp_dir =
+            TempDir::new().map_err(|e| miette!("Failed to create temp directory: {}", e))?;
 
         // Generate TypeScript code for the suite
         let ir = poly_bench_ir::BenchmarkIR::new(vec![suite.clone()]);
@@ -85,14 +85,21 @@ impl Runtime for JsRuntime {
         Ok(())
     }
 
-    async fn run_benchmark(&mut self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<Measurement> {
+    async fn run_benchmark(
+        &mut self,
+        spec: &BenchmarkSpec,
+        suite: &SuiteIR,
+    ) -> Result<Measurement> {
         // Generate standalone script for this benchmark
         let script = generate_standalone_script(spec, suite)?;
 
         // Determine where to write and run the benchmark
         let (script_path, working_dir) = if let Some(ref project_root) = self.project_root {
             // When using .polybench/runtime-env/ts, write directly there; else use .polybench subdir
-            let is_runtime_env = project_root.as_os_str().to_string_lossy().contains("runtime-env");
+            let is_runtime_env = project_root
+                .as_os_str()
+                .to_string_lossy()
+                .contains("runtime-env");
             let script_path = if is_runtime_env {
                 project_root.join("bench.mjs")
             } else {
@@ -104,9 +111,11 @@ impl Runtime for JsRuntime {
             (script_path, project_root.clone())
         } else {
             // Fall back to temp directory
-            let temp_dir = self.temp_dir.as_ref()
+            let temp_dir = self
+                .temp_dir
+                .as_ref()
                 .ok_or_else(|| miette!("Runtime not initialized"))?;
-            
+
             let script_path = temp_dir.path().join("bench.js");
             (script_path, temp_dir.path().to_path_buf())
         };
@@ -116,15 +125,15 @@ impl Runtime for JsRuntime {
 
         // Run with Node.js from the working directory (which has node_modules)
         let mut cmd = tokio::process::Command::new(&self.node_binary);
-        cmd.arg(&script_path)
-            .current_dir(&working_dir);
-        
+        cmd.arg(&script_path).current_dir(&working_dir);
+
         // Pass Anvil RPC URL if available
         if let Some(ref url) = self.anvil_rpc_url {
             cmd.env("ANVIL_RPC_URL", url);
         }
-        
-        let output = cmd.output()
+
+        let output = cmd
+            .output()
             .await
             .map_err(|e| miette!("Failed to run Node.js: {}", e))?;
 
@@ -152,7 +161,8 @@ fn strip_typescript_syntax(code: &str) -> String {
 
 /// Generate a standalone JavaScript benchmark script
 fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<String> {
-    let impl_code = spec.get_impl(Lang::TypeScript)
+    let impl_code = spec
+        .get_impl(Lang::TypeScript)
         .ok_or_else(|| miette!("No TypeScript implementation for benchmark {}", spec.name))?;
 
     let mut script = String::new();
@@ -224,12 +234,18 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
                 // Wrap in IIFE if it contains multiple statements (has return)
                 let stripped = strip_typescript_syntax(fixture_impl);
                 if stripped.contains("return") {
-                    script.push_str(&format!("const {} = (() => {{\n{}\n}})();\n", fixture_name, stripped));
+                    script.push_str(&format!(
+                        "const {} = (() => {{\n{}\n}})();\n",
+                        fixture_name, stripped
+                    ));
                 } else {
                     script.push_str(&format!("const {} = {};\n", fixture_name, stripped));
                 }
             } else if !fixture.data.is_empty() {
-                script.push_str(&builtins::generate_fixture_code(fixture_name, &fixture.as_hex()));
+                script.push_str(&builtins::generate_fixture_code(
+                    fixture_name,
+                    &fixture.as_hex(),
+                ));
             }
         }
     }
@@ -256,20 +272,20 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
     // Check if the implementation code contains await (needs async function)
     let impl_is_async = impl_code.contains("await");
     let use_auto_mode = spec.mode == BenchMode::Auto;
-    
+
     if each_hook.is_some() {
         // Custom benchmark loop with each hook
         let each = each_hook.unwrap();
         let each_is_async = each.contains("await");
         let needs_async = impl_is_async || each_is_async;
-        
+
         // Note: async hooks not yet supported with auto mode
         if needs_async {
             script.push_str("const __result = await __polybench.runBenchmarkWithHookAsync(\n");
         } else {
             script.push_str("const __result = __polybench.runBenchmarkWithHook(\n");
         }
-        
+
         if impl_is_async {
             script.push_str("    async function() {\n");
         } else {
@@ -279,7 +295,7 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         script.push_str(impl_code);
         script.push_str(";\n");
         script.push_str("    },\n");
-        
+
         if each_is_async {
             script.push_str("    async function() {\n");
         } else {
@@ -295,7 +311,9 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         // Auto-calibration mode: only uses targetTime (no min/max iteration caps)
         let use_sink = if spec.use_sink { "true" } else { "false" };
         if impl_is_async {
-            script.push_str("const __result = await __polybench.runBenchmarkAutoAsync(async function() {\n");
+            script.push_str(
+                "const __result = await __polybench.runBenchmarkAutoAsync(async function() {\n",
+            );
         } else {
             script.push_str("const __result = __polybench.runBenchmarkAuto(function() {\n");
         }
@@ -306,7 +324,9 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
     } else {
         // Fixed iteration mode
         if impl_is_async {
-            script.push_str("const __result = await __polybench.runBenchmarkAsync(async function() {\n");
+            script.push_str(
+                "const __result = await __polybench.runBenchmarkAsync(async function() {\n",
+            );
         } else {
             script.push_str("const __result = __polybench.runBenchmark(function() {\n");
         }
@@ -333,15 +353,25 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
 }
 
 /// Parse benchmark result JSON from stdout
-fn parse_benchmark_result(stdout: &str, outlier_detection: bool, cv_threshold: f64) -> Result<Measurement> {
+fn parse_benchmark_result(
+    stdout: &str,
+    outlier_detection: bool,
+    cv_threshold: f64,
+) -> Result<Measurement> {
     // Find the JSON line (last non-empty line)
-    let json_line = stdout.lines()
+    let json_line = stdout
+        .lines()
         .filter(|l| !l.trim().is_empty())
         .last()
         .ok_or_else(|| miette!("No output from benchmark"))?;
 
-    let result: BenchResultJson = serde_json::from_str(json_line)
-        .map_err(|e| miette!("Failed to parse benchmark result: {}\nOutput: {}", e, stdout))?;
+    let result: BenchResultJson = serde_json::from_str(json_line).map_err(|e| {
+        miette!(
+            "Failed to parse benchmark result: {}\nOutput: {}",
+            e,
+            stdout
+        )
+    })?;
 
     Ok(result.into_measurement_with_options(outlier_detection, cv_threshold))
 }
@@ -359,10 +389,12 @@ struct BenchResultJson {
 }
 
 impl BenchResultJson {
-    fn into_measurement_with_options(self, outlier_detection: bool, cv_threshold: f64) -> Measurement {
-        let samples: Vec<u64> = self.samples.iter()
-            .map(|&s| s as u64)
-            .collect();
+    fn into_measurement_with_options(
+        self,
+        outlier_detection: bool,
+        cv_threshold: f64,
+    ) -> Measurement {
+        let samples: Vec<u64> = self.samples.iter().map(|&s| s as u64).collect();
 
         if samples.is_empty() {
             Measurement::from_aggregate(self.iterations, self.total_nanos as u64)

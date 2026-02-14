@@ -6,17 +6,19 @@
 use poly_bench_dsl::Lang;
 use poly_bench_stdlib::{self as stdlib, StdlibSymbolKind};
 use regex::Regex;
-use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, InsertTextFormat, Position,
-};
+use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, InsertTextFormat, Position};
 
 use super::document::ParsedDocument;
 
 /// Get completions at a position
-/// 
+///
 /// `trigger_char` is the character that triggered completion (e.g., "." or ":"),
 /// provided by the LSP client when available.
-pub fn get_completions(doc: &ParsedDocument, position: Position, trigger_char: Option<&str>) -> Vec<CompletionItem> {
+pub fn get_completions(
+    doc: &ParsedDocument,
+    position: Position,
+    trigger_char: Option<&str>,
+) -> Vec<CompletionItem> {
     let mut items = Vec::new();
 
     // Get the text before the cursor to determine context
@@ -26,7 +28,7 @@ pub fn get_completions(doc: &ParsedDocument, position: Position, trigger_char: O
     };
 
     let trimmed = line_text.trim();
-    
+
     // If triggered by ".", check for module dot access immediately
     // This handles the case where VS Code sends completion before document is fully updated
     if trigger_char == Some(".") {
@@ -39,7 +41,7 @@ pub fn get_completions(doc: &ParsedDocument, position: Position, trigger_char: O
             }
         }
     }
-    
+
     // If triggered by ":", check for use statement pattern immediately
     if trigger_char == Some(":") {
         // Check if this looks like a use statement
@@ -94,7 +96,10 @@ pub fn get_completions(doc: &ParsedDocument, position: Position, trigger_char: O
         }
         Context::ModuleDotAccess(module_name) => {
             // User typed "anvil." - show all symbols from that module
-            items.extend(stdlib_module_member_completions(&module_name, &stdlib_imports));
+            items.extend(stdlib_module_member_completions(
+                &module_name,
+                &stdlib_imports,
+            ));
         }
         Context::Unknown => {
             // Provide all keywords as fallback
@@ -103,7 +108,9 @@ pub fn get_completions(doc: &ParsedDocument, position: Position, trigger_char: O
             items.extend(stdlib_module_name_completions(&stdlib_imports));
         }
         // Embedded code contexts - only show setup symbols, no DSL keywords
-        Context::InsideEmbeddedInit | Context::InsideEmbeddedHelpers | Context::InsideEmbeddedDeclarations => {
+        Context::InsideEmbeddedInit
+        | Context::InsideEmbeddedHelpers
+        | Context::InsideEmbeddedDeclarations => {
             // Inside embedded Go/TypeScript code blocks
             // Only provide setup-declared symbols for reference
             items.extend(extract_setup_symbols(doc));
@@ -122,18 +129,18 @@ pub fn get_completions(doc: &ParsedDocument, position: Position, trigger_char: O
             // Suggest "charting" module if imported
             if stdlib_imports.contains(&"charting".to_string()) {
                 items.push(CompletionItem {
-                    label: "charting".to_string(),
-                    kind: Some(CompletionItemKind::MODULE),
-                    detail: Some("Chart generation module".to_string()),
-                    documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-                        tower_lsp::lsp_types::MarkupContent {
-                            kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-                            value: "**std::charting**\n\nType `charting.` to access chart functions:\n- `charting.drawBarChart()` - Bar chart\n- `charting.drawPieChart()` - Pie chart\n- `charting.drawLineChart()` - Line chart".to_string(),
-                        }
-                    )),
-                    insert_text: Some("charting".to_string()),
-                    ..Default::default()
-                });
+    label: "charting".to_string(),
+    kind: Some(CompletionItemKind::MODULE),
+    detail: Some("Chart generation module".to_string()),
+    documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+        tower_lsp::lsp_types::MarkupContent {
+            kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+            value: "**std::charting**\n\nType `charting.` to access chart functions:\n- `charting.drawBarChart()` - Bar chart\n- `charting.drawPieChart()` - Pie chart\n- `charting.drawLineChart()` - Line chart".to_string(),
+        }
+    )),
+    insert_text: Some("charting".to_string()),
+    ..Default::default()
+});
             }
         }
         Context::ChartingDotAccess => {
@@ -152,7 +159,7 @@ pub fn get_completions(doc: &ParsedDocument, position: Position, trigger_char: O
 /// Detect which stdlib modules are imported in the document
 fn detect_stdlib_imports(doc: &ParsedDocument) -> Vec<String> {
     let mut imports = Vec::new();
-    
+
     // First, try to get imports from the AST if available
     if let Some(ref ast) = doc.ast {
         for use_std in &ast.use_stds {
@@ -161,7 +168,7 @@ fn detect_stdlib_imports(doc: &ParsedDocument) -> Vec<String> {
             }
         }
     }
-    
+
     // Also scan the source text for use statements (in case AST is incomplete)
     // This ensures completions work even when the file has parse errors
     for line in doc.source.lines() {
@@ -176,7 +183,7 @@ fn detect_stdlib_imports(doc: &ParsedDocument) -> Vec<String> {
             }
         }
     }
-    
+
     imports
 }
 
@@ -184,7 +191,7 @@ fn detect_stdlib_imports(doc: &ParsedDocument) -> Vec<String> {
 /// These show up when the user might want to access module members
 fn stdlib_module_name_completions(imports: &[String]) -> Vec<CompletionItem> {
     let mut items = Vec::new();
-    
+
     for module in imports {
         let symbols = stdlib::get_module_symbols(module);
         if !symbols.is_empty() {
@@ -200,63 +207,67 @@ fn stdlib_module_name_completions(imports: &[String]) -> Vec<CompletionItem> {
                             "**{}** module\n\nType `{}.` to see available members:\n{}",
                             module,
                             module,
-                            symbols.iter()
+                            symbols
+                                .iter()
                                 .map(|s| format!("- `{}.{}` - {}", module, s.name, s.description))
                                 .collect::<Vec<_>>()
                                 .join("\n")
                         ),
-                    }
+                    },
                 )),
                 insert_text: Some(module.clone()),
                 ..Default::default()
             });
         }
     }
-    
+
     items
 }
 
 /// Get completions for members of a specific stdlib module (after typing "module.")
 fn stdlib_module_member_completions(module_name: &str, imports: &[String]) -> Vec<CompletionItem> {
     let mut items = Vec::new();
-    
+
     // Only provide completions if the module is imported
     if !imports.contains(&module_name.to_string()) {
         return items;
     }
-    
+
     let symbols = stdlib::get_module_symbols(module_name);
-    
+
     for symbol in symbols {
         let kind = match symbol.kind {
             StdlibSymbolKind::Function => CompletionItemKind::FUNCTION,
             StdlibSymbolKind::Constant => CompletionItemKind::CONSTANT,
             StdlibSymbolKind::Variable => CompletionItemKind::VARIABLE,
         };
-        
+
         let insert_text = if symbol.kind == StdlibSymbolKind::Function {
             // For functions, add parentheses
             format!("{}()", symbol.name)
         } else {
             symbol.name.to_string()
         };
-        
+
         items.push(CompletionItem {
             label: symbol.name.to_string(),
             kind: Some(kind),
-            detail: Some(format!("{}.{} - {}", module_name, symbol.name, symbol.description)),
+            detail: Some(format!(
+                "{}.{} - {}",
+                module_name, symbol.name, symbol.description
+            )),
             documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
                 tower_lsp::lsp_types::MarkupContent {
                     kind: tower_lsp::lsp_types::MarkupKind::Markdown,
                     value: symbol.documentation.to_string(),
-                }
+                },
             )),
             insert_text: Some(insert_text),
             insert_text_format: Some(InsertTextFormat::PLAIN_TEXT),
             ..Default::default()
         });
     }
-    
+
     items
 }
 
@@ -296,17 +307,17 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
     // Check for "use std::" pattern - suggesting stdlib modules
     // Handle various patterns: "use std::", "use::", "use:", "use ::", etc.
     let trimmed = line_text.trim();
-    
+
     // Check for use statement completion patterns
     if is_use_statement_pattern(trimmed) {
         return Context::UseStdModule;
     }
-    
+
     // Check for charting function argument context (e.g., "charting.drawBarChart(")
     if is_inside_chart_function_args(trimmed) {
         return Context::InsideChartingFunctionArgs;
     }
-    
+
     // Check for charting dot access specifically (takes precedence over generic module dot access)
     if let Some(module_name) = extract_module_before_dot(trimmed) {
         if module_name == "charting" {
@@ -322,7 +333,7 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
             return Context::ModuleDotAccess(module_name);
         }
     }
-    
+
     // Check if we're after a colon (but not for go: or ts: in bench blocks)
     if line_text.ends_with(':') || line_text.contains(": ") {
         // Check if this is a go: or ts: line in a bench block first
@@ -348,7 +359,7 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
     };
 
     let text_before = &doc.source[..offset];
-    
+
     // Track block hierarchy: (keyword, depth when entered)
     let mut block_stack: Vec<(String, i32)> = Vec::new();
     let mut depth = 0;
@@ -484,10 +495,10 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
 /// For example, if line_text is "    anvil" and trigger is ".", return Some("anvil")
 fn extract_module_name_before_trigger(line_text: &str) -> Option<String> {
     let trimmed = line_text.trim();
-    
+
     // Known stdlib module names
     let known_modules = ["anvil", "charting", "constants"];
-    
+
     // Get the last word on the line
     let words: Vec<&str> = trimmed.split_whitespace().collect();
     if let Some(last_word) = words.last() {
@@ -499,12 +510,15 @@ fn extract_module_name_before_trigger(line_text: &str) -> Option<String> {
         // Also check if it ends with a known module followed by dot
         // (for cases where the doc was already updated)
         for module in known_modules {
-            if word == module || word.ends_with(&format!("{}.", module)) || word == format!("{}.", module) {
+            if word == module
+                || word.ends_with(&format!("{}.", module))
+                || word == format!("{}.", module)
+            {
                 return Some(module.to_string());
             }
         }
     }
-    
+
     None
 }
 
@@ -512,23 +526,23 @@ fn extract_module_name_before_trigger(line_text: &str) -> Option<String> {
 /// Handles: "use:", "use::", "use std:", "use std::", "use ::", etc.
 fn is_use_statement_pattern(line_text: &str) -> bool {
     let trimmed = line_text.trim();
-    
+
     // Pattern: "use std::" or "use std::mod"
     if trimmed.starts_with("use std::") {
         return true;
     }
-    
+
     // Pattern: "use std:" (incomplete)
     if trimmed == "use std:" {
         return true;
     }
-    
+
     // Pattern: ends with "use" followed by colon variants at end of line
     // e.g., user typed "use" and is about to type "::"
     if trimmed == "use" {
-        return false;  // Don't trigger yet, wait for colons
+        return false; // Don't trigger yet, wait for colons
     }
-    
+
     false
 }
 
@@ -541,15 +555,15 @@ fn extract_module_before_dot(_line_text: &str) -> Option<String> {
     if !line_text.contains('.') {
         return None;
     }
-    
+
     // Known stdlib module names
     let known_modules = ["anvil", "charting", "constants"];
-    
+
     // Check for pattern: "module." at the end (user just typed the dot)
     if line_text.ends_with('.') {
         let without_dot = line_text.trim_end_matches('.');
         let words: Vec<&str> = without_dot.split_whitespace().collect();
-        
+
         if let Some(last_word) = words.last() {
             let word = last_word.trim();
             if known_modules.contains(&word) {
@@ -557,7 +571,7 @@ fn extract_module_before_dot(_line_text: &str) -> Option<String> {
             }
         }
     }
-    
+
     // Check for pattern: "module.partial" where user is typing after the dot
     // e.g., "anvil.spawn" while typing "spawnAnvil"
     for module in known_modules {
@@ -566,7 +580,7 @@ fn extract_module_before_dot(_line_text: &str) -> Option<String> {
             // Check if the pattern is at a word boundary
             // e.g., "  anvil." or "anvil.sp"
             let trimmed = line_text.trim();
-            
+
             // Find where module. appears
             if let Some(pos) = trimmed.rfind(&pattern) {
                 // Check that before the module name is either start of line or whitespace
@@ -576,7 +590,7 @@ fn extract_module_before_dot(_line_text: &str) -> Option<String> {
             }
         }
     }
-    
+
     None
 }
 
@@ -626,7 +640,7 @@ fn top_level_completions() -> Vec<CompletionItem> {
 
 fn global_setup_completions(stdlib_imports: &[String]) -> Vec<CompletionItem> {
     let mut items = Vec::new();
-    
+
     // If anvil module is imported, suggest anvil.spawnAnvil()
     if stdlib_imports.contains(&"anvil".to_string()) {
         items.push(completion_item(
@@ -642,202 +656,202 @@ fn global_setup_completions(stdlib_imports: &[String]) -> Vec<CompletionItem> {
             CompletionItemKind::FUNCTION,
         ));
     }
-    
+
     // Also add module names for dot access
     items.extend(stdlib_module_name_completions(stdlib_imports));
-    
+
     items
 }
 
 fn suite_body_completions() -> Vec<CompletionItem> {
     vec![
-        // globalSetup block (inside suite)
-        completion_item(
-            "globalSetup",
-            "globalSetup {\n    $0\n}",
-            "Global setup block for suite-level initialization",
-            CompletionItemKind::KEYWORD,
-        ),
-        completion_item(
-            "globalSetup with anvil",
-            "globalSetup {\n    anvil.spawnAnvil()$0\n}",
-            "Global setup with Anvil node",
-            CompletionItemKind::KEYWORD,
-        ),
-        
-        // Setup blocks
-        completion_item(
-            "setup",
-            "setup ${1|go,ts|} {\n    $0\n}",
-            "Language-specific setup block",
-            CompletionItemKind::KEYWORD,
-        ),
-        completion_item(
-            "setup go",
-            "setup go {\n    import ($1)\n    init {\n        $0\n    }\n}",
-            "Go setup block",
-            CompletionItemKind::KEYWORD,
-        ),
-        completion_item(
-            "setup ts",
-            "setup ts {\n    import {\n        $1\n    }\n    init {\n        $0\n    }\n}",
-            "TypeScript setup block",
-            CompletionItemKind::KEYWORD,
-        ),
-        
-        // Fixture and bench
-        completion_item(
-            "fixture",
-            "fixture ${1:name} {\n    $0\n}",
-            "Shared test data fixture",
-            CompletionItemKind::KEYWORD,
-        ),
-        completion_item(
-            "bench",
-            "bench ${1:name} {\n    go: $2\n    ts: $0\n}",
-            "Benchmark definition",
-            CompletionItemKind::KEYWORD,
-        ),
-        
-        // Suite-level lifecycle hooks
-        completion_item(
-            "before",
-            "before ${1|go,ts|}: {\n    $0\n}",
-            "Suite-level before hook",
-            CompletionItemKind::KEYWORD,
-        ),
-        completion_item(
-            "after",
-            "after ${1|go,ts|}: {\n    $0\n}",
-            "Suite-level after hook",
-            CompletionItemKind::KEYWORD,
-        ),
-        
-        // Configuration properties
-        completion_item(
-            "description",
-            "description: \"$0\"",
-            "Suite description",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "iterations",
-            "iterations: ${1:1000}",
-            "Default iterations",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "warmup",
-            "warmup: ${1:100}",
-            "Warmup iterations",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "timeout",
-            "timeout: ${1:30s}",
-            "Suite timeout",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "requires",
-            "requires: [\"${1:go}\", \"${2:ts}\"]",
-            "Required language implementations",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "order",
-            "order: ${1|sequential,parallel,random|}",
-            "Benchmark execution order",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "compare",
-            "compare: true",
-            "Enable comparison tables",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "baseline",
-            "baseline: \"${1|go,ts|}\"",
-            "Baseline language for comparison",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "tags",
-            "tags: [\"$0\"]",
-            "Suite-level tags",
-            CompletionItemKind::PROPERTY,
-        ),
-        
-        // Auto-calibration settings
-        completion_item(
-            "mode",
-            "mode: ${1|auto,fixed|}",
-            "Execution mode: auto (time-based) or fixed (iteration count)",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "targetTime",
-            "targetTime: ${1:3000ms}",
-            "Target duration for auto-calibration mode",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "minIterations",
-            "minIterations: ${1:100}",
-            "Minimum iterations for auto-calibration",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "maxIterations",
-            "maxIterations: ${1:1000000}",
-            "Maximum iterations for auto-calibration",
-            CompletionItemKind::PROPERTY,
-        ),
-        
-        // Performance settings
-        completion_item(
-            "sink",
-            "sink: ${1|true,false|}",
-            "Use sink/black-box pattern to prevent dead code elimination",
-            CompletionItemKind::PROPERTY,
-        ),
-        
-        // Statistical settings
-        completion_item(
-            "outlierDetection",
-            "outlierDetection: ${1|true,false|}",
-            "Enable IQR-based outlier detection and removal",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "cvThreshold",
-            "cvThreshold: ${1:5}",
-            "Coefficient of variation threshold (%) for stability warnings",
-            CompletionItemKind::PROPERTY,
-        ),
-        
-        // Statistical consistency settings
-        completion_item(
-            "count",
-            "count: ${1:10}",
-            "Number of times to run each benchmark for statistical consistency (results use median)",
-            CompletionItemKind::PROPERTY,
-        ),
-        
-        // Observability settings (Phase 2B)
-        completion_item(
-            "memory",
-            "memory: ${1|true,false|}",
-            "Enable memory allocation profiling",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "concurrency",
-            "concurrency: ${1:1}",
-            "Number of concurrent goroutines/workers for parallel execution",
-            CompletionItemKind::PROPERTY,
-        ),
+// globalSetup block (inside suite)
+completion_item(
+    "globalSetup",
+    "globalSetup {\n    $0\n}",
+    "Global setup block for suite-level initialization",
+    CompletionItemKind::KEYWORD,
+),
+completion_item(
+    "globalSetup with anvil",
+    "globalSetup {\n    anvil.spawnAnvil()$0\n}",
+    "Global setup with Anvil node",
+    CompletionItemKind::KEYWORD,
+),
+
+// Setup blocks
+completion_item(
+    "setup",
+    "setup ${1|go,ts|} {\n    $0\n}",
+    "Language-specific setup block",
+    CompletionItemKind::KEYWORD,
+),
+completion_item(
+    "setup go",
+    "setup go {\n    import ($1)\n    init {\n        $0\n    }\n}",
+    "Go setup block",
+    CompletionItemKind::KEYWORD,
+),
+completion_item(
+    "setup ts",
+    "setup ts {\n    import {\n        $1\n    }\n    init {\n        $0\n    }\n}",
+    "TypeScript setup block",
+    CompletionItemKind::KEYWORD,
+),
+
+// Fixture and bench
+completion_item(
+    "fixture",
+    "fixture ${1:name} {\n    $0\n}",
+    "Shared test data fixture",
+    CompletionItemKind::KEYWORD,
+),
+completion_item(
+    "bench",
+    "bench ${1:name} {\n    go: $2\n    ts: $0\n}",
+    "Benchmark definition",
+    CompletionItemKind::KEYWORD,
+),
+
+// Suite-level lifecycle hooks
+completion_item(
+    "before",
+    "before ${1|go,ts|}: {\n    $0\n}",
+    "Suite-level before hook",
+    CompletionItemKind::KEYWORD,
+),
+completion_item(
+    "after",
+    "after ${1|go,ts|}: {\n    $0\n}",
+    "Suite-level after hook",
+    CompletionItemKind::KEYWORD,
+),
+
+// Configuration properties
+completion_item(
+    "description",
+    "description: \"$0\"",
+    "Suite description",
+    CompletionItemKind::PROPERTY,
+),
+completion_item(
+    "iterations",
+    "iterations: ${1:1000}",
+    "Default iterations",
+    CompletionItemKind::PROPERTY,
+),
+completion_item(
+    "warmup",
+    "warmup: ${1:100}",
+    "Warmup iterations",
+    CompletionItemKind::PROPERTY,
+),
+completion_item(
+    "timeout",
+    "timeout: ${1:30s}",
+    "Suite timeout",
+    CompletionItemKind::PROPERTY,
+),
+completion_item(
+    "requires",
+    "requires: [\"${1:go}\", \"${2:ts}\"]",
+    "Required language implementations",
+    CompletionItemKind::PROPERTY,
+),
+completion_item(
+    "order",
+    "order: ${1|sequential,parallel,random|}",
+    "Benchmark execution order",
+    CompletionItemKind::PROPERTY,
+),
+completion_item(
+    "compare",
+    "compare: true",
+    "Enable comparison tables",
+    CompletionItemKind::PROPERTY,
+),
+completion_item(
+    "baseline",
+    "baseline: \"${1|go,ts|}\"",
+    "Baseline language for comparison",
+    CompletionItemKind::PROPERTY,
+),
+completion_item(
+    "tags",
+    "tags: [\"$0\"]",
+    "Suite-level tags",
+    CompletionItemKind::PROPERTY,
+),
+
+// Auto-calibration settings
+completion_item(
+    "mode",
+    "mode: ${1|auto,fixed|}",
+    "Execution mode: auto (time-based) or fixed (iteration count)",
+    CompletionItemKind::PROPERTY,
+),
+completion_item(
+    "targetTime",
+    "targetTime: ${1:3000ms}",
+    "Target duration for auto-calibration mode",
+    CompletionItemKind::PROPERTY,
+),
+completion_item(
+    "minIterations",
+    "minIterations: ${1:100}",
+    "Minimum iterations for auto-calibration",
+    CompletionItemKind::PROPERTY,
+),
+completion_item(
+    "maxIterations",
+    "maxIterations: ${1:1000000}",
+    "Maximum iterations for auto-calibration",
+    CompletionItemKind::PROPERTY,
+),
+
+// Performance settings
+completion_item(
+    "sink",
+    "sink: ${1|true,false|}",
+    "Use sink/black-box pattern to prevent dead code elimination",
+    CompletionItemKind::PROPERTY,
+),
+
+// Statistical settings
+completion_item(
+    "outlierDetection",
+    "outlierDetection: ${1|true,false|}",
+    "Enable IQR-based outlier detection and removal",
+    CompletionItemKind::PROPERTY,
+),
+completion_item(
+    "cvThreshold",
+    "cvThreshold: ${1:5}",
+    "Coefficient of variation threshold (%) for stability warnings",
+    CompletionItemKind::PROPERTY,
+),
+
+// Statistical consistency settings
+completion_item(
+    "count",
+    "count: ${1:10}",
+    "Number of times to run each benchmark for statistical consistency (results use median)",
+    CompletionItemKind::PROPERTY,
+),
+
+// Observability settings (Phase 2B)
+completion_item(
+    "memory",
+    "memory: ${1|true,false|}",
+    "Enable memory allocation profiling",
+    CompletionItemKind::PROPERTY,
+),
+completion_item(
+    "concurrency",
+    "concurrency: ${1:1}",
+    "Number of concurrent goroutines/workers for parallel execution",
+    CompletionItemKind::PROPERTY,
+),
     ]
 }
 
@@ -880,7 +894,6 @@ fn setup_section_completions() -> Vec<CompletionItem> {
             "Helper function definitions",
             CompletionItemKind::KEYWORD,
         ),
-        
         // Go-specific import syntax
         completion_item(
             "import (Go)",
@@ -888,7 +901,6 @@ fn setup_section_completions() -> Vec<CompletionItem> {
             "Go import with parentheses",
             CompletionItemKind::SNIPPET,
         ),
-        
         // TypeScript-specific import syntax
         completion_item(
             "import (TypeScript)",
@@ -926,7 +938,6 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "TypeScript implementation (multi-line)",
             CompletionItemKind::PROPERTY,
         ),
-        
         // Configuration properties
         completion_item(
             "description",
@@ -964,7 +975,6 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "Validation expression",
             CompletionItemKind::PROPERTY,
         ),
-        
         // Skip conditions
         completion_item(
             "skip",
@@ -984,7 +994,6 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "Skip condition for TypeScript",
             CompletionItemKind::KEYWORD,
         ),
-        
         // Lifecycle hooks - Go
         completion_item(
             "before",
@@ -1022,7 +1031,6 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "Per-iteration hook for Go",
             CompletionItemKind::KEYWORD,
         ),
-        
         // Lifecycle hooks - TypeScript
         completion_item(
             "before ts",
@@ -1042,7 +1050,6 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "Per-iteration hook for TypeScript",
             CompletionItemKind::KEYWORD,
         ),
-        
         // Auto-calibration overrides
         completion_item(
             "mode",
@@ -1068,7 +1075,6 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "Override maximum iterations for auto-calibration",
             CompletionItemKind::PROPERTY,
         ),
-        
         // Performance overrides
         completion_item(
             "sink",
@@ -1076,7 +1082,6 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "Override sink/black-box pattern for this benchmark",
             CompletionItemKind::PROPERTY,
         ),
-        
         // Statistical overrides
         completion_item(
             "outlierDetection",
@@ -1096,7 +1101,6 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "Override: number of times to run this benchmark for statistical consistency",
             CompletionItemKind::PROPERTY,
         ),
-        
         // Observability overrides (Phase 2B)
         completion_item(
             "memory",
@@ -1196,25 +1200,25 @@ fn after_colon_completions(keyword: &str) -> Vec<CompletionItem> {
 
 fn all_keyword_completions() -> Vec<CompletionItem> {
     let mut items = Vec::new();
-    
+
     // Top-level keywords
     items.extend(top_level_completions());
-    
+
     // Suite body completions
     items.extend(suite_body_completions());
-    
+
     // Setup section completions
     items.extend(setup_section_completions());
-    
+
     // Bench body completions
     items.extend(bench_body_completions());
-    
+
     // Fixture body completions
     items.extend(fixture_body_completions());
-    
+
     // Global setup completions (passing empty imports since this is generic fallback)
     items.extend(global_setup_completions(&[]));
-    
+
     // Add individual keyword completions that might be missing from context-specific functions
     items.extend(vec![
         // Core structure keywords
@@ -1248,7 +1252,6 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
             "Global setup block (runs once before all benchmarks)",
             CompletionItemKind::KEYWORD,
         ),
-        
         // Setup section keywords
         completion_item(
             "init",
@@ -1274,7 +1277,6 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
             "Import statements",
             CompletionItemKind::KEYWORD,
         ),
-        
         // Language keywords
         completion_item(
             "go",
@@ -1288,7 +1290,6 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
             "TypeScript language implementation",
             CompletionItemKind::KEYWORD,
         ),
-        
         // Configuration properties
         completion_item(
             "description",
@@ -1332,7 +1333,6 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
             "Validation expression",
             CompletionItemKind::PROPERTY,
         ),
-        
         // Lifecycle hooks
         completion_item(
             "before",
@@ -1352,7 +1352,6 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
             "Each hook (runs per iteration)",
             CompletionItemKind::KEYWORD,
         ),
-        
         // Suite configuration
         completion_item(
             "requires",
@@ -1378,7 +1377,6 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
             "Baseline language for comparison",
             CompletionItemKind::PROPERTY,
         ),
-        
         // Fixture properties
         completion_item(
             "shape",
@@ -1392,7 +1390,6 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
             "Hex-encoded data literal",
             CompletionItemKind::PROPERTY,
         ),
-        
         // Async keyword
         completion_item(
             "async",
@@ -1400,7 +1397,6 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
             "Async modifier (for TypeScript)",
             CompletionItemKind::KEYWORD,
         ),
-        
         // Use statement
         completion_item(
             "use",
@@ -1409,142 +1405,142 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
             CompletionItemKind::KEYWORD,
         ),
     ]);
-    
+
     items
 }
 
 /// Completions for stdlib module names after "use std::"
 fn stdlib_module_completions() -> Vec<CompletionItem> {
     vec![
-        CompletionItem {
-            label: "anvil".to_string(),
-            kind: Some(CompletionItemKind::MODULE),
-            detail: Some("Anvil Ethereum node (ANVIL_RPC_URL)".to_string()),
-            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-                tower_lsp::lsp_types::MarkupContent {
-                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-                    value: "**std::anvil**\n\nAutomatically spawns a local Anvil node:\n- `ANVIL_RPC_URL` - RPC endpoint URL\n\nAnvil starts when benchmarks begin and stops when they complete.".to_string(),
-                }
-            )),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "charting".to_string(),
-            kind: Some(CompletionItemKind::MODULE),
-            detail: Some("Chart generation (drawBarChart, drawPieChart, drawLineChart)".to_string()),
-            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-                tower_lsp::lsp_types::MarkupContent {
-                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-                    value: "**std::charting**\n\nGenerate charts from benchmark results:\n- `charting.drawBarChart()` - Bar chart comparison\n- `charting.drawPieChart()` - Pie chart distribution\n- `charting.drawLineChart()` - Line chart trends\n\nUse in suite-level `after { }` block.".to_string(),
-                }
-            )),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "constants".to_string(),
-            kind: Some(CompletionItemKind::MODULE),
-            detail: Some("Mathematical constants (std_PI, std_E)".to_string()),
-            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-                tower_lsp::lsp_types::MarkupContent {
-                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-                    value: "**std::constants**\n\nProvides mathematical constants:\n- `std_PI` - Pi (π ≈ 3.14159)\n- `std_E` - Euler's number (e ≈ 2.71828)".to_string(),
-                }
-            )),
-            ..Default::default()
-        },
+CompletionItem {
+    label: "anvil".to_string(),
+    kind: Some(CompletionItemKind::MODULE),
+    detail: Some("Anvil Ethereum node (ANVIL_RPC_URL)".to_string()),
+    documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+tower_lsp::lsp_types::MarkupContent {
+    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+    value: "**std::anvil**\n\nAutomatically spawns a local Anvil node:\n- `ANVIL_RPC_URL` - RPC endpoint URL\n\nAnvil starts when benchmarks begin and stops when they complete.".to_string(),
+}
+    )),
+    ..Default::default()
+},
+CompletionItem {
+    label: "charting".to_string(),
+    kind: Some(CompletionItemKind::MODULE),
+    detail: Some("Chart generation (drawBarChart, drawPieChart, drawLineChart)".to_string()),
+    documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+tower_lsp::lsp_types::MarkupContent {
+    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+    value: "**std::charting**\n\nGenerate charts from benchmark results:\n- `charting.drawBarChart()` - Bar chart comparison\n- `charting.drawPieChart()` - Pie chart distribution\n- `charting.drawLineChart()` - Line chart trends\n\nUse in suite-level `after { }` block.".to_string(),
+}
+    )),
+    ..Default::default()
+},
+CompletionItem {
+    label: "constants".to_string(),
+    kind: Some(CompletionItemKind::MODULE),
+    detail: Some("Mathematical constants (std_PI, std_E)".to_string()),
+    documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+tower_lsp::lsp_types::MarkupContent {
+    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+    value: "**std::constants**\n\nProvides mathematical constants:\n- `std_PI` - Pi (π ≈ 3.14159)\n- `std_E` - Euler's number (e ≈ 2.71828)".to_string(),
+}
+    )),
+    ..Default::default()
+},
     ]
 }
 
 /// Completions for charting functions after "charting."
 fn charting_function_completions() -> Vec<CompletionItem> {
     vec![
-        CompletionItem {
-            label: "drawBarChart".to_string(),
-            kind: Some(CompletionItemKind::FUNCTION),
-            detail: Some("Draw a bar chart of benchmark results".to_string()),
-            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-                tower_lsp::lsp_types::MarkupContent {
-                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-                    value: "**charting.drawBarChart** `(title?, description?, xlabel?, ylabel?, output?)`\n\nGenerates a bar chart comparing benchmark execution times.\n\n**Parameters:**\n- `title` - Chart title\n- `description` - Chart description\n- `xlabel` - X-axis label\n- `ylabel` - Y-axis label\n- `output` - Output filename (default: bar-chart.svg)".to_string(),
-                }
-            )),
-            insert_text: Some("drawBarChart($0)".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "drawPieChart".to_string(),
-            kind: Some(CompletionItemKind::FUNCTION),
-            detail: Some("Draw a pie chart of time distribution".to_string()),
-            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-                tower_lsp::lsp_types::MarkupContent {
-                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-                    value: "**charting.drawPieChart** `(title?, description?, output?)`\n\nGenerates a pie chart showing time distribution across benchmarks.\n\n**Parameters:**\n- `title` - Chart title\n- `description` - Chart description\n- `output` - Output filename (default: pie-chart.svg)".to_string(),
-                }
-            )),
-            insert_text: Some("drawPieChart($0)".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "drawLineChart".to_string(),
-            kind: Some(CompletionItemKind::FUNCTION),
-            detail: Some("Draw a line chart for trend visualization".to_string()),
-            documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-                tower_lsp::lsp_types::MarkupContent {
-                    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-                    value: "**charting.drawLineChart** `(title?, description?, xlabel?, ylabel?, output?)`\n\nGenerates a line chart for visualizing benchmark trends.\n\n**Parameters:**\n- `title` - Chart title\n- `description` - Chart description\n- `xlabel` - X-axis label\n- `ylabel` - Y-axis label\n- `output` - Output filename (default: line-chart.svg)".to_string(),
-                }
-            )),
-            insert_text: Some("drawLineChart($0)".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            ..Default::default()
-        },
+CompletionItem {
+    label: "drawBarChart".to_string(),
+    kind: Some(CompletionItemKind::FUNCTION),
+    detail: Some("Draw a bar chart of benchmark results".to_string()),
+    documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+tower_lsp::lsp_types::MarkupContent {
+    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+    value: "**charting.drawBarChart** `(title?, description?, xlabel?, ylabel?, output?)`\n\nGenerates a bar chart comparing benchmark execution times.\n\n**Parameters:**\n- `title` - Chart title\n- `description` - Chart description\n- `xlabel` - X-axis label\n- `ylabel` - Y-axis label\n- `output` - Output filename (default: bar-chart.svg)".to_string(),
+}
+    )),
+    insert_text: Some("drawBarChart($0)".to_string()),
+    insert_text_format: Some(InsertTextFormat::SNIPPET),
+    ..Default::default()
+},
+CompletionItem {
+    label: "drawPieChart".to_string(),
+    kind: Some(CompletionItemKind::FUNCTION),
+    detail: Some("Draw a pie chart of time distribution".to_string()),
+    documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+tower_lsp::lsp_types::MarkupContent {
+    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+    value: "**charting.drawPieChart** `(title?, description?, output?)`\n\nGenerates a pie chart showing time distribution across benchmarks.\n\n**Parameters:**\n- `title` - Chart title\n- `description` - Chart description\n- `output` - Output filename (default: pie-chart.svg)".to_string(),
+}
+    )),
+    insert_text: Some("drawPieChart($0)".to_string()),
+    insert_text_format: Some(InsertTextFormat::SNIPPET),
+    ..Default::default()
+},
+CompletionItem {
+    label: "drawLineChart".to_string(),
+    kind: Some(CompletionItemKind::FUNCTION),
+    detail: Some("Draw a line chart for trend visualization".to_string()),
+    documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
+tower_lsp::lsp_types::MarkupContent {
+    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
+    value: "**charting.drawLineChart** `(title?, description?, xlabel?, ylabel?, output?)`\n\nGenerates a line chart for visualizing benchmark trends.\n\n**Parameters:**\n- `title` - Chart title\n- `description` - Chart description\n- `xlabel` - X-axis label\n- `ylabel` - Y-axis label\n- `output` - Output filename (default: line-chart.svg)".to_string(),
+}
+    )),
+    insert_text: Some("drawLineChart($0)".to_string()),
+    insert_text_format: Some(InsertTextFormat::SNIPPET),
+    ..Default::default()
+},
     ]
 }
 
 /// Completions for charting function parameters
 fn charting_function_param_completions() -> Vec<CompletionItem> {
     let mut items = vec![
-        // String parameters
-        chart_param_completion("title", "string", "Chart title", "The title displayed at the top of the chart.", "title: \"$0\""),
-        chart_param_completion("description", "string", "Chart description", "A description shown below the chart title.", "description: \"$0\""),
-        chart_param_completion("xlabel", "string", "X-axis label", "Label for the X-axis.", "xlabel: \"$0\""),
-        chart_param_completion("ylabel", "string", "Y-axis label", "Label for the Y-axis.", "ylabel: \"$0\""),
-        chart_param_completion("output", "string", "Output filename", "The output filename for the generated chart SVG.\n\nDefault: `bar-chart.svg`, `pie-chart.svg`, or `line-chart.svg` depending on chart type.", "output: \"$0\""),
-        
-        // Display toggle parameters (boolean)
-        chart_param_completion("showStats", "bool", "Show statistics", "Show ops/sec and time per op for each benchmark.\n\nDefault: `true`", "showStats: ${1|true,false|}"),
-        chart_param_completion("showConfig", "bool", "Show config", "Show benchmark configuration (iterations, warmup, timeout) in chart footer.\n\nDefault: `true`", "showConfig: ${1|true,false|}"),
-        chart_param_completion("showWinCounts", "bool", "Show win counts", "Show win counts in legend (e.g., 'Go faster (5 wins)').\n\nDefault: `true`", "showWinCounts: ${1|true,false|}"),
-        chart_param_completion("showGeoMean", "bool", "Show geometric mean", "Show geometric mean speedup in legend.\n\nDefault: `true`", "showGeoMean: ${1|true,false|}"),
-        chart_param_completion("showDistribution", "bool", "Show distribution", "Show min/max/p50/p99 percentile distribution.\n\nDefault: `false`", "showDistribution: ${1|true,false|}"),
-        chart_param_completion("showMemory", "bool", "Show memory stats", "Show bytes/allocs memory statistics (if available).\n\nDefault: `false`", "showMemory: ${1|true,false|}"),
-        chart_param_completion("showTotalTime", "bool", "Show total time", "Show total execution time.\n\nDefault: `false`", "showTotalTime: ${1|true,false|}"),
-        chart_param_completion("compact", "bool", "Compact mode", "Minimal chart mode without extra statistics.\n\nDefault: `false`", "compact: ${1|true,false|}"),
-        
-        // Filtering parameters
-        chart_param_completion("minSpeedup", "number", "Minimum speedup", "Only show benchmarks with speedup >= N.\n\nExample: `minSpeedup: 2.0` shows only benchmarks where one language is at least 2x faster.", "minSpeedup: $0"),
-        chart_param_completion("filterWinner", "string", "Filter by winner", "Filter benchmarks by winner: `\"go\"`, `\"ts\"`, or `\"all\"`.", "filterWinner: \"${1|go,ts,all|}\""),
-        chart_param_completion("includeBenchmarks", "array", "Include benchmarks", "Only include these benchmark names (case-insensitive substring match).\n\nExample: `includeBenchmarks: [\"hash\", \"sort\"]`", "includeBenchmarks: [\"$0\"]"),
-        chart_param_completion("excludeBenchmarks", "array", "Exclude benchmarks", "Exclude these benchmark names (case-insensitive substring match).\n\nExample: `excludeBenchmarks: [\"slow\", \"legacy\"]`", "excludeBenchmarks: [\"$0\"]"),
-        chart_param_completion("limit", "number", "Limit results", "Maximum number of benchmarks to show.\n\nExample: `limit: 10` shows only top 10 benchmarks.", "limit: $0"),
-        
-        // Sorting parameters
-        chart_param_completion("sortBy", "string", "Sort by", "Sort benchmarks by: `\"speedup\"`, `\"name\"`, `\"time\"`, or `\"ops\"`.\n\nDefault: `\"name\"`", "sortBy: \"${1|speedup,name,time,ops|}\""),
-        chart_param_completion("sortOrder", "string", "Sort order", "Sort order: `\"asc\"` (ascending) or `\"desc\"` (descending).\n\nDefault: `\"asc\"`", "sortOrder: \"${1|asc,desc|}\""),
-        
-        // Layout parameters
-        chart_param_completion("width", "number", "Chart width", "Chart width in pixels.\n\nDefault: `880`", "width: $0"),
-        chart_param_completion("barHeight", "number", "Bar height", "Height of each bar in pixels.\n\nDefault: `26`", "barHeight: $0"),
-        chart_param_completion("barGap", "number", "Bar gap", "Gap between bars in pixels.\n\nDefault: `5`", "barGap: $0"),
-        chart_param_completion("marginLeft", "number", "Left margin", "Left margin for benchmark labels in pixels.\n\nDefault: `200`", "marginLeft: $0"),
-        
-        // Data display parameters
-        chart_param_completion("precision", "number", "Decimal precision", "Number of decimal places for numbers.\n\nDefault: `2`", "precision: $0"),
-        chart_param_completion("timeUnit", "string", "Time unit", "Time unit for display: `\"auto\"`, `\"ns\"`, `\"us\"`, `\"ms\"`, or `\"s\"`.\n\nDefault: `\"auto\"` (chooses appropriate unit)", "timeUnit: \"${1|auto,ns,us,ms,s|}\""),
+// String parameters
+chart_param_completion("title", "string", "Chart title", "The title displayed at the top of the chart.", "title: \"$0\""),
+chart_param_completion("description", "string", "Chart description", "A description shown below the chart title.", "description: \"$0\""),
+chart_param_completion("xlabel", "string", "X-axis label", "Label for the X-axis.", "xlabel: \"$0\""),
+chart_param_completion("ylabel", "string", "Y-axis label", "Label for the Y-axis.", "ylabel: \"$0\""),
+chart_param_completion("output", "string", "Output filename", "The output filename for the generated chart SVG.\n\nDefault: `bar-chart.svg`, `pie-chart.svg`, or `line-chart.svg` depending on chart type.", "output: \"$0\""),
+
+// Display toggle parameters (boolean)
+chart_param_completion("showStats", "bool", "Show statistics", "Show ops/sec and time per op for each benchmark.\n\nDefault: `true`", "showStats: ${1|true,false|}"),
+chart_param_completion("showConfig", "bool", "Show config", "Show benchmark configuration (iterations, warmup, timeout) in chart footer.\n\nDefault: `true`", "showConfig: ${1|true,false|}"),
+chart_param_completion("showWinCounts", "bool", "Show win counts", "Show win counts in legend (e.g., 'Go faster (5 wins)').\n\nDefault: `true`", "showWinCounts: ${1|true,false|}"),
+chart_param_completion("showGeoMean", "bool", "Show geometric mean", "Show geometric mean speedup in legend.\n\nDefault: `true`", "showGeoMean: ${1|true,false|}"),
+chart_param_completion("showDistribution", "bool", "Show distribution", "Show min/max/p50/p99 percentile distribution.\n\nDefault: `false`", "showDistribution: ${1|true,false|}"),
+chart_param_completion("showMemory", "bool", "Show memory stats", "Show bytes/allocs memory statistics (if available).\n\nDefault: `false`", "showMemory: ${1|true,false|}"),
+chart_param_completion("showTotalTime", "bool", "Show total time", "Show total execution time.\n\nDefault: `false`", "showTotalTime: ${1|true,false|}"),
+chart_param_completion("compact", "bool", "Compact mode", "Minimal chart mode without extra statistics.\n\nDefault: `false`", "compact: ${1|true,false|}"),
+
+// Filtering parameters
+chart_param_completion("minSpeedup", "number", "Minimum speedup", "Only show benchmarks with speedup >= N.\n\nExample: `minSpeedup: 2.0` shows only benchmarks where one language is at least 2x faster.", "minSpeedup: $0"),
+chart_param_completion("filterWinner", "string", "Filter by winner", "Filter benchmarks by winner: `\"go\"`, `\"ts\"`, or `\"all\"`.", "filterWinner: \"${1|go,ts,all|}\""),
+chart_param_completion("includeBenchmarks", "array", "Include benchmarks", "Only include these benchmark names (case-insensitive substring match).\n\nExample: `includeBenchmarks: [\"hash\", \"sort\"]`", "includeBenchmarks: [\"$0\"]"),
+chart_param_completion("excludeBenchmarks", "array", "Exclude benchmarks", "Exclude these benchmark names (case-insensitive substring match).\n\nExample: `excludeBenchmarks: [\"slow\", \"legacy\"]`", "excludeBenchmarks: [\"$0\"]"),
+chart_param_completion("limit", "number", "Limit results", "Maximum number of benchmarks to show.\n\nExample: `limit: 10` shows only top 10 benchmarks.", "limit: $0"),
+
+// Sorting parameters
+chart_param_completion("sortBy", "string", "Sort by", "Sort benchmarks by: `\"speedup\"`, `\"name\"`, `\"time\"`, or `\"ops\"`.\n\nDefault: `\"name\"`", "sortBy: \"${1|speedup,name,time,ops|}\""),
+chart_param_completion("sortOrder", "string", "Sort order", "Sort order: `\"asc\"` (ascending) or `\"desc\"` (descending).\n\nDefault: `\"asc\"`", "sortOrder: \"${1|asc,desc|}\""),
+
+// Layout parameters
+chart_param_completion("width", "number", "Chart width", "Chart width in pixels.\n\nDefault: `880`", "width: $0"),
+chart_param_completion("barHeight", "number", "Bar height", "Height of each bar in pixels.\n\nDefault: `26`", "barHeight: $0"),
+chart_param_completion("barGap", "number", "Bar gap", "Gap between bars in pixels.\n\nDefault: `5`", "barGap: $0"),
+chart_param_completion("marginLeft", "number", "Left margin", "Left margin for benchmark labels in pixels.\n\nDefault: `200`", "marginLeft: $0"),
+
+// Data display parameters
+chart_param_completion("precision", "number", "Decimal precision", "Number of decimal places for numbers.\n\nDefault: `2`", "precision: $0"),
+chart_param_completion("timeUnit", "string", "Time unit", "Time unit for display: `\"auto\"`, `\"ns\"`, `\"us\"`, `\"ms\"`, or `\"s\"`.\n\nDefault: `\"auto\"` (chooses appropriate unit)", "timeUnit: \"${1|auto,ns,us,ms,s|}\""),
     ];
-    
+
     items
 }
 
@@ -1564,7 +1560,7 @@ fn chart_param_completion(
             tower_lsp::lsp_types::MarkupContent {
                 kind: tower_lsp::lsp_types::MarkupKind::Markdown,
                 value: format!("**{}** `{}`\n\n{}", name, param_type, doc),
-            }
+            },
         )),
         insert_text: Some(insert_text.to_string()),
         insert_text_format: Some(InsertTextFormat::SNIPPET),
@@ -1655,7 +1651,9 @@ fn extract_symbols_from_code(code: &str, lang: Lang, source: &str) -> Vec<Comple
                     if let Some(name) = name {
                         let name_str = name.as_str();
                         // Skip common Go keywords/patterns
-                        if !["err", "ok", "_", "nil"].contains(&name_str) && seen.insert(name_str.to_string()) {
+                        if !["err", "ok", "_", "nil"].contains(&name_str)
+                            && seen.insert(name_str.to_string())
+                        {
                             items.push(CompletionItem {
                                 label: name_str.to_string(),
                                 kind: Some(CompletionItemKind::VARIABLE),

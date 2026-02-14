@@ -6,15 +6,15 @@
 //! - Dependency management (`poly-bench add`, `poly-bench install`)
 //! - Benchmark file scaffolding (`poly-bench new`)
 
+pub mod build;
+pub mod deps;
+pub mod init;
 pub mod manifest;
 pub mod templates;
 pub mod terminal;
-pub mod init;
-pub mod deps;
-pub mod build;
 
-use std::path::{Path, PathBuf};
 use miette::Result;
+use std::path::{Path, PathBuf};
 
 pub use manifest::Manifest;
 
@@ -43,9 +43,7 @@ pub fn runtime_env_ts(project_root: &Path) -> PathBuf {
 
 /// True if path looks like a runtime-env root (e.g. .../runtime-env/go)
 pub fn is_runtime_env_root(path: &Path) -> bool {
-    path.as_os_str()
-        .to_string_lossy()
-        .contains("runtime-env")
+    path.as_os_str().to_string_lossy().contains("runtime-env")
 }
 
 /// Find the project root by searching for polybench.toml
@@ -97,20 +95,19 @@ pub fn benchmarks_dir(project_root: &Path) -> PathBuf {
 /// Find all .bench files in a project's benchmarks directory
 pub fn find_bench_files(project_root: &Path) -> Result<Vec<PathBuf>> {
     let bench_dir = benchmarks_dir(project_root);
-    
+
     if !bench_dir.exists() {
         return Ok(vec![]);
     }
 
     let mut files = Vec::new();
-    
+
     for entry in std::fs::read_dir(&bench_dir)
         .map_err(|e| miette::miette!("Failed to read benchmarks directory: {}", e))?
     {
-        let entry = entry
-            .map_err(|e| miette::miette!("Failed to read directory entry: {}", e))?;
+        let entry = entry.map_err(|e| miette::miette!("Failed to read directory entry: {}", e))?;
         let path = entry.path();
-        
+
         if path.is_file() {
             if let Some(ext) = path.extension() {
                 if ext == "bench" {
@@ -122,7 +119,7 @@ pub fn find_bench_files(project_root: &Path) -> Result<Vec<PathBuf>> {
 
     // Sort for consistent ordering
     files.sort();
-    
+
     Ok(files)
 }
 

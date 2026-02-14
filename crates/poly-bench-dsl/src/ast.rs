@@ -1,7 +1,7 @@
 //! AST types for the poly-bench DSL
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
 
 /// Source location span for error reporting
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,11 +18,21 @@ pub struct Span {
 
 impl Span {
     pub fn new(start: usize, end: usize, line: usize, col: usize) -> Self {
-        Self { start, end, line, col }
+        Self {
+            start,
+            end,
+            line,
+            col,
+        }
     }
 
     pub fn dummy() -> Self {
-        Self { start: 0, end: 0, line: 1, col: 1 }
+        Self {
+            start: 0,
+            end: 0,
+            line: 1,
+            col: 1,
+        }
     }
 }
 
@@ -81,7 +91,11 @@ pub struct CodeBlock {
 
 impl CodeBlock {
     pub fn new(code: String, is_multiline: bool, span: Span) -> Self {
-        Self { code, is_multiline, span }
+        Self {
+            code,
+            is_multiline,
+            span,
+        }
     }
 
     /// Create an empty code block
@@ -267,8 +281,20 @@ pub struct UseStd {
 }
 
 impl UseStd {
-    pub fn new(module: String, span: Span, use_span: Span, std_span: Span, module_span: Span) -> Self {
-        Self { module, span, use_span, std_span, module_span }
+    pub fn new(
+        module: String,
+        span: Span,
+        use_span: Span,
+        std_span: Span,
+        module_span: Span,
+    ) -> Self {
+        Self {
+            module,
+            span,
+            use_span,
+            std_span,
+            module_span,
+        }
     }
 }
 
@@ -363,7 +389,7 @@ pub struct ChartDirective {
     pub output_file: Option<String>,
     /// Source location
     pub span: Span,
-    
+
     // Display toggles (default: true unless noted)
     /// Show ops/sec and time per op stats
     pub show_stats: bool,
@@ -381,7 +407,7 @@ pub struct ChartDirective {
     pub show_total_time: bool,
     /// Minimal chart mode without extra info (default: false)
     pub compact: bool,
-    
+
     // Filtering
     /// Only show benchmarks with speedup >= N
     pub min_speedup: Option<f64>,
@@ -393,13 +419,13 @@ pub struct ChartDirective {
     pub exclude_benchmarks: Vec<String>,
     /// Max benchmarks to show (0 = all)
     pub limit: Option<u32>,
-    
+
     // Sorting
     /// Sort by: "speedup", "name", "time", "ops"
     pub sort_by: Option<String>,
     /// Sort order: "asc" or "desc"
     pub sort_order: Option<String>,
-    
+
     // Layout
     /// Chart width in pixels
     pub width: Option<i32>,
@@ -409,7 +435,7 @@ pub struct ChartDirective {
     pub bar_gap: Option<i32>,
     /// Left margin for labels in pixels
     pub margin_left: Option<i32>,
-    
+
     // Data display
     /// Decimal places for numbers (default: 2)
     pub precision: Option<u32>,
@@ -432,7 +458,7 @@ impl ChartDirective {
             show_config: true,
             show_win_counts: true,
             show_geo_mean: true,
-            show_distribution: true,  // Show distribution stats by default
+            show_distribution: true, // Show distribution stats by default
             show_memory: false,
             show_total_time: false,
             compact: false,
@@ -477,15 +503,31 @@ pub struct File {
 
 impl File {
     pub fn new(suites: Vec<Suite>) -> Self {
-        Self { use_stds: Vec::new(), global_setup: None, suites }
+        Self {
+            use_stds: Vec::new(),
+            global_setup: None,
+            suites,
+        }
     }
 
     pub fn with_use_stds(use_stds: Vec<UseStd>, suites: Vec<Suite>) -> Self {
-        Self { use_stds, global_setup: None, suites }
+        Self {
+            use_stds,
+            global_setup: None,
+            suites,
+        }
     }
-    
-    pub fn with_global_setup(use_stds: Vec<UseStd>, global_setup: Option<GlobalSetup>, suites: Vec<Suite>) -> Self {
-        Self { use_stds, global_setup, suites }
+
+    pub fn with_global_setup(
+        use_stds: Vec<UseStd>,
+        global_setup: Option<GlobalSetup>,
+        suites: Vec<Suite>,
+    ) -> Self {
+        Self {
+            use_stds,
+            global_setup,
+            suites,
+        }
     }
 }
 
@@ -502,7 +544,7 @@ pub struct Suite {
     pub iterations: Option<u64>,
     /// Warmup iterations
     pub warmup: Option<u64>,
-    
+
     // Phase 4: Suite configuration
     /// Suite-level timeout in milliseconds
     pub timeout: Option<u64>,
@@ -514,7 +556,7 @@ pub struct Suite {
     pub compare: bool,
     /// Baseline language for comparison ratios
     pub baseline: Option<Lang>,
-    
+
     // Benchmark accuracy settings
     /// Benchmark execution mode (auto-calibration vs fixed iterations)
     pub mode: Option<BenchMode>,
@@ -526,7 +568,7 @@ pub struct Suite {
     pub max_iterations: Option<u64>,
     /// Enable sink/black-box pattern to prevent dead code elimination (default: true)
     pub sink: bool,
-    
+
     // Statistical analysis settings
     /// Enable IQR-based outlier detection (default: true)
     pub outlier_detection: bool,
@@ -534,16 +576,16 @@ pub struct Suite {
     pub cv_threshold: Option<f64>,
     /// Number of times to run each benchmark for statistical consistency (default: 1)
     pub count: Option<u64>,
-    
+
     // Observability settings (Phase 2B)
     /// Enable memory allocation profiling (default: false)
     pub memory: bool,
     /// Number of concurrent goroutines/workers for parallel execution (default: 1)
     pub concurrency: u32,
-    
+
     /// Global setup block for suite-level initialization (runs once before all benchmarks)
     pub global_setup: Option<GlobalSetup>,
-    
+
     /// Per-language structured setup blocks (Phase 1)
     pub setups: HashMap<Lang, StructuredSetup>,
     /// Named fixtures
@@ -571,12 +613,12 @@ impl Suite {
             target_time_ms: None,
             min_iterations: None,
             max_iterations: None,
-            sink: true, // Enabled by default to prevent DCE
+            sink: true,              // Enabled by default to prevent DCE
             outlier_detection: true, // Enabled by default for statistical accuracy
-            cv_threshold: None, // Uses default (5.0%) when None
-            count: None, // Uses default (1) when None - single run
-            memory: false, // Memory profiling disabled by default
-            concurrency: 1, // Single-threaded by default
+            cv_threshold: None,      // Uses default (5.0%) when None
+            count: None,             // Uses default (1) when None - single run
+            memory: false,           // Memory profiling disabled by default
+            concurrency: 1,          // Single-threaded by default
             global_setup: None,
             setups: HashMap::new(),
             fixtures: Vec::new(),
@@ -601,7 +643,7 @@ pub struct Fixture {
     pub hex_file: Option<String>,
     /// Per-language implementations (alternative to hex)
     pub implementations: HashMap<Lang, CodeBlock>,
-    
+
     // Phase 5: Enhanced fixture system
     /// Shape annotation for documentation (JSON-like descriptor)
     pub shape: Option<String>,
@@ -640,7 +682,7 @@ pub struct Benchmark {
     pub description: Option<String>,
     /// Override iterations for this specific benchmark
     pub iterations: Option<u64>,
-    
+
     // Phase 2: Benchmark configuration
     /// Override warmup iterations for this benchmark
     pub warmup: Option<u64>,
@@ -652,7 +694,7 @@ pub struct Benchmark {
     pub skip: HashMap<Lang, CodeBlock>,
     /// Per-language result validation expressions
     pub validate: HashMap<Lang, CodeBlock>,
-    
+
     // Benchmark accuracy settings (overrides suite-level)
     /// Override benchmark execution mode
     pub mode: Option<BenchMode>,
@@ -670,13 +712,13 @@ pub struct Benchmark {
     pub cv_threshold: Option<f64>,
     /// Override count setting (None = inherit from suite)
     pub count: Option<u64>,
-    
+
     // Observability settings (Phase 2B)
     /// Override memory profiling setting (None = inherit from suite)
     pub memory: Option<bool>,
     /// Override concurrency setting (None = inherit from suite)
     pub concurrency: Option<u32>,
-    
+
     // Phase 3: Lifecycle hooks
     /// Pre-benchmark hook (runs once before iterations)
     pub before: HashMap<Lang, CodeBlock>,
@@ -686,7 +728,7 @@ pub struct Benchmark {
     pub each: HashMap<Lang, CodeBlock>,
     /// Style used for lifecycle hooks in source (for formatting)
     pub hook_style: HookStyle,
-    
+
     /// Per-language implementations
     pub implementations: HashMap<Lang, CodeBlock>,
 }

@@ -2,8 +2,8 @@
 //!
 //! Parses a stream of tokens into an AST.
 
-use crate::ast::{*, HookStyle};
-use crate::error::{ParseError, NamedSource};
+use crate::ast::{HookStyle, *};
+use crate::error::{NamedSource, ParseError};
 use crate::lexer::Lexer;
 use crate::tokens::{Token, TokenKind};
 use miette::{Report, Result};
@@ -16,28 +16,28 @@ fn normalize_code_indent(code: &str) -> String {
     if lines.is_empty() {
         return String::new();
     }
-    
+
     // Find minimum indent among non-empty lines, but skip first line if it has 0 indent
     // (this handles cases where reconstruct_code starts mid-line)
-    let non_empty_lines: Vec<_> = lines.iter()
-        .filter(|l| !l.trim().is_empty())
-        .collect();
-    
+    let non_empty_lines: Vec<_> = lines.iter().filter(|l| !l.trim().is_empty()).collect();
+
     let min_indent = if non_empty_lines.len() <= 1 {
         // Only one line or empty, use its indent
-        non_empty_lines.first()
+        non_empty_lines
+            .first()
             .map(|l| l.len() - l.trim_start().len())
             .unwrap_or(0)
     } else {
         // Multiple lines - calculate min indent, but if first line has 0 indent,
         // use the min of the remaining lines
         let first_indent = non_empty_lines[0].len() - non_empty_lines[0].trim_start().len();
-        let rest_min = non_empty_lines.iter()
+        let rest_min = non_empty_lines
+            .iter()
             .skip(1)
             .map(|l| l.len() - l.trim_start().len())
             .min()
             .unwrap_or(0);
-        
+
         if first_indent == 0 && rest_min > 0 {
             // First line has no indent but others do - use rest_min and leave first line as-is
             rest_min
@@ -46,7 +46,7 @@ fn normalize_code_indent(code: &str) -> String {
             first_indent.min(rest_min)
         }
     };
-    
+
     // Strip the minimum indent from each line
     lines
         .iter()
@@ -107,13 +107,13 @@ impl Parser {
         // Parse suites
         while !self.is_at_end() {
             let mut suite = self.parse_suite()?;
-            
+
             // If suite doesn't have its own globalSetup, inherit from file-level
             // (for backward compatibility)
             if suite.global_setup.is_none() && global_setup.is_some() {
                 suite.global_setup = global_setup.clone();
             }
-            
+
             suites.push(suite);
         }
 
@@ -124,7 +124,7 @@ impl Parser {
     fn parse_use_std(&mut self) -> Result<UseStd> {
         let use_token = self.expect_keyword(TokenKind::Use)?;
         let use_span = use_token.span.clone();
-        
+
         // Expect "std" identifier
         let std_token = self.expect_identifier()?;
         let std_span = std_token.span.clone();
@@ -132,7 +132,7 @@ impl Parser {
             TokenKind::Identifier(s) => s.clone(),
             _ => unreachable!(),
         };
-        
+
         if std_name != "std" {
             return Err(self.make_error(ParseError::ExpectedToken {
                 expected: "std".to_string(),
@@ -140,10 +140,10 @@ impl Parser {
                 span: std_token.span.clone(),
             }));
         }
-        
+
         // Expect "::"
         self.expect(TokenKind::DoubleColon)?;
-        
+
         // Expect module name
         let module_token = self.expect_identifier()?;
         let module_span = module_token.span.clone();
@@ -151,20 +151,21 @@ impl Parser {
             TokenKind::Identifier(s) => s.clone(),
             _ => unreachable!(),
         };
-        
+
         // Full span from 'use' to end of module name
-        let full_span = Span::new(
-            use_span.start,
-            module_span.end,
-            use_span.line,
-            use_span.col,
-        );
-        
-        Ok(UseStd::new(module, full_span, use_span, std_span, module_span))
+        let full_span = Span::new(use_span.start, module_span.end, use_span.line, use_span.col);
+
+        Ok(UseStd::new(
+            module,
+            full_span,
+            use_span,
+            std_span,
+            module_span,
+        ))
     }
 
     /// Parse a globalSetup block
-    /// 
+    ///
     /// Syntax:
     /// ```text
     /// globalSetup {
@@ -176,21 +177,21 @@ impl Parser {
     fn parse_global_setup(&mut self) -> Result<GlobalSetup> {
         let start_token = self.expect_keyword(TokenKind::GlobalSetup)?;
         let start_span = start_token.span.clone();
-        
+
         self.expect(TokenKind::LBrace)?;
-        
+
         let mut anvil_config = None;
-        
+
         // Parse statements inside globalSetup
         while !self.check(TokenKind::RBrace) && !self.is_at_end() {
             // Look for namespaced calls: anvil.spawnAnvil()
             if self.check_identifier("anvil") {
                 let _module_span = self.advance().span.clone();
-                
+
                 // Expect "."
                 if self.check(TokenKind::Dot) {
                     self.advance(); // consume "."
-                    
+
                     // Expect "spawnAnvil"
                     if self.check_identifier("spawnAnvil") {
                         let anvil_span = self.advance().span.clone();
@@ -212,39 +213,39 @@ impl Parser {
                 self.advance();
             }
         }
-        
+
         let end_token = self.expect(TokenKind::RBrace)?;
-        
+
         let full_span = Span::new(
             start_span.start,
             end_token.span.end,
             start_span.line,
             start_span.col,
         );
-        
+
         Ok(GlobalSetup::new(anvil_config, full_span))
     }
-    
+
     /// Parse the arguments for spawnAnvil()
     fn parse_spawn_anvil_args(&mut self, anvil_span: Span) -> Result<AnvilSetupConfig> {
         self.expect(TokenKind::LParen)?;
-        
+
         let mut fork_url = None;
-        
+
         // Check for optional arguments: fork: "url"
         if !self.check(TokenKind::RParen) {
             // Expect "fork" identifier
             if self.check_identifier("fork") {
                 self.advance(); // consume "fork"
                 self.expect(TokenKind::Colon)?;
-                
+
                 // Expect string value
                 fork_url = Some(self.expect_string()?);
             }
         }
-        
+
         self.expect(TokenKind::RParen)?;
-        
+
         Ok(AnvilSetupConfig::new(fork_url, anvil_span))
     }
 
@@ -420,7 +421,7 @@ impl Parser {
                     TokenKind::Identifier(s) => s.clone(),
                     _ => unreachable!(),
                 };
-                
+
                 return Err(self.make_error(ParseError::InvalidProperty {
                     name: ident,
                     span: token.span.clone(),
@@ -428,7 +429,8 @@ impl Parser {
             }
             _ => {
                 return Err(self.make_error(ParseError::ExpectedToken {
-                    expected: "suite item (globalSetup, setup, fixture, bench, after, or property)".to_string(),
+                    expected: "suite item (globalSetup, setup, fixture, bench, after, or property)"
+                        .to_string(),
                     found: format!("{:?}", token.kind),
                     span: token.span.clone(),
                 }));
@@ -443,59 +445,59 @@ impl Parser {
     fn parse_suite_after_block(&mut self) -> Result<Vec<ChartDirective>> {
         let after_token = self.expect_keyword(TokenKind::After)?;
         self.expect(TokenKind::LBrace)?;
-        
+
         let mut directives = Vec::new();
-        
+
         while !self.check(TokenKind::RBrace) && !self.is_at_end() {
             let directive = self.parse_chart_directive(&after_token.span)?;
             directives.push(directive);
         }
-        
+
         self.expect(TokenKind::RBrace)?;
-        
+
         Ok(directives)
     }
 
     /// Parse a chart directive: charting.drawBarChart(title: "...", ...)
     fn parse_chart_directive(&mut self, _block_span: &Span) -> Result<ChartDirective> {
         let start_span = self.peek().span.clone();
-        
+
         // Expect "charting" identifier
         let module_token = self.expect_identifier()?;
         let module_name = match &module_token.kind {
             TokenKind::Identifier(s) => s.clone(),
             _ => unreachable!(),
         };
-        
+
         if module_name != "charting" {
             return Err(self.make_error(ParseError::InvalidProperty {
                 name: format!("Expected 'charting' module, found '{}'", module_name),
                 span: module_token.span.clone(),
             }));
         }
-        
+
         // Expect "."
         self.expect(TokenKind::Dot)?;
-        
+
         // Expect function name (drawBarChart, drawPieChart, etc.)
         let func_token = self.expect_identifier()?;
         let func_name = match &func_token.kind {
             TokenKind::Identifier(s) => s.clone(),
             _ => unreachable!(),
         };
-        
+
         let chart_type = ChartType::from_function_name(&func_name).ok_or_else(|| {
             self.make_error(ParseError::InvalidProperty {
                 name: format!("Unknown charting function '{}'. Valid functions: drawBarChart, drawPieChart, drawLineChart", func_name),
                 span: func_token.span.clone(),
             })
         })?;
-        
+
         // Expect "("
         self.expect(TokenKind::LParen)?;
-        
+
         let mut directive = ChartDirective::new(chart_type, start_span);
-        
+
         // Parse optional named parameters with various types
         while !self.check(TokenKind::RParen) && !self.is_at_end() {
             let param_token = self.advance().clone();
@@ -510,9 +512,9 @@ impl Parser {
                     }));
                 }
             };
-            
+
             self.expect(TokenKind::Colon)?;
-            
+
             // Parse value based on expected type for each parameter
             match param_name.as_str() {
                 // String parameters
@@ -525,7 +527,7 @@ impl Parser {
                 "sortBy" => directive.sort_by = Some(self.expect_string()?),
                 "sortOrder" => directive.sort_order = Some(self.expect_string()?),
                 "timeUnit" => directive.time_unit = Some(self.expect_string()?),
-                
+
                 // Boolean parameters
                 "showStats" => directive.show_stats = self.expect_bool()?,
                 "showConfig" => directive.show_config = self.expect_bool()?,
@@ -535,7 +537,7 @@ impl Parser {
                 "showMemory" => directive.show_memory = self.expect_bool()?,
                 "showTotalTime" => directive.show_total_time = self.expect_bool()?,
                 "compact" => directive.compact = self.expect_bool()?,
-                
+
                 // Integer parameters
                 "limit" => directive.limit = Some(self.expect_number()? as u32),
                 "width" => directive.width = Some(self.expect_number()? as i32),
@@ -543,14 +545,14 @@ impl Parser {
                 "barGap" => directive.bar_gap = Some(self.expect_number()? as i32),
                 "marginLeft" => directive.margin_left = Some(self.expect_number()? as i32),
                 "precision" => directive.precision = Some(self.expect_number()? as u32),
-                
+
                 // Float parameters
                 "minSpeedup" => directive.min_speedup = Some(self.expect_float()?),
-                
+
                 // Array parameters
                 "includeBenchmarks" => directive.include_benchmarks = self.expect_string_array()?,
                 "excludeBenchmarks" => directive.exclude_benchmarks = self.expect_string_array()?,
-                
+
                 _ => {
                     return Err(self.make_error(ParseError::InvalidProperty {
                         name: format!("Unknown chart parameter '{}'", param_name),
@@ -558,7 +560,7 @@ impl Parser {
                     }));
                 }
             }
-            
+
             // Check for comma between parameters
             if !self.check(TokenKind::RParen) {
                 if self.check(TokenKind::Comma) {
@@ -566,10 +568,10 @@ impl Parser {
                 }
             }
         }
-        
+
         // Expect ")"
         self.expect(TokenKind::RParen)?;
-        
+
         // Update span to include the full directive
         directive.span = Span {
             start: directive.span.start,
@@ -577,10 +579,10 @@ impl Parser {
             line: directive.span.line,
             col: directive.span.col,
         };
-        
+
         Ok(directive)
     }
-    
+
     /// Expect and parse a boolean value (true/false)
     fn expect_bool(&mut self) -> Result<bool> {
         let token = self.advance().clone();
@@ -593,7 +595,7 @@ impl Parser {
             })),
         }
     }
-    
+
     /// Expect and parse a number (integer)
     fn expect_number(&mut self) -> Result<u64> {
         let token = self.advance().clone();
@@ -605,7 +607,7 @@ impl Parser {
             })),
         }
     }
-    
+
     /// Expect and parse a float (or integer as float)
     fn expect_float(&mut self) -> Result<f64> {
         let token = self.advance().clone();
@@ -618,24 +620,24 @@ impl Parser {
             })),
         }
     }
-    
+
     /// Expect and parse a string array: ["item1", "item2"]
     fn expect_string_array(&mut self) -> Result<Vec<String>> {
         self.expect(TokenKind::LBracket)?;
-        
+
         let mut items = Vec::new();
-        
+
         while !self.check(TokenKind::RBracket) && !self.is_at_end() {
             let value = self.expect_string()?;
             items.push(value);
-            
+
             if !self.check(TokenKind::RBracket) {
                 if self.check(TokenKind::Comma) {
                     self.advance();
                 }
             }
         }
-        
+
         self.expect(TokenKind::RBracket)?;
         Ok(items)
     }
@@ -644,15 +646,15 @@ impl Parser {
     fn parse_structured_setup(&mut self) -> Result<(Lang, StructuredSetup)> {
         let setup_token = self.expect_keyword(TokenKind::Setup)?;
         let lang = self.expect_lang()?;
-        
+
         self.expect(TokenKind::LBrace)?;
-        
+
         let mut setup = StructuredSetup::new(setup_token.span.clone());
-        
+
         // Parse setup sections in any order
         while !self.check(TokenKind::RBrace) && !self.is_at_end() {
             let token = self.peek().clone();
-            
+
             match &token.kind {
                 TokenKind::Import => {
                     self.advance();
@@ -692,9 +694,9 @@ impl Parser {
                 }
             }
         }
-        
+
         self.expect(TokenKind::RBrace)?;
-        
+
         Ok((lang, setup))
     }
 
@@ -706,7 +708,7 @@ impl Parser {
             let _open_paren = self.advance().clone();
             let mut code_tokens = Vec::new();
             let mut depth = 1;
-            
+
             while depth > 0 && !self.is_at_end() {
                 let token = self.advance().clone();
                 match token.kind {
@@ -723,11 +725,11 @@ impl Parser {
                     code_tokens.push(token);
                 }
             }
-            
+
             let code = self.reconstruct_code(&code_tokens);
             // Wrap in import ( ... ) for the code, preserving internal indentation
             let full_code = format!("import (\n{}\n)", normalize_code_indent(&code));
-            
+
             // Compute span covering the import content
             let code_span = if code_tokens.is_empty() {
                 Span::dummy()
@@ -741,7 +743,7 @@ impl Parser {
                     col: first.span.col,
                 }
             };
-            
+
             Ok(CodeBlock::new(full_code, true, code_span))
         } else if self.check(TokenKind::LBrace) {
             // Block-style imports: import { ... } from 'pkg' for TS
@@ -749,27 +751,28 @@ impl Parser {
         } else {
             // Single line import - consume until next section keyword or brace
             let mut code_tokens = Vec::new();
-            
+
             while !self.is_at_end() {
                 let token = self.peek();
-                
+
                 // Stop at section keywords or closing brace
-                if matches!(token.kind,
-                    TokenKind::RBrace |
-                    TokenKind::Import |
-                    TokenKind::Declare |
-                    TokenKind::Init |
-                    TokenKind::Helpers |
-                    TokenKind::Async
+                if matches!(
+                    token.kind,
+                    TokenKind::RBrace
+                        | TokenKind::Import
+                        | TokenKind::Declare
+                        | TokenKind::Init
+                        | TokenKind::Helpers
+                        | TokenKind::Async
                 ) {
                     break;
                 }
-                
+
                 code_tokens.push(self.advance().clone());
             }
-            
+
             let code = self.reconstruct_code(&code_tokens);
-            
+
             // Compute span covering all collected tokens
             let code_span = if code_tokens.is_empty() {
                 Span::dummy()
@@ -783,7 +786,7 @@ impl Parser {
                     col: first.span.col,
                 }
             };
-            
+
             Ok(CodeBlock::new(code.trim().to_string(), false, code_span))
         }
     }
@@ -821,30 +824,30 @@ impl Parser {
     /// Parse fixture parameters: (name: type, name2: type2)
     fn parse_fixture_params(&mut self) -> Result<Vec<FixtureParam>> {
         let mut params = Vec::new();
-        
+
         while !self.check(TokenKind::RParen) && !self.is_at_end() {
             let name_token = self.expect_identifier()?;
             let name = match &name_token.kind {
                 TokenKind::Identifier(s) => s.clone(),
                 _ => unreachable!(),
             };
-            
+
             self.expect(TokenKind::Colon)?;
-            
+
             let type_token = self.expect_identifier()?;
             let param_type = match &type_token.kind {
                 TokenKind::Identifier(s) => s.clone(),
                 _ => unreachable!(),
             };
-            
+
             params.push(FixtureParam::new(name, param_type));
-            
+
             // Check for comma
             if !self.check(TokenKind::RParen) {
                 self.expect(TokenKind::Comma)?;
             }
         }
-        
+
         Ok(params)
     }
 
@@ -862,7 +865,7 @@ impl Parser {
             TokenKind::Hex => {
                 self.advance();
                 self.expect(TokenKind::Colon)?;
-                
+
                 // Check for @file reference or string literal
                 if self.check(TokenKind::FileRef) {
                     self.advance();
@@ -883,7 +886,11 @@ impl Parser {
                 fixture.shape = Some(shape_code.code);
             }
             // Language-specific implementation
-            TokenKind::Go | TokenKind::Ts | TokenKind::TypeScript | TokenKind::Rust | TokenKind::Python => {
+            TokenKind::Go
+            | TokenKind::Ts
+            | TokenKind::TypeScript
+            | TokenKind::Rust
+            | TokenKind::Python => {
                 let lang = self.expect_lang()?;
                 self.expect(TokenKind::Colon)?;
                 let code = self.parse_inline_or_block_code()?;
@@ -1103,7 +1110,11 @@ impl Parser {
                 }
             }
             // Language-specific implementation
-            TokenKind::Go | TokenKind::Ts | TokenKind::TypeScript | TokenKind::Rust | TokenKind::Python => {
+            TokenKind::Go
+            | TokenKind::Ts
+            | TokenKind::TypeScript
+            | TokenKind::Rust
+            | TokenKind::Python => {
                 let lang = self.expect_lang()?;
                 self.expect(TokenKind::Colon)?;
                 let code = self.parse_inline_or_block_code()?;
@@ -1138,18 +1149,18 @@ impl Parser {
     /// Parse a language-to-code map: { go: CODE, ts: CODE }
     fn parse_lang_code_map(&mut self) -> Result<HashMap<Lang, CodeBlock>> {
         let mut map = HashMap::new();
-        
+
         self.expect(TokenKind::LBrace)?;
-        
+
         while !self.check(TokenKind::RBrace) && !self.is_at_end() {
             let lang = self.expect_lang()?;
             self.expect(TokenKind::Colon)?;
             let code = self.parse_inline_or_block_code_in_map()?;
             map.insert(lang, code);
         }
-        
+
         self.expect(TokenKind::RBrace)?;
-        
+
         Ok(map)
     }
 
@@ -1163,15 +1174,16 @@ impl Parser {
 
             while !self.is_at_end() {
                 let token = self.peek();
-                
+
                 // Stop conditions for inline code in a map
-                if matches!(token.kind, 
-                    TokenKind::RBrace |
-                    TokenKind::Go |
-                    TokenKind::Ts |
-                    TokenKind::TypeScript |
-                    TokenKind::Rust |
-                    TokenKind::Python
+                if matches!(
+                    token.kind,
+                    TokenKind::RBrace
+                        | TokenKind::Go
+                        | TokenKind::Ts
+                        | TokenKind::TypeScript
+                        | TokenKind::Rust
+                        | TokenKind::Python
                 ) {
                     break;
                 }
@@ -1210,11 +1222,11 @@ impl Parser {
     fn parse_code_block(&mut self) -> Result<CodeBlock> {
         let open_brace = self.expect(TokenKind::LBrace)?;
         let content_start = open_brace.span.end; // Start right after the opening brace
-        
+
         // Find matching closing brace with brace counting
         let mut depth = 1;
         let mut close_brace_span: Option<Span> = None;
-        
+
         while depth > 0 && !self.is_at_end() {
             let token = self.advance().clone();
             match token.kind {
@@ -1263,45 +1275,46 @@ impl Parser {
             self.parse_code_block()
         } else {
             // Single line - collect tokens until we hit a newline-ish boundary
-            // For simplicity, we'll collect until we see a language keyword, 
+            // For simplicity, we'll collect until we see a language keyword,
             // closing brace, or known property keyword
             let mut code_tokens = Vec::new();
 
             while !self.is_at_end() {
                 let token = self.peek();
-                
+
                 // Stop conditions for inline code - all keywords that could follow
-                if matches!(token.kind, 
-                    TokenKind::RBrace |
-                    TokenKind::Go |
-                    TokenKind::Ts |
-                    TokenKind::TypeScript |
-                    TokenKind::Rust |
-                    TokenKind::Python |
-                    TokenKind::Description |
-                    TokenKind::Iterations |
-                    TokenKind::Warmup |
-                    TokenKind::Timeout |
-                    TokenKind::Tags |
-                    TokenKind::Skip |
-                    TokenKind::Validate |
-                    TokenKind::Mode |
-                    TokenKind::Sink |
-                    TokenKind::TargetTime |
-                    TokenKind::MinIterations |
-                    TokenKind::MaxIterations |
-                    TokenKind::OutlierDetection |
-                    TokenKind::CvThreshold |
-                    TokenKind::Memory |
-                    TokenKind::Concurrency |
-                    TokenKind::Before |
-                    TokenKind::After |
-                    TokenKind::Each |
-                    TokenKind::Hex |
-                    TokenKind::Shape |
-                    TokenKind::Bench |
-                    TokenKind::Setup |
-                    TokenKind::Fixture
+                if matches!(
+                    token.kind,
+                    TokenKind::RBrace
+                        | TokenKind::Go
+                        | TokenKind::Ts
+                        | TokenKind::TypeScript
+                        | TokenKind::Rust
+                        | TokenKind::Python
+                        | TokenKind::Description
+                        | TokenKind::Iterations
+                        | TokenKind::Warmup
+                        | TokenKind::Timeout
+                        | TokenKind::Tags
+                        | TokenKind::Skip
+                        | TokenKind::Validate
+                        | TokenKind::Mode
+                        | TokenKind::Sink
+                        | TokenKind::TargetTime
+                        | TokenKind::MinIterations
+                        | TokenKind::MaxIterations
+                        | TokenKind::OutlierDetection
+                        | TokenKind::CvThreshold
+                        | TokenKind::Memory
+                        | TokenKind::Concurrency
+                        | TokenKind::Before
+                        | TokenKind::After
+                        | TokenKind::Each
+                        | TokenKind::Hex
+                        | TokenKind::Shape
+                        | TokenKind::Bench
+                        | TokenKind::Setup
+                        | TokenKind::Fixture
                 ) {
                     break;
                 }
@@ -1354,7 +1367,8 @@ impl Parser {
             self.source[start..end].to_string()
         } else {
             // Fallback to token-based reconstruction if spans are invalid
-            tokens.iter()
+            tokens
+                .iter()
                 .map(|t| t.lexeme.as_str())
                 .collect::<Vec<_>>()
                 .join(" ")
@@ -1364,9 +1378,9 @@ impl Parser {
     // ========== Helper methods ==========
 
     fn peek(&self) -> &Token {
-        self.tokens.get(self.current).unwrap_or_else(|| {
-            self.tokens.last().expect("tokens should have at least EOF")
-        })
+        self.tokens
+            .get(self.current)
+            .unwrap_or_else(|| self.tokens.last().expect("tokens should have at least EOF"))
     }
 
     fn advance(&mut self) -> &Token {
@@ -1406,7 +1420,11 @@ impl Parser {
         }
         let token = self.peek();
         match &token.kind {
-            TokenKind::Go | TokenKind::Ts | TokenKind::TypeScript | TokenKind::Rust | TokenKind::Python => true,
+            TokenKind::Go
+            | TokenKind::Ts
+            | TokenKind::TypeScript
+            | TokenKind::Rust
+            | TokenKind::Python => true,
             TokenKind::Identifier(s) => Lang::from_str(s).is_some(),
             _ => false,
         }
@@ -1434,9 +1452,7 @@ impl Parser {
         if matches!(token.kind, TokenKind::Identifier(_)) {
             Ok(self.advance().clone())
         } else {
-            Err(self.make_error(ParseError::ExpectedIdentifier {
-                span: token.span,
-            }))
+            Err(self.make_error(ParseError::ExpectedIdentifier { span: token.span }))
         }
     }
 
@@ -1471,12 +1487,10 @@ impl Parser {
                 self.advance();
                 Ok(l)
             }
-            None => {
-                Err(self.make_error(ParseError::UnknownLang {
-                    lang: token.lexeme.clone(),
-                    span: token.span,
-                }))
-            }
+            None => Err(self.make_error(ParseError::UnknownLang {
+                lang: token.lexeme.clone(),
+                span: token.span,
+            })),
         }
     }
 
@@ -1504,13 +1518,11 @@ impl Parser {
                 self.advance();
                 Ok(n)
             }
-            _ => {
-                Err(self.make_error(ParseError::ExpectedToken {
-                    expected: "duration (e.g., 30s, 500ms, 1m)".to_string(),
-                    found: format!("{:?}", token.kind),
-                    span: token.span,
-                }))
-            }
+            _ => Err(self.make_error(ParseError::ExpectedToken {
+                expected: "duration (e.g., 30s, 500ms, 1m)".to_string(),
+                found: format!("{:?}", token.kind),
+                span: token.span,
+            })),
         }
     }
 
@@ -1518,25 +1530,23 @@ impl Parser {
     fn expect_execution_order(&mut self) -> Result<ExecutionOrder> {
         let token = self.peek().clone();
         match &token.kind {
-            TokenKind::Identifier(s) => {
-                ExecutionOrder::from_str(s).map(|order| {
+            TokenKind::Identifier(s) => ExecutionOrder::from_str(s)
+                .map(|order| {
                     self.advance();
                     order
-                }).ok_or_else(|| {
+                })
+                .ok_or_else(|| {
                     self.make_error(ParseError::ExpectedToken {
                         expected: "execution order (sequential, parallel, random)".to_string(),
                         found: s.clone(),
                         span: token.span.clone(),
                     })
-                })
-            }
-            _ => {
-                Err(self.make_error(ParseError::ExpectedToken {
-                    expected: "execution order (sequential, parallel, random)".to_string(),
-                    found: format!("{:?}", token.kind),
-                    span: token.span,
-                }))
-            }
+                }),
+            _ => Err(self.make_error(ParseError::ExpectedToken {
+                expected: "execution order (sequential, parallel, random)".to_string(),
+                found: format!("{:?}", token.kind),
+                span: token.span,
+            })),
         }
     }
 
@@ -1544,37 +1554,35 @@ impl Parser {
     fn expect_bench_mode(&mut self) -> Result<BenchMode> {
         let token = self.peek().clone();
         match &token.kind {
-            TokenKind::String(s) => {
-                BenchMode::from_str(s).map(|mode| {
+            TokenKind::String(s) => BenchMode::from_str(s)
+                .map(|mode| {
                     self.advance();
                     mode
-                }).ok_or_else(|| {
+                })
+                .ok_or_else(|| {
                     self.make_error(ParseError::ExpectedToken {
                         expected: "benchmark mode (\"auto\" or \"fixed\")".to_string(),
                         found: s.clone(),
                         span: token.span.clone(),
                     })
-                })
-            }
-            TokenKind::Identifier(s) => {
-                BenchMode::from_str(s).map(|mode| {
+                }),
+            TokenKind::Identifier(s) => BenchMode::from_str(s)
+                .map(|mode| {
                     self.advance();
                     mode
-                }).ok_or_else(|| {
+                })
+                .ok_or_else(|| {
                     self.make_error(ParseError::ExpectedToken {
                         expected: "benchmark mode (auto or fixed)".to_string(),
                         found: s.clone(),
                         span: token.span.clone(),
                     })
-                })
-            }
-            _ => {
-                Err(self.make_error(ParseError::ExpectedToken {
-                    expected: "benchmark mode (auto or fixed)".to_string(),
-                    found: format!("{:?}", token.kind),
-                    span: token.span,
-                }))
-            }
+                }),
+            _ => Err(self.make_error(ParseError::ExpectedToken {
+                expected: "benchmark mode (auto or fixed)".to_string(),
+                found: format!("{:?}", token.kind),
+                span: token.span,
+            })),
         }
     }
 
@@ -1582,10 +1590,10 @@ impl Parser {
     fn parse_string_array(&mut self) -> Result<Vec<String>> {
         self.expect(TokenKind::LBracket)?;
         let mut items = Vec::new();
-        
+
         while !self.check(TokenKind::RBracket) && !self.is_at_end() {
             items.push(self.expect_string()?);
-            
+
             // Optional comma
             if !self.check(TokenKind::RBracket) {
                 if self.check(TokenKind::Comma) {
@@ -1593,7 +1601,7 @@ impl Parser {
                 }
             }
         }
-        
+
         self.expect(TokenKind::RBracket)?;
         Ok(items)
     }
@@ -1602,7 +1610,7 @@ impl Parser {
     fn parse_lang_array(&mut self) -> Result<Vec<Lang>> {
         self.expect(TokenKind::LBracket)?;
         let mut items = Vec::new();
-        
+
         while !self.check(TokenKind::RBracket) && !self.is_at_end() {
             let s = self.expect_string()?;
             let lang = Lang::from_str(&s).ok_or_else(|| {
@@ -1612,7 +1620,7 @@ impl Parser {
                 })
             })?;
             items.push(lang);
-            
+
             // Optional comma
             if !self.check(TokenKind::RBracket) {
                 if self.check(TokenKind::Comma) {
@@ -1620,17 +1628,14 @@ impl Parser {
                 }
             }
         }
-        
+
         self.expect(TokenKind::RBracket)?;
         Ok(items)
     }
 
     fn make_error(&self, error: ParseError) -> Report {
         Report::new(error)
-            .with_source_code(NamedSource::new(
-                self.filename.clone(),
-                self.source.clone(),
-            ))
+            .with_source_code(NamedSource::new(self.filename.clone(), self.source.clone()))
     }
 }
 
@@ -1664,16 +1669,16 @@ suite hash {
 "#;
         let result = parse(source, "test.bench");
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-        
+
         let file = result.unwrap();
         assert_eq!(file.suites.len(), 1);
-        
+
         let suite = &file.suites[0];
         assert_eq!(suite.name, "hash");
         assert_eq!(suite.description, Some("Hash benchmarks".to_string()));
         assert_eq!(suite.iterations, Some(5000));
         assert_eq!(suite.benchmarks.len(), 1);
-        
+
         let bench = &suite.benchmarks[0];
         assert_eq!(bench.name, "keccak256");
         assert!(bench.implementations.contains_key(&Lang::Go));
@@ -1695,7 +1700,7 @@ suite test {
 "#;
         let result = parse(source, "test.bench");
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-        
+
         let file = result.unwrap();
         let suite = &file.suites[0];
         assert_eq!(suite.fixtures.len(), 1);
@@ -1734,17 +1739,17 @@ suite test {
 "#;
         let result = parse(source, "test.bench");
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-        
+
         let file = result.unwrap();
         let suite = &file.suites[0];
         assert!(suite.setups.contains_key(&Lang::Go));
         assert!(suite.setups.contains_key(&Lang::TypeScript));
-        
+
         // Verify structured setup was parsed
         let go_setup = suite.setups.get(&Lang::Go).unwrap();
         assert!(go_setup.imports.is_some());
         assert!(go_setup.init.is_some());
-        
+
         let ts_setup = suite.setups.get(&Lang::TypeScript).unwrap();
         assert!(ts_setup.imports.is_some());
         assert!(ts_setup.init.is_some());
@@ -1782,11 +1787,11 @@ suite test {
 "#;
         let result = parse(source, "test.bench");
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-        
+
         let file = result.unwrap();
         let suite = &file.suites[0];
         let go_setup = suite.setups.get(&Lang::Go).unwrap();
-        
+
         assert!(go_setup.imports.is_some());
         assert!(go_setup.declarations.is_some());
         assert!(go_setup.init.is_some());
@@ -1826,10 +1831,10 @@ suite test {
 "#;
         let result = parse(source, "test.bench");
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-        
+
         let file = result.unwrap();
         let bench = &file.suites[0].benchmarks[0];
-        
+
         assert_eq!(bench.iterations, Some(100));
         assert_eq!(bench.warmup, Some(10));
         assert_eq!(bench.timeout, Some(30000)); // 30s in ms
@@ -1864,10 +1869,10 @@ suite test {
 "#;
         let result = parse(source, "test.bench");
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-        
+
         let file = result.unwrap();
         let suite = &file.suites[0];
-        
+
         assert_eq!(suite.timeout, Some(60000)); // 60s in ms
         assert_eq!(suite.requires.len(), 2);
         assert!(suite.compare);
@@ -1887,7 +1892,7 @@ suite test {
 "#;
         let result = parse(source, "test.bench");
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-        
+
         let file = result.unwrap();
         assert_eq!(file.use_stds.len(), 1);
         assert_eq!(file.use_stds[0].module, "constants");
@@ -1908,7 +1913,7 @@ suite test {
 "#;
         let result = parse(source, "test.bench");
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-        
+
         let file = result.unwrap();
         assert_eq!(file.use_stds.len(), 2);
         assert_eq!(file.use_stds[0].module, "constants");
@@ -1932,7 +1937,7 @@ suite test {
 "#;
         let result = parse(source, "test.bench");
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-        
+
         let file = result.unwrap();
         assert!(file.global_setup.is_some());
         let gs = file.global_setup.unwrap();
@@ -1956,7 +1961,7 @@ suite test {
 "#;
         let result = parse(source, "test.bench");
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-        
+
         let file = result.unwrap();
         assert!(file.global_setup.is_some());
         let gs = file.global_setup.unwrap();
@@ -1984,7 +1989,7 @@ suite test2 {
 "#;
         let result = parse(source, "test.bench");
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-        
+
         let file = result.unwrap();
         assert_eq!(file.use_stds.len(), 1);
         assert_eq!(file.suites.len(), 2);
@@ -2009,14 +2014,14 @@ suite evmTest {
 "#;
         let result = parse(source, "test.bench");
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-        
+
         let file = result.unwrap();
         assert_eq!(file.suites.len(), 1);
-        
+
         let suite = &file.suites[0];
         assert_eq!(suite.name, "evmTest");
         assert!(suite.global_setup.is_some());
-        
+
         let gs = suite.global_setup.as_ref().unwrap();
         assert!(gs.anvil_config.is_some());
     }
@@ -2038,12 +2043,15 @@ suite evmTest {
 "#;
         let result = parse(source, "test.bench");
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-        
+
         let file = result.unwrap();
         let suite = &file.suites[0];
         let gs = suite.global_setup.as_ref().unwrap();
         let anvil = gs.anvil_config.as_ref().unwrap();
-        assert_eq!(anvil.fork_url, Some("https://mainnet.infura.io".to_string()));
+        assert_eq!(
+            anvil.fork_url,
+            Some("https://mainnet.infura.io".to_string())
+        );
     }
 
     #[test]
@@ -2070,10 +2078,10 @@ suite test2 {
 "#;
         let result = parse(source, "test.bench");
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-        
+
         let file = result.unwrap();
         assert_eq!(file.suites.len(), 2);
-        
+
         // Both suites should have inherited the file-level globalSetup
         assert!(file.suites[0].global_setup.is_some());
         assert!(file.suites[1].global_setup.is_some());
@@ -2101,12 +2109,12 @@ suite test1 {
 "#;
         let result = parse(source, "test.bench");
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-        
+
         let file = result.unwrap();
         let suite = &file.suites[0];
         let gs = suite.global_setup.as_ref().unwrap();
         let anvil = gs.anvil_config.as_ref().unwrap();
-        
+
         // Suite's own globalSetup should be used (with fork)
         assert_eq!(anvil.fork_url, Some("https://custom.rpc".to_string()));
     }

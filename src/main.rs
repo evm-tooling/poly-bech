@@ -9,11 +9,11 @@ use miette::Result;
 use std::path::PathBuf;
 
 use poly_bench_dsl as dsl;
+use poly_bench_executor as executor;
 use poly_bench_ir as ir;
 use poly_bench_project as project;
-use poly_bench_runtime as runtime;
-use poly_bench_executor as executor;
 use poly_bench_reporter as reporter;
+use poly_bench_runtime as runtime;
 use tower_lsp::{LspService, Server};
 
 /// Current binary version (set at compile time).
@@ -30,7 +30,12 @@ struct Cli {
     version: bool,
 
     /// Colorize output [possible values: auto, always, never]
-    #[arg(long, global = true, value_name = "WHEN", help_heading = "Display options")]
+    #[arg(
+        long,
+        global = true,
+        value_name = "WHEN",
+        help_heading = "Display options"
+    )]
     color: Option<String>,
 
     /// Reduce log output
@@ -208,7 +213,10 @@ async fn main() -> Result<()> {
             go_project,
             ts_project,
         } => {
-            cmd_run(file, lang, iterations, &report, output, go_project, ts_project).await?;
+            cmd_run(
+                file, lang, iterations, &report, output, go_project, ts_project,
+            )
+            .await?;
         }
         Commands::Codegen { file, lang, output } => {
             cmd_codegen(&file, &lang, &output).await?;
@@ -229,7 +237,10 @@ async fn main() -> Result<()> {
         Commands::Install => {
             cmd_install()?;
         }
-        Commands::Build { force, skip_install } => {
+        Commands::Build {
+            force,
+            skip_install,
+        } => {
             cmd_build(force, skip_install)?;
         }
         Commands::Fmt { files, write } => {
@@ -261,7 +272,8 @@ async fn cmd_check(file: &PathBuf, show_ast: bool) -> Result<()> {
     let source = std::fs::read_to_string(file)
         .map_err(|e| miette::miette!("Failed to read file {}: {}", file.display(), e))?;
 
-    let filename = file.file_name()
+    let filename = file
+        .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown");
 
@@ -269,9 +281,10 @@ async fn cmd_check(file: &PathBuf, show_ast: bool) -> Result<()> {
         Ok(ast) => {
             println!("{} {}", "✓".green().bold(), file.display());
             println!("  {} suite(s) parsed successfully", ast.suites.len());
-            
+
             for suite in &ast.suites {
-                println!("  {} suite '{}': {} benchmarks, {} fixtures",
+                println!(
+                    "  {} suite '{}': {} benchmarks, {} fixtures",
                     "→".blue(),
                     suite.name,
                     suite.benchmarks.len(),
@@ -286,9 +299,7 @@ async fn cmd_check(file: &PathBuf, show_ast: bool) -> Result<()> {
 
             Ok(())
         }
-        Err(e) => {
-            Err(e)
-        }
+        Err(e) => Err(e),
     }
 }
 
@@ -310,23 +321,24 @@ async fn cmd_run(
             // Try to find project root and discover benchmark files
             let current_dir = std::env::current_dir()
                 .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
-            
-            let project_root = project::find_project_root(&current_dir)
-                .ok_or_else(|| miette::miette!(
+
+            let project_root = project::find_project_root(&current_dir).ok_or_else(|| {
+                miette::miette!(
                     "No .bench file specified and not in a poly-bench project.\n\
                     Either specify a file: poly-bench run <file.bench>\n\
                     Or initialize a project: poly-bench init <name>"
-                ))?;
-            
+                )
+            })?;
+
             let bench_files = project::find_bench_files(&project_root)?;
-            
+
             if bench_files.is_empty() {
                 return Err(miette::miette!(
                     "No .bench files found in {}/",
                     project::BENCHMARKS_DIR
                 ));
             }
-            
+
             bench_files
         }
     };
@@ -342,13 +354,14 @@ async fn cmd_run(
     // Run each benchmark file
     let mut all_results = Vec::new();
     let mut all_chart_directives = Vec::new();
-    
+
     for bench_file in &files {
         // Parse the DSL file
         let source = std::fs::read_to_string(bench_file)
             .map_err(|e| miette::miette!("Failed to read file {}: {}", bench_file.display(), e))?;
 
-        let filename = bench_file.file_name()
+        let filename = bench_file
+            .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown");
 
@@ -356,14 +369,19 @@ async fn cmd_run(
 
         // Lower to IR
         let ir = ir::lower(&ast, bench_file.parent())?;
-        
+
         // Collect chart directives
         all_chart_directives.extend(ir.chart_directives.clone());
 
         // Resolve project roots for module resolution
-        let project_roots = resolve_project_roots(go_project.clone(), ts_project.clone(), bench_file)?;
+        let project_roots =
+            resolve_project_roots(go_project.clone(), ts_project.clone(), bench_file)?;
 
-        println!("{} Running benchmarks from {}", "▶".green().bold(), bench_file.display());
+        println!(
+            "{} Running benchmarks from {}",
+            "▶".green().bold(),
+            bench_file.display()
+        );
 
         // Execute benchmarks
         let results = executor::run(&ir, &langs, iterations, &project_roots).await?;
@@ -377,35 +395,40 @@ async fn cmd_run(
         // Merge multiple results into one
         merge_results(all_results)
     };
-    
+
     // Default output directory for auto-saved results
     let default_output_dir = PathBuf::from("out");
-    
+
     // Auto-save results to .polybench/results.json
     {
         std::fs::create_dir_all(&default_output_dir)
             .map_err(|e| miette::miette!("Failed to create output directory: {}", e))?;
-        
+
         let json = reporter::json::report(&results)?;
         let results_path = default_output_dir.join("results.json");
         std::fs::write(&results_path, &json)
             .map_err(|e| miette::miette!("Failed to save results: {}", e))?;
-        
-        println!("\n{} Results saved to {}", "💾".cyan(), results_path.display());
+
+        println!(
+            "\n{} Results saved to {}",
+            "💾".cyan(),
+            results_path.display()
+        );
     }
-    
+
     // Execute chart directives if any
     if !all_chart_directives.is_empty() {
         let chart_output_dir = output.clone().unwrap_or_else(|| default_output_dir.clone());
-        
-        println!("{} Generating {} chart(s)...", "📊".cyan(), all_chart_directives.len());
-        
-        let generated_charts = reporter::execute_chart_directives(
-            &all_chart_directives,
-            &results,
-            &chart_output_dir,
-        )?;
-        
+
+        println!(
+            "{} Generating {} chart(s)...",
+            "📊".cyan(),
+            all_chart_directives.len()
+        );
+
+        let generated_charts =
+            reporter::execute_chart_directives(&all_chart_directives, &results, &chart_output_dir)?;
+
         for chart in &generated_charts {
             println!("  {} Generated: {}", "✓".green(), chart.path);
         }
@@ -450,19 +473,19 @@ async fn cmd_run(
     Ok(())
 }
 
-use executor::{ProjectRoots, BenchmarkResults};
+use executor::{BenchmarkResults, ProjectRoots};
 
 /// Merge multiple benchmark results into one
 fn merge_results(mut results: Vec<BenchmarkResults>) -> BenchmarkResults {
     if results.is_empty() {
         return BenchmarkResults::new(vec![]);
     }
-    
+
     let mut all_suites = Vec::new();
     for result in results.drain(..) {
         all_suites.extend(result.suites);
     }
-    
+
     BenchmarkResults::new(all_suites)
 }
 
@@ -473,25 +496,33 @@ fn resolve_project_roots(
     bench_file: &PathBuf,
 ) -> Result<ProjectRoots> {
     let mut roots = ProjectRoots::default();
-    
+
     // Handle explicit Go project root
     if let Some(ref dir) = go_explicit {
-        let canonical = dir.canonicalize()
-            .map_err(|e| miette::miette!("Cannot access Go project root {}: {}", dir.display(), e))?;
-        
+        let canonical = dir.canonicalize().map_err(|e| {
+            miette::miette!("Cannot access Go project root {}: {}", dir.display(), e)
+        })?;
+
         if !canonical.join("go.mod").exists() {
-            return Err(miette::miette!("No go.mod found in {}", canonical.display()));
+            return Err(miette::miette!(
+                "No go.mod found in {}",
+                canonical.display()
+            ));
         }
         roots.go_root = Some(canonical);
     }
-    
+
     // Handle explicit TypeScript project root
     if let Some(ref dir) = ts_explicit {
-        let canonical = dir.canonicalize()
-            .map_err(|e| miette::miette!("Cannot access TS project root {}: {}", dir.display(), e))?;
-        
+        let canonical = dir.canonicalize().map_err(|e| {
+            miette::miette!("Cannot access TS project root {}: {}", dir.display(), e)
+        })?;
+
         if !canonical.join("package.json").exists() && !canonical.join("node_modules").exists() {
-            return Err(miette::miette!("No package.json or node_modules found in {}", canonical.display()));
+            return Err(miette::miette!(
+                "No package.json or node_modules found in {}",
+                canonical.display()
+            ));
         }
         roots.node_root = Some(canonical);
     }
@@ -539,7 +570,8 @@ async fn cmd_codegen(file: &PathBuf, lang: &str, output: &PathBuf) -> Result<()>
     let source = std::fs::read_to_string(file)
         .map_err(|e| miette::miette!("Failed to read file {}: {}", file.display(), e))?;
 
-    let filename = file.file_name()
+    let filename = file
+        .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown");
 
@@ -558,14 +590,22 @@ async fn cmd_codegen(file: &PathBuf, lang: &str, output: &PathBuf) -> Result<()>
             let out_path = output.join("benchmark_plugin.go");
             std::fs::write(&out_path, &code)
                 .map_err(|e| miette::miette!("Failed to write generated code: {}", e))?;
-            println!("{} Generated Go plugin: {}", "✓".green().bold(), out_path.display());
+            println!(
+                "{} Generated Go plugin: {}",
+                "✓".green().bold(),
+                out_path.display()
+            );
         }
         "ts" | "typescript" => {
             let code = runtime::js::codegen::generate(&ir)?;
             let out_path = output.join("benchmark.ts");
             std::fs::write(&out_path, &code)
                 .map_err(|e| miette::miette!("Failed to write generated code: {}", e))?;
-            println!("{} Generated TypeScript: {}", "✓".green().bold(), out_path.display());
+            println!(
+                "{} Generated TypeScript: {}",
+                "✓".green().bold(),
+                out_path.display()
+            );
         }
         _ => {
             return Err(miette::miette!("Unknown language: {}", lang));
@@ -589,7 +629,11 @@ fn cmd_upgrade() -> Result<()> {
         }
     };
     if !version_check::is_older(current, &latest) {
-        println!("{} Already on latest version ({}).", "✓".green().bold(), current);
+        println!(
+            "{} Already on latest version ({}).",
+            "✓".green().bold(),
+            current
+        );
         return Ok(());
     }
     println!("Upgrading from {} to {}...", current, latest);
@@ -644,8 +688,8 @@ fn cmd_init(name: Option<&str>, languages: Vec<String>, no_example: bool) -> Res
 fn init_interactive() -> Result<(String, Vec<String>)> {
     use dialoguer::{Input, MultiSelect};
     use miette::miette;
-    use std::time::Duration;
     use std::thread;
+    use std::time::Duration;
 
     init_t3::print_init_logo();
     thread::sleep(Duration::from_millis(120));
@@ -669,11 +713,7 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
 
     thread::sleep(Duration::from_millis(80));
 
-    let lang_choices = &[
-        "All (Go + TypeScript)",
-        "Go",
-        "TypeScript",
-    ];
+    let lang_choices = &["All (Go + TypeScript)", "Go", "TypeScript"];
     let defaults = vec![false, false, false]; // Nothing selected by default
     let prompt = "Which languages to include? (Space = toggle one · choose 'All' for both)";
     let selected: Vec<usize> = MultiSelect::with_theme(&theme)
@@ -689,26 +729,27 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
 
     // Resolve selection to language list. "All" means both only when both Go and TypeScript
     // are selected; if user has All but toggles off one, we use only the remaining selected langs.
-    let languages: Vec<String> = if selected.contains(&0) && selected.contains(&1) && selected.contains(&2) {
-        vec!["go".to_string(), "ts".to_string()]
-    } else if selected.contains(&0) {
-        // All is checked but not both individual options — use only the checked individual langs
-        let only_langs: Vec<String> = selected
-            .iter()
-            .filter(|&&i| i != 0)
-            .map(|&i| if i == 1 { "go" } else { "ts" }.to_string())
-            .collect();
-        if only_langs.is_empty() {
-            vec!["go".to_string(), "ts".to_string()] // All alone = both
+    let languages: Vec<String> =
+        if selected.contains(&0) && selected.contains(&1) && selected.contains(&2) {
+            vec!["go".to_string(), "ts".to_string()]
+        } else if selected.contains(&0) {
+            // All is checked but not both individual options — use only the checked individual langs
+            let only_langs: Vec<String> = selected
+                .iter()
+                .filter(|&&i| i != 0)
+                .map(|&i| if i == 1 { "go" } else { "ts" }.to_string())
+                .collect();
+            if only_langs.is_empty() {
+                vec!["go".to_string(), "ts".to_string()] // All alone = both
+            } else {
+                only_langs
+            }
         } else {
-            only_langs
-        }
-    } else {
-        selected
-            .into_iter()
-            .map(|i| if i == 1 { "go" } else { "ts" }.to_string())
-            .collect()
-    };
+            selected
+                .into_iter()
+                .map(|i| if i == 1 { "go" } else { "ts" }.to_string())
+                .collect()
+        };
 
     Ok((name, languages))
 }
@@ -779,8 +820,9 @@ async fn cmd_fmt(files: Vec<PathBuf>, write: bool) -> Result<()> {
             Ok(ast) => {
                 let formatted = dsl::format_file(&ast);
                 if write {
-                    std::fs::write(file, &formatted)
-                        .map_err(|e| miette::miette!("Failed to write {}: {}", file.display(), e))?;
+                    std::fs::write(file, &formatted).map_err(|e| {
+                        miette::miette!("Failed to write {}: {}", file.display(), e)
+                    })?;
                     println!("{} {}", "✓".green().bold(), file.display());
                 } else {
                     print!("{}", formatted);

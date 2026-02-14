@@ -151,7 +151,7 @@ mod tests {
     fn test_charting_symbols() {
         let symbols = get_symbols();
         assert_eq!(symbols.len(), 3);
-        
+
         let names: Vec<_> = symbols.iter().map(|s| s.name).collect();
         assert!(names.contains(&"drawBarChart"));
         assert!(names.contains(&"drawPieChart"));

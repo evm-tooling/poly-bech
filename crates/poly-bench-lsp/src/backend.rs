@@ -69,7 +69,8 @@ impl Backend {
     /// Queue a document change for debounced processing
     fn queue_change(&self, uri: Url, _text: String, _version: i32) -> u64 {
         let change_id = self.change_counter.fetch_add(1, Ordering::SeqCst);
-        self.pending_changes.insert(uri, PendingChange { change_id });
+        self.pending_changes
+            .insert(uri, PendingChange { change_id });
         change_id
     }
 
@@ -242,7 +243,7 @@ impl LanguageServer for Backend {
                     resolve_provider: Some(false),
                     trigger_characters: Some(vec![
                         ":".to_string(),
-                        ".".to_string(),  // For module.member access (anvil.spawnAnvil)
+                        ".".to_string(), // For module.member access (anvil.spawnAnvil)
                         " ".to_string(),
                         "{".to_string(),
                     ]),
@@ -312,7 +313,8 @@ impl LanguageServer for Backend {
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         // Run full diagnostics (including embedded Go/TS) on save so they don't block typing
-        self.on_save_full_diagnostics(params.text_document.uri).await;
+        self.on_save_full_diagnostics(params.text_document.uri)
+            .await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
@@ -350,10 +352,7 @@ impl LanguageServer for Backend {
                 Err(e) => {
                     // Log the panic but don't crash
                     self.client
-                        .log_message(
-                            MessageType::ERROR,
-                            format!("Hover panic caught: {:?}", e),
-                        )
+                        .log_message(MessageType::ERROR, format!("Hover panic caught: {:?}", e))
                         .await;
                     Ok(None)
                 }
@@ -368,7 +367,8 @@ impl LanguageServer for Backend {
         let position = params.text_document_position.position;
 
         // Get trigger character if available (e.g., "." when user types "anvil.")
-        let trigger_char = params.context
+        let trigger_char = params
+            .context
             .as_ref()
             .and_then(|ctx| ctx.trigger_character.as_deref())
             .map(|s| s.to_string());
@@ -451,7 +451,10 @@ impl LanguageServer for Backend {
                 };
 
                 let range = Range {
-                    start: Position { line: 0, character: 0 },
+                    start: Position {
+                        line: 0,
+                        character: 0,
+                    },
                     end: Position {
                         line: last_line,
                         character: last_line_len,

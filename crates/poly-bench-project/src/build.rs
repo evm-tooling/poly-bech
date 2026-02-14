@@ -34,14 +34,16 @@ pub fn build_project(options: &BuildOptions) -> Result<()> {
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
 
-    let project_root = crate::find_project_root(&current_dir)
-        .ok_or_else(|| miette::miette!(
-            "Not in a poly-bench project. Run 'poly-bench init' first."
-        ))?;
+    let project_root = crate::find_project_root(&current_dir).ok_or_else(|| {
+        miette::miette!("Not in a poly-bench project. Run 'poly-bench init' first.")
+    })?;
 
     let manifest = crate::load_manifest(&project_root)?;
 
-    let spinner = terminal::step_spinner(&format!("Building runtime environment for '{}'...", manifest.project.name));
+    let spinner = terminal::step_spinner(&format!(
+        "Building runtime environment for '{}'...",
+        manifest.project.name
+    ));
     terminal::ensure_min_display(&spinner);
     spinner.finish_and_clear();
 
@@ -52,7 +54,12 @@ pub fn build_project(options: &BuildOptions) -> Result<()> {
 
     // Build TypeScript environment
     if manifest.has_ts() {
-        build_ts_env(&project_root, manifest.ts.as_ref().unwrap(), &manifest.project.name, options)?;
+        build_ts_env(
+            &project_root,
+            manifest.ts.as_ref().unwrap(),
+            &manifest.project.name,
+            options,
+        )?;
     }
 
     println!();
@@ -83,7 +90,7 @@ fn build_go_env(
         let go_mod_content = templates::go_mod(&go_config.module, go_config.version.as_deref());
         std::fs::write(&go_mod_path, &go_mod_content)
             .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
-        
+
         if go_mod_exists && options.force {
             terminal::success_indented("Regenerated go.mod");
         } else {
@@ -98,7 +105,7 @@ fn build_go_env(
         for (package, version) in &go_config.dependencies {
             let go_get_arg = go_get_spec_for_transitives(package, version);
             let spinner = terminal::indented_spinner(&format!("Installing {}...", package));
-            
+
             let output = terminal::run_command_with_spinner(
                 &spinner,
                 Command::new("go")
@@ -109,7 +116,10 @@ fn build_go_env(
 
             if !output.status.success() {
                 let err_msg = terminal::first_error_line(&output.stderr);
-                terminal::finish_warning_indented(&spinner, &format!("Failed to install {}: {}", package, err_msg));
+                terminal::finish_warning_indented(
+                    &spinner,
+                    &format!("Failed to install {}: {}", package, err_msg),
+                );
             } else {
                 terminal::finish_success_indented(&spinner, package);
             }
@@ -146,7 +156,7 @@ fn build_ts_env(
         let package_json_content = templates::package_json_pretty(project_name);
         std::fs::write(&package_json_path, &package_json_content)
             .map_err(|e| miette::miette!("Failed to write package.json: {}", e))?;
-        
+
         if package_json_exists && options.force {
             terminal::success_indented("Regenerated package.json");
         } else {
@@ -164,7 +174,7 @@ fn build_ts_env(
         let tsconfig_content = templates::tsconfig_json();
         std::fs::write(&tsconfig_path, &tsconfig_content)
             .map_err(|e| miette::miette!("Failed to write tsconfig.json: {}", e))?;
-        
+
         if tsconfig_exists && options.force {
             terminal::success_indented("Regenerated tsconfig.json");
         } else {
@@ -177,18 +187,19 @@ fn build_ts_env(
     // Add user dependencies from manifest to package.json
     if !ts_config.dependencies.is_empty() {
         update_package_json_deps(&ts_env, ts_config)?;
-        terminal::success_indented(&format!("Added {} dependencies to package.json", ts_config.dependencies.len()));
+        terminal::success_indented(&format!(
+            "Added {} dependencies to package.json",
+            ts_config.dependencies.len()
+        ));
     }
 
     // Run npm install if not skipped
     if !options.skip_install {
         let spinner = terminal::indented_spinner("Running npm install...");
-        
+
         let output = terminal::run_command_with_spinner(
             &spinner,
-            Command::new("npm")
-                .args(["install"])
-                .current_dir(&ts_env),
+            Command::new("npm").args(["install"]).current_dir(&ts_env),
         );
 
         match output {
@@ -197,7 +208,10 @@ fn build_ts_env(
             }
             Ok(out) => {
                 let err_msg = terminal::first_error_line(&out.stderr);
-                terminal::finish_warning_indented(&spinner, &format!("npm install failed: {}", err_msg));
+                terminal::finish_warning_indented(
+                    &spinner,
+                    &format!("npm install failed: {}", err_msg),
+                );
                 eprintln!("    Run 'npm install' manually in {}", ts_env.display());
             }
             Err(e) => {
@@ -234,10 +248,7 @@ fn go_get_spec_for_transitives(package: &str, version: &str) -> String {
 }
 
 /// Update package.json with dependencies from the manifest
-fn update_package_json_deps(
-    ts_root: &Path,
-    ts_config: &manifest::TsConfig,
-) -> Result<()> {
+fn update_package_json_deps(ts_root: &Path, ts_config: &manifest::TsConfig) -> Result<()> {
     let package_json_path = ts_root.join("package.json");
     let content = std::fs::read_to_string(&package_json_path)
         .map_err(|e| miette::miette!("Failed to read package.json: {}", e))?;
@@ -299,13 +310,19 @@ module = "test-project"
         };
 
         let result = build_project(&options);
-        
+
         // Restore directory
         std::env::set_current_dir(original_dir).unwrap();
 
         assert!(result.is_ok());
-        assert!(project_path.join(".polybench/runtime-env/go/go.mod").exists());
-        assert!(project_path.join(".polybench/runtime-env/ts/package.json").exists());
-        assert!(project_path.join(".polybench/runtime-env/ts/tsconfig.json").exists());
+        assert!(project_path
+            .join(".polybench/runtime-env/go/go.mod")
+            .exists());
+        assert!(project_path
+            .join(".polybench/runtime-env/ts/package.json")
+            .exists());
+        assert!(project_path
+            .join(".polybench/runtime-env/ts/tsconfig.json")
+            .exists());
     }
 }

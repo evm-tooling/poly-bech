@@ -7,7 +7,9 @@ use poly_bench_dsl as dsl;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
 
 use super::document::ParsedDocument;
-use super::embedded::{check_embedded_blocks, extract_embedded_blocks, EmbeddedCheckResult, EmbeddedConfig};
+use super::embedded::{
+    check_embedded_blocks, extract_embedded_blocks, EmbeddedCheckResult, EmbeddedConfig,
+};
 
 /// Compute all diagnostics for a document (including embedded Go/TS checks)
 #[allow(dead_code)]
@@ -71,7 +73,7 @@ pub fn compute_diagnostics_with_config(
     if let Some(ref ast) = doc.ast {
         // Run file-level validation (includes charting import checks)
         let file_result = dsl::validate_file(ast);
-        
+
         // Add file-level validation errors
         for error in file_result.errors {
             let range = file_location_to_range(doc, &error.location, ast);
@@ -132,7 +134,7 @@ fn file_location_to_range(
     if let Some(ref loc) = location {
         // Parse location format: "suite.name" or "suite.name.bench.benchmark_name"
         let parts: Vec<&str> = loc.split('.').collect();
-        
+
         // Find the suite by name
         if parts.len() >= 2 && parts[0] == "suite" {
             let suite_name = parts[1];
@@ -140,31 +142,39 @@ fn file_location_to_range(
                 return location_to_range(doc, location, suite);
             }
         }
-        
+
         // Parse location format: "line N"
         if loc.starts_with("line ") {
             if let Ok(line) = loc[5..].parse::<u32>() {
                 return Range {
-                    start: Position { line: line.saturating_sub(1), character: 0 },
-                    end: Position { line: line.saturating_sub(1), character: 100 },
+                    start: Position {
+                        line: line.saturating_sub(1),
+                        character: 0,
+                    },
+                    end: Position {
+                        line: line.saturating_sub(1),
+                        character: 100,
+                    },
                 };
             }
         }
     }
-    
+
     // Default to start of file
     Range {
-        start: Position { line: 0, character: 0 },
-        end: Position { line: 0, character: 1 },
+        start: Position {
+            line: 0,
+            character: 0,
+        },
+        end: Position {
+            line: 0,
+            character: 1,
+        },
     }
 }
 
 /// Convert a validation location string to an LSP Range
-fn location_to_range(
-    doc: &ParsedDocument,
-    location: &Option<String>,
-    suite: &dsl::Suite,
-) -> Range {
+fn location_to_range(doc: &ParsedDocument, location: &Option<String>, suite: &dsl::Suite) -> Range {
     if let Some(ref loc) = location {
         // Parse location format: "suite.name.bench.benchmark_name"
         let parts: Vec<&str> = loc.split('.').collect();
@@ -225,6 +235,8 @@ suite test {
         let doc = ParsedDocument::parse(source, "test.bench", 1);
         let diagnostics = compute_diagnostics(&doc);
 
-        assert!(diagnostics.iter().any(|d| d.message.contains("no language implementations")));
+        assert!(diagnostics
+            .iter()
+            .any(|d| d.message.contains("no language implementations")));
     }
 }

@@ -1,8 +1,8 @@
 //! Cross-language comparison types and logic
 
 use poly_bench_dsl::Lang;
-use poly_bench_runtime::measurement::{Measurement, Comparison, ComparisonWinner};
-use serde::{Serialize, Deserialize};
+use poly_bench_runtime::measurement::{Comparison, ComparisonWinner, Measurement};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Results from running all benchmarks
@@ -35,9 +35,18 @@ pub struct SuiteResults {
 }
 
 impl SuiteResults {
-    pub fn new(name: String, description: Option<String>, benchmarks: Vec<BenchmarkResult>) -> Self {
+    pub fn new(
+        name: String,
+        description: Option<String>,
+        benchmarks: Vec<BenchmarkResult>,
+    ) -> Self {
         let summary = SuiteSummary::calculate(&benchmarks);
-        Self { name, description, benchmarks, summary }
+        Self {
+            name,
+            description,
+            benchmarks,
+            summary,
+        }
     }
 }
 
@@ -64,7 +73,13 @@ impl BenchmarkResult {
         measurements: HashMap<Lang, Measurement>,
     ) -> Self {
         let comparison = Self::calculate_comparison(&measurements);
-        Self { name, full_name, description, measurements, comparison }
+        Self {
+            name,
+            full_name,
+            description,
+            measurements,
+            comparison,
+        }
     }
 
     fn calculate_comparison(measurements: &HashMap<Lang, Measurement>) -> Option<Comparison> {
@@ -122,7 +137,7 @@ impl SuiteSummary {
                     total_outliers_removed += outliers;
                 }
             }
-            
+
             if let Some(ref comparison) = bench.comparison {
                 match comparison.winner {
                     ComparisonWinner::First => go_wins += 1,
@@ -233,9 +248,18 @@ impl OverallSummary {
         let (winner, winner_description) = if (geo_mean_speedup - 1.0).abs() < 0.05 {
             (None, "Similar performance".to_string())
         } else if geo_mean_speedup > 1.0 {
-            (Some(Lang::Go), format!("Go is {:.2}x faster overall", geo_mean_speedup))
+            (
+                Some(Lang::Go),
+                format!("Go is {:.2}x faster overall", geo_mean_speedup),
+            )
         } else {
-            (Some(Lang::TypeScript), format!("TypeScript is {:.2}x faster overall", 1.0 / geo_mean_speedup))
+            (
+                Some(Lang::TypeScript),
+                format!(
+                    "TypeScript is {:.2}x faster overall",
+                    1.0 / geo_mean_speedup
+                ),
+            )
         };
 
         Self {

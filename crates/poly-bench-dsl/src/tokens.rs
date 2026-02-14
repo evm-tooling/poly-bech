@@ -16,52 +16,52 @@ pub enum TokenKind {
     Warmup,
 
     // Phase 1: Structured setup keywords
-    Declare,     // declare
-    Init,        // init
-    Helpers,     // helpers
-    Import,      // import
+    Declare, // declare
+    Init,    // init
+    Helpers, // helpers
+    Import,  // import
 
     // Phase 2: Benchmark configuration keywords
-    Timeout,     // timeout
-    Tags,        // tags
-    Skip,        // skip
-    Validate,    // validate
+    Timeout,  // timeout
+    Tags,     // tags
+    Skip,     // skip
+    Validate, // validate
 
     // Phase 3: Lifecycle hook keywords
-    Before,      // before
-    After,       // after
-    Each,        // each
+    Before, // before
+    After,  // after
+    Each,   // each
 
     // Phase 4: Suite configuration keywords
-    Requires,    // requires
-    Order,       // order
-    Compare,     // compare
-    Baseline,    // baseline
+    Requires, // requires
+    Order,    // order
+    Compare,  // compare
+    Baseline, // baseline
 
     // Benchmark accuracy keywords
-    Mode,           // mode (auto/fixed)
-    Sink,           // sink (true/false)
-    TargetTime,     // targetTime
-    MinIterations,  // minIterations
-    MaxIterations,  // maxIterations
-    
+    Mode,          // mode (auto/fixed)
+    Sink,          // sink (true/false)
+    TargetTime,    // targetTime
+    MinIterations, // minIterations
+    MaxIterations, // maxIterations
+
     // Statistical analysis keywords
-    OutlierDetection,  // outlierDetection (true/false)
-    CvThreshold,       // cvThreshold (percentage)
-    Count,             // count (number) - run benchmark N times for statistical consistency
-    
+    OutlierDetection, // outlierDetection (true/false)
+    CvThreshold,      // cvThreshold (percentage)
+    Count,            // count (number) - run benchmark N times for statistical consistency
+
     // Observability keywords (Phase 2B)
-    Memory,            // memory (true/false) - enable memory profiling
-    Concurrency,       // concurrency (number) - concurrent goroutines/workers
+    Memory,      // memory (true/false) - enable memory profiling
+    Concurrency, // concurrency (number) - concurrent goroutines/workers
 
     // Phase 5: Fixture keywords
-    Shape,       // shape
+    Shape, // shape
 
     // Phase 8: Async keyword
-    Async,       // async
+    Async, // async
 
     // Standard library keywords
-    Use,         // use
+    Use, // use
 
     // Global setup keywords
     GlobalSetup, // globalSetup
@@ -74,15 +74,15 @@ pub enum TokenKind {
     Python,
 
     // Boolean literals
-    True,            // true
-    False,           // false
+    True,  // true
+    False, // false
 
     // Literals
     Identifier(String),
     String(String),
     Number(u64),
-    Float(f64),      // Floating point number
-    Duration(u64),   // Duration in milliseconds (30s, 500ms, 1m)
+    Float(f64),    // Floating point number
+    Duration(u64), // Duration in milliseconds (30s, 500ms, 1m)
     HexLiteral(String),
 
     // Punctuation
@@ -99,9 +99,9 @@ pub enum TokenKind {
     At,          // @
 
     // Special
-    FileRef,     // @file
+    FileRef, // @file
     Comment(String),
-    
+
     // End of file
     Eof,
 }
@@ -153,7 +153,11 @@ impl TokenKind {
     pub fn is_lang(&self) -> bool {
         matches!(
             self,
-            TokenKind::Go | TokenKind::Ts | TokenKind::TypeScript | TokenKind::Rust | TokenKind::Python
+            TokenKind::Go
+                | TokenKind::Ts
+                | TokenKind::TypeScript
+                | TokenKind::Rust
+                | TokenKind::Python
         )
     }
 
@@ -161,16 +165,17 @@ impl TokenKind {
     pub fn is_setup_section(&self) -> bool {
         matches!(
             self,
-            TokenKind::Import | TokenKind::Declare | TokenKind::Init | TokenKind::Helpers | TokenKind::Async
+            TokenKind::Import
+                | TokenKind::Declare
+                | TokenKind::Init
+                | TokenKind::Helpers
+                | TokenKind::Async
         )
     }
 
     /// Check if this is a benchmark hook keyword
     pub fn is_benchmark_hook(&self) -> bool {
-        matches!(
-            self,
-            TokenKind::Before | TokenKind::After | TokenKind::Each
-        )
+        matches!(self, TokenKind::Before | TokenKind::After | TokenKind::Each)
     }
 }
 
@@ -200,69 +205,69 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         "description" => Some(TokenKind::Description),
         "iterations" => Some(TokenKind::Iterations),
         "warmup" => Some(TokenKind::Warmup),
-        
+
         // Phase 1: Structured setup keywords
         "declare" => Some(TokenKind::Declare),
         "init" => Some(TokenKind::Init),
         "helpers" => Some(TokenKind::Helpers),
         "import" => Some(TokenKind::Import),
-        
+
         // Phase 2: Benchmark configuration keywords
         "timeout" => Some(TokenKind::Timeout),
         "tags" => Some(TokenKind::Tags),
         "skip" => Some(TokenKind::Skip),
         "validate" => Some(TokenKind::Validate),
-        
+
         // Phase 3: Lifecycle hook keywords
         "before" => Some(TokenKind::Before),
         "after" => Some(TokenKind::After),
         "each" => Some(TokenKind::Each),
-        
+
         // Phase 4: Suite configuration keywords
         "requires" => Some(TokenKind::Requires),
         "order" => Some(TokenKind::Order),
         "compare" => Some(TokenKind::Compare),
         "baseline" => Some(TokenKind::Baseline),
-        
+
         // Benchmark accuracy keywords
         "mode" => Some(TokenKind::Mode),
         "sink" => Some(TokenKind::Sink),
         "targetTime" => Some(TokenKind::TargetTime),
         "minIterations" => Some(TokenKind::MinIterations),
         "maxIterations" => Some(TokenKind::MaxIterations),
-        
+
         // Statistical analysis keywords
         "outlierDetection" => Some(TokenKind::OutlierDetection),
         "cvThreshold" => Some(TokenKind::CvThreshold),
         "count" => Some(TokenKind::Count),
-        
+
         // Observability keywords (Phase 2B)
         "memory" => Some(TokenKind::Memory),
         "concurrency" => Some(TokenKind::Concurrency),
-        
+
         // Phase 5: Fixture keywords
         "shape" => Some(TokenKind::Shape),
-        
+
         // Phase 8: Async keyword
         "async" => Some(TokenKind::Async),
-        
+
         // Standard library keywords
         "use" => Some(TokenKind::Use),
-        
+
         // Global setup keywords
         "globalSetup" => Some(TokenKind::GlobalSetup),
-        
+
         // Language keywords
         "go" => Some(TokenKind::Go),
         "ts" => Some(TokenKind::Ts),
         "typescript" => Some(TokenKind::TypeScript),
         "rust" => Some(TokenKind::Rust),
         "python" => Some(TokenKind::Python),
-        
+
         // Boolean literals
         "true" => Some(TokenKind::True),
         "false" => Some(TokenKind::False),
-        
+
         _ => None,
     }
 }
