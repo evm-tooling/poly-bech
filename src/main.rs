@@ -133,6 +133,10 @@ enum Commands {
         /// NPM package (e.g., "viem@^2.0.0")
         #[arg(long)]
         ts: Option<String>,
+
+        /// Rust crate (e.g., "sha2@0.10")
+        #[arg(long)]
+        rs: Option<String>,
     },
 
     /// Install dependencies from polybench.toml
@@ -215,8 +219,8 @@ async fn main() -> Result<()> {
         Commands::New { name } => {
             cmd_new(&name)?;
         }
-        Commands::Add { go, ts } => {
-            cmd_add(go, ts)?;
+        Commands::Add { go, ts, rs } => {
+            cmd_add(go, ts, rs)?;
         }
         Commands::Install => {
             cmd_install()?;
@@ -325,8 +329,9 @@ async fn cmd_run(
     let langs: Vec<dsl::Lang> = match lang.as_deref() {
         Some("go") => vec![dsl::Lang::Go],
         Some("ts") | Some("typescript") => vec![dsl::Lang::TypeScript],
+        Some("rust") | Some("rs") => vec![dsl::Lang::Rust],
         Some(l) => return Err(miette::miette!("Unknown language: {}", l)),
-        None => vec![dsl::Lang::Go, dsl::Lang::TypeScript],
+        None => vec![dsl::Lang::Go, dsl::Lang::TypeScript, dsl::Lang::Rust],
     };
 
     // Run each benchmark file
@@ -492,7 +497,7 @@ fn resolve_project_roots(
     let mut current = start_dir.canonicalize().ok();
 
     while let Some(dir) = current {
-        // Inside a poly-bench project: prefer .polybench/runtime-env/go and .../ts
+        // Inside a poly-bench project: prefer .polybench/runtime-env/go, .../ts, .../rust
         if roots.go_root.is_none() && dir.join(project::MANIFEST_FILENAME).exists() {
             let go_env = project::runtime_env_go(&dir);
             if go_env.join("go.mod").exists() {
@@ -505,7 +510,13 @@ fn resolve_project_roots(
                 roots.node_root = Some(ts_env);
             }
         }
-        // Fallback: classic layout (go.mod / package.json at project root)
+        if roots.rust_root.is_none() && dir.join(project::MANIFEST_FILENAME).exists() {
+            let rust_env = project::runtime_env_rust(&dir);
+            if rust_env.join("Cargo.toml").exists() {
+                roots.rust_root = Some(rust_env);
+            }
+        }
+        // Fallback: classic layout (go.mod / package.json / Cargo.toml at project root)
         if roots.go_root.is_none() && dir.join("go.mod").exists() {
             roots.go_root = Some(dir.clone());
         }
@@ -514,7 +525,10 @@ fn resolve_project_roots(
         {
             roots.node_root = Some(dir.clone());
         }
-        if roots.go_root.is_some() && roots.node_root.is_some() {
+        if roots.rust_root.is_none() && dir.join("Cargo.toml").exists() {
+            roots.rust_root = Some(dir.clone());
+        }
+        if roots.go_root.is_some() && roots.node_root.is_some() && roots.rust_root.is_some() {
             break;
         }
         current = dir.parent().map(|p| p.to_path_buf());
@@ -555,6 +569,13 @@ async fn cmd_codegen(file: &PathBuf, lang: &str, output: &PathBuf) -> Result<()>
             std::fs::write(&out_path, &code)
                 .map_err(|e| miette::miette!("Failed to write generated code: {}", e))?;
             println!("{} Generated TypeScript: {}", "✓".green().bold(), out_path.display());
+        }
+        "rust" | "rs" => {
+            let code = runtime::rust::codegen::generate(&ir)?;
+            let out_path = output.join("main.rs");
+            std::fs::write(&out_path, &code)
+                .map_err(|e| miette::miette!("Failed to write generated code: {}", e))?;
+            println!("{} Generated Rust: {}", "✓".green().bold(), out_path.display());
         }
         _ => {
             return Err(miette::miette!("Unknown language: {}", lang));
@@ -652,9 +673,9 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
 
     thread::sleep(Duration::from_millis(80));
 
-    let lang_choices = &["All (Go + TypeScript)", "Go", "TypeScript"];
-    let defaults = vec![false, false, false]; // Nothing selected by default
-    let prompt = "Which languages to include? (Space = toggle one · choose 'All' for both)";
+    let lang_choices = &["All (Go + TypeScript + Rust)", "Go", "TypeScript", "Rust"];
+    let defaults = vec![false, false, false, false]; // Nothing selected by default
+    let prompt = "Which languages to include? (Space = toggle)";
     let selected: Vec<usize> = MultiSelect::with_theme(&theme)
         .with_prompt(prompt)
         .items(lang_choices)
@@ -666,27 +687,37 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
         return Err(miette!("Select at least one language"));
     }
 
-    // Resolve selection to language list. "All" means both only when both Go and TypeScript
-    // are selected; if user has All but toggles off one, we use only the remaining selected langs.
-    let languages: Vec<String> =
-        if selected.contains(&0) && selected.contains(&1) && selected.contains(&2) {
-            vec!["go".to_string(), "ts".to_string()]
-        } else if selected.contains(&0) {
-            // All is checked but not both individual options — use only the checked individual
-            // langs
-            let only_langs: Vec<String> = selected
-                .iter()
-                .filter(|&&i| i != 0)
-                .map(|&i| if i == 1 { "go" } else { "ts" }.to_string())
-                .collect();
-            if only_langs.is_empty() {
-                vec!["go".to_string(), "ts".to_string()] // All alone = both
-            } else {
-                only_langs
-            }
+    // Resolve selection to language list.
+    // Index mapping: 0 = All, 1 = Go, 2 = TypeScript, 3 = Rust
+    let languages: Vec<String> = if selected.contains(&0) {
+        // "All" is selected - check which individual langs are also selected
+        let individual_langs: Vec<String> = selected
+            .iter()
+            .filter_map(|&i| match i {
+                1 => Some("go".to_string()),
+                2 => Some("ts".to_string()),
+                3 => Some("rust".to_string()),
+                _ => None,
+            })
+            .collect();
+        if individual_langs.is_empty() {
+            // All alone = all three languages
+            vec!["go".to_string(), "ts".to_string(), "rust".to_string()]
         } else {
-            selected.into_iter().map(|i| if i == 1 { "go" } else { "ts" }.to_string()).collect()
-        };
+            individual_langs
+        }
+    } else {
+        // No "All" selected, just use individual selections
+        selected
+            .into_iter()
+            .filter_map(|i| match i {
+                1 => Some("go".to_string()),
+                2 => Some("ts".to_string()),
+                3 => Some("rust".to_string()),
+                _ => None,
+            })
+            .collect()
+    };
 
     Ok((name, languages))
 }
@@ -696,10 +727,10 @@ fn cmd_new(name: &str) -> Result<()> {
     Ok(())
 }
 
-fn cmd_add(go: Option<String>, ts: Option<String>) -> Result<()> {
-    if go.is_none() && ts.is_none() {
+fn cmd_add(go: Option<String>, ts: Option<String>, rs: Option<String>) -> Result<()> {
+    if go.is_none() && ts.is_none() && rs.is_none() {
         return Err(miette::miette!(
-            "No dependency specified. Use --go or --ts to add a dependency."
+            "No dependency specified. Use --go, --ts, or --rs to add a dependency."
         ));
     }
 
@@ -709,6 +740,10 @@ fn cmd_add(go: Option<String>, ts: Option<String>) -> Result<()> {
 
     if let Some(ref spec) = ts {
         project::deps::add_ts_dependency(spec)?;
+    }
+
+    if let Some(ref spec) = rs {
+        project::deps::add_rust_dependency(spec)?;
     }
 
     Ok(())

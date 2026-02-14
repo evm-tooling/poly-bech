@@ -28,6 +28,7 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
 toml = "0.8"
+toml_edit = "0.22"
 colored = "2"
 tabled = "0.15"
 async-trait = "0.1"
@@ -123,3 +124,26 @@ path = "src/lsp_main.rs"
 opt-level = 3
 lto = true
 codegen-units = 1
+
+[profile.dev]
+opt-level = 0        # keep your code fast to compile
+debug = 1            # smaller debug info than full (default is 2)
+incremental = true
+codegen-units = 64   # more parallel codegen => faster compiles
+lto = false
+
+# Compile *dependencies* with optimizations so running is faster,
+# but your workspace crates still rebuild quickly.
+[profile.dev.package."*"]
+opt-level = 3
+debug = 0
+
+[profile.dev-fast]
+inherits = "dev"
+opt-level = 1
+debug = 0
+codegen-units = 64
+
+[profile.test]
+debug = 1
+codegen-units = 64

@@ -1,8 +1,8 @@
 {
   "name": "poly-bench",
   "displayName": "poly-bench",
-  "description": "Language support for .bench files with embedded Go and TypeScript - powered by poly-bench-lsp",
-  "version": "0.0.21",
+  "description": "Language support for .bench files with embedded Go, TypeScript, and Rust - powered by poly-bench-lsp",
+  "version": "0.6.6",
   "publisher": "evm-tooling",
   "repository": {
     "type": "git",
@@ -64,7 +64,8 @@
         "path": "./syntaxes/polybench.tmLanguage.json",
         "embeddedLanguages": {
           "source.go.embedded.bench": "go",
-          "source.ts.embedded.bench": "typescript"
+          "source.ts.embedded.bench": "typescript",
+          "source.rust.embedded.bench": "rust"
         }
       }
     ]
@@ -72,7 +73,8 @@
   "scripts": {
     "compile": "tsc -p .",
     "watch": "tsc -p . -w",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src --ext ts",
+    "publish:dev": "npx ts-node ./scripts/publish-dev.ts"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
