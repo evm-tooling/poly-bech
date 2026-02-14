@@ -71,7 +71,7 @@ poly-bench run hash.bench
 poly-bench run hash.bench --lang go
 
 # Run with custom iterations
-poly-bench run hash.bench --iterations 10000
+poly-bench run hash.bench --iterations 100000
 
 # Generate markdown report
 poly-bench run hash.bench --report markdown --output results/
