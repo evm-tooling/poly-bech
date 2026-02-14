@@ -236,9 +236,7 @@ pub fn add_rust_dependency_with_features(spec: &str, features: Option<&[String]>
 
     let output = terminal::run_command_with_spinner(
         &spinner,
-        Command::new("cargo")
-            .args(&args)
-            .current_dir(&rust_root),
+        Command::new("cargo").args(&args).current_dir(&rust_root),
     )
     .map_err(|e| miette::miette!("Failed to run cargo add: {}", e))?;
 
@@ -249,8 +247,8 @@ pub fn add_rust_dependency_with_features(spec: &str, features: Option<&[String]>
     }
 
     // Read the resolved version from Cargo.toml
-    let resolved_version = read_cargo_dep_version(&rust_root, &crate_name)
-        .unwrap_or_else(|| version.clone());
+    let resolved_version =
+        read_cargo_dep_version(&rust_root, &crate_name).unwrap_or_else(|| version.clone());
 
     // Add to manifest with features if specified
     if let Some(feats) = features {

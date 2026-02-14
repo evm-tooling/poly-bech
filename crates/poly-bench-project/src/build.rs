@@ -60,11 +60,7 @@ pub fn build_project(options: &BuildOptions) -> Result<()> {
 
     // Build Rust environment
     if manifest.has_rust() {
-        build_rust_env(
-            &project_root,
-            manifest.rust.as_ref().unwrap(),
-            options,
-        )?;
+        build_rust_env(&project_root, manifest.rust.as_ref().unwrap(), options)?;
     }
 
     println!();

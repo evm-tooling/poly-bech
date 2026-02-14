@@ -155,8 +155,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         let rust_env = runtime_env_rust(&project_dir);
         std::fs::create_dir_all(&rust_env)
             .map_err(|e| miette::miette!("Failed to create {}: {}", rust_env.display(), e))?;
-        let rust_edition =
-            manifest.rust.as_ref().map(|r| r.edition.as_str()).unwrap_or("2021");
+        let rust_edition = manifest.rust.as_ref().map(|r| r.edition.as_str()).unwrap_or("2021");
         let cargo_toml_content = templates::cargo_toml(&project_name, rust_edition);
         std::fs::write(rust_env.join("Cargo.toml"), cargo_toml_content)
             .map_err(|e| miette::miette!("Failed to write Cargo.toml: {}", e))?;

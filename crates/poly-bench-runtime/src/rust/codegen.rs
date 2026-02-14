@@ -32,10 +32,7 @@ pub fn generate(ir: &BenchmarkIR) -> Result<String> {
 
     // Check if any benchmark uses memory profiling
     let _needs_memory = ir.suites.iter().any(|suite| {
-        suite
-            .benchmarks
-            .iter()
-            .any(|bench| bench.memory && bench.has_lang(Lang::Rust))
+        suite.benchmarks.iter().any(|bench| bench.memory && bench.has_lang(Lang::Rust))
     });
 
     // Check if any benchmark uses concurrency
@@ -96,7 +93,8 @@ fn main() {
             if bench.has_lang(Lang::Rust) {
                 code.push_str(&format!(
                     "        \"{}\" => bench_{}(iterations),\n",
-                    bench.full_name, bench.full_name.replace('.', "_")
+                    bench.full_name,
+                    bench.full_name.replace('.', "_")
                 ));
             }
         }
@@ -236,7 +234,12 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
                 memory_decl = decls.memory_decl,
                 before_hook = before_hook,
                 memory_before = decls.memory_before,
-                warmup = shared::generate_warmup_loop(&bench_call, decls.sink_keepalive, each_hook, "100"),
+                warmup = shared::generate_warmup_loop(
+                    &bench_call,
+                    decls.sink_keepalive,
+                    each_hook,
+                    "100"
+                ),
                 auto_loop = shared::generate_auto_mode_loop(
                     &bench_call,
                     decls.sink_keepalive,
@@ -348,13 +351,8 @@ fn generate_concurrent_benchmark(
             concurrency,
             "iterations"
         ),
-        sample_collection = shared::generate_sample_collection(
-            bench_call,
-            "",
-            None,
-            "100",
-            "total_iterations"
-        ),
+        sample_collection =
+            shared::generate_sample_collection(bench_call, "", None, "100", "total_iterations"),
         memory_after = memory_after,
         after_hook = after_hook,
         memory_result = memory_result,

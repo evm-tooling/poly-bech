@@ -275,22 +275,23 @@ impl OverallSummary {
         };
 
         // Determine winner by most wins
-        let (winner, winner_description) = if go_wins == ts_wins && go_wins == rust_wins && go_wins == 0 {
-            (None, "No benchmark results".to_string())
-        } else if go_wins == ts_wins && go_wins == rust_wins {
-            (None, "Similar performance".to_string())
-        } else if go_wins >= ts_wins && go_wins >= rust_wins {
-            (Some(Lang::Go), format!("Go is {:.2}x faster overall", geo_mean_speedup))
-        } else if ts_wins >= go_wins && ts_wins >= rust_wins {
-            (
-                Some(Lang::TypeScript),
-                format!("TypeScript is {:.2}x faster overall", 1.0 / geo_mean_speedup),
-            )
-        } else {
-            // Rust wins - calculate Rust's speedup vs the average of Go/TS
-            let rust_desc = format!("Rust wins {} benchmarks", rust_wins);
-            (Some(Lang::Rust), rust_desc)
-        };
+        let (winner, winner_description) =
+            if go_wins == ts_wins && go_wins == rust_wins && go_wins == 0 {
+                (None, "No benchmark results".to_string())
+            } else if go_wins == ts_wins && go_wins == rust_wins {
+                (None, "Similar performance".to_string())
+            } else if go_wins >= ts_wins && go_wins >= rust_wins {
+                (Some(Lang::Go), format!("Go is {:.2}x faster overall", geo_mean_speedup))
+            } else if ts_wins >= go_wins && ts_wins >= rust_wins {
+                (
+                    Some(Lang::TypeScript),
+                    format!("TypeScript is {:.2}x faster overall", 1.0 / geo_mean_speedup),
+                )
+            } else {
+                // Rust wins - calculate Rust's speedup vs the average of Go/TS
+                let rust_desc = format!("Rust wins {} benchmarks", rust_wins);
+                (Some(Lang::Rust), rust_desc)
+            };
 
         Self {
             total_suites,

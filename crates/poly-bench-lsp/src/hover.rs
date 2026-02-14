@@ -20,7 +20,9 @@ use super::{
     gopls_client::init_gopls_client,
     rust_analyzer_client::init_rust_analyzer_client,
     tsserver_client::init_tsserver_client,
-    virtual_files::{VirtualFile, VirtualFileManager, VirtualRustFileManager, VirtualTsFileManager},
+    virtual_files::{
+        VirtualFile, VirtualFileManager, VirtualRustFileManager, VirtualTsFileManager,
+    },
 };
 
 /// Cache TTL for embedded language hover results (in milliseconds)
@@ -117,8 +119,7 @@ pub fn get_hover_with_embedded(
     let go_blocks: Vec<&EmbeddedBlock> = blocks.iter().filter(|b| b.lang == Lang::Go).collect();
     let ts_blocks: Vec<&EmbeddedBlock> =
         blocks.iter().filter(|b| b.lang == Lang::TypeScript).collect();
-    let rust_blocks: Vec<&EmbeddedBlock> =
-        blocks.iter().filter(|b| b.lang == Lang::Rust).collect();
+    let rust_blocks: Vec<&EmbeddedBlock> = blocks.iter().filter(|b| b.lang == Lang::Rust).collect();
 
     eprintln!(
         "[hover] Found {} Go blocks, {} TS blocks, {} Rust blocks",
@@ -592,9 +593,7 @@ fn enhance_rust_hover_content(contents: HoverContents) -> HoverContents {
                 }
 
                 // Skip virtual file module names and internal module paths
-                if trimmed.starts_with("_lsp_virtual")
-                    || trimmed.starts_with("polybench_runner")
-                {
+                if trimmed.starts_with("_lsp_virtual") || trimmed.starts_with("polybench_runner") {
                     continue;
                 }
 
@@ -673,10 +672,7 @@ fn enhance_rust_hover_content(contents: HoverContents) -> HoverContents {
             if !doc_lines.is_empty() {
                 let doc_text = doc_lines.join(" ");
                 // Clean up the text - remove excessive whitespace
-                let cleaned: String = doc_text
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join(" ");
+                let cleaned: String = doc_text.split_whitespace().collect::<Vec<_>>().join(" ");
 
                 // Truncate very long documentation
                 let max_doc_len = 400;

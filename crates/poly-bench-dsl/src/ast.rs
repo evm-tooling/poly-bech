@@ -197,10 +197,10 @@ impl StructuredSetup {
 
     /// Check if any section is defined
     pub fn is_empty(&self) -> bool {
-        self.imports.is_none() &&
-            self.declarations.is_none() &&
-            self.init.is_none() &&
-            self.helpers.is_none()
+        self.imports.is_none()
+            && self.declarations.is_none()
+            && self.init.is_none()
+            && self.helpers.is_none()
     }
 }
 
@@ -727,8 +727,8 @@ impl Benchmark {
 
     /// Check if this benchmark has any lifecycle hooks for a language
     pub fn has_hooks(&self, lang: Lang) -> bool {
-        self.before.contains_key(&lang) ||
-            self.after.contains_key(&lang) ||
-            self.each.contains_key(&lang)
+        self.before.contains_key(&lang)
+            || self.after.contains_key(&lang)
+            || self.each.contains_key(&lang)
     }
 }

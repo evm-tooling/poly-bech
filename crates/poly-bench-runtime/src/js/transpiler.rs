@@ -226,52 +226,52 @@ pub fn strip_type_annotations(ts_code: &str) -> String {
 
                     // Common built-in JavaScript objects that are function calls, NOT types
                     // These should only be excluded when followed by a dot (method call)
-                    let is_method_call = has_dot_after &&
-                        (first_word == "JSON" ||
-                            first_word == "Math" ||
-                            first_word == "Object" ||
-                            first_word == "Array" ||
-                            first_word == "Date" ||
-                            first_word == "console" ||
-                            first_word == "window" ||
-                            first_word == "document" ||
-                            first_word == "Buffer" ||
-                            first_word == "Error");
+                    let is_method_call = has_dot_after
+                        && (first_word == "JSON"
+                            || first_word == "Math"
+                            || first_word == "Object"
+                            || first_word == "Array"
+                            || first_word == "Date"
+                            || first_word == "console"
+                            || first_word == "window"
+                            || first_word == "document"
+                            || first_word == "Buffer"
+                            || first_word == "Error");
 
                     // It's a type if:
                     // - It's a known primitive type
                     // - OR it starts with uppercase AND is NOT a method call
                     // - OR it's a generic type
-                    let is_primitive = first_word == "string" ||
-                        first_word == "number" ||
-                        first_word == "boolean" ||
-                        first_word == "void" ||
-                        first_word == "any" ||
-                        first_word == "never" ||
-                        first_word == "null" ||
-                        first_word == "undefined";
+                    let is_primitive = first_word == "string"
+                        || first_word == "number"
+                        || first_word == "boolean"
+                        || first_word == "void"
+                        || first_word == "any"
+                        || first_word == "never"
+                        || first_word == "null"
+                        || first_word == "undefined";
 
-                    let is_generic_type = trimmed_rest.starts_with("Array<") ||
-                        trimmed_rest.starts_with("Promise<") ||
-                        trimmed_rest.starts_with("Record<") ||
-                        trimmed_rest.starts_with("Partial<") ||
-                        trimmed_rest.starts_with("Readonly<") ||
-                        trimmed_rest.starts_with("Map<") ||
-                        trimmed_rest.starts_with("Set<") ||
-                        trimmed_rest.starts_with("Buffer");
+                    let is_generic_type = trimmed_rest.starts_with("Array<")
+                        || trimmed_rest.starts_with("Promise<")
+                        || trimmed_rest.starts_with("Record<")
+                        || trimmed_rest.starts_with("Partial<")
+                        || trimmed_rest.starts_with("Readonly<")
+                        || trimmed_rest.starts_with("Map<")
+                        || trimmed_rest.starts_with("Set<")
+                        || trimmed_rest.starts_with("Buffer");
 
                     // After return type `):`
                     // Types end at: { (function body), [ (array type), | (union), & (intersection),
                     // , (next param)
-                    let is_return_type_context = is_return_type &&
-                        (has_open_brace_after ||
-                            first_word.chars().next().map_or(false, |c| c.is_uppercase()));
+                    let is_return_type_context = is_return_type
+                        && (has_open_brace_after
+                            || first_word.chars().next().map_or(false, |c| c.is_uppercase()));
 
-                    is_primitive ||
-                        is_generic_type ||
-                        is_return_type_context ||
-                        (first_word.chars().next().map_or(false, |c| c.is_uppercase()) &&
-                            !is_method_call)
+                    is_primitive
+                        || is_generic_type
+                        || is_return_type_context
+                        || (first_word.chars().next().map_or(false, |c| c.is_uppercase())
+                            && !is_method_call)
                 };
 
                 let looks_like_type_name = is_type_name;
@@ -287,9 +287,9 @@ pub fn strip_type_annotations(ts_code: &str) -> String {
                 // 2. We're after closing paren (return type) and it looks like a type
                 // 3. We're in a variable declaration context and it looks like a type
                 if looks_like_type_name {
-                    if (paren_depth > 0 && is_after_param_name) ||
-                        is_return_type ||
-                        is_var_decl_context
+                    if (paren_depth > 0 && is_after_param_name)
+                        || is_return_type
+                        || is_var_decl_context
                     {
                         in_type_annotation = true;
                         continue;
@@ -325,8 +325,8 @@ pub fn strip_type_annotations(ts_code: &str) -> String {
     for line in lines {
         let trimmed = line.trim();
 
-        if trimmed.starts_with("interface ") ||
-            trimmed.starts_with("type ") && trimmed.contains("=")
+        if trimmed.starts_with("interface ")
+            || trimmed.starts_with("type ") && trimmed.contains("=")
         {
             in_interface = true;
             interface_brace_depth = 0;

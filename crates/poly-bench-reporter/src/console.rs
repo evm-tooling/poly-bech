@@ -164,10 +164,10 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
     // Config section (if enabled and config provided)
     if options.show_config {
         let config = &options.config;
-        let has_config = config.iterations.is_some() ||
-            config.warmup.is_some() ||
-            config.timeout_ms.is_some() ||
-            config.order.is_some();
+        let has_config = config.iterations.is_some()
+            || config.warmup.is_some()
+            || config.timeout_ms.is_some()
+            || config.order.is_some();
 
         if has_config {
             println!("{}", "CONFIG".bold().underline());
@@ -202,7 +202,12 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
     // Legend
     println!("{}", "─".repeat(110));
     println!("{}", "LEGEND".dimmed());
-    println!("  {} = Go result  |  {} = TypeScript result  |  {} = Rust result", "go".green(), "ts".cyan(), "rust".yellow());
+    println!(
+        "  {} = Go result  |  {} = TypeScript result  |  {} = Rust result",
+        "go".green(),
+        "ts".cyan(),
+        "rust".yellow()
+    );
     println!("  {} = operations per second (higher is better)", "hz".dimmed());
     println!(
         "  {} = minimum latency  |  {} = maximum latency  |  {} = mean latency (all in ms)",
@@ -341,17 +346,13 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
 
     let rust_fastest: Option<&str> = benchmarks
         .iter()
-        .filter_map(|b| {
-            b.measurements.get(&Lang::Rust).map(|m| (b.name.as_str(), m.ops_per_sec))
-        })
+        .filter_map(|b| b.measurements.get(&Lang::Rust).map(|m| (b.name.as_str(), m.ops_per_sec)))
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(name, _)| name);
 
     let rust_slowest: Option<&str> = benchmarks
         .iter()
-        .filter_map(|b| {
-            b.measurements.get(&Lang::Rust).map(|m| (b.name.as_str(), m.ops_per_sec))
-        })
+        .filter_map(|b| b.measurements.get(&Lang::Rust).map(|m| (b.name.as_str(), m.ops_per_sec)))
         .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(name, _)| name);
 

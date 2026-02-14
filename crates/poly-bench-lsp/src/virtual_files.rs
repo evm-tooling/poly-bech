@@ -548,10 +548,10 @@ impl VirtualFileBuilder {
             .filter(|b| {
                 !matches!(
                     b.block_type,
-                    BlockType::SetupImport |
-                        BlockType::SetupDeclare |
-                        BlockType::SetupHelpers |
-                        BlockType::SetupInit
+                    BlockType::SetupImport
+                        | BlockType::SetupDeclare
+                        | BlockType::SetupHelpers
+                        | BlockType::SetupInit
                 )
             })
             .copied()
@@ -742,10 +742,7 @@ pub struct VirtualRustFileManager {
 
 impl VirtualRustFileManager {
     pub fn new() -> Self {
-        Self {
-            files: dashmap::DashMap::new(),
-            initialized_roots: dashmap::DashMap::new(),
-        }
+        Self { files: dashmap::DashMap::new(), initialized_roots: dashmap::DashMap::new() }
     }
 
     /// Ensure the virtual file directory exists

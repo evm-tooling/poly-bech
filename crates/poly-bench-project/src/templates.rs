@@ -383,9 +383,7 @@ pub fn readme(name: &str, has_go: bool, has_ts: bool, has_rust: bool) -> String 
         );
     }
     if has_rust {
-        content.push_str(
-            "        └── rust/         # Cargo.toml, target/, generated bench code\n",
-        );
+        content.push_str("        └── rust/         # Cargo.toml, target/, generated bench code\n");
     }
     content.push_str("```\n\n");
 

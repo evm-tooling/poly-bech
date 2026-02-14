@@ -268,10 +268,7 @@ impl Manifest {
                 None
             },
             rust: if has_rust {
-                Some(RustConfig {
-                    edition: default_rust_edition(),
-                    dependencies: HashMap::new(),
-                })
+                Some(RustConfig { edition: default_rust_edition(), dependencies: HashMap::new() })
             } else {
                 None
             },
@@ -398,10 +395,8 @@ mod tests {
 
     #[test]
     fn test_manifest_new_with_rust() {
-        let manifest = Manifest::new(
-            "my-project",
-            &["go".to_string(), "ts".to_string(), "rust".to_string()],
-        );
+        let manifest =
+            Manifest::new("my-project", &["go".to_string(), "ts".to_string(), "rust".to_string()]);
 
         assert_eq!(manifest.project.name, "my-project");
         assert!(manifest.has_go());
@@ -437,10 +432,8 @@ mod tests {
 
     #[test]
     fn test_add_dependency() {
-        let mut manifest = Manifest::new(
-            "test",
-            &["go".to_string(), "ts".to_string(), "rust".to_string()],
-        );
+        let mut manifest =
+            Manifest::new("test", &["go".to_string(), "ts".to_string(), "rust".to_string()]);
 
         manifest.add_go_dependency("github.com/pkg/errors", "v0.9.1").unwrap();
         manifest.add_ts_dependency("viem", "^2.0.0").unwrap();
@@ -455,13 +448,7 @@ mod tests {
             Some(&"^2.0.0".to_string())
         );
         assert_eq!(
-            manifest
-                .rust
-                .as_ref()
-                .unwrap()
-                .dependencies
-                .get("serde")
-                .map(|d| d.version()),
+            manifest.rust.as_ref().unwrap().dependencies.get("serde").map(|d| d.version()),
             Some("1.0")
         );
     }
