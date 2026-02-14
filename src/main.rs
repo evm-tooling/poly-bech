@@ -14,6 +14,7 @@ use poly_bench_project as project;
 use poly_bench_runtime as runtime;
 use poly_bench_executor as executor;
 use poly_bench_reporter as reporter;
+use tower_lsp::{LspService, Server};
 
 /// Current binary version (set at compile time).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -161,6 +162,9 @@ enum Commands {
 
     /// Upgrade to the latest poly-bench binary
     Upgrade,
+
+    /// Start the language server (for editors)
+    Lsp,
 }
 
 #[tokio::main]
@@ -180,6 +184,11 @@ async fn main() -> Result<()> {
         }
         Some(c) => c,
     };
+
+    // LSP mode: no welcome or other stdout; use stdio for LSP protocol
+    if let Commands::Lsp = &command {
+        return cmd_lsp().await;
+    }
 
     // First run: show welcome once, then proceed with the command
     if welcome::is_first_run() {
@@ -229,8 +238,20 @@ async fn main() -> Result<()> {
         Commands::Upgrade => {
             cmd_upgrade()?;
         }
+        Commands::Lsp => {
+            // Handled above; unreachable here
+            unreachable!()
+        }
     }
 
+    Ok(())
+}
+
+async fn cmd_lsp() -> Result<()> {
+    let stdin = tokio::io::stdin();
+    let stdout = tokio::io::stdout();
+    let (service, socket) = LspService::new(poly_bench_lsp::Backend::new);
+    Server::new(stdin, stdout, socket).serve(service).await;
     Ok(())
 }
 

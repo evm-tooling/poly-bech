@@ -2,7 +2,7 @@
  * Poly-Bench VS Code Extension
  *
  * This extension provides language support for .bench files by connecting
- * to the poly-bench-lsp language server (written in Rust).
+ * to the poly-bench language server (run via `poly-bench lsp` or legacy `poly-bench-lsp`).
  *
  * Features provided by the language server:
  * - Diagnostics (parse errors, validation, embedded Go/TS checking)
@@ -37,79 +37,111 @@ let client: LanguageClient | undefined;
 /** Resolves when the LSP is ready (so format-on-save can run). */
 let clientReady: Promise<void> | null = null;
 
+/** Server launch: command and optional args (e.g. poly-bench with ['lsp']). */
+interface LspServerSpec {
+  command: string;
+  args: string[];
+}
+
 /**
- * Find the poly-bench-lsp binary.
+ * Find the poly-bench LSP server (prefer `poly-bench lsp`, fallback to `poly-bench-lsp`).
  *
  * Search order:
- * 1. User-configured path (poly-bench.lspPath setting)
- * 2. Bundled binary in extension (if packaged)
- * 3. PATH lookup=
+ * 1. User-configured path (poly-bench.lspPath) — if path looks like poly-bench (no -lsp), use args ['lsp']
+ * 2. Bundled binary in extension: prefer poly-bench + lsp, then poly-bench-lsp
+ * 3. PATH: prefer poly-bench with args ['lsp'], then poly-bench-lsp
  */
-function findLspBinary(context: ExtensionContext): string | null {
+function findLspServer(context: ExtensionContext): LspServerSpec | null {
+  const useLspSubcommand = (cmd: string): LspServerSpec => ({
+    command: cmd,
+    args: ['lsp'],
+  });
+  const useLegacyLsp = (cmd: string): LspServerSpec => ({
+    command: cmd,
+    args: [],
+  });
+
   // 1. Check user configuration
   const configured = workspace
     .getConfiguration('poly-bench')
     .get<string>('lspPath');
   if (configured && configured.trim().length > 0) {
     if (fs.existsSync(configured)) {
-      return configured;
+      const base = path.basename(configured);
+      const isMainBinary =
+        base === 'poly-bench' || base === 'poly-bench.exe';
+      return isMainBinary ? useLspSubcommand(configured) : useLegacyLsp(configured);
     }
     window.showWarningMessage(
       `Configured poly-bench.lspPath not found: ${configured}`
     );
   }
 
-  // 2. Check bundled binary in extension
-  const bundledPaths = [
+  // 2. Check bundled binaries: prefer poly-bench (single binary with lsp subcommand)
+  const bundledPolyBench = [
+    path.join(context.extensionPath, 'bin', 'poly-bench'),
+    path.join(context.extensionPath, 'bin', 'poly-bench.exe'),
+    path.join(context.extensionPath, 'poly-bench'),
+    path.join(context.extensionPath, 'poly-bench.exe'),
+  ];
+  for (const bundled of bundledPolyBench) {
+    if (fs.existsSync(bundled)) {
+      return useLspSubcommand(bundled);
+    }
+  }
+  const bundledLsp = [
     path.join(context.extensionPath, 'bin', 'poly-bench-lsp'),
     path.join(context.extensionPath, 'bin', 'poly-bench-lsp.exe'),
     path.join(context.extensionPath, 'poly-bench-lsp'),
     path.join(context.extensionPath, 'poly-bench-lsp.exe'),
   ];
-
-  for (const bundled of bundledPaths) {
+  for (const bundled of bundledLsp) {
     if (fs.existsSync(bundled)) {
-      return bundled;
+      return useLegacyLsp(bundled);
     }
   }
 
-  // 3. Check if poly-bench-lsp is on PATH
-  // We'll just return the name and let the OS find it
-  // The server options will handle if it's not found
-  return 'poly-bench-lsp';
+  // 3. PATH: prefer poly-bench with lsp subcommand
+  return useLspSubcommand('poly-bench');
 }
 
 export function activate(context: ExtensionContext): void {
-  const serverPath = findLspBinary(context);
+  const spec = findLspServer(context);
 
-  if (!serverPath) {
+  if (!spec) {
     window.showErrorMessage(
-      'poly-bench-lsp binary not found. Please install it or set poly-bench.lspPath.'
+      'poly-bench not found. Install poly-bench or set poly-bench.lspPath.'
     );
     return;
   }
 
-  // Log which LSP binary we're using so you can verify after reload
-  const isAbsolute = path.isAbsolute(serverPath);
+  // Log which LSP we're using so you can verify after reload
+  const isAbsolute = path.isAbsolute(spec.command);
   const label = isAbsolute
-    ? serverPath.includes('/target/debug/')
+    ? spec.command.includes('/target/debug/')
       ? 'debug'
-      : serverPath.includes('/target/release/')
+      : spec.command.includes('/target/release/')
         ? 'release'
         : 'custom'
     : 'PATH';
   const outputChannel = window.createOutputChannel('Poly-Bench LSP');
-  outputChannel.appendLine(`[startup] Using LSP (${label}): ${serverPath}`);
-  console.log(`[Poly-Bench] Using LSP: ${label} → ${serverPath}`);
+  const desc =
+    spec.args.length > 0
+      ? `${spec.command} ${spec.args.join(' ')}`
+      : spec.command;
+  outputChannel.appendLine(`[startup] Using LSP (${label}): ${desc}`);
+  console.log(`[Poly-Bench] Using LSP: ${label} → ${desc}`);
 
-  // Server options - run the LSP binary
+  // Server options - run poly-bench lsp or poly-bench-lsp
   const serverOptions: ServerOptions = {
     run: {
-      command: serverPath,
+      command: spec.command,
+      args: spec.args,
       transport: TransportKind.stdio,
     },
     debug: {
-      command: serverPath,
+      command: spec.command,
+      args: spec.args,
       transport: TransportKind.stdio,
     },
   };

@@ -1,20 +1,29 @@
 # Poly-Bench Development Makefile
 # ================================
-# Quick commands for local development
+# Quick commands for local development and CI
 
-.PHONY: help check build watch release clean install-tools reload cli run \
-        cli-release init add install pb-build pb-run
+.PHONY: help check check-compile build build-debug watch release release-build release-both clean install-tools reload cli run \
+        cli-release init add install pb-build pb-run fmt fmt-check lint test test-cover
 
 # Default target
 help:
 	@echo "Poly-Bench Development Commands"
 	@echo "================================"
 	@echo ""
-	@echo "Development (LSP):"
-	@echo "  make check    - Fast compile check (no binary)"
-	@echo "  make build    - Debug build (~30s)"
-	@echo "  make cb       - Check + Build combined"
-	@echo "  make watch    - Auto-rebuild on changes"
+	@echo "CI / quality:"
+	@echo "  make fmt        - Format code"
+	@echo "  make fmt-check  - Check formatting (CI)"
+	@echo "  make lint       - Clippy (CI)"
+	@echo "  make test       - Run tests"
+	@echo "  make test-cover - Run tests with coverage"
+	@echo "  make check      - fmt-check + lint + test"
+	@echo "  make build      - Release build of poly-bench (single binary)"
+	@echo ""
+	@echo "Development:"
+	@echo "  make check-compile - Fast compile check (no binary)"
+	@echo "  make cli        - Debug build of poly-bench"
+	@echo "  make cb         - Check + debug build"
+	@echo "  make watch      - Auto-rebuild on changes"
 	@echo ""
 	@echo "CLI (Debug):"
 	@echo "  make cli      - Build the poly-bench CLI (debug)"
@@ -36,31 +45,57 @@ help:
 	@echo "    make pb-run PROJECT=examples/demo"
 	@echo ""
 	@echo "Release:"
-	@echo "  make release  - Optimized release build (both binaries)"
+	@echo "  make release       - Tag, prerelease, open PR to production (VERSION=v0.0.1)"
+	@echo "  make release-build - Build single release binary (poly-bench)"
+	@echo "  make release-both  - Build poly-bench + poly-bench-lsp (legacy)"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean    - Clean build artifacts"
 	@echo "  make install-tools - Install cargo-watch"
 	@echo ""
-	@echo "After building LSP, reload VS Code:"
-	@echo "  Cmd+Shift+P → 'Developer: Reload Window'"
+	@echo "After building, reload VS Code for LSP: Cmd+Shift+P → 'Developer: Reload Window'"
+
+# ============================================================================
+# CI / quality targets
+# ============================================================================
+
+fmt:
+	@cargo fmt --all
+
+fmt-check:
+	@cargo fmt --all -- --check
+
+lint:
+	@cargo clippy --all-targets -- -D warnings
+
+test:
+	@cargo test --all
+
+test-cover:
+	@cargo test --all --no-run 2>/dev/null || true
+	@cargo test --all
+
+# Full check: formatting + lint + test (CI)
+check: fmt-check lint test
+	@echo "==> All checks passed!"
+
+# Release build: single binary (poly-bench includes LSP via 'poly-bench lsp')
+build: cli-release
 
 # Fast compile check (no binary output)
-check:
+check-compile:
 	@echo "🔍 Checking for compile errors..."
-	@cargo check --bin poly-bench-lsp
+	@cargo check --bin poly-bench
 	@echo "✅ No errors!"
 
 # Debug build (fast, unoptimized)
-build:
-	@echo "🔨 Building poly-bench-lsp (debug)..."
-	@cargo build --bin poly-bench-lsp
-	@echo "✅ Done! Binary at: target/debug/poly-bench-lsp"
-	@echo ""
-	@echo "Reload VS Code: Cmd+Shift+P → 'Developer: Reload Window'"
+build-debug:
+	@echo "🔨 Building poly-bench (debug)..."
+	@cargo build --bin poly-bench
+	@echo "✅ Done! Binary at: target/debug/poly-bench"
 
 # Check then build (common workflow)
-cb: check build
+cb: check-compile build-debug
 
 # Build the poly-bench CLI (debug)
 cli:
@@ -142,15 +177,47 @@ endif
 # Watch for changes and auto-rebuild
 watch:
 	@echo "👀 Watching for changes..."
-	@cargo watch -x "build --bin poly-bench-lsp"
+	@cargo watch -x "build --bin poly-bench"
 
-# Optimized release build (both binaries)
-release:
+# Optimized release build: single binary (poly-bench; use 'poly-bench lsp' for LSP)
+release-build: cli-release
+	@echo "✅ Release binary: target/release/poly-bench"
+
+# Build both binaries (legacy: poly-bench + poly-bench-lsp)
+release-both:
 	@echo "🔨 Building poly-bench + poly-bench-lsp (release)..."
 	@cargo build --release
 	@echo "✅ Done!"
 	@echo "  CLI: target/release/poly-bench"
 	@echo "  LSP: target/release/poly-bench-lsp"
+
+# Release automation: tag, prerelease, open PR to production
+# Usage: make release VERSION=v0.0.1
+# Requires: gh CLI authenticated, on main branch
+release:
+ifndef VERSION
+	$(error VERSION is required. Usage: make release VERSION=v0.0.1)
+endif
+	@echo "==> Checking gh CLI authentication..."
+	@gh auth status || (echo "Error: Please run 'gh auth login' first" && exit 1)
+	@echo "==> Ensuring we're on main branch..."
+	@git checkout main
+	@git pull origin main
+	@echo "==> Creating tag $(VERSION)..."
+	@git tag -a $(VERSION) -m "Release $(VERSION)"
+	@git push origin $(VERSION)
+	@echo "==> Creating prerelease on GitHub..."
+	@gh release create $(VERSION) \
+		--title "$(VERSION)" \
+		--generate-notes \
+		--prerelease
+	@echo "==> Creating PR from main to production..."
+	@gh pr create \
+		--base production \
+		--head main \
+		--title "Release $(VERSION)" \
+		--body "## Release $(VERSION)$$( echo )$$( echo )This PR releases $(VERSION) to production.$$( echo )$$( echo )When merged, comment \`/release\` on this PR to promote the prerelease to the latest release."
+	@echo "==> Done! Review and merge the PR to publish the release."
 
 # Clean build artifacts
 clean:
@@ -165,11 +232,11 @@ install-tools:
 	@echo "✅ Done!"
 
 # Build and show size comparison
-size: build release
+size: build-debug release-build
 	@echo ""
 	@echo "📊 Binary sizes:"
-	@ls -lh target/debug/poly-bench-lsp | awk '{print "  Debug:   " $$5}'
-	@ls -lh target/release/poly-bench-lsp | awk '{print "  Release: " $$5}'
+	@ls -lh target/debug/poly-bench 2>/dev/null | awk '{print "  Debug:   " $$5}' || true
+	@ls -lh target/release/poly-bench 2>/dev/null | awk '{print "  Release: " $$5}' || true
 
 # ============================================================================
 # Quick PR Workflow
