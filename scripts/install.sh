@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Install poly-bench from the latest GitHub release.
-# Usage: curl -L https://raw.githubusercontent.com/evm-tooling/poly-bench/main/scripts/install.sh | bash
+# Usage: curl -L https://raw.githubusercontent.com/evanmcgrane/poly-bench/main/scripts/install.sh | bash
 # Or: curl -L ... | bash -s -- -d /usr/local/bin  # custom install dir
 
 set -e
 
-REPO="${POLYBENCH_REPO:-evm-tooling/poly-bench}"
+REPO="${POLYBENCH_REPO:-evanmcgrane/poly-bench}"
 INSTALL_DIR="${HOME}/.local/bin"
 BINARY_NAME="poly-bench"
 
