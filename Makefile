@@ -192,7 +192,7 @@ release-both:
 	@echo "  CLI: target/release/poly-bench"
 	@echo "  LSP: target/release/poly-bench-lsp"
 
-# Release automation: tag, prerelease, open PR to production
+# Release automation: bump versions, tag, prerelease, open PR to production
 # Usage: make release VERSION=v0.0.1
 # Requires: gh CLI authenticated, on main branch
 release:
@@ -204,6 +204,12 @@ endif
 	@echo "==> Ensuring we're on main branch..."
 	@git checkout main
 	@git pull origin main
+	@echo "==> Bumping versions to $(VERSION)..."
+	@VER=$$(echo $(VERSION) | sed 's/^v//'); \
+	sed -i.bak "s/^version = \".*\"/version = \"$$VER\"/" Cargo.toml && rm -f Cargo.toml.bak; \
+	sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$$VER\"/" vscode/package.json && rm -f vscode/package.json.bak; \
+	git add Cargo.toml vscode/package.json && \
+	git diff --staged --quiet && echo "==> No version changes (already at $(VERSION)?)" || (git commit -m "chore: release $(VERSION)" && git push origin main)
 	@echo "==> Creating tag $(VERSION)..."
 	@git tag -a $(VERSION) -m "Release $(VERSION)"
 	@git push origin $(VERSION)
