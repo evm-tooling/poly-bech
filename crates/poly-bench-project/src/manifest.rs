@@ -337,6 +337,29 @@ impl Manifest {
             .insert(crate_name.to_string(), RustDependency::Simple(version.to_string()));
         Ok(())
     }
+
+    /// Add a Rust dependency with features
+    pub fn add_rust_dependency_with_features(
+        &mut self,
+        crate_name: &str,
+        version: &str,
+        features: &[String],
+    ) -> Result<()> {
+        let rust = self
+            .rust
+            .as_mut()
+            .ok_or_else(|| miette::miette!("Rust is not enabled in this project"))?;
+        rust.dependencies.insert(
+            crate_name.to_string(),
+            RustDependency::Detailed(RustDependencyDetail {
+                version: version.to_string(),
+                features: Some(features.to_vec()),
+                default_features: None,
+                optional: None,
+            }),
+        );
+        Ok(())
+    }
 }
 
 /// Load a manifest from a file
