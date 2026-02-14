@@ -20,6 +20,26 @@ poly-bench allows you to define benchmarks once and run them across multiple pro
 
 ## Installation
 
+**One-liner (downloads latest release, installs to `~/.local/bin`):**
+
+```bash
+curl -L https://raw.githubusercontent.com/evm-tooling/poly-bench/main/scripts/install.sh | bash
+```
+
+Then add to your PATH if needed (the script will remind you):
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+**Custom install directory:**
+
+```bash
+curl -L https://raw.githubusercontent.com/evm-tooling/poly-bench/main/scripts/install.sh | bash -s -- -d /usr/local/bin
+```
+
+**From source:**
+
 ```bash
 # From source
 cargo install --path .
