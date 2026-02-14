@@ -327,9 +327,7 @@ pub fn check_embedded_blocks(
                 ts_context.stdlib_code = Some(ts_stdlib);
             }
 
-            result
-                .debug_messages
-                .push(format!("Stdlib imports: {:?}", stdlib_imports));
+            result.debug_messages.push(format!("Stdlib imports: {:?}", stdlib_imports));
         }
     }
 
@@ -350,27 +348,24 @@ pub fn check_embedded_blocks(
         .filter(|b| {
             matches!(
                 b.block_type,
-                BlockType::SetupImport
-                    | BlockType::SetupDeclare
-                    | BlockType::SetupHelpers
-                    | BlockType::SetupInit
+                BlockType::SetupImport |
+                    BlockType::SetupDeclare |
+                    BlockType::SetupHelpers |
+                    BlockType::SetupInit
             )
         })
         .collect();
 
     if !go_setup_blocks.is_empty() {
-        result.debug_messages.push(format!(
-            "Checking {} Go setup blocks combined",
-            go_setup_blocks.len()
-        ));
+        result
+            .debug_messages
+            .push(format!("Checking {} Go setup blocks combined", go_setup_blocks.len()));
         let setup_diags = go_bridge::check_go_setup_combined(
             &go_setup_blocks,
             &go_context,
             config.go_mod_root.as_deref(),
         );
-        result
-            .debug_messages
-            .push(format!("  -> {} diagnostics from setup", setup_diags.len()));
+        result.debug_messages.push(format!("  -> {} diagnostics from setup", setup_diags.len()));
         result.go_blocks_checked += go_setup_blocks.len();
         for diag in setup_diags {
             result.diagnostics.push(convert_diagnostic(doc, &diag));
@@ -384,22 +379,18 @@ pub fn check_embedded_blocks(
         .filter(|b| {
             !matches!(
                 b.block_type,
-                BlockType::SetupImport
-                    | BlockType::SetupDeclare
-                    | BlockType::SetupHelpers
-                    | BlockType::SetupInit
+                BlockType::SetupImport |
+                    BlockType::SetupDeclare |
+                    BlockType::SetupHelpers |
+                    BlockType::SetupInit
             )
         })
         .collect();
 
     for block in &go_other_blocks {
-        result
-            .debug_messages
-            .push(format!("Checking Go {:?} block", block.block_type));
+        result.debug_messages.push(format!("Checking Go {:?} block", block.block_type));
         let go_diags = go_bridge::check_go_block(block, &go_context, config.go_mod_root.as_deref());
-        result
-            .debug_messages
-            .push(format!("  -> {} diagnostics", go_diags.len()));
+        result.debug_messages.push(format!("  -> {} diagnostics", go_diags.len()));
         result.go_blocks_checked += 1;
         for diag in go_diags {
             result.diagnostics.push(convert_diagnostic(doc, &diag));
@@ -415,28 +406,24 @@ pub fn check_embedded_blocks(
         .filter(|b| {
             matches!(
                 b.block_type,
-                BlockType::SetupImport
-                    | BlockType::SetupDeclare
-                    | BlockType::SetupHelpers
-                    | BlockType::SetupInit
+                BlockType::SetupImport |
+                    BlockType::SetupDeclare |
+                    BlockType::SetupHelpers |
+                    BlockType::SetupInit
             )
         })
         .collect();
 
     if !ts_setup_blocks.is_empty() {
-        result.debug_messages.push(format!(
-            "Checking {} TS setup blocks combined",
-            ts_setup_blocks.len()
-        ));
+        result
+            .debug_messages
+            .push(format!("Checking {} TS setup blocks combined", ts_setup_blocks.len()));
         let setup_diags = ts_bridge::check_ts_setup_combined(
             &ts_setup_blocks,
             &ts_context,
             config.ts_module_root.as_deref(),
         );
-        result.debug_messages.push(format!(
-            "  -> {} diagnostics from TS setup",
-            setup_diags.len()
-        ));
+        result.debug_messages.push(format!("  -> {} diagnostics from TS setup", setup_diags.len()));
         result.ts_blocks_checked += ts_setup_blocks.len();
         for diag in setup_diags {
             result.diagnostics.push(convert_diagnostic(doc, &diag));
@@ -450,23 +437,19 @@ pub fn check_embedded_blocks(
         .filter(|b| {
             !matches!(
                 b.block_type,
-                BlockType::SetupImport
-                    | BlockType::SetupDeclare
-                    | BlockType::SetupHelpers
-                    | BlockType::SetupInit
+                BlockType::SetupImport |
+                    BlockType::SetupDeclare |
+                    BlockType::SetupHelpers |
+                    BlockType::SetupInit
             )
         })
         .collect();
 
     for block in &ts_other_blocks {
-        result
-            .debug_messages
-            .push(format!("Checking TS {:?} block", block.block_type));
+        result.debug_messages.push(format!("Checking TS {:?} block", block.block_type));
         let ts_diags =
             ts_bridge::check_ts_block(block, &ts_context, config.ts_module_root.as_deref());
-        result
-            .debug_messages
-            .push(format!("  -> {} diagnostics", ts_diags.len()));
+        result.debug_messages.push(format!("  -> {} diagnostics", ts_diags.len()));
         result.ts_blocks_checked += 1;
         for diag in ts_diags {
             result.diagnostics.push(convert_diagnostic(doc, &diag));

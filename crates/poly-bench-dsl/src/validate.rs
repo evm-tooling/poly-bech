@@ -18,10 +18,7 @@ pub struct ValidationWarning {
 
 impl ValidationWarning {
     pub fn new(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-            location: None,
-        }
+        Self { message: message.into(), location: None }
     }
 
     pub fn with_location(mut self, location: impl Into<String>) -> Self {
@@ -39,10 +36,7 @@ pub struct ValidationError {
 
 impl ValidationError {
     pub fn new(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-            location: None,
-        }
+        Self { message: message.into(), location: None }
     }
 
     pub fn with_location(mut self, location: impl Into<String>) -> Self {
@@ -331,10 +325,8 @@ fn validate_fixture_references(suite: &Suite, result: &mut ValidationResult) {
 fn validate_baseline(suite: &Suite, result: &mut ValidationResult) {
     if let Some(baseline) = suite.baseline {
         // Check that at least one benchmark has this language
-        let has_baseline_impl = suite
-            .benchmarks
-            .iter()
-            .any(|b| b.implementations.contains_key(&baseline));
+        let has_baseline_impl =
+            suite.benchmarks.iter().any(|b| b.implementations.contains_key(&baseline));
 
         if !has_baseline_impl {
             result.add_warning(
@@ -512,10 +504,7 @@ suite test {
         let result = validate_suite(&ast.suites[0]);
 
         assert!(!result.is_ok());
-        assert!(result
-            .errors
-            .iter()
-            .any(|e| e.message.contains("missing required language")));
+        assert!(result.errors.iter().any(|e| e.message.contains("missing required language")));
     }
 
     #[test]
@@ -530,10 +519,7 @@ suite test {
         let result = validate_suite(&ast.suites[0]);
 
         assert!(!result.is_ok());
-        assert!(result
-            .errors
-            .iter()
-            .any(|e| e.message.contains("no language implementations")));
+        assert!(result.errors.iter().any(|e| e.message.contains("no language implementations")));
     }
 
     #[test]
@@ -552,9 +538,6 @@ suite test {
         let result = validate_file(&ast);
 
         assert!(result.has_warnings());
-        assert!(result
-            .warnings
-            .iter()
-            .any(|w| w.message.contains("Duplicate import")));
+        assert!(result.warnings.iter().any(|w| w.message.contains("Duplicate import")));
     }
 }

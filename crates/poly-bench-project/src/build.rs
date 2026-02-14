@@ -9,8 +9,7 @@
 
 use crate::{manifest, runtime_env_go, runtime_env_ts, templates, terminal};
 use miette::Result;
-use std::path::Path;
-use std::process::Command;
+use std::{path::Path, process::Command};
 
 /// Options for the build command
 pub struct BuildOptions {
@@ -22,10 +21,7 @@ pub struct BuildOptions {
 
 impl Default for BuildOptions {
     fn default() -> Self {
-        Self {
-            force: false,
-            skip_install: false,
-        }
+        Self { force: false, skip_install: false }
     }
 }
 
@@ -108,9 +104,7 @@ fn build_go_env(
 
             let output = terminal::run_command_with_spinner(
                 &spinner,
-                Command::new("go")
-                    .args(["get", &go_get_arg])
-                    .current_dir(&go_env),
+                Command::new("go").args(["get", &go_get_arg]).current_dir(&go_env),
             )
             .map_err(|e| miette::miette!("Failed to run go get: {}", e))?;
 
@@ -315,14 +309,8 @@ module = "test-project"
         std::env::set_current_dir(original_dir).unwrap();
 
         assert!(result.is_ok());
-        assert!(project_path
-            .join(".polybench/runtime-env/go/go.mod")
-            .exists());
-        assert!(project_path
-            .join(".polybench/runtime-env/ts/package.json")
-            .exists());
-        assert!(project_path
-            .join(".polybench/runtime-env/ts/tsconfig.json")
-            .exists());
+        assert!(project_path.join(".polybench/runtime-env/go/go.mod").exists());
+        assert!(project_path.join(".polybench/runtime-env/ts/package.json").exists());
+        assert!(project_path.join(".polybench/runtime-env/ts/tsconfig.json").exists());
     }
 }

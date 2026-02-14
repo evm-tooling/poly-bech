@@ -4,9 +4,11 @@
 //! in .bench files, and provides position translation between the
 //! .bench file and the virtual files.
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-use std::path::Path;
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+    path::Path,
+};
 
 use poly_bench_dsl::Span;
 use poly_bench_project::templates;
@@ -76,10 +78,7 @@ pub trait VirtualFile {
 
                 let virtual_line = mapping.virtual_start_line + line_in_block;
 
-                return Some(Position {
-                    line: virtual_line,
-                    character: col,
-                });
+                return Some(Position { line: virtual_line, character: col });
             }
         }
 
@@ -409,35 +408,23 @@ impl VirtualFileBuilder {
         Vec<&'a EmbeddedBlock>,
         Vec<&'a EmbeddedBlock>,
     ) {
-        let imports: Vec<_> = blocks
-            .iter()
-            .filter(|b| b.block_type == BlockType::SetupImport)
-            .copied()
-            .collect();
-        let declares: Vec<_> = blocks
-            .iter()
-            .filter(|b| b.block_type == BlockType::SetupDeclare)
-            .copied()
-            .collect();
-        let helpers: Vec<_> = blocks
-            .iter()
-            .filter(|b| b.block_type == BlockType::SetupHelpers)
-            .copied()
-            .collect();
-        let inits: Vec<_> = blocks
-            .iter()
-            .filter(|b| b.block_type == BlockType::SetupInit)
-            .copied()
-            .collect();
+        let imports: Vec<_> =
+            blocks.iter().filter(|b| b.block_type == BlockType::SetupImport).copied().collect();
+        let declares: Vec<_> =
+            blocks.iter().filter(|b| b.block_type == BlockType::SetupDeclare).copied().collect();
+        let helpers: Vec<_> =
+            blocks.iter().filter(|b| b.block_type == BlockType::SetupHelpers).copied().collect();
+        let inits: Vec<_> =
+            blocks.iter().filter(|b| b.block_type == BlockType::SetupInit).copied().collect();
         let other: Vec<_> = blocks
             .iter()
             .filter(|b| {
                 !matches!(
                     b.block_type,
-                    BlockType::SetupImport
-                        | BlockType::SetupDeclare
-                        | BlockType::SetupHelpers
-                        | BlockType::SetupInit
+                    BlockType::SetupImport |
+                        BlockType::SetupDeclare |
+                        BlockType::SetupHelpers |
+                        BlockType::SetupInit
                 )
             })
             .copied()
@@ -506,9 +493,7 @@ pub struct VirtualFileManager {
 
 impl VirtualFileManager {
     pub fn new() -> Self {
-        Self {
-            files: dashmap::DashMap::new(),
-        }
+        Self { files: dashmap::DashMap::new() }
     }
 
     pub fn get_or_create(
@@ -536,8 +521,7 @@ impl VirtualFileManager {
             eprintln!("[gopls] Failed to write virtual file: {}", e);
         }
 
-        self.files
-            .insert(bench_uri.to_string(), virtual_file.clone());
+        self.files.insert(bench_uri.to_string(), virtual_file.clone());
         virtual_file
     }
 
@@ -566,10 +550,7 @@ pub struct VirtualTsFileManager {
 
 impl VirtualTsFileManager {
     pub fn new() -> Self {
-        Self {
-            files: dashmap::DashMap::new(),
-            initialized_roots: dashmap::DashMap::new(),
-        }
+        Self { files: dashmap::DashMap::new(), initialized_roots: dashmap::DashMap::new() }
     }
 
     fn ensure_tsconfig(&self, ts_module_root: &str) {
@@ -583,8 +564,7 @@ impl VirtualTsFileManager {
             let _ = std::fs::write(&tsconfig_path, tsconfig_content);
         }
 
-        self.initialized_roots
-            .insert(ts_module_root.to_string(), ());
+        self.initialized_roots.insert(ts_module_root.to_string(), ());
     }
 
     pub fn get_or_create(
@@ -610,8 +590,7 @@ impl VirtualTsFileManager {
             eprintln!("[tsserver] Failed to write virtual file: {}", e);
         }
 
-        self.files
-            .insert(bench_uri.to_string(), virtual_file.clone());
+        self.files.insert(bench_uri.to_string(), virtual_file.clone());
         virtual_file
     }
 
@@ -642,12 +621,7 @@ mod tests {
             lang: poly_bench_dsl::Lang::Go,
             block_type,
             code: code.to_string(),
-            span: Span {
-                start,
-                end,
-                line: 1,
-                col: 1,
-            },
+            span: Span { start, end, line: 1, col: 1 },
             context_name: "test".to_string(),
         }
     }

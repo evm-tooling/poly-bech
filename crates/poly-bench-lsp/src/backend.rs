@@ -3,26 +3,34 @@
 //! This module implements the `LanguageServer` trait from tower-lsp,
 //! handling all LSP protocol requests.
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::RwLock;
-use std::time::Duration;
+use std::{
+    panic::{catch_unwind, AssertUnwindSafe},
+    path::Path,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        RwLock,
+    },
+    time::Duration,
+};
 
 use dashmap::DashMap;
-use tower_lsp::jsonrpc::Result;
-use tower_lsp::lsp_types::{OneOf, *};
-use tower_lsp::{Client, LanguageServer};
+use tower_lsp::{
+    jsonrpc::Result,
+    lsp_types::{OneOf, *},
+    Client, LanguageServer,
+};
 
 use poly_bench_dsl::format_file_with_source;
 
-use super::completion::get_completions;
-use super::diagnostics::compute_diagnostics_with_config;
-use super::document::ParsedDocument;
-use super::embedded::EmbeddedConfig;
-use super::hover::{get_hover, get_hover_with_gopls};
-use super::semantic_tokens::{get_semantic_tokens, LEGEND};
-use super::virtual_files::{VirtualFileManager, VirtualTsFileManager};
+use super::{
+    completion::get_completions,
+    diagnostics::compute_diagnostics_with_config,
+    document::ParsedDocument,
+    embedded::EmbeddedConfig,
+    hover::{get_hover, get_hover_with_gopls},
+    semantic_tokens::{get_semantic_tokens, LEGEND},
+    virtual_files::{VirtualFileManager, VirtualTsFileManager},
+};
 
 /// Debounce delay for document changes (in milliseconds)
 const DEBOUNCE_DELAY_MS: u64 = 300;
@@ -69,26 +77,20 @@ impl Backend {
     /// Queue a document change for debounced processing
     fn queue_change(&self, uri: Url, _text: String, _version: i32) -> u64 {
         let change_id = self.change_counter.fetch_add(1, Ordering::SeqCst);
-        self.pending_changes
-            .insert(uri, PendingChange { change_id });
+        self.pending_changes.insert(uri, PendingChange { change_id });
         change_id
     }
 
     /// Check if a change is still the latest for a document
     fn is_change_current(&self, uri: &Url, change_id: u64) -> bool {
-        self.pending_changes
-            .get(uri)
-            .map(|c| c.change_id == change_id)
-            .unwrap_or(false)
+        self.pending_changes.get(uri).map(|c| c.change_id == change_id).unwrap_or(false)
     }
 
-    /// Re-parse a document and publish diagnostics (fast path: parse + validation only, no Go/TS embedded checks).
+    /// Re-parse a document and publish diagnostics (fast path: parse + validation only, no Go/TS
+    /// embedded checks).
     async fn on_change(&self, uri: Url, text: String, version: i32) {
-        let filename = uri
-            .path_segments()
-            .and_then(|s| s.last())
-            .unwrap_or("unknown.bench")
-            .to_string();
+        let filename =
+            uri.path_segments().and_then(|s| s.last()).unwrap_or("unknown.bench").to_string();
 
         let doc = ParsedDocument::parse(&text, &filename, version);
         let config = self.find_embedded_config(&uri);
@@ -99,9 +101,7 @@ impl Backend {
         self.documents.insert(uri.clone(), doc);
         self.embedded_configs.insert(uri.clone(), config);
 
-        self.client
-            .publish_diagnostics(uri, result.diagnostics, Some(version))
-            .await;
+        self.client.publish_diagnostics(uri, result.diagnostics, Some(version)).await;
     }
 
     /// Run full diagnostics including embedded Go/TS checks and publish (called on save).
@@ -118,7 +118,8 @@ impl Backend {
             (doc_guard.version, doc_guard.clone(), config_guard.clone())
         };
 
-        // Embedded checks run `go build` / `tsc` (blocking). Run on a blocking thread so we don't block format/hover.
+        // Embedded checks run `go build` / `tsc` (blocking). Run on a blocking thread so we don't
+        // block format/hover.
         let diagnostics = tokio::task::spawn_blocking(move || {
             let result = compute_diagnostics_with_config(&doc, &config, true);
             result.diagnostics
@@ -138,9 +139,7 @@ impl Backend {
             }
         };
 
-        self.client
-            .publish_diagnostics(uri, diagnostics, Some(version))
-            .await;
+        self.client.publish_diagnostics(uri, diagnostics, Some(version)).await;
     }
 
     /// Find Go module root and TypeScript module root for embedded checking
@@ -272,9 +271,7 @@ impl LanguageServer for Backend {
     }
 
     async fn initialized(&self, _: InitializedParams) {
-        self.client
-            .log_message(MessageType::INFO, "poly-bench-lsp initialized")
-            .await;
+        self.client.log_message(MessageType::INFO, "poly-bench-lsp initialized").await;
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -313,8 +310,7 @@ impl LanguageServer for Backend {
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         // Run full diagnostics (including embedded Go/TS) on save so they don't block typing
-        self.on_save_full_diagnostics(params.text_document.uri)
-            .await;
+        self.on_save_full_diagnostics(params.text_document.uri).await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
@@ -451,20 +447,11 @@ impl LanguageServer for Backend {
                 };
 
                 let range = Range {
-                    start: Position {
-                        line: 0,
-                        character: 0,
-                    },
-                    end: Position {
-                        line: last_line,
-                        character: last_line_len,
-                    },
+                    start: Position { line: 0, character: 0 },
+                    end: Position { line: last_line, character: last_line_len },
                 };
 
-                vec![TextEdit {
-                    range,
-                    new_text: formatted,
-                }]
+                vec![TextEdit { range, new_text: formatted }]
             }));
 
             match result {

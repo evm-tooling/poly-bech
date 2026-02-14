@@ -10,8 +10,10 @@
 //! - Comments (when using `format_file_with_source`)
 //! - Original embedded code formatting (Go, TypeScript, etc.)
 
-use crate::ast::{HookStyle, *};
-use crate::ChartType;
+use crate::{
+    ast::{HookStyle, *},
+    ChartType,
+};
 use std::fmt::Write;
 
 const INDENT: &str = "    ";
@@ -39,11 +41,8 @@ fn preserve_embedded_code(code: &str, base_indent: &str) -> Vec<String> {
         if line.trim().is_empty() {
             result.push(String::new());
         } else {
-            let stripped = if line.len() >= min_indent {
-                &line[min_indent..]
-            } else {
-                line.trim_start()
-            };
+            let stripped =
+                if line.len() >= min_indent { &line[min_indent..] } else { line.trim_start() };
             result.push(format!("{}{}", base_indent, stripped));
         }
     }
@@ -232,10 +231,10 @@ fn format_suite_with_source(
     }
 
     // Add blank line after properties
-    let has_content = suite.global_setup.is_some()
-        || !suite.setups.is_empty()
-        || !suite.fixtures.is_empty()
-        || !suite.benchmarks.is_empty();
+    let has_content = suite.global_setup.is_some() ||
+        !suite.setups.is_empty() ||
+        !suite.fixtures.is_empty() ||
+        !suite.benchmarks.is_empty();
     if has_content {
         out.push('\n');
     }
@@ -349,13 +348,8 @@ fn format_global_setup(out: &mut String, global_setup: &GlobalSetup, indent_leve
 
     if let Some(ref anvil_config) = global_setup.anvil_config {
         if let Some(ref fork_url) = anvil_config.fork_url {
-            writeln!(
-                out,
-                "{}anvil.spawnAnvil(fork: \"{}\")",
-                inner,
-                escape_string(fork_url)
-            )
-            .unwrap();
+            writeln!(out, "{}anvil.spawnAnvil(fork: \"{}\")", inner, escape_string(fork_url))
+                .unwrap();
         } else {
             writeln!(out, "{}anvil.spawnAnvil()", inner).unwrap();
         }
@@ -443,10 +437,10 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
     }
 
     // Add blank line after properties if there are any setups, fixtures, or benchmarks
-    let has_content = suite.global_setup.is_some()
-        || !suite.setups.is_empty()
-        || !suite.fixtures.is_empty()
-        || !suite.benchmarks.is_empty();
+    let has_content = suite.global_setup.is_some() ||
+        !suite.setups.is_empty() ||
+        !suite.fixtures.is_empty() ||
+        !suite.benchmarks.is_empty();
     if has_content {
         out.push('\n');
     }
@@ -526,11 +520,7 @@ fn format_setup(out: &mut String, lang: &Lang, setup: &StructuredSetup, indent_l
         if wrote_section {
             out.push('\n');
         }
-        let kw = if setup.async_init {
-            "async init"
-        } else {
-            "init"
-        };
+        let kw = if setup.async_init { "async init" } else { "init" };
         write_code_block(out, kw, init, &inner);
         wrote_section = true;
     }
@@ -575,11 +565,8 @@ fn trim_code_block(code: &str) -> String {
     // Find first non-empty line
     let start = lines.iter().position(|l| !l.trim().is_empty()).unwrap_or(0);
     // Find last non-empty line
-    let end = lines
-        .iter()
-        .rposition(|l| !l.trim().is_empty())
-        .map(|i| i + 1)
-        .unwrap_or(lines.len());
+    let end =
+        lines.iter().rposition(|l| !l.trim().is_empty()).map(|i| i + 1).unwrap_or(lines.len());
 
     if start >= end {
         return String::new();
@@ -596,11 +583,8 @@ fn format_fixture(out: &mut String, fixture: &Fixture, indent_level: usize) {
     if fixture.params.is_empty() {
         write!(out, "{} {{\n", fixture.name).unwrap();
     } else {
-        let params: Vec<_> = fixture
-            .params
-            .iter()
-            .map(|p| format!("{}: {}", p.name, p.param_type))
-            .collect();
+        let params: Vec<_> =
+            fixture.params.iter().map(|p| format!("{}: {}", p.name, p.param_type)).collect();
         write!(out, "{}({}) {{\n", fixture.name, params.join(", ")).unwrap();
     }
 
@@ -658,11 +642,7 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
         write!(out, "{}timeout: {}\n", inner, n).unwrap();
     }
     if !bench.tags.is_empty() {
-        let tags: Vec<_> = bench
-            .tags
-            .iter()
-            .map(|t| format!("\"{}\"", escape_string(t)))
-            .collect();
+        let tags: Vec<_> = bench.tags.iter().map(|t| format!("\"{}\"", escape_string(t))).collect();
         write!(out, "{}tags: [{}]\n", inner, tags.join(", ")).unwrap();
     }
 
@@ -681,13 +661,7 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
     }
     if let Some(sink) = bench.sink {
         // Only output if explicitly set to override suite default
-        write!(
-            out,
-            "{}sink: {}\n",
-            inner,
-            if sink { "true" } else { "false" }
-        )
-        .unwrap();
+        write!(out, "{}sink: {}\n", inner, if sink { "true" } else { "false" }).unwrap();
     }
     if let Some(outlier_detection) = bench.outlier_detection {
         // Only output if explicitly set to override suite default
@@ -708,13 +682,7 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
 
     // Observability settings (Phase 2B) - only output if explicitly set
     if let Some(memory) = bench.memory {
-        write!(
-            out,
-            "{}memory: {}\n",
-            inner,
-            if memory { "true" } else { "false" }
-        )
-        .unwrap();
+        write!(out, "{}memory: {}\n", inner, if memory { "true" } else { "false" }).unwrap();
     }
     if let Some(concurrency) = bench.concurrency {
         write!(out, "{}concurrency: {}\n", inner, concurrency).unwrap();
@@ -870,11 +838,7 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
             params.push(format!("{}title: \"{}\"", inner2, escape_string(title)));
         }
         if let Some(ref desc) = directive.description {
-            params.push(format!(
-                "{}description: \"{}\"",
-                inner2,
-                escape_string(desc)
-            ));
+            params.push(format!("{}description: \"{}\"", inner2, escape_string(desc)));
         }
 
         // Axis labels (for line/bar charts)
@@ -923,11 +887,7 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
             params.push(format!("{}minSpeedup: {}", inner2, min_speedup));
         }
         if let Some(ref filter_winner) = directive.filter_winner {
-            params.push(format!(
-                "{}filterWinner: \"{}\"",
-                inner2,
-                escape_string(filter_winner)
-            ));
+            params.push(format!("{}filterWinner: \"{}\"", inner2, escape_string(filter_winner)));
         }
         if !directive.include_benchmarks.is_empty() {
             let items: Vec<_> = directive
@@ -935,11 +895,7 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
                 .iter()
                 .map(|s| format!("\"{}\"", escape_string(s)))
                 .collect();
-            params.push(format!(
-                "{}includeBenchmarks: [{}]",
-                inner2,
-                items.join(", ")
-            ));
+            params.push(format!("{}includeBenchmarks: [{}]", inner2, items.join(", ")));
         }
         if !directive.exclude_benchmarks.is_empty() {
             let items: Vec<_> = directive
@@ -947,11 +903,7 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
                 .iter()
                 .map(|s| format!("\"{}\"", escape_string(s)))
                 .collect();
-            params.push(format!(
-                "{}excludeBenchmarks: [{}]",
-                inner2,
-                items.join(", ")
-            ));
+            params.push(format!("{}excludeBenchmarks: [{}]", inner2, items.join(", ")));
         }
         if let Some(limit) = directive.limit {
             params.push(format!("{}limit: {}", inner2, limit));
@@ -962,11 +914,7 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
             params.push(format!("{}sortBy: \"{}\"", inner2, escape_string(sort_by)));
         }
         if let Some(ref sort_order) = directive.sort_order {
-            params.push(format!(
-                "{}sortOrder: \"{}\"",
-                inner2,
-                escape_string(sort_order)
-            ));
+            params.push(format!("{}sortOrder: \"{}\"", inner2, escape_string(sort_order)));
         }
 
         // Layout
@@ -988,11 +936,7 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
             params.push(format!("{}precision: {}", inner2, precision));
         }
         if let Some(ref time_unit) = directive.time_unit {
-            params.push(format!(
-                "{}timeUnit: \"{}\"",
-                inner2,
-                escape_string(time_unit)
-            ));
+            params.push(format!("{}timeUnit: \"{}\"", inner2, escape_string(time_unit)));
         }
 
         // Output the directive
@@ -1055,17 +999,10 @@ suite example {
 }"#;
         let ast = parse(input, "test.bench").unwrap();
         assert_eq!(ast.suites.len(), 1);
-        assert_eq!(
-            ast.suites[0].chart_directives.len(),
-            3,
-            "Expected 3 chart directives"
-        );
+        assert_eq!(ast.suites[0].chart_directives.len(), 3, "Expected 3 chart directives");
 
         let formatted = format_file(&ast);
-        assert!(
-            formatted.contains("after {"),
-            "Expected 'after {{' block in output"
-        );
+        assert!(formatted.contains("after {"), "Expected 'after {{' block in output");
         assert!(
             formatted.contains("charting.drawBarChart"),
             "Expected drawBarChart call in output"
@@ -1079,14 +1016,8 @@ suite example {
             "Expected drawPieChart call in output"
         );
         // Verify non-default values are preserved
-        assert!(
-            formatted.contains("sortBy: \"speedup\""),
-            "Expected sortBy parameter"
-        );
-        assert!(
-            formatted.contains("showTotalTime: true"),
-            "Expected showTotalTime parameter"
-        );
+        assert!(formatted.contains("sortBy: \"speedup\""), "Expected sortBy parameter");
+        assert!(formatted.contains("showTotalTime: true"), "Expected showTotalTime parameter");
     }
 
     #[test]
@@ -1134,14 +1065,8 @@ suite example {
         let formatted = format_file(&ast);
 
         // Verify use statement is preserved
-        assert!(
-            formatted.contains("use std::anvil"),
-            "use statement should be preserved"
-        );
-        assert!(
-            formatted.starts_with("use std::anvil"),
-            "use statement should be at the start"
-        );
+        assert!(formatted.contains("use std::anvil"), "use statement should be preserved");
+        assert!(formatted.starts_with("use std::anvil"), "use statement should be at the start");
     }
 
     #[test]
@@ -1164,15 +1089,9 @@ suite example {
             formatted.contains("# This is a comment about the benchmark"),
             "first comment should be preserved"
         );
-        assert!(
-            formatted.contains("# Another comment line"),
-            "second comment should be preserved"
-        );
+        assert!(formatted.contains("# Another comment line"), "second comment should be preserved");
         // Verify use statement is preserved
-        assert!(
-            formatted.contains("use std::anvil"),
-            "use statement should be preserved"
-        );
+        assert!(formatted.contains("use std::anvil"), "use statement should be preserved");
     }
 
     #[test]
@@ -1192,19 +1111,10 @@ suite example {
         let formatted = format_file(&ast);
 
         // Verify use statement is preserved
-        assert!(
-            formatted.contains("use std::anvil"),
-            "use statement should be preserved"
-        );
+        assert!(formatted.contains("use std::anvil"), "use statement should be preserved");
         // Verify globalSetup is inside suite
-        assert!(
-            formatted.contains("globalSetup {"),
-            "globalSetup should be present"
-        );
-        assert!(
-            formatted.contains("anvil.spawnAnvil()"),
-            "spawnAnvil call should be present"
-        );
+        assert!(formatted.contains("globalSetup {"), "globalSetup should be present");
+        assert!(formatted.contains("anvil.spawnAnvil()"), "spawnAnvil call should be present");
     }
 
     #[test]

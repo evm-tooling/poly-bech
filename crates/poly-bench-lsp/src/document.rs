@@ -51,10 +51,7 @@ impl ParsedDocument {
                     source: source.to_string(),
                     rope,
                     ast: None,
-                    parse_error: Some(ParseErrorInfo {
-                        message: format!("{}", err),
-                        span,
-                    }),
+                    parse_error: Some(ParseErrorInfo { message: format!("{}", err), span }),
                     filename: filename.to_string(),
                     version,
                 }
@@ -69,10 +66,7 @@ impl ParsedDocument {
         let line_start = self.rope.line_to_byte(line);
         let character = offset - line_start;
 
-        tower_lsp::lsp_types::Position {
-            line: line as u32,
-            character: character as u32,
-        }
+        tower_lsp::lsp_types::Position { line: line as u32, character: character as u32 }
     }
 
     /// Convert an LSP Position to a byte offset

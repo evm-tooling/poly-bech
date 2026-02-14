@@ -5,8 +5,10 @@
 
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::process::{Command, Output, Stdio};
-use std::time::Duration;
+use std::{
+    process::{Command, Output, Stdio},
+    time::Duration,
+};
 
 /// Minimum display time for spinners (500ms) so users can follow progress
 const MIN_DISPLAY_MS: u64 = 500;
@@ -122,11 +124,7 @@ pub fn run_command_with_spinner(
 /// Helper to extract the first line of stderr for error messages
 pub fn first_error_line(stderr: &[u8]) -> String {
     let text = String::from_utf8_lossy(stderr);
-    text.lines()
-        .next()
-        .unwrap_or("Unknown error")
-        .trim()
-        .to_string()
+    text.lines().next().unwrap_or("Unknown error").trim().to_string()
 }
 
 #[cfg(test)]

@@ -115,10 +115,7 @@ pub struct NamedSource {
 
 impl NamedSource {
     pub fn new(name: impl Into<String>, source: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            source: source.into(),
-        }
+        Self { name: name.into(), source: source.into() }
     }
 }
 

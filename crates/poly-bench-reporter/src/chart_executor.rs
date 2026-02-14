@@ -76,12 +76,8 @@ fn execute_single_directive(
 
 /// Filter results to only include benchmarks from a specific suite
 fn filter_results_by_suite(results: &BenchmarkResults, suite_name: &str) -> BenchmarkResults {
-    let filtered_suites: Vec<_> = results
-        .suites
-        .iter()
-        .filter(|s| s.name == suite_name)
-        .cloned()
-        .collect();
+    let filtered_suites: Vec<_> =
+        results.suites.iter().filter(|s| s.name == suite_name).cloned().collect();
 
     BenchmarkResults::new(filtered_suites)
 }

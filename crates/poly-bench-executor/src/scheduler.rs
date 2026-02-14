@@ -6,15 +6,16 @@ use colored::Colorize;
 use miette::Result;
 use poly_bench_dsl::{BenchMode, Lang};
 use poly_bench_ir::BenchmarkIR;
-use poly_bench_runtime::go::GoRuntime;
-use poly_bench_runtime::js::JsRuntime;
-use poly_bench_runtime::measurement::Measurement;
-use poly_bench_runtime::traits::Runtime;
-use std::collections::HashMap;
-use std::io::Write;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::Instant;
+use poly_bench_runtime::{go::GoRuntime, js::JsRuntime, measurement::Measurement, traits::Runtime};
+use std::{
+    collections::HashMap,
+    io::Write,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Instant,
+};
 
 /// Spinner frames for the timer
 const SPINNER_FRAMES: &[&str] = &["[±]", "[∓]"];
@@ -47,12 +48,7 @@ fn start_timer(label: &str, label_color: &str) -> Arc<AtomicBool> {
                 "cyan" => label.cyan().to_string(),
                 _ => label.clone(),
             };
-            print!(
-                "\r    {} {} {:.1}s   ",
-                colored_label,
-                spinner.cyan(),
-                elapsed
-            );
+            print!("\r    {} {} {:.1}s   ", colored_label, spinner.cyan(), elapsed);
             std::io::stdout().flush().ok();
             frame_idx += 1;
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -65,10 +61,8 @@ fn start_timer(label: &str, label_color: &str) -> Arc<AtomicBool> {
 /// Start a background timer for multi-run benchmarks that shows run progress
 /// Returns a handle containing stop flag and current run counter
 fn start_multi_run_timer(label: &str, label_color: &str, total_runs: u64) -> Arc<TimerState> {
-    let state = Arc::new(TimerState {
-        stop_flag: AtomicBool::new(false),
-        current_run: AtomicU64::new(1),
-    });
+    let state =
+        Arc::new(TimerState { stop_flag: AtomicBool::new(false), current_run: AtomicU64::new(1) });
     let state_clone = Arc::clone(&state);
     let label = label.to_string();
     let label_color = label_color.to_string();
@@ -130,19 +124,12 @@ pub async fn run(
         println!("{} Starting Anvil node...", "⚡".yellow());
 
         // Build config from IR
-        let config = AnvilConfig {
-            fork_url: anvil_ir.fork_url.clone(),
-            fork_block: None,
-        };
+        let config = AnvilConfig { fork_url: anvil_ir.fork_url.clone(), fork_block: None };
 
         match AnvilService::spawn(&config) {
             Ok(service) => {
                 if anvil_ir.fork_url.is_some() {
-                    println!(
-                        "  {} Anvil ready at {} (forking)",
-                        "✓".green(),
-                        service.rpc_url
-                    );
+                    println!("  {} Anvil ready at {} (forking)", "✓".green(), service.rpc_url);
                 } else {
                     println!("  {} Anvil ready at {}", "✓".green(), service.rpc_url);
                 }
@@ -267,12 +254,7 @@ pub async fn run(
                 args.push(format!("sink=true"));
             }
 
-            println!(
-                "  {} {} [{}]",
-                "→".dimmed(),
-                spec.name.bold(),
-                args.join(", ").dimmed()
-            );
+            println!("  {} {} [{}]", "→".dimmed(), spec.name.bold(), args.join(", ").dimmed());
 
             let mut measurements: HashMap<Lang, Measurement> = HashMap::new();
             let bench_start = Instant::now();
@@ -436,25 +418,17 @@ pub async fn run(
             let bench_elapsed = bench_start.elapsed();
 
             // Show comparison if both ran
-            if let (Some(go_m), Some(ts_m)) = (
-                measurements.get(&Lang::Go),
-                measurements.get(&Lang::TypeScript),
-            ) {
+            if let (Some(go_m), Some(ts_m)) =
+                (measurements.get(&Lang::Go), measurements.get(&Lang::TypeScript))
+            {
                 let ratio = go_m.nanos_per_op / ts_m.nanos_per_op;
                 let (winner, _speedup) = if (ratio - 1.0).abs() < 0.05 {
                     ("tie".dimmed().to_string(), 1.0)
                 } else if ratio > 1.0 {
-                    (
-                        format!("TS {}x faster", format!("{:.2}", ratio))
-                            .cyan()
-                            .to_string(),
-                        ratio,
-                    )
+                    (format!("TS {}x faster", format!("{:.2}", ratio)).cyan().to_string(), ratio)
                 } else {
                     (
-                        format!("Go {}x faster", format!("{:.2}", 1.0 / ratio))
-                            .green()
-                            .to_string(),
+                        format!("Go {}x faster", format!("{:.2}", 1.0 / ratio)).green().to_string(),
                         1.0 / ratio,
                     )
                 };
@@ -464,10 +438,7 @@ pub async fn run(
                     winner
                 );
             } else {
-                println!(
-                    "    {}",
-                    format!("total: {:.2}s", bench_elapsed.as_secs_f64()).dimmed()
-                );
+                println!("    {}", format!("total: {:.2}s", bench_elapsed.as_secs_f64()).dimmed());
             }
 
             // Add visual separation between benchmarks

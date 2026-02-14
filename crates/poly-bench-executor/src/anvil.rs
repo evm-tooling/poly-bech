@@ -3,10 +3,12 @@
 //! Handles spawning and managing a local Anvil Ethereum node for EVM benchmarks.
 
 use miette::{miette, Result};
-use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
-use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+use std::{
+    io::{Read, Write},
+    net::{TcpListener, TcpStream},
+    process::{Child, Command, Stdio},
+    time::{Duration, Instant},
+};
 
 /// Configuration for spawning an Anvil instance
 #[derive(Debug, Clone, Default)]
@@ -34,11 +36,7 @@ impl AnvilService {
         let port = Self::find_available_port()?;
 
         // Build command arguments
-        let mut args = vec![
-            "--port".to_string(),
-            port.to_string(),
-            "--silent".to_string(),
-        ];
+        let mut args = vec!["--port".to_string(), port.to_string(), "--silent".to_string()];
 
         if let Some(ref fork_url) = config.fork_url {
             args.push("--fork-url".to_string());
@@ -60,11 +58,7 @@ impl AnvilService {
 
         let rpc_url = format!("http://127.0.0.1:{}", port);
 
-        let mut service = Self {
-            child,
-            rpc_url,
-            port,
-        };
+        let mut service = Self { child, rpc_url, port };
 
         // Wait for Anvil to be ready
         service.wait_ready(Duration::from_secs(30))?;
@@ -100,10 +94,7 @@ impl AnvilService {
             return Err(miette!("Anvil process exited with status: {}", status));
         }
 
-        Err(miette!(
-            "Timeout waiting for Anvil to be ready after {:?}",
-            timeout
-        ))
+        Err(miette!("Timeout waiting for Anvil to be ready after {:?}", timeout))
     }
 
     /// Check if Anvil is ready by sending a raw HTTP request

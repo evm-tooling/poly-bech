@@ -86,16 +86,8 @@ impl SinkMemoryDecls {
     /// Create declarations based on benchmark spec
     pub fn from_spec(spec: &BenchmarkSpec) -> Self {
         Self {
-            sink_decl: if spec.use_sink {
-                "\tvar __sink interface{}\n"
-            } else {
-                ""
-            },
-            sink_keepalive: if spec.use_sink {
-                "\t\truntime.KeepAlive(__sink)\n"
-            } else {
-                ""
-            },
+            sink_decl: if spec.use_sink { "\tvar __sink interface{}\n" } else { "" },
+            sink_keepalive: if spec.use_sink { "\t\truntime.KeepAlive(__sink)\n" } else { "" },
             memory_decl: if spec.memory {
                 "\tvar memBefore, memAfter runtime.MemStats\n"
             } else {
@@ -157,12 +149,7 @@ pub fn generate_auto_mode_loop(
     target_time_ms: u64,
 ) -> String {
     let each_hook_code = each_hook
-        .map(|h| {
-            h.trim()
-                .lines()
-                .map(|line| format!("\t\t\t{}\n", line))
-                .collect::<String>()
-        })
+        .map(|h| h.trim().lines().map(|line| format!("\t\t\t{}\n", line)).collect::<String>())
         .unwrap_or_default();
 
     format!(
@@ -238,12 +225,7 @@ pub fn generate_sample_collection(
     total_var: &str,
 ) -> String {
     let each_hook_code = each_hook
-        .map(|h| {
-            h.trim()
-                .lines()
-                .map(|line| format!("\t\t{}\n", line))
-                .collect::<String>()
-        })
+        .map(|h| h.trim().lines().map(|line| format!("\t\t{}\n", line)).collect::<String>())
         .unwrap_or_default();
 
     format!(
@@ -271,12 +253,7 @@ pub fn generate_warmup_loop(
     warmup_count: &str,
 ) -> String {
     let each_hook_code = each_hook
-        .map(|h| {
-            h.trim()
-                .lines()
-                .map(|line| format!("\t\t{}\n", line))
-                .collect::<String>()
-        })
+        .map(|h| h.trim().lines().map(|line| format!("\t\t{}\n", line)).collect::<String>())
         .unwrap_or_default();
 
     format!(
@@ -297,12 +274,7 @@ pub fn generate_fixed_mode_loop(
     iter_var: &str,
 ) -> String {
     let each_hook_code = each_hook
-        .map(|h| {
-            h.trim()
-                .lines()
-                .map(|line| format!("\t\t{}\n", line))
-                .collect::<String>()
-        })
+        .map(|h| h.trim().lines().map(|line| format!("\t\t{}\n", line)).collect::<String>())
         .unwrap_or_default();
 
     format!(
@@ -429,11 +401,7 @@ pub fn generate_fixtures_for_spec(spec: &BenchmarkSpec, suite: &SuiteIR, lang: L
                     code.push_str(&format!("var {} = {}\n", fixture_name, fixture_impl));
                 }
             } else if !fixture.data.is_empty() {
-                code.push_str(&format!(
-                    "var {} = {}\n",
-                    fixture_name,
-                    fixture.as_go_bytes()
-                ));
+                code.push_str(&format!("var {} = {}\n", fixture_name, fixture.as_go_bytes()));
             }
         }
     }

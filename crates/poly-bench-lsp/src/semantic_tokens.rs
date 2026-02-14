@@ -84,13 +84,7 @@ pub fn get_semantic_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
 
         for suite in &ast.suites {
             // Suite keyword and name
-            add_keyword_tokens(
-                doc,
-                &mut tokens,
-                &mut prev_line,
-                &mut prev_char,
-                &suite.span,
-            );
+            add_keyword_tokens(doc, &mut tokens, &mut prev_line, &mut prev_char, &suite.span);
 
             // Setup blocks
             for (lang, setup) in &suite.setups {
@@ -288,11 +282,8 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
 
                     // Use saturating_sub as a safety net
                     let delta_line = line.saturating_sub(prev_line);
-                    let delta_start = if delta_line == 0 {
-                        char_pos.saturating_sub(prev_char)
-                    } else {
-                        char_pos
-                    };
+                    let delta_start =
+                        if delta_line == 0 { char_pos.saturating_sub(prev_char) } else { char_pos };
 
                     tokens.push(SemanticToken {
                         delta_line,
@@ -369,11 +360,8 @@ fn emit_word_token(
 
         // Use saturating_sub as a safety net
         let delta_line = line.saturating_sub(*prev_line);
-        let delta_start = if delta_line == 0 {
-            char_pos.saturating_sub(*prev_char)
-        } else {
-            char_pos
-        };
+        let delta_start =
+            if delta_line == 0 { char_pos.saturating_sub(*prev_char) } else { char_pos };
 
         tokens.push(SemanticToken {
             delta_line,
@@ -422,11 +410,8 @@ fn add_token(
 
     // Use saturating_sub as a safety net even though we've validated above
     let delta_line = pos.line.saturating_sub(*prev_line);
-    let delta_start = if delta_line == 0 {
-        pos.character.saturating_sub(*prev_char)
-    } else {
-        pos.character
-    };
+    let delta_start =
+        if delta_line == 0 { pos.character.saturating_sub(*prev_char) } else { pos.character };
 
     tokens.push(SemanticToken {
         delta_line,

@@ -2,8 +2,7 @@
 
 use crate::{manifest, runtime_env_go, runtime_env_ts, templates, terminal};
 use miette::Result;
-use std::path::Path;
-use std::process::Command;
+use std::{path::Path, process::Command};
 
 /// Resolve the directory used for Go (runtime-env if present, else project root)
 fn resolve_go_root(project_root: &Path) -> std::path::PathBuf {
@@ -101,9 +100,7 @@ pub fn add_go_dependency(spec: &str) -> Result<()> {
 
     let output = terminal::run_command_with_spinner(
         &spinner,
-        Command::new("go")
-            .args(["get", &go_get_arg])
-            .current_dir(&go_root),
+        Command::new("go").args(["get", &go_get_arg]).current_dir(&go_root),
     )
     .map_err(|e| miette::miette!("Failed to run go get: {}", e))?;
 
@@ -117,10 +114,7 @@ pub fn add_go_dependency(spec: &str) -> Result<()> {
     // Running tidy without a .go file that imports the deps would remove them.
     // Tidy will run automatically when `poly-bench run` generates bench code.
 
-    terminal::finish_success(
-        &spinner,
-        &format!("Added {}@{} to polybench.toml", package, version),
-    );
+    terminal::finish_success(&spinner, &format!("Added {}@{} to polybench.toml", package, version));
 
     Ok(())
 }
@@ -156,19 +150,14 @@ pub fn add_ts_dependency(spec: &str) -> Result<()> {
     update_package_json_deps(&ts_root, manifest.ts.as_ref().unwrap())?;
 
     // Run npm install
-    let npm_spec = if version == "latest" {
-        package.clone()
-    } else {
-        format!("{}@{}", package, version)
-    };
+    let npm_spec =
+        if version == "latest" { package.clone() } else { format!("{}@{}", package, version) };
 
     let spinner = terminal::step_spinner(&format!("Installing {}...", npm_spec));
 
     let output = terminal::run_command_with_spinner(
         &spinner,
-        Command::new("npm")
-            .args(["install", &npm_spec])
-            .current_dir(&ts_root),
+        Command::new("npm").args(["install", &npm_spec]).current_dir(&ts_root),
     )
     .map_err(|e| miette::miette!("Failed to run npm install: {}", e))?;
 
@@ -178,10 +167,7 @@ pub fn add_ts_dependency(spec: &str) -> Result<()> {
         return Err(miette::miette!("npm install failed"));
     }
 
-    terminal::finish_success(
-        &spinner,
-        &format!("Added {}@{} to polybench.toml", package, version),
-    );
+    terminal::finish_success(&spinner, &format!("Added {}@{} to polybench.toml", package, version));
 
     Ok(())
 }
@@ -242,9 +228,7 @@ fn install_go_deps(project_root: &Path, go_config: &manifest::GoConfig) -> Resul
 
         let output = terminal::run_command_with_spinner(
             &spinner,
-            Command::new("go")
-                .args(["get", &go_get_arg])
-                .current_dir(&go_root),
+            Command::new("go").args(["get", &go_get_arg]).current_dir(&go_root),
         )
         .map_err(|e| miette::miette!("Failed to run go get: {}", e))?;
 

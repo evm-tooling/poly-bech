@@ -87,10 +87,9 @@ pub fn generate_speedup_chart(results: &BenchmarkResults) -> Result<String> {
     let summary = &results.summary;
     let subtitle = match summary.winner {
         Some(Lang::Go) => format!("Go is {:.1}x faster overall", summary.geo_mean_speedup),
-        Some(Lang::TypeScript) => format!(
-            "TypeScript is {:.1}x faster overall",
-            1.0 / summary.geo_mean_speedup
-        ),
+        Some(Lang::TypeScript) => {
+            format!("TypeScript is {:.1}x faster overall", 1.0 / summary.geo_mean_speedup)
+        }
         _ => "Similar performance".to_string(),
     };
 
@@ -102,10 +101,7 @@ pub fn generate_speedup_chart(results: &BenchmarkResults) -> Result<String> {
         width / 2, escape_xml(&subtitle)));
 
     // Chart group
-    svg.push_str(&format!(
-        "<g transform=\"translate({},{})\">\n",
-        margin_left, margin_top
-    ));
+    svg.push_str(&format!("<g transform=\"translate({},{})\">\n", margin_left, margin_top));
 
     // Grid lines
     for exp in 0..=log_ceil {
@@ -174,15 +170,8 @@ pub fn generate_speedup_chart(results: &BenchmarkResults) -> Result<String> {
 
     // Legend
     let legend_y = height - 24;
-    svg.push_str(&format!(
-        "<g transform=\"translate({},{})\">\n",
-        width / 2 - 100,
-        legend_y
-    ));
-    svg.push_str(&format!(
-        "  <rect width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\n",
-        go_color
-    ));
+    svg.push_str(&format!("<g transform=\"translate({},{})\">\n", width / 2 - 100, legend_y));
+    svg.push_str(&format!("  <rect width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\n", go_color));
     svg.push_str("  <text x=\"18\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"#4B5563\">Go faster</text>\n");
     svg.push_str(&format!(
         "  <rect x=\"100\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\n",
@@ -197,8 +186,5 @@ pub fn generate_speedup_chart(results: &BenchmarkResults) -> Result<String> {
 }
 
 fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }

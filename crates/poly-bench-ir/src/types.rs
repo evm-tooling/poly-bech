@@ -41,12 +41,7 @@ impl BenchmarkIR {
     }
 
     pub fn with_stdlib(stdlib_imports: HashSet<String>, suites: Vec<SuiteIR>) -> Self {
-        Self {
-            stdlib_imports,
-            anvil_config: None,
-            suites,
-            chart_directives: Vec::new(),
-        }
+        Self { stdlib_imports, anvil_config: None, suites, chart_directives: Vec::new() }
     }
 
     pub fn with_anvil(
@@ -54,12 +49,7 @@ impl BenchmarkIR {
         anvil_config: Option<AnvilConfigIR>,
         suites: Vec<SuiteIR>,
     ) -> Self {
-        Self {
-            stdlib_imports,
-            anvil_config,
-            suites,
-            chart_directives: Vec::new(),
-        }
+        Self { stdlib_imports, anvil_config, suites, chart_directives: Vec::new() }
     }
 
     pub fn with_charts(
@@ -68,12 +58,7 @@ impl BenchmarkIR {
         suites: Vec<SuiteIR>,
         chart_directives: Vec<ChartDirectiveIR>,
     ) -> Self {
-        Self {
-            stdlib_imports,
-            anvil_config,
-            suites,
-            chart_directives,
-        }
+        Self { stdlib_imports, anvil_config, suites, chart_directives }
     }
 
     /// Get all benchmarks across all suites
@@ -393,9 +378,9 @@ impl BenchmarkSpec {
 
     /// Check if this benchmark has any lifecycle hooks for a language
     pub fn has_hooks(&self, lang: Lang) -> bool {
-        self.before_hooks.contains_key(&lang)
-            || self.after_hooks.contains_key(&lang)
-            || self.each_hooks.contains_key(&lang)
+        self.before_hooks.contains_key(&lang) ||
+            self.after_hooks.contains_key(&lang) ||
+            self.each_hooks.contains_key(&lang)
     }
 
     /// Check if this benchmark should be skipped for a language
@@ -525,23 +510,19 @@ impl ChartDirectiveIR {
 
     /// Get the x-axis label with a sensible default
     pub fn get_x_label(&self) -> String {
-        self.x_label
-            .clone()
-            .unwrap_or_else(|| match self.chart_type {
-                ChartType::BarChart => "Time".to_string(),
-                ChartType::PieChart => "".to_string(),
-                ChartType::LineChart => "Benchmark".to_string(),
-            })
+        self.x_label.clone().unwrap_or_else(|| match self.chart_type {
+            ChartType::BarChart => "Time".to_string(),
+            ChartType::PieChart => "".to_string(),
+            ChartType::LineChart => "Benchmark".to_string(),
+        })
     }
 
     /// Get the y-axis label with a sensible default
     pub fn get_y_label(&self) -> String {
-        self.y_label
-            .clone()
-            .unwrap_or_else(|| match self.chart_type {
-                ChartType::BarChart => "Benchmark".to_string(),
-                ChartType::PieChart => "".to_string(),
-                ChartType::LineChart => "Time".to_string(),
-            })
+        self.y_label.clone().unwrap_or_else(|| match self.chart_type {
+            ChartType::BarChart => "Benchmark".to_string(),
+            ChartType::PieChart => "".to_string(),
+            ChartType::LineChart => "Time".to_string(),
+        })
     }
 }

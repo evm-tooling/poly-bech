@@ -8,10 +8,7 @@
 //! mapped back to their original source locations.
 
 use regex::Regex;
-use std::fs;
-use std::io::Write;
-use std::path::Path;
-use std::process::Command;
+use std::{fs, io::Write, path::Path, process::Command};
 use tempfile::TempDir;
 
 use super::{BlockType, EmbeddedBlock, EmbeddedDiagnostic, EmbeddedSeverity, SetupContext};
@@ -59,9 +56,9 @@ pub fn check_go_block(
     };
 
     // Check for "go.mod not found" type errors - skip silently when not in module
-    if !is_in_mod_root
-        && (error_output.contains("go.mod file not found")
-            || error_output.contains("no required module provides package"))
+    if !is_in_mod_root &&
+        (error_output.contains("go.mod file not found") ||
+            error_output.contains("no required module provides package"))
     {
         return diagnostics;
     }
@@ -98,9 +95,9 @@ pub fn check_go_setup_combined(
     };
 
     // Skip module-not-found errors when not in module
-    if !is_in_mod_root
-        && (error_output.contains("go.mod file not found")
-            || error_output.contains("no required module provides package"))
+    if !is_in_mod_root &&
+        (error_output.contains("go.mod file not found") ||
+            error_output.contains("no required module provides package"))
     {
         return Vec::new();
     }
@@ -122,17 +119,12 @@ fn find_go_cmd() -> Option<String> {
         &format!("{}/go/bin/go", std::env::var("HOME").unwrap_or_default()),
     ];
 
-    common_paths
-        .iter()
-        .find(|p| Path::new(p).exists())
-        .map(|s| s.to_string())
+    common_paths.iter().find(|p| Path::new(p).exists()).map(|s| s.to_string())
 }
 
 /// Run go build on the given code and return (error_output, is_in_mod_root)
 fn run_go_build(go_cmd: &str, code: &str, go_mod_root: Option<&str>) -> Option<(String, bool)> {
-    let use_mod_root = go_mod_root
-        .map(|r| Path::new(r).join("go.mod").exists())
-        .unwrap_or(false);
+    let use_mod_root = go_mod_root.map(|r| Path::new(r).join("go.mod").exists()).unwrap_or(false);
 
     let (_temp_dir_guard, work_dir, is_in_mod_root) = if use_mod_root {
         // Safe: use_mod_root is only true if go_mod_root is Some
@@ -177,11 +169,7 @@ fn run_go_build(go_cmd: &str, code: &str, go_mod_root: Option<&str>) -> Option<(
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let error_output = if stderr.is_empty() {
-        stdout.to_string()
-    } else {
-        stderr.to_string()
-    };
+    let error_output = if stderr.is_empty() { stdout.to_string() } else { stderr.to_string() };
 
     Some((error_output, is_in_mod_root))
 }
@@ -205,10 +193,7 @@ fn build_combined_setup(
             combined.push_str("\n\n");
 
             // Find the matching import block
-            if let Some(block) = blocks
-                .iter()
-                .find(|b| b.block_type == BlockType::SetupImport)
-            {
+            if let Some(block) = blocks.iter().find(|b| b.block_type == BlockType::SetupImport) {
                 let line_count = trimmed.lines().count();
                 mappings.push(SectionMapping {
                     start_line: current_line,
@@ -241,10 +226,7 @@ fn build_combined_setup(
             combined.push_str(trimmed);
             combined.push_str("\n\n");
 
-            if let Some(block) = blocks
-                .iter()
-                .find(|b| b.block_type == BlockType::SetupDeclare)
-            {
+            if let Some(block) = blocks.iter().find(|b| b.block_type == BlockType::SetupDeclare) {
                 let line_count = trimmed.lines().count();
                 mappings.push(SectionMapping {
                     start_line: current_line,
@@ -264,10 +246,7 @@ fn build_combined_setup(
             combined.push_str(trimmed);
             combined.push_str("\n\n");
 
-            if let Some(block) = blocks
-                .iter()
-                .find(|b| b.block_type == BlockType::SetupHelpers)
-            {
+            if let Some(block) = blocks.iter().find(|b| b.block_type == BlockType::SetupHelpers) {
                 let line_count = trimmed.lines().count();
                 mappings.push(SectionMapping {
                     start_line: current_line,
@@ -327,10 +306,7 @@ fn parse_combined_errors(output: &str, mappings: &[SectionMapping]) -> Vec<Embed
     let mut diagnostics = Vec::new();
     let error_re = Regex::new(r"(?m)^[^:\s]+\.go:(\d+):(\d+):\s*(.+)$").unwrap();
 
-    eprintln!(
-        "[go-combined-parse] Parsing errors, {} mappings:",
-        mappings.len()
-    );
+    eprintln!("[go-combined-parse] Parsing errors, {} mappings:", mappings.len());
     for (i, m) in mappings.iter().enumerate() {
         eprintln!(
             "[go-combined-parse]   [{}] start_line={}, line_count={}, span_start={}",
@@ -407,10 +383,7 @@ fn parse_combined_errors(output: &str, mappings: &[SectionMapping]) -> Vec<Embed
                 );
             }
         } else {
-            eprintln!(
-                "[go-combined-parse]   -> No mapping found for line {}",
-                error_line
-            );
+            eprintln!("[go-combined-parse]   -> No mapping found for line {}", error_line);
         }
     }
 
@@ -419,9 +392,7 @@ fn parse_combined_errors(output: &str, mappings: &[SectionMapping]) -> Vec<Embed
 
 /// Find which section a line number belongs to
 fn find_section_for_line(line: usize, mappings: &[SectionMapping]) -> Option<&SectionMapping> {
-    mappings
-        .iter()
-        .find(|m| line >= m.start_line && line < m.start_line + m.line_count)
+    mappings.iter().find(|m| line >= m.start_line && line < m.start_line + m.line_count)
 }
 
 /// Build the context prefix (imports + declarations) for wrapping
@@ -599,11 +570,7 @@ fn parse_go_errors(
     // If no line:col errors found but build failed, report on first line
     if diagnostics.is_empty() && !output.trim().is_empty() && output.contains("error") {
         let first_line = lines.first().unwrap_or(&"");
-        let summary = output
-            .lines()
-            .find(|l| !l.trim().is_empty())
-            .unwrap_or(output)
-            .trim();
+        let summary = output.lines().find(|l| !l.trim().is_empty()).unwrap_or(output).trim();
 
         if let Some(sanitized) = sanitize_go_message(summary) {
             // Use char_indices for safe string truncation (handles multi-byte chars)

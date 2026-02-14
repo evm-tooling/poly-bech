@@ -2,8 +2,7 @@
 
 use miette::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
 /// The main manifest structure for a poly-bench project
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,10 +161,7 @@ impl Manifest {
                 version: default_version(),
                 description: None,
             },
-            defaults: DefaultsConfig {
-                languages: languages.to_vec(),
-                ..Default::default()
-            },
+            defaults: DefaultsConfig { languages: languages.to_vec(), ..Default::default() },
             go: if has_go {
                 Some(GoConfig {
                     module: name.to_string(),
@@ -176,10 +172,7 @@ impl Manifest {
                 None
             },
             ts: if has_ts {
-                Some(TsConfig {
-                    runtime: default_ts_runtime(),
-                    dependencies: HashMap::new(),
-                })
+                Some(TsConfig { runtime: default_ts_runtime(), dependencies: HashMap::new() })
             } else {
                 None
             },
@@ -211,12 +204,9 @@ impl Manifest {
 
     /// Add a Go dependency
     pub fn add_go_dependency(&mut self, package: &str, version: &str) -> Result<()> {
-        let go = self
-            .go
-            .as_mut()
-            .ok_or_else(|| miette::miette!("Go is not enabled in this project"))?;
-        go.dependencies
-            .insert(package.to_string(), version.to_string());
+        let go =
+            self.go.as_mut().ok_or_else(|| miette::miette!("Go is not enabled in this project"))?;
+        go.dependencies.insert(package.to_string(), version.to_string());
         Ok(())
     }
 
@@ -226,8 +216,7 @@ impl Manifest {
             .ts
             .as_mut()
             .ok_or_else(|| miette::miette!("TypeScript is not enabled in this project"))?;
-        ts.dependencies
-            .insert(package.to_string(), version.to_string());
+        ts.dependencies.insert(package.to_string(), version.to_string());
         Ok(())
     }
 }
@@ -280,18 +269,11 @@ mod tests {
     fn test_add_dependency() {
         let mut manifest = Manifest::new("test", &["go".to_string(), "ts".to_string()]);
 
-        manifest
-            .add_go_dependency("github.com/pkg/errors", "v0.9.1")
-            .unwrap();
+        manifest.add_go_dependency("github.com/pkg/errors", "v0.9.1").unwrap();
         manifest.add_ts_dependency("viem", "^2.0.0").unwrap();
 
         assert_eq!(
-            manifest
-                .go
-                .as_ref()
-                .unwrap()
-                .dependencies
-                .get("github.com/pkg/errors"),
+            manifest.go.as_ref().unwrap().dependencies.get("github.com/pkg/errors"),
             Some(&"v0.9.1".to_string())
         );
         assert_eq!(

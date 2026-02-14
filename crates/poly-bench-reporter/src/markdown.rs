@@ -33,10 +33,7 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
     md.push_str("| Metric | Value |\n");
     md.push_str("|--------|-------|\n");
     md.push_str(&format!("| Total Suites | {} |\n", summary.total_suites));
-    md.push_str(&format!(
-        "| Total Benchmarks | {} |\n",
-        summary.total_benchmarks
-    ));
+    md.push_str(&format!("| Total Benchmarks | {} |\n", summary.total_benchmarks));
     md.push_str(&format!(
         "| Go Wins | {} ({}%) |\n",
         summary.go_wins,
@@ -52,10 +49,7 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
         summary.ties,
         (summary.ties * 100) / summary.total_benchmarks.max(1)
     ));
-    md.push_str(&format!(
-        "| Geometric Mean Speedup | {:.2}x |\n\n",
-        summary.geo_mean_speedup
-    ));
+    md.push_str(&format!("| Geometric Mean Speedup | {:.2}x |\n\n", summary.geo_mean_speedup));
 
     // Suite Results
     md.push_str("## Suite Results\n\n");
@@ -126,9 +120,7 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
 fn chrono_lite() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    let duration = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
+    let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
 
     let secs = duration.as_secs();
 
@@ -144,8 +136,5 @@ fn chrono_lite() -> String {
     let minutes = (time_secs % 3600) / 60;
     let seconds = time_secs % 60;
 
-    format!(
-        "{}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        years, months, day, hours, minutes, seconds
-    )
+    format!("{}-{:02}-{:02}T{:02}:{:02}:{:02}Z", years, months, day, hours, minutes, seconds)
 }

@@ -20,10 +20,7 @@ impl ParsedSetup {
 
     /// Create a ParsedSetup with no imports (passthrough)
     pub fn passthrough(code: &str) -> Self {
-        Self {
-            imports: Vec::new(),
-            body: code.to_string(),
-        }
+        Self { imports: Vec::new(), body: code.to_string() }
     }
 }
 
@@ -64,10 +61,7 @@ pub fn extract_go_imports(setup: &str) -> ParsedSetup {
                 let trimmed = part.trim();
                 if !trimmed.is_empty() && !trimmed.starts_with(')') {
                     // Check if it's an alias or special prefix
-                    if trimmed
-                        .chars()
-                        .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
-                    {
+                    if trimmed.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.') {
                         // This is an alias, wait for next quoted part
                     }
                 }
@@ -361,12 +355,12 @@ fn is_import_complete(import_text: &str) -> bool {
 
     // Must have a module path (quoted string after 'from' or standalone)
     // Check for 'from' followed by quotes, or just quotes for side-effect imports
-    let has_from_clause = import_text.contains(" from ")
-        && (count_quotes(import_text, '\'') >= 2 || count_quotes(import_text, '"') >= 2);
+    let has_from_clause = import_text.contains(" from ") &&
+        (count_quotes(import_text, '\'') >= 2 || count_quotes(import_text, '"') >= 2);
 
     // Side effect import: import 'pkg' (no 'from', just the quoted path)
-    let is_side_effect = !import_text.contains(" from ")
-        && (count_quotes(import_text, '\'') >= 2 || count_quotes(import_text, '"') >= 2);
+    let is_side_effect = !import_text.contains(" from ") &&
+        (count_quotes(import_text, '\'') >= 2 || count_quotes(import_text, '"') >= 2);
 
     has_from_clause || is_side_effect
 }
@@ -408,12 +402,7 @@ func foo() {}"#;
         let parsed = extract_go_imports(setup);
 
         // Should extract 3 imports
-        assert_eq!(
-            parsed.imports.len(),
-            3,
-            "Expected 3 imports, got: {:?}",
-            parsed.imports
-        );
+        assert_eq!(parsed.imports.len(), 3, "Expected 3 imports, got: {:?}", parsed.imports);
 
         // Body should NOT contain import statements
         assert!(
@@ -423,10 +412,7 @@ func foo() {}"#;
         );
 
         // Body should contain the rest
-        assert!(
-            parsed.body.contains("var benchERC20ABI"),
-            "Body should contain var declaration"
-        );
+        assert!(parsed.body.contains("var benchERC20ABI"), "Body should contain var declaration");
     }
 
     #[test]
@@ -437,24 +423,13 @@ func foo() {}"#;
         let parsed = extract_go_imports(setup);
 
         // Should extract 3 imports
-        assert_eq!(
-            parsed.imports.len(),
-            3,
-            "Expected 3 imports, got: {:?}",
-            parsed.imports
-        );
-        assert!(
-            parsed.imports.iter().any(|i| i.contains("math/big")),
-            "Should have math/big"
-        );
+        assert_eq!(parsed.imports.len(), 3, "Expected 3 imports, got: {:?}", parsed.imports);
+        assert!(parsed.imports.iter().any(|i| i.contains("math/big")), "Should have math/big");
         assert!(
             parsed.imports.iter().any(|i| i.contains("go-ethereum")),
             "Should have go-ethereum"
         );
-        assert!(
-            parsed.imports.iter().any(|i| i.contains("viem-go")),
-            "Should have viem-go"
-        );
+        assert!(parsed.imports.iter().any(|i| i.contains("viem-go")), "Should have viem-go");
 
         // Body should NOT contain import statements
         assert!(
@@ -464,10 +439,7 @@ func foo() {}"#;
         );
 
         // Body should contain the rest
-        assert!(
-            parsed.body.contains("var benchERC20ABI"),
-            "Body should contain var declaration"
-        );
+        assert!(parsed.body.contains("var benchERC20ABI"), "Body should contain var declaration");
     }
 
     #[test]
@@ -483,9 +455,7 @@ var x = 1"#;
         assert_eq!(parsed.imports.len(), 3);
         assert!(parsed.imports.contains(&"\"fmt\"".to_string()));
         assert!(parsed.imports.contains(&"\"time\"".to_string()));
-        assert!(parsed
-            .imports
-            .contains(&"\"github.com/example/pkg\"".to_string()));
+        assert!(parsed.imports.contains(&"\"github.com/example/pkg\"".to_string()));
         assert!(parsed.body.contains("var x = 1"));
     }
 
@@ -502,12 +472,8 @@ func bar() {}"#;
         let parsed = extract_go_imports(setup);
         assert_eq!(parsed.imports.len(), 4);
         assert!(parsed.imports.contains(&"big \"math/big\"".to_string()));
-        assert!(parsed
-            .imports
-            .contains(&". \"github.com/example/dot\"".to_string()));
-        assert!(parsed
-            .imports
-            .contains(&"_ \"github.com/example/blank\"".to_string()));
+        assert!(parsed.imports.contains(&". \"github.com/example/dot\"".to_string()));
+        assert!(parsed.imports.contains(&"_ \"github.com/example/blank\"".to_string()));
     }
 
     #[test]

@@ -2,10 +2,12 @@
 //!
 //! Parses a stream of tokens into an AST.
 
-use crate::ast::{HookStyle, *};
-use crate::error::{NamedSource, ParseError};
-use crate::lexer::Lexer;
-use crate::tokens::{Token, TokenKind};
+use crate::{
+    ast::{HookStyle, *},
+    error::{NamedSource, ParseError},
+    lexer::Lexer,
+    tokens::{Token, TokenKind},
+};
 use miette::{Report, Result};
 use std::collections::HashMap;
 
@@ -23,10 +25,7 @@ fn normalize_code_indent(code: &str) -> String {
 
     let min_indent = if non_empty_lines.len() <= 1 {
         // Only one line or empty, use its indent
-        non_empty_lines
-            .first()
-            .map(|l| l.len() - l.trim_start().len())
-            .unwrap_or(0)
+        non_empty_lines.first().map(|l| l.len() - l.trim_start().len()).unwrap_or(0)
     } else {
         // Multiple lines - calculate min indent, but if first line has 0 indent,
         // use the min of the remaining lines
@@ -80,12 +79,7 @@ pub struct Parser {
 
 impl Parser {
     pub fn new(tokens: Vec<Token>, filename: String, source: String) -> Self {
-        Self {
-            tokens,
-            current: 0,
-            filename,
-            source,
-        }
+        Self { tokens, current: 0, filename, source }
     }
 
     /// Parse the entire file
@@ -155,13 +149,7 @@ impl Parser {
         // Full span from 'use' to end of module name
         let full_span = Span::new(use_span.start, module_span.end, use_span.line, use_span.col);
 
-        Ok(UseStd::new(
-            module,
-            full_span,
-            use_span,
-            std_span,
-            module_span,
-        ))
+        Ok(UseStd::new(module, full_span, use_span, std_span, module_span))
     }
 
     /// Parse a globalSetup block
@@ -216,12 +204,8 @@ impl Parser {
 
         let end_token = self.expect(TokenKind::RBrace)?;
 
-        let full_span = Span::new(
-            start_span.start,
-            end_token.span.end,
-            start_span.line,
-            start_span.col,
-        );
+        let full_span =
+            Span::new(start_span.start, end_token.span.end, start_span.line, start_span.col);
 
         Ok(GlobalSetup::new(anvil_config, full_span))
     }
@@ -758,12 +742,12 @@ impl Parser {
                 // Stop at section keywords or closing brace
                 if matches!(
                     token.kind,
-                    TokenKind::RBrace
-                        | TokenKind::Import
-                        | TokenKind::Declare
-                        | TokenKind::Init
-                        | TokenKind::Helpers
-                        | TokenKind::Async
+                    TokenKind::RBrace |
+                        TokenKind::Import |
+                        TokenKind::Declare |
+                        TokenKind::Init |
+                        TokenKind::Helpers |
+                        TokenKind::Async
                 ) {
                     break;
                 }
@@ -886,11 +870,11 @@ impl Parser {
                 fixture.shape = Some(shape_code.code);
             }
             // Language-specific implementation
-            TokenKind::Go
-            | TokenKind::Ts
-            | TokenKind::TypeScript
-            | TokenKind::Rust
-            | TokenKind::Python => {
+            TokenKind::Go |
+            TokenKind::Ts |
+            TokenKind::TypeScript |
+            TokenKind::Rust |
+            TokenKind::Python => {
                 let lang = self.expect_lang()?;
                 self.expect(TokenKind::Colon)?;
                 let code = self.parse_inline_or_block_code()?;
@@ -1110,11 +1094,11 @@ impl Parser {
                 }
             }
             // Language-specific implementation
-            TokenKind::Go
-            | TokenKind::Ts
-            | TokenKind::TypeScript
-            | TokenKind::Rust
-            | TokenKind::Python => {
+            TokenKind::Go |
+            TokenKind::Ts |
+            TokenKind::TypeScript |
+            TokenKind::Rust |
+            TokenKind::Python => {
                 let lang = self.expect_lang()?;
                 self.expect(TokenKind::Colon)?;
                 let code = self.parse_inline_or_block_code()?;
@@ -1178,12 +1162,12 @@ impl Parser {
                 // Stop conditions for inline code in a map
                 if matches!(
                     token.kind,
-                    TokenKind::RBrace
-                        | TokenKind::Go
-                        | TokenKind::Ts
-                        | TokenKind::TypeScript
-                        | TokenKind::Rust
-                        | TokenKind::Python
+                    TokenKind::RBrace |
+                        TokenKind::Go |
+                        TokenKind::Ts |
+                        TokenKind::TypeScript |
+                        TokenKind::Rust |
+                        TokenKind::Python
                 ) {
                     break;
                 }
@@ -1243,9 +1227,7 @@ impl Parser {
         }
 
         if depth > 0 {
-            return Err(self.make_error(ParseError::UnclosedBrace {
-                span: open_brace.span.clone(),
-            }));
+            return Err(self.make_error(ParseError::UnclosedBrace { span: open_brace.span.clone() }));
         }
 
         let close_brace = close_brace_span.unwrap();
@@ -1285,36 +1267,36 @@ impl Parser {
                 // Stop conditions for inline code - all keywords that could follow
                 if matches!(
                     token.kind,
-                    TokenKind::RBrace
-                        | TokenKind::Go
-                        | TokenKind::Ts
-                        | TokenKind::TypeScript
-                        | TokenKind::Rust
-                        | TokenKind::Python
-                        | TokenKind::Description
-                        | TokenKind::Iterations
-                        | TokenKind::Warmup
-                        | TokenKind::Timeout
-                        | TokenKind::Tags
-                        | TokenKind::Skip
-                        | TokenKind::Validate
-                        | TokenKind::Mode
-                        | TokenKind::Sink
-                        | TokenKind::TargetTime
-                        | TokenKind::MinIterations
-                        | TokenKind::MaxIterations
-                        | TokenKind::OutlierDetection
-                        | TokenKind::CvThreshold
-                        | TokenKind::Memory
-                        | TokenKind::Concurrency
-                        | TokenKind::Before
-                        | TokenKind::After
-                        | TokenKind::Each
-                        | TokenKind::Hex
-                        | TokenKind::Shape
-                        | TokenKind::Bench
-                        | TokenKind::Setup
-                        | TokenKind::Fixture
+                    TokenKind::RBrace |
+                        TokenKind::Go |
+                        TokenKind::Ts |
+                        TokenKind::TypeScript |
+                        TokenKind::Rust |
+                        TokenKind::Python |
+                        TokenKind::Description |
+                        TokenKind::Iterations |
+                        TokenKind::Warmup |
+                        TokenKind::Timeout |
+                        TokenKind::Tags |
+                        TokenKind::Skip |
+                        TokenKind::Validate |
+                        TokenKind::Mode |
+                        TokenKind::Sink |
+                        TokenKind::TargetTime |
+                        TokenKind::MinIterations |
+                        TokenKind::MaxIterations |
+                        TokenKind::OutlierDetection |
+                        TokenKind::CvThreshold |
+                        TokenKind::Memory |
+                        TokenKind::Concurrency |
+                        TokenKind::Before |
+                        TokenKind::After |
+                        TokenKind::Each |
+                        TokenKind::Hex |
+                        TokenKind::Shape |
+                        TokenKind::Bench |
+                        TokenKind::Setup |
+                        TokenKind::Fixture
                 ) {
                     break;
                 }
@@ -1367,11 +1349,7 @@ impl Parser {
             self.source[start..end].to_string()
         } else {
             // Fallback to token-based reconstruction if spans are invalid
-            tokens
-                .iter()
-                .map(|t| t.lexeme.as_str())
-                .collect::<Vec<_>>()
-                .join(" ")
+            tokens.iter().map(|t| t.lexeme.as_str()).collect::<Vec<_>>().join(" ")
         }
     }
 
@@ -1420,11 +1398,11 @@ impl Parser {
         }
         let token = self.peek();
         match &token.kind {
-            TokenKind::Go
-            | TokenKind::Ts
-            | TokenKind::TypeScript
-            | TokenKind::Rust
-            | TokenKind::Python => true,
+            TokenKind::Go |
+            TokenKind::Ts |
+            TokenKind::TypeScript |
+            TokenKind::Rust |
+            TokenKind::Python => true,
             TokenKind::Identifier(s) => Lang::from_str(s).is_some(),
             _ => false,
         }
@@ -2048,10 +2026,7 @@ suite evmTest {
         let suite = &file.suites[0];
         let gs = suite.global_setup.as_ref().unwrap();
         let anvil = gs.anvil_config.as_ref().unwrap();
-        assert_eq!(
-            anvil.fork_url,
-            Some("https://mainnet.infura.io".to_string())
-        );
+        assert_eq!(anvil.fork_url, Some("https://mainnet.infura.io".to_string()));
     }
 
     #[test]
