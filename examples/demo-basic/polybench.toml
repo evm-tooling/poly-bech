@@ -1,5 +1,5 @@
 [project]
-name = "rel-deme"
+name = "demo-basic"
 version = "0.0.1"
 
 [defaults]
@@ -11,11 +11,17 @@ languages = [
 ]
 
 [go]
-module = "rel-deme"
+module = "demo-basic"
 version = "1.21"
+
+[go.dependencies]
+"github.com/ChefBingbong/viem-go" = "latest"
 
 [ts]
 runtime = "node"
+
+[ts.dependencies]
+viem = "latest"
 
 [output]
 report_formats = []

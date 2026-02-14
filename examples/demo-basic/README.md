@@ -1,4 +1,4 @@
-# test-demo
+# demo-basic
 
 A poly-bench project for cross-language benchmarking.
 
@@ -19,7 +19,7 @@ poly-bench run
 ## Project Structure
 
 ```
-test-demo/
+demo-basic/
 ├── polybench.toml       # Project configuration
 ├── benchmarks/          # Benchmark files (.bench)
 │   └── example.bench    # Example benchmark

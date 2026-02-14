@@ -3,7 +3,7 @@ use std::charting
 
 suite example {
     description: "Comprehensive benchmark showcasing all DSL features"
-    warmup: 100
+    warmup: 0
     compare: true
     baseline: "go"
     mode: "auto"
@@ -15,10 +15,10 @@ suite example {
 
     setup go {
         import (
-            "crypto/sha256"
-            "sync"
-            "github.com/ethereum/go-ethereum/common"
-            "github.com/ChefBingbong/viem-go/abi"
+        "crypto/sha256"
+        "sync"
+        "github.com/ethereum/go-ethereum/common"
+        "github.com/ChefBingbong/viem-go/abi"
         )
 
         declare {
@@ -33,16 +33,16 @@ suite example {
         init {
             var err error
             benchERC20ABI, err = abi.Parse([]byte(`[
-                        {"name":"name","type":"function","inputs":[],"outputs":[{"type":"string"}],"stateMutability":"view"},
-                        {"name":"symbol","type":"function","inputs":[],"outputs":[{"type":"string"}],"stateMutability":"view"},
-                        {"name":"decimals","type":"function","inputs":[],"outputs":[{"type":"uint8"}],"stateMutability":"view"},
-                        {"name":"totalSupply","type":"function","inputs":[],"outputs":[{"type":"uint256"}],"stateMutability":"view"},
-                        {"name":"balanceOf","type":"function","inputs":[{"name":"owner","type":"address"}],"outputs":[{"type":"uint256"}],"stateMutability":"view"},
-                        {"name":"allowance","type":"function","inputs":[{"name":"owner","type":"address"},{"name":"spender","type":"address"}],"outputs":[{"type":"uint256"}],"stateMutability":"view"},
-                        {"name":"transfer","type":"function","inputs":[{"name":"to","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"type":"bool"}],"stateMutability":"nonpayable"},
-                        {"name":"approve","type":"function","inputs":[{"name":"spender","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"type":"bool"}],"stateMutability":"nonpayable"},
-                        {"name":"transferFrom","type":"function","inputs":[{"name":"from","type":"address"},{"name":"to","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"type":"bool"}],"stateMutability":"nonpayable"}
-                    ]`))
+                {"name":"name","type":"function","inputs":[],"outputs":[{"type":"string"}],"stateMutability":"view"},
+                {"name":"symbol","type":"function","inputs":[],"outputs":[{"type":"string"}],"stateMutability":"view"},
+                {"name":"decimals","type":"function","inputs":[],"outputs":[{"type":"uint8"}],"stateMutability":"view"},
+                {"name":"totalSupply","type":"function","inputs":[],"outputs":[{"type":"uint256"}],"stateMutability":"view"},
+                {"name":"balanceOf","type":"function","inputs":[{"name":"owner","type":"address"}],"outputs":[{"type":"uint256"}],"stateMutability":"view"},
+                {"name":"allowance","type":"function","inputs":[{"name":"owner","type":"address"},{"name":"spender","type":"address"}],"outputs":[{"type":"uint256"}],"stateMutability":"view"},
+                {"name":"transfer","type":"function","inputs":[{"name":"to","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"type":"bool"}],"stateMutability":"nonpayable"},
+                {"name":"approve","type":"function","inputs":[{"name":"spender","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"type":"bool"}],"stateMutability":"nonpayable"},
+                {"name":"transferFrom","type":"function","inputs":[{"name":"from","type":"address"},{"name":"to","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"type":"bool"}],"stateMutability":"nonpayable"}
+            ]`))
             if err != nil {
                 panic("failed to parse ERC20 ABI for benchmarks: " + err.Error())
             }
@@ -96,21 +96,26 @@ suite example {
             let setupCounter = 0;
             let allocBuf: Uint8Array | null = null;
             const erc20Abi = parseAbi([
-                    'function name() view returns (string)',
-                    'function symbol() view returns (string)',
-                    'function decimals() view returns (uint8)',
-                    'function totalSupply() view returns (uint256)',
-                    'function balanceOf(address owner) view returns (uint256)',
-                    'function allowance(address owner, address spender) view returns (uint256)',
-                    'function transfer(address to, uint256 amount) returns (bool)',
-                    'function approve(address spender, uint256 amount) returns (bool)',
-                    'function transferFrom(address from, address to, uint256 amount) returns (bool)',
-                ])
+                'function name() view returns (string)',
+                'function symbol() view returns (string)',
+                'function decimals() view returns (uint8)',
+                'function totalSupply() view returns (uint256)',
+                'function balanceOf(address owner) view returns (uint256)',
+                'function allowance(address owner, address spender) view returns (uint256)',
+                'function transfer(address to, uint256 amount) returns (bool)',
+                'function approve(address spender, uint256 amount) returns (bool)',
+                'function transferFrom(address from, address to, uint256 amount) returns (bool)',
+            ])
 
             const VITALIK = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
         }
 
         init {
+
+
+
+
+
         }
 
         helpers {
@@ -136,6 +141,36 @@ suite example {
         hex: "68656c6c6f20776f726c64"
     }
 
+    # Comprehensive example benchmark demonstrating all unique DSL configuration settings
+    # This file showcases: mode, targetTime, iterations, warmup, sink, memory, concurrency,
+    # outlierDetection, cvThreshold, minIterations, maxIterations, and lifecycle hooks
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # ============================================================================
+    # BENCHMARK MODE EXAMPLES
+    # ============================================================================
+
+    # Auto mode: Automatically calibrates iterations to reach targetTime
+    # Uses adaptive batch scaling like Go's testing.B
     bench auto_mode_example {
         description: "Auto mode with 3 second target time"
         mode: "auto"
@@ -143,14 +178,16 @@ suite example {
         sink: true
         go: mustEncodeBalanceOf(balanceOfAddr)
         ts: {
-    encodeFunctionData({
-            abi: erc20Abi,
-            functionName: 'balanceOf',
-            args: [VITALIK],
-        })
-}
+            encodeFunctionData({
+                abi: erc20Abi,
+                functionName: 'balanceOf',
+                args: [VITALIK],
+            })
+        }
     }
 
+    # Fixed mode: Runs exactly the specified number of iterations
+    # Good for reproducible benchmarks with known iteration counts
     bench fixed_mode_example {
         description: "Fixed mode with explicit iteration count"
         iterations: 100000
@@ -161,6 +198,12 @@ suite example {
         ts: sha256SumTs(data)
     }
 
+    # ============================================================================
+    # SINK PATTERN EXAMPLES
+    # ============================================================================
+
+    # Sink enabled: Assigns result to a global variable to prevent DCE
+    # Use when the compiler might optimize away unused return values
     bench sink_enabled_example {
         description: "Benchmark with sink pattern enabled"
         mode: "auto"
@@ -170,19 +213,28 @@ suite example {
         ts: sha256SumTs(data)
     }
 
+    # Sink disabled: Does not capture return value
+    # Use for functions with side effects or when DCE is not a concern
     bench sink_disabled_example {
         description: "Benchmark with sink pattern disabled"
         mode: "auto"
         targetTime: 2000ms
         sink: false
         go: {
-    incrementCounter()
-}
+            incrementCounter()
+        }
         ts: {
-    incrementCounter()
-}
+            incrementCounter()
+        }
     }
 
+    # ============================================================================
+    # MEMORY PROFILING EXAMPLES (Phase 2B)
+    # ============================================================================
+
+    # Memory profiling tracks heap allocations using:
+    # - Go: runtime.ReadMemStats (BytesPerOp, AllocsPerOp)
+    # - TypeScript: process.memoryUsage().heapUsed
     bench memory_profiling_example {
         description: "Benchmark with memory profiling enabled"
         mode: "auto"
@@ -192,6 +244,12 @@ suite example {
         ts: allocateMemory(1024)
     }
 
+    # ============================================================================
+    # CONCURRENT EXECUTION EXAMPLES (Phase 2B - Go only)
+    # ============================================================================
+
+    # Concurrent benchmark splits iterations across multiple goroutines
+    # Useful for testing thread-safe code or parallel workloads
     bench concurrent_execution_example {
         description: "Concurrent execution with 4 goroutines"
         iterations: 100000
@@ -201,6 +259,7 @@ suite example {
         ts: sha256SumTs(data)
     }
 
+    # Combined memory profiling and concurrent execution
     bench concurrent_with_memory {
         description: "Concurrent execution with memory profiling"
         iterations: 50000
@@ -211,6 +270,12 @@ suite example {
         ts: allocateMemory(512)
     }
 
+    # ============================================================================
+    # STATISTICAL ANALYSIS EXAMPLES
+    # ============================================================================
+
+    # Outlier detection removes statistical outliers from measurements
+    # Helps produce more stable and representative results
     bench outlier_detection_example {
         description: "Benchmark with outlier detection enabled"
         mode: "auto"
@@ -220,6 +285,8 @@ suite example {
         ts: sha256SumTs(data)
     }
 
+    # CV threshold sets the coefficient of variation stability target
+    # Lower values require more stable measurements before stopping
     bench cv_threshold_example {
         description: "Benchmark with strict CV threshold (5%)"
         mode: "auto"
@@ -230,6 +297,12 @@ suite example {
         ts: sha256SumTs(data)
     }
 
+    # ============================================================================
+    # ITERATION BOUNDS EXAMPLES
+    # ============================================================================
+
+    # Min/max iterations constrain auto mode's iteration selection
+    # Ensures benchmarks run within reasonable bounds
     bench iteration_bounds_example {
         description: "Auto mode with min/max iteration bounds"
         mode: "auto"
@@ -240,23 +313,38 @@ suite example {
         ts: sha256SumTs(data)
     }
 
+    # ============================================================================
+    # LIFECYCLE HOOKS EXAMPLES
+    # ============================================================================
+
+    # Before/after hooks run once per benchmark (setup/teardown)
+    # Each hook runs before every iteration (reset state)
     bench lifecycle_hooks_example {
         description: "Benchmark with before, after, and each hooks"
         iterations: 10000
         warmup: 100
         mode: "fixed"
-        before go: resetCounter()
-        before ts: resetCounter()
-        after go: {
-    _ = setupCounter
-}
-        after ts: {
-    void setupCounter
-}
-        each go: incrementCounter()
-        each ts: incrementCounter()
+
+        before: {
+            go: resetCounter()
+            ts: resetCounter()
+        }
+
+        each: {
+            go: incrementCounter()
+            ts: incrementCounter()
+        }
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
+
+        after: {
+            go: {
+                _ = setupCounter 
+            }
+            ts: {
+                void setupCounter 
+            }
+        }
     }
 
     after {
