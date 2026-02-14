@@ -2,7 +2,7 @@
   "name": "poly-bench",
   "displayName": "poly-bench",
   "description": "Language support for .bench files with embedded Go and TypeScript - powered by poly-bench-lsp",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "publisher": "evm-tooling",
   "repository": {
     "type": "git",
@@ -25,7 +25,7 @@
         "poly-bench.lspPath": {
           "type": "string",
           "default": "",
-          "description": "Path to poly-bench-lsp binary. If empty, uses bundled binary or searches PATH."
+          "description": "Path to poly-bench (or poly-bench-lsp) binary. If empty, uses bundled binary or searches PATH for poly-bench."
         },
         "poly-bench.trace.server": {
           "type": "string",

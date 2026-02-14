@@ -1,6 +1,6 @@
 {
-  // Path to poly-bench-lsp when developing (optional; omit to use PATH)
-  "poly-bench.lspPath": "${workspaceFolder}/target/debug/poly-bench-lsp",
+  // Path to poly-bench (or poly-bench-lsp) when developing (optional; omit to use PATH)
+  "poly-bench.lspPath": "${workspaceFolder}/target/debug/poly-bench",
   // Show LSP communication in output panel for debugging
   "poly-bench.trace.server": "messages",
   "poly-bench.formatOnSave": true,
