@@ -370,6 +370,100 @@ fn count_quotes(s: &str, quote: char) -> usize {
     s.chars().filter(|&c| c == quote).count()
 }
 
+/// Extract imports from a Rust setup block.
+///
+/// Handles:
+/// - `use std::collections::HashMap;`
+/// - `use std::{io::Read, fs::File};`
+/// - `use crate::module::*;`
+/// - `use super::something;`
+/// - Multi-line use statements with { ... }
+/// - `extern crate` statements
+pub fn extract_rust_imports(setup: &str) -> ParsedSetup {
+    let mut imports = Vec::new();
+    let mut body = String::new();
+    let mut in_multiline_use = false;
+    let mut current_use = String::new();
+    let mut brace_depth = 0;
+
+    for line in setup.lines() {
+        let trimmed = line.trim();
+
+        // Handle multi-line use continuation
+        if in_multiline_use {
+            current_use.push_str(line);
+            current_use.push('\n');
+
+            // Track brace depth
+            for ch in line.chars() {
+                match ch {
+                    '{' => brace_depth += 1,
+                    '}' => brace_depth -= 1,
+                    _ => {}
+                }
+            }
+
+            // Use statement is complete when braces are balanced and ends with ;
+            if brace_depth == 0 && trimmed.ends_with(';') {
+                imports.push(current_use.trim().to_string());
+                current_use.clear();
+                in_multiline_use = false;
+            }
+            continue;
+        }
+
+        // Skip empty lines and comments at the start
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            if !body.is_empty() || !imports.is_empty() {
+                body.push_str(line);
+                body.push('\n');
+            }
+            continue;
+        }
+
+        // Check if this is a use statement
+        if trimmed.starts_with("use ") || trimmed.starts_with("use\t") {
+            // Count braces
+            brace_depth = 0;
+            for ch in trimmed.chars() {
+                match ch {
+                    '{' => brace_depth += 1,
+                    '}' => brace_depth -= 1,
+                    _ => {}
+                }
+            }
+
+            // Check if it's a complete single-line use
+            if brace_depth == 0 && trimmed.ends_with(';') {
+                imports.push(trimmed.to_string());
+            } else {
+                // Start of multi-line use
+                in_multiline_use = true;
+                current_use = line.to_string();
+                current_use.push('\n');
+            }
+            continue;
+        }
+
+        // Check for extern crate statements
+        if trimmed.starts_with("extern crate ") {
+            imports.push(trimmed.to_string());
+            continue;
+        }
+
+        // Non-import line goes into body
+        body.push_str(line);
+        body.push('\n');
+    }
+
+    // Handle any unclosed use (shouldn't happen with valid code)
+    if !current_use.is_empty() {
+        imports.push(current_use.trim().to_string());
+    }
+
+    ParsedSetup::new(imports, body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -515,5 +609,58 @@ const x = 1"#;
         assert!(parsed.imports[0].contains("bar"));
         assert!(parsed.imports[0].contains("from 'pkg'"));
         assert!(parsed.body.contains("const x = 1"));
+    }
+
+    #[test]
+    fn test_rust_single_use() {
+        let setup = r#"use std::collections::HashMap;
+
+fn foo() {}"#;
+        let parsed = extract_rust_imports(setup);
+        assert_eq!(parsed.imports.len(), 1);
+        assert!(parsed.imports[0].contains("std::collections::HashMap"));
+        assert!(parsed.body.contains("fn foo()"));
+    }
+
+    #[test]
+    fn test_rust_multiple_uses() {
+        let setup = r#"use std::io::Read;
+use std::fs::File;
+use crate::module::*;
+
+fn bar() {}"#;
+        let parsed = extract_rust_imports(setup);
+        assert_eq!(parsed.imports.len(), 3);
+        assert!(parsed.body.contains("fn bar()"));
+    }
+
+    #[test]
+    fn test_rust_grouped_use() {
+        let setup = r#"use std::{
+    io::Read,
+    fs::File,
+    collections::HashMap,
+};
+
+fn baz() {}"#;
+        let parsed = extract_rust_imports(setup);
+        assert_eq!(parsed.imports.len(), 1);
+        assert!(parsed.imports[0].contains("io::Read"));
+        assert!(parsed.imports[0].contains("fs::File"));
+        assert!(parsed.imports[0].contains("collections::HashMap"));
+        assert!(parsed.body.contains("fn baz()"));
+    }
+
+    #[test]
+    fn test_rust_extern_crate() {
+        let setup = r#"extern crate serde;
+use serde::Serialize;
+
+fn qux() {}"#;
+        let parsed = extract_rust_imports(setup);
+        assert_eq!(parsed.imports.len(), 2);
+        assert!(parsed.imports.iter().any(|i| i.contains("extern crate serde")));
+        assert!(parsed.imports.iter().any(|i| i.contains("serde::Serialize")));
+        assert!(parsed.body.contains("fn qux()"));
     }
 }

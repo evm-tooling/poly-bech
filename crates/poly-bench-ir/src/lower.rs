@@ -4,7 +4,7 @@
 
 use crate::{
     fixtures::{decode_hex, extract_fixture_refs, load_hex_file},
-    imports::{extract_go_imports, extract_ts_imports, ParsedSetup},
+    imports::{extract_go_imports, extract_rust_imports, extract_ts_imports, ParsedSetup},
     AnvilConfigIR, BenchmarkIR, BenchmarkSpec, ChartDirectiveIR, FixtureIR, FixtureParamIR,
     SuiteIR,
 };
@@ -103,6 +103,7 @@ fn lower_suite(
             let parsed = match lang {
                 Lang::Go => extract_go_imports(&import_block.code),
                 Lang::TypeScript => extract_ts_imports(&import_block.code),
+                Lang::Rust => extract_rust_imports(&import_block.code),
                 _ => ParsedSetup::passthrough(&import_block.code),
             };
             ir.imports.insert(*lang, parsed.imports);
