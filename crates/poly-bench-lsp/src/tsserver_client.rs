@@ -3,8 +3,8 @@
 //! This module manages a typescript-language-server subprocess and communicates
 //! with it via the Language Server Protocol over stdin/stdout.
 
-use std::sync::Arc;
 use std::process::Command;
+use std::sync::Arc;
 
 use once_cell::sync::OnceCell;
 use serde_json::{json, Value};
@@ -16,9 +16,10 @@ static TSSERVER_CLIENT: OnceCell<Arc<TsServerClient>> = OnceCell::new();
 
 /// Initialize the global tsserver client with a workspace root
 pub fn init_tsserver_client(workspace_root: &str) -> Option<Arc<TsServerClient>> {
-    TSSERVER_CLIENT.get_or_try_init(|| {
-        TsServerClient::new(workspace_root).map(Arc::new)
-    }).ok().cloned()
+    TSSERVER_CLIENT
+        .get_or_try_init(|| TsServerClient::new(workspace_root).map(Arc::new))
+        .ok()
+        .cloned()
 }
 
 /// Configuration for typescript-language-server
@@ -27,15 +28,15 @@ pub struct TsServerConfig;
 impl LspConfig for TsServerConfig {
     const SERVER_NAME: &'static str = "typescript-language-server";
     const LANGUAGE_ID: &'static str = "typescript";
-    
+
     fn find_executable() -> Option<String> {
         find_ts_language_server()
     }
-    
+
     fn server_args() -> Vec<String> {
         vec!["--stdio".to_string()]
     }
-    
+
     fn additional_capabilities() -> Value {
         json!({
             "textDocument": {

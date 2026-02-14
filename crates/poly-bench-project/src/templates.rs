@@ -44,7 +44,9 @@ pub fn example_bench(has_go: bool, has_ts: bool) -> String {
         content.push('\n');
         content.push_str("        helpers {\n");
         content.push_str("            function sha256SumTs(data: Uint8Array): Buffer {\n");
-        content.push_str("                return createHash('sha256').update(Buffer.from(data)).digest()\n");
+        content.push_str(
+            "                return createHash('sha256').update(Buffer.from(data)).digest()\n",
+        );
         content.push_str("            }\n");
         content.push_str("        }\n");
         content.push_str("    }\n");
@@ -222,7 +224,8 @@ pub fn tsconfig_json() -> String {
   "include": ["*.ts", "**/*.ts"],
   "exclude": ["node_modules"]
 }
-"#.to_string()
+"#
+    .to_string()
 }
 
 /// Generate .gitignore content
@@ -290,7 +293,9 @@ pub fn readme(name: &str, has_go: bool, has_ts: bool) -> String {
         content.push_str("        └── go/           # go.mod, go.sum, generated bench code\n");
     }
     if has_ts {
-        content.push_str("        └── ts/           # package.json, node_modules, generated bench code\n");
+        content.push_str(
+            "        └── ts/           # package.json, node_modules, generated bench code\n",
+        );
     }
     content.push_str("```\n\n");
 

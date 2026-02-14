@@ -1,20 +1,20 @@
 //! Benchmark execution scheduler
 
-use poly_bench_dsl::{Lang, BenchMode};
+use super::{AnvilConfig, AnvilService, ProjectRoots};
+use crate::comparison::{BenchmarkResult, BenchmarkResults, SuiteResults};
+use colored::Colorize;
+use miette::Result;
+use poly_bench_dsl::{BenchMode, Lang};
 use poly_bench_ir::BenchmarkIR;
 use poly_bench_runtime::go::GoRuntime;
 use poly_bench_runtime::js::JsRuntime;
 use poly_bench_runtime::measurement::Measurement;
 use poly_bench_runtime::traits::Runtime;
-use crate::comparison::{BenchmarkResults, SuiteResults, BenchmarkResult};
-use super::{ProjectRoots, AnvilService, AnvilConfig};
-use colored::Colorize;
-use miette::Result;
 use std::collections::HashMap;
 use std::io::Write;
-use std::time::Instant;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
 
 /// Spinner frames for the timer
 const SPINNER_FRAMES: &[&str] = &["[±]", "[∓]"];
@@ -34,11 +34,11 @@ fn start_timer(label: &str, label_color: &str) -> Arc<AtomicBool> {
     let stop_flag_clone = Arc::clone(&stop_flag);
     let label = label.to_string();
     let label_color = label_color.to_string();
-    
+
     tokio::spawn(async move {
         let start = Instant::now();
         let mut frame_idx = 0;
-        
+
         while !stop_flag_clone.load(Ordering::Relaxed) {
             let elapsed = start.elapsed().as_secs_f64();
             let spinner = SPINNER_FRAMES[frame_idx % SPINNER_FRAMES.len()];
@@ -47,13 +47,18 @@ fn start_timer(label: &str, label_color: &str) -> Arc<AtomicBool> {
                 "cyan" => label.cyan().to_string(),
                 _ => label.clone(),
             };
-            print!("\r    {} {} {:.1}s   ", colored_label, spinner.cyan(), elapsed);
+            print!(
+                "\r    {} {} {:.1}s   ",
+                colored_label,
+                spinner.cyan(),
+                elapsed
+            );
             std::io::stdout().flush().ok();
             frame_idx += 1;
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
     });
-    
+
     stop_flag
 }
 
@@ -67,11 +72,11 @@ fn start_multi_run_timer(label: &str, label_color: &str, total_runs: u64) -> Arc
     let state_clone = Arc::clone(&state);
     let label = label.to_string();
     let label_color = label_color.to_string();
-    
+
     tokio::spawn(async move {
         let start = Instant::now();
         let mut frame_idx = 0;
-        
+
         while !state_clone.stop_flag.load(Ordering::Relaxed) {
             let elapsed = start.elapsed().as_secs_f64();
             let current = state_clone.current_run.load(Ordering::Relaxed);
@@ -81,14 +86,20 @@ fn start_multi_run_timer(label: &str, label_color: &str, total_runs: u64) -> Arc
                 "cyan" => label.cyan().to_string(),
                 _ => label.clone(),
             };
-            print!("\r    {} run {}/{} {} {:.1}s   ", 
-                colored_label, current, total_runs, spinner.cyan(), elapsed);
+            print!(
+                "\r    {} run {}/{} {} {:.1}s   ",
+                colored_label,
+                current,
+                total_runs,
+                spinner.cyan(),
+                elapsed
+            );
             std::io::stdout().flush().ok();
             frame_idx += 1;
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
     });
-    
+
     state
 }
 
@@ -113,21 +124,25 @@ pub async fn run(
     project_roots: &ProjectRoots,
 ) -> Result<BenchmarkResults> {
     let mut suite_results = Vec::new();
-    
+
     // Check if globalSetup has spawnAnvil() and spawn Anvil if needed
     let anvil_service = if let Some(ref anvil_ir) = ir.anvil_config {
         println!("{} Starting Anvil node...", "⚡".yellow());
-        
+
         // Build config from IR
         let config = AnvilConfig {
             fork_url: anvil_ir.fork_url.clone(),
             fork_block: None,
         };
-        
+
         match AnvilService::spawn(&config) {
             Ok(service) => {
                 if anvil_ir.fork_url.is_some() {
-                    println!("  {} Anvil ready at {} (forking)", "✓".green(), service.rpc_url);
+                    println!(
+                        "  {} Anvil ready at {} (forking)",
+                        "✓".green(),
+                        service.rpc_url
+                    );
                 } else {
                     println!("  {} Anvil ready at {}", "✓".green(), service.rpc_url);
                 }
@@ -142,7 +157,7 @@ pub async fn run(
     } else {
         None
     };
-    
+
     // Get the Anvil RPC URL if available
     let anvil_rpc_url = anvil_service.as_ref().map(|s| s.rpc_url.clone());
 
@@ -199,7 +214,7 @@ pub async fn run(
 
             // Print benchmark args - show all relevant settings
             let mut args = Vec::new();
-            
+
             // Mode (auto vs fixed)
             match spec.mode {
                 BenchMode::Auto => {
@@ -211,48 +226,53 @@ pub async fn run(
                     args.push(format!("iterations={}", spec.iterations));
                 }
             };
-            
+
             // Count (statistical runs)
             if spec.count > 1 {
                 args.push(format!("count={}", spec.count));
             }
-            
+
             // Warmup (if non-default)
             if spec.warmup > 0 {
                 args.push(format!("warmup={}", spec.warmup));
             }
-            
+
             // Timeout (if set)
             if let Some(timeout) = spec.timeout {
                 args.push(format!("timeout={}ms", timeout));
             }
-            
+
             // Outlier detection
             if spec.outlier_detection {
                 args.push(format!("outliers=iqr"));
             }
-            
+
             // CV threshold (if non-default, default is typically 5.0)
             if spec.cv_threshold != 5.0 && spec.cv_threshold > 0.0 {
                 args.push(format!("cvThreshold={}%", spec.cv_threshold));
             }
-            
+
             // Memory profiling
             if spec.memory {
                 args.push(format!("memory=true"));
             }
-            
+
             // Concurrency
             if spec.concurrency > 1 {
                 args.push(format!("concurrency={}", spec.concurrency));
             }
-            
+
             // Use sink
             if spec.use_sink {
                 args.push(format!("sink=true"));
             }
-            
-            println!("  {} {} [{}]", "→".dimmed(), spec.name.bold(), args.join(", ").dimmed());
+
+            println!(
+                "  {} {} [{}]",
+                "→".dimmed(),
+                spec.name.bold(),
+                args.join(", ").dimmed()
+            );
 
             let mut measurements: HashMap<Lang, Measurement> = HashMap::new();
             let bench_start = Instant::now();
@@ -261,34 +281,42 @@ pub async fn run(
             if spec.has_lang(Lang::Go) {
                 if let Some(ref mut rt) = go_runtime {
                     let lang_start = Instant::now();
-                    
+
                     if spec_clone.count > 1 {
                         // Multiple runs for statistical consistency with live timer
                         let timer = start_multi_run_timer("Go:", "green", spec_clone.count);
                         let mut run_measurements = Vec::new();
-                        
+
                         for run_idx in 0..spec_clone.count {
                             timer.current_run.store(run_idx + 1, Ordering::Relaxed);
-                            
+
                             match rt.run_benchmark(&spec_clone, suite).await {
                                 Ok(m) => run_measurements.push(m),
                                 Err(e) => {
-                                    eprintln!("\n    {} run {} failed: {}", "Go:".red(), run_idx + 1, e);
+                                    eprintln!(
+                                        "\n    {} run {} failed: {}",
+                                        "Go:".red(),
+                                        run_idx + 1,
+                                        e
+                                    );
                                 }
                             }
                         }
-                        
+
                         stop_multi_run_timer(&timer);
-                        
+
                         if !run_measurements.is_empty() {
                             let aggregated = Measurement::aggregate_runs(run_measurements);
                             let elapsed = lang_start.elapsed();
-                            let ci_str = if let (Some(median), Some(ci_upper)) = (aggregated.median_across_runs, aggregated.ci_95_upper) {
+                            let ci_str = if let (Some(median), Some(ci_upper)) =
+                                (aggregated.median_across_runs, aggregated.ci_95_upper)
+                            {
                                 format!(" ±{}", Measurement::format_duration(ci_upper - median))
                             } else {
                                 String::new()
                             };
-                            print!("\r    {} {}{} ({}x runs, {:.2}s)                    ", 
+                            print!(
+                                "\r    {} {}{} ({}x runs, {:.2}s)                    ",
                                 "Go:".green(),
                                 Measurement::format_duration(aggregated.nanos_per_op),
                                 ci_str,
@@ -302,19 +330,24 @@ pub async fn run(
                         let timer = start_timer("Go:", "green");
                         let result = rt.run_benchmark(&spec_clone, suite).await;
                         stop_timer(&timer);
-                        
+
                         match result {
                             Ok(m) => {
                                 let elapsed = lang_start.elapsed();
-                                print!("\r    {} {} ({})                    ", 
-                                    "Go:".green(), 
+                                print!(
+                                    "\r    {} {} ({})                    ",
+                                    "Go:".green(),
                                     Measurement::format_duration(m.nanos_per_op),
                                     format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
                                 );
                                 measurements.insert(Lang::Go, m);
                             }
                             Err(e) => {
-                                print!("\r    {} {}                    ", "Go:".red(), format!("{}", e).red());
+                                print!(
+                                    "\r    {} {}                    ",
+                                    "Go:".red(),
+                                    format!("{}", e).red()
+                                );
                             }
                         }
                     }
@@ -326,34 +359,42 @@ pub async fn run(
             if spec.has_lang(Lang::TypeScript) {
                 if let Some(ref mut rt) = js_runtime {
                     let lang_start = Instant::now();
-                    
+
                     if spec_clone.count > 1 {
                         // Multiple runs for statistical consistency with live timer
                         let timer = start_multi_run_timer("TS:", "cyan", spec_clone.count);
                         let mut run_measurements = Vec::new();
-                        
+
                         for run_idx in 0..spec_clone.count {
                             timer.current_run.store(run_idx + 1, Ordering::Relaxed);
-                            
+
                             match rt.run_benchmark(&spec_clone, suite).await {
                                 Ok(m) => run_measurements.push(m),
                                 Err(e) => {
-                                    eprintln!("\n    {} run {} failed: {}", "TS:".red(), run_idx + 1, e);
+                                    eprintln!(
+                                        "\n    {} run {} failed: {}",
+                                        "TS:".red(),
+                                        run_idx + 1,
+                                        e
+                                    );
                                 }
                             }
                         }
-                        
+
                         stop_multi_run_timer(&timer);
-                        
+
                         if !run_measurements.is_empty() {
                             let aggregated = Measurement::aggregate_runs(run_measurements);
                             let elapsed = lang_start.elapsed();
-                            let ci_str = if let (Some(median), Some(ci_upper)) = (aggregated.median_across_runs, aggregated.ci_95_upper) {
+                            let ci_str = if let (Some(median), Some(ci_upper)) =
+                                (aggregated.median_across_runs, aggregated.ci_95_upper)
+                            {
                                 format!(" ±{}", Measurement::format_duration(ci_upper - median))
                             } else {
                                 String::new()
                             };
-                            print!("\r    {} {}{} ({}x runs, {:.2}s)                    ", 
+                            print!(
+                                "\r    {} {}{} ({}x runs, {:.2}s)                    ",
                                 "TS:".cyan(),
                                 Measurement::format_duration(aggregated.nanos_per_op),
                                 ci_str,
@@ -367,11 +408,12 @@ pub async fn run(
                         let timer = start_timer("TS:", "cyan");
                         let result = rt.run_benchmark(&spec_clone, suite).await;
                         stop_timer(&timer);
-                        
+
                         match result {
                             Ok(m) => {
                                 let elapsed = lang_start.elapsed();
-                                print!("\r    {} {} ({})                    ",
+                                print!(
+                                    "\r    {} {} ({})                    ",
                                     "TS:".cyan(),
                                     Measurement::format_duration(m.nanos_per_op),
                                     format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
@@ -379,7 +421,11 @@ pub async fn run(
                                 measurements.insert(Lang::TypeScript, m);
                             }
                             Err(e) => {
-                                print!("\r    {} {}                    ", "TS:".red(), format!("{}", e).red());
+                                print!(
+                                    "\r    {} {}                    ",
+                                    "TS:".red(),
+                                    format!("{}", e).red()
+                                );
                             }
                         }
                     }
@@ -398,16 +444,30 @@ pub async fn run(
                 let (winner, _speedup) = if (ratio - 1.0).abs() < 0.05 {
                     ("tie".dimmed().to_string(), 1.0)
                 } else if ratio > 1.0 {
-                    (format!("TS {}x faster", format!("{:.2}", ratio)).cyan().to_string(), ratio)
+                    (
+                        format!("TS {}x faster", format!("{:.2}", ratio))
+                            .cyan()
+                            .to_string(),
+                        ratio,
+                    )
                 } else {
-                    (format!("Go {}x faster", format!("{:.2}", 1.0 / ratio)).green().to_string(), 1.0 / ratio)
+                    (
+                        format!("Go {}x faster", format!("{:.2}", 1.0 / ratio))
+                            .green()
+                            .to_string(),
+                        1.0 / ratio,
+                    )
                 };
-                println!("    {} [{}]", 
+                println!(
+                    "    {} [{}]",
                     format!("total: {:.2}s", bench_elapsed.as_secs_f64()).dimmed(),
                     winner
                 );
             } else {
-                println!("    {}", format!("total: {:.2}s", bench_elapsed.as_secs_f64()).dimmed());
+                println!(
+                    "    {}",
+                    format!("total: {:.2}s", bench_elapsed.as_secs_f64()).dimmed()
+                );
             }
 
             // Add visual separation between benchmarks

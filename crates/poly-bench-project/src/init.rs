@@ -2,8 +2,7 @@
 
 use crate::{
     manifest::{self, Manifest},
-    runtime_env_go, runtime_env_ts,
-    templates, terminal, BENCHMARKS_DIR, MANIFEST_FILENAME,
+    runtime_env_go, runtime_env_ts, templates, terminal, BENCHMARKS_DIR, MANIFEST_FILENAME,
 };
 use miette::Result;
 use std::path::PathBuf;
@@ -124,10 +123,10 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         let tsconfig_content = templates::tsconfig_json();
         std::fs::write(ts_env.join("tsconfig.json"), tsconfig_content)
             .map_err(|e| miette::miette!("Failed to write tsconfig.json: {}", e))?;
-            if !options.quiet {
-                terminal::success("Created .polybench/runtime-env/ts/ (package.json, tsconfig.json)");
-            }
-        
+        if !options.quiet {
+            terminal::success("Created .polybench/runtime-env/ts/ (package.json, tsconfig.json)");
+        }
+
         // Run npm install to install dev dependencies (@types/node, typescript)
         if options.quiet {
             let _ = Command::new("npm")
@@ -138,9 +137,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
             let spinner = terminal::step_spinner("Installing TypeScript dependencies...");
             let npm_result = terminal::run_command_with_spinner(
                 &spinner,
-                Command::new("npm")
-                    .arg("install")
-                    .current_dir(&ts_env),
+                Command::new("npm").arg("install").current_dir(&ts_env),
             );
             match npm_result {
                 Ok(output) if output.status.success() => {
@@ -165,7 +162,11 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     let gitignore_content = if gitignore_path.exists() {
         let existing = std::fs::read_to_string(&gitignore_path).unwrap_or_default();
         if !existing.contains(".polybench/") {
-            format!("{}\n\n# poly-bench\n{}", existing.trim(), templates::gitignore())
+            format!(
+                "{}\n\n# poly-bench\n{}",
+                existing.trim(),
+                templates::gitignore()
+            )
         } else {
             existing
         }
@@ -191,7 +192,10 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
 
     if !options.quiet {
         println!();
-        terminal::success(&format!("Project '{}' initialized successfully!", project_name));
+        terminal::success(&format!(
+            "Project '{}' initialized successfully!",
+            project_name
+        ));
         println!();
         println!("Next steps:");
         if options.name != "." {
@@ -211,10 +215,9 @@ pub fn new_benchmark(name: &str) -> Result<PathBuf> {
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
 
-    let project_root = crate::find_project_root(&current_dir)
-        .ok_or_else(|| miette::miette!(
-            "Not in a poly-bench project. Run 'poly-bench init' first."
-        ))?;
+    let project_root = crate::find_project_root(&current_dir).ok_or_else(|| {
+        miette::miette!("Not in a poly-bench project. Run 'poly-bench init' first.")
+    })?;
 
     // Load manifest to get enabled languages
     let manifest = crate::load_manifest(&project_root)?;
@@ -273,11 +276,18 @@ mod tests {
         // Check files exist (runtime-env layout: deps under .polybench/runtime-env/)
         assert!(project_path.join(MANIFEST_FILENAME).exists());
         assert!(project_path.join(BENCHMARKS_DIR).exists());
-        assert!(project_path.join(BENCHMARKS_DIR).join("example.bench").exists());
+        assert!(project_path
+            .join(BENCHMARKS_DIR)
+            .join("example.bench")
+            .exists());
         assert!(crate::runtime_env_go(&project_path).join("go.mod").exists());
         // Note: bench_standalone.go is NOT created on init - only when running benchmarks
-        assert!(crate::runtime_env_ts(&project_path).join("package.json").exists());
-        assert!(crate::runtime_env_ts(&project_path).join("tsconfig.json").exists());
+        assert!(crate::runtime_env_ts(&project_path)
+            .join("package.json")
+            .exists());
+        assert!(crate::runtime_env_ts(&project_path)
+            .join("tsconfig.json")
+            .exists());
         assert!(project_path.join(".gitignore").exists());
         assert!(project_path.join("README.md").exists());
     }
@@ -298,7 +308,9 @@ mod tests {
         assert!(result.is_ok());
 
         assert!(crate::runtime_env_go(&project_path).join("go.mod").exists());
-        assert!(!crate::runtime_env_ts(&project_path).join("package.json").exists());
+        assert!(!crate::runtime_env_ts(&project_path)
+            .join("package.json")
+            .exists());
     }
 
     #[test]

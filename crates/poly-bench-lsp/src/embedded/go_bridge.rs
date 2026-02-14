@@ -114,15 +114,18 @@ fn find_go_cmd() -> Option<String> {
     if which::which("go").is_ok() {
         return Some("go".to_string());
     }
-    
+
     let common_paths = [
         "/usr/local/go/bin/go",
         "/opt/homebrew/bin/go",
         "/usr/local/bin/go",
         &format!("{}/go/bin/go", std::env::var("HOME").unwrap_or_default()),
     ];
-    
-    common_paths.iter().find(|p| Path::new(p).exists()).map(|s| s.to_string())
+
+    common_paths
+        .iter()
+        .find(|p| Path::new(p).exists())
+        .map(|s| s.to_string())
 }
 
 /// Run go build on the given code and return (error_output, is_in_mod_root)
@@ -184,7 +187,10 @@ fn run_go_build(go_cmd: &str, code: &str, go_mod_root: Option<&str>) -> Option<(
 }
 
 /// Build combined setup code with mappings for error attribution
-fn build_combined_setup(blocks: &[&EmbeddedBlock], context: &SetupContext) -> (String, Vec<SectionMapping>) {
+fn build_combined_setup(
+    blocks: &[&EmbeddedBlock],
+    context: &SetupContext,
+) -> (String, Vec<SectionMapping>) {
     let mut combined = String::from("package main\n\n");
     let mut mappings = Vec::new();
     // "package main\n\n" = Line 1: "package main", Line 2: blank
@@ -197,9 +203,12 @@ fn build_combined_setup(blocks: &[&EmbeddedBlock], context: &SetupContext) -> (S
         if !trimmed.is_empty() {
             combined.push_str(trimmed);
             combined.push_str("\n\n");
-            
+
             // Find the matching import block
-            if let Some(block) = blocks.iter().find(|b| b.block_type == BlockType::SetupImport) {
+            if let Some(block) = blocks
+                .iter()
+                .find(|b| b.block_type == BlockType::SetupImport)
+            {
                 let line_count = trimmed.lines().count();
                 mappings.push(SectionMapping {
                     start_line: current_line,
@@ -207,7 +216,7 @@ fn build_combined_setup(blocks: &[&EmbeddedBlock], context: &SetupContext) -> (S
                     span_start: block.span.start,
                     code: block.code.clone(),
                 });
-                // After content + "\n\n": content takes `line_count` lines, 
+                // After content + "\n\n": content takes `line_count` lines,
                 // then "\n\n" adds 1 blank line. Next content starts at current + line_count + 1
                 current_line += line_count + 1;
             }
@@ -231,8 +240,11 @@ fn build_combined_setup(blocks: &[&EmbeddedBlock], context: &SetupContext) -> (S
         if !trimmed.is_empty() {
             combined.push_str(trimmed);
             combined.push_str("\n\n");
-            
-            if let Some(block) = blocks.iter().find(|b| b.block_type == BlockType::SetupDeclare) {
+
+            if let Some(block) = blocks
+                .iter()
+                .find(|b| b.block_type == BlockType::SetupDeclare)
+            {
                 let line_count = trimmed.lines().count();
                 mappings.push(SectionMapping {
                     start_line: current_line,
@@ -251,8 +263,11 @@ fn build_combined_setup(blocks: &[&EmbeddedBlock], context: &SetupContext) -> (S
         if !trimmed.is_empty() {
             combined.push_str(trimmed);
             combined.push_str("\n\n");
-            
-            if let Some(block) = blocks.iter().find(|b| b.block_type == BlockType::SetupHelpers) {
+
+            if let Some(block) = blocks
+                .iter()
+                .find(|b| b.block_type == BlockType::SetupHelpers)
+            {
                 let line_count = trimmed.lines().count();
                 mappings.push(SectionMapping {
                     start_line: current_line,
@@ -274,7 +289,7 @@ fn build_combined_setup(blocks: &[&EmbeddedBlock], context: &SetupContext) -> (S
                 combined.push_str("func init() {\n");
                 combined.push_str(trimmed);
                 combined.push_str("\n}\n\n");
-                
+
                 let line_count = trimmed.lines().count();
                 mappings.push(SectionMapping {
                     start_line: current_line + 1, // +1 for "func init() {"
@@ -287,7 +302,7 @@ fn build_combined_setup(blocks: &[&EmbeddedBlock], context: &SetupContext) -> (S
             } else {
                 combined.push_str(trimmed);
                 combined.push_str("\n\n");
-                
+
                 let line_count = trimmed.lines().count();
                 mappings.push(SectionMapping {
                     start_line: current_line,
@@ -312,47 +327,69 @@ fn parse_combined_errors(output: &str, mappings: &[SectionMapping]) -> Vec<Embed
     let mut diagnostics = Vec::new();
     let error_re = Regex::new(r"(?m)^[^:\s]+\.go:(\d+):(\d+):\s*(.+)$").unwrap();
 
-    eprintln!("[go-combined-parse] Parsing errors, {} mappings:", mappings.len());
+    eprintln!(
+        "[go-combined-parse] Parsing errors, {} mappings:",
+        mappings.len()
+    );
     for (i, m) in mappings.iter().enumerate() {
-        eprintln!("[go-combined-parse]   [{}] start_line={}, line_count={}, span_start={}", 
-            i, m.start_line, m.line_count, m.span_start);
+        eprintln!(
+            "[go-combined-parse]   [{}] start_line={}, line_count={}, span_start={}",
+            i, m.start_line, m.line_count, m.span_start
+        );
     }
 
     for cap in error_re.captures_iter(output) {
         // Use safe access for regex captures
-        let Some(line_match) = cap.get(1) else { continue };
-        let Some(col_match) = cap.get(2) else { continue };
-        let Some(msg_match) = cap.get(3) else { continue };
-        
+        let Some(line_match) = cap.get(1) else {
+            continue;
+        };
+        let Some(col_match) = cap.get(2) else {
+            continue;
+        };
+        let Some(msg_match) = cap.get(3) else {
+            continue;
+        };
+
         let error_line: usize = line_match.as_str().parse().unwrap_or(1);
         let error_col: usize = col_match.as_str().parse().unwrap_or(1);
         let message = msg_match.as_str().to_string();
 
-        eprintln!("[go-combined-parse] Error at line {}, col {}: {}", error_line, error_col, &message[..message.len().min(60)]);
+        eprintln!(
+            "[go-combined-parse] Error at line {}, col {}: {}",
+            error_line,
+            error_col,
+            &message[..message.len().min(60)]
+        );
 
         // Find which section this error belongs to
         if let Some(mapping) = find_section_for_line(error_line, mappings) {
             // Calculate line within the section
             let line_in_section = error_line.saturating_sub(mapping.start_line);
-            
-            eprintln!("[go-combined-parse]   -> Found in section at line {}, line_in_section={}", mapping.start_line, line_in_section);
-            
+
+            eprintln!(
+                "[go-combined-parse]   -> Found in section at line {}, line_in_section={}",
+                mapping.start_line, line_in_section
+            );
+
             // Get the line content from original code
             let lines: Vec<&str> = mapping.code.lines().collect();
             if line_in_section < lines.len() {
                 let line_content = lines[line_in_section];
-                
+
                 // Calculate offset in original code
                 let mut offset = 0;
                 for i in 0..line_in_section {
                     offset += lines[i].len() + 1;
                 }
-                
+
                 let col = (error_col.saturating_sub(1)).min(line_content.len());
                 let start_offset = mapping.span_start + offset + col;
                 let end_offset = mapping.span_start + offset + line_content.len().max(col + 1);
 
-                eprintln!("[go-combined-parse]   -> Mapped to offset {}..{}", start_offset, end_offset);
+                eprintln!(
+                    "[go-combined-parse]   -> Mapped to offset {}..{}",
+                    start_offset, end_offset
+                );
 
                 if let Some(sanitized) = sanitize_go_message(&message) {
                     diagnostics.push(EmbeddedDiagnostic {
@@ -363,10 +400,17 @@ fn parse_combined_errors(output: &str, mappings: &[SectionMapping]) -> Vec<Embed
                     });
                 }
             } else {
-                eprintln!("[go-combined-parse]   -> line_in_section {} >= lines.len() {}", line_in_section, lines.len());
+                eprintln!(
+                    "[go-combined-parse]   -> line_in_section {} >= lines.len() {}",
+                    line_in_section,
+                    lines.len()
+                );
             }
         } else {
-            eprintln!("[go-combined-parse]   -> No mapping found for line {}", error_line);
+            eprintln!(
+                "[go-combined-parse]   -> No mapping found for line {}",
+                error_line
+            );
         }
     }
 
@@ -375,9 +419,9 @@ fn parse_combined_errors(output: &str, mappings: &[SectionMapping]) -> Vec<Embed
 
 /// Find which section a line number belongs to
 fn find_section_for_line(line: usize, mappings: &[SectionMapping]) -> Option<&SectionMapping> {
-    mappings.iter().find(|m| {
-        line >= m.start_line && line < m.start_line + m.line_count
-    })
+    mappings
+        .iter()
+        .find(|m| line >= m.start_line && line < m.start_line + m.line_count)
 }
 
 /// Build the context prefix (imports + declarations) for wrapping
@@ -489,20 +533,35 @@ fn parse_go_errors(
     // Use multiline mode (?m) so ^ matches line start, and capture message to end of line
     let error_re = Regex::new(r"(?m)^[^:\s]+\.go:(\d+):(\d+):\s*(.+)$").unwrap();
     let lines: Vec<&str> = block.code.split('\n').collect();
-    
-    eprintln!("[go-parse] Looking for errors in {} bytes, header_lines={}", output.len(), header_lines);
+
+    eprintln!(
+        "[go-parse] Looking for errors in {} bytes, header_lines={}",
+        output.len(),
+        header_lines
+    );
 
     for cap in error_re.captures_iter(output) {
         // Use safe access for regex captures
-        let Some(line_match) = cap.get(1) else { continue };
-        let Some(col_match) = cap.get(2) else { continue };
-        let Some(msg_match) = cap.get(3) else { continue };
-        
+        let Some(line_match) = cap.get(1) else {
+            continue;
+        };
+        let Some(col_match) = cap.get(2) else {
+            continue;
+        };
+        let Some(msg_match) = cap.get(3) else {
+            continue;
+        };
+
         let line_num: usize = line_match.as_str().parse().unwrap_or(1);
         let col_num: usize = col_match.as_str().parse().unwrap_or(1);
         let message = msg_match.as_str().to_string();
-        
-        eprintln!("[go-parse] Found error: line={}, col={}, msg={}", line_num, col_num, &message[..message.len().min(80)]);
+
+        eprintln!(
+            "[go-parse] Found error: line={}, col={}, msg={}",
+            line_num,
+            col_num,
+            &message[..message.len().min(80)]
+        );
 
         // Adjust line number to account for header
         let adjusted_line = if line_num > header_lines {

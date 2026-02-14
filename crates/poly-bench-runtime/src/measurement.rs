@@ -1,6 +1,6 @@
 //! Unified measurement types for benchmark results
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// A single benchmark measurement result
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,7 +41,7 @@ pub struct Measurement {
     pub outliers_removed: Option<u64>,
     /// Whether the benchmark result is considered stable (CV < threshold)
     pub is_stable: Option<bool>,
-    
+
     // Multi-run aggregation fields (for count > 1)
     /// Number of benchmark runs aggregated (from count directive)
     pub run_count: Option<u64>,
@@ -61,7 +61,7 @@ impl Measurement {
     pub fn from_samples(raw_samples: Vec<u64>, iterations: u64) -> Self {
         Self::from_samples_with_options(raw_samples, iterations, true, DEFAULT_CV_THRESHOLD)
     }
-    
+
     /// Create a new measurement from raw timing data with configurable outlier detection
     pub fn from_samples_with_options(
         raw_samples: Vec<u64>,
@@ -70,11 +70,11 @@ impl Measurement {
         cv_threshold: f64,
     ) -> Self {
         let original_count = raw_samples.len();
-        
+
         // Sort samples first
         let mut sorted = raw_samples.clone();
         sorted.sort_unstable();
-        
+
         // Optionally remove outliers using IQR method
         let (filtered_samples, outliers_removed) = if remove_outliers && sorted.len() >= 4 {
             let filtered = remove_outliers_iqr(&sorted);
@@ -83,14 +83,14 @@ impl Measurement {
         } else {
             (sorted.clone(), 0)
         };
-        
+
         // Use filtered samples for statistics if available, otherwise original
         let samples_for_stats = if filtered_samples.is_empty() {
             &sorted
         } else {
             &filtered_samples
         };
-        
+
         // Calculate totals from filtered samples
         let total_nanos: u64 = samples_for_stats.iter().sum();
         let effective_iterations = samples_for_stats.len() as u64;
@@ -111,30 +111,36 @@ impl Measurement {
         let p75_nanos = percentile(samples_for_stats, 75);
         let p99_nanos = percentile(samples_for_stats, 99);
         let p995_nanos = percentile_f(samples_for_stats, 99.5);
-        
+
         // Calculate standard deviation and CV
         let (rme_percent, cv_percent, is_stable) = if samples_for_stats.len() > 1 {
             let mean = nanos_per_op;
-            let variance: f64 = samples_for_stats.iter()
+            let variance: f64 = samples_for_stats
+                .iter()
                 .map(|&x| (x as f64 - mean).powi(2))
-                .sum::<f64>() / (samples_for_stats.len() - 1) as f64;
+                .sum::<f64>()
+                / (samples_for_stats.len() - 1) as f64;
             let std_dev = variance.sqrt();
             let std_error = std_dev / (samples_for_stats.len() as f64).sqrt();
-            
+
             // 95% confidence interval uses t-value ~1.96 for large samples
             let rme = (std_error / mean) * 100.0 * 1.96;
-            
+
             // Coefficient of variation: (std_dev / mean) * 100
-            let cv = if mean > 0.0 { (std_dev / mean) * 100.0 } else { 0.0 };
-            
+            let cv = if mean > 0.0 {
+                (std_dev / mean) * 100.0
+            } else {
+                0.0
+            };
+
             // Stability check: CV below threshold
             let stable = cv <= cv_threshold;
-            
+
             (Some(rme), Some(cv), Some(stable))
         } else {
             (None, None, None)
         };
-        
+
         let sample_count = raw_samples.len() as u64;
 
         Self {
@@ -245,74 +251,94 @@ impl Measurement {
             single.run_count = Some(1);
             return single;
         }
-        
+
         let run_count = runs.len();
-        
+
         // Collect nanos_per_op from each run
-        let mut nanos_values: Vec<f64> = runs.iter()
-            .map(|r| r.nanos_per_op)
-            .collect();
+        let mut nanos_values: Vec<f64> = runs.iter().map(|r| r.nanos_per_op).collect();
         nanos_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        
+
         // Calculate median
         let median = if run_count % 2 == 0 {
             (nanos_values[run_count / 2 - 1] + nanos_values[run_count / 2]) / 2.0
         } else {
             nanos_values[run_count / 2]
         };
-        
+
         // Calculate mean and std deviation for CI
         let mean: f64 = nanos_values.iter().sum::<f64>() / run_count as f64;
-        let variance: f64 = nanos_values.iter()
+        let variance: f64 = nanos_values
+            .iter()
             .map(|&x| (x - mean).powi(2))
-            .sum::<f64>() / (run_count - 1) as f64;
+            .sum::<f64>()
+            / (run_count - 1) as f64;
         let std_dev = variance.sqrt();
         let std_error = std_dev / (run_count as f64).sqrt();
-        
+
         // 95% CI using t-distribution (approximate with z=1.96 for larger samples)
         let t_value = 1.96;
         let ci_half_width = t_value * std_error;
         let ci_lower = (median - ci_half_width).max(0.0);
         let ci_upper = median + ci_half_width;
-        
+
         // Aggregate totals across runs
         let total_iterations: u64 = runs.iter().map(|r| r.iterations).sum();
         let total_nanos: u64 = runs.iter().map(|r| r.total_nanos).sum();
-        
+
         // Use min/max across all runs
         let min_nanos = runs.iter().filter_map(|r| r.min_nanos).min();
         let max_nanos = runs.iter().filter_map(|r| r.max_nanos).max();
-        
+
         // Aggregate percentiles using median of percentiles
         let p50_nanos = median_of_options(runs.iter().filter_map(|r| r.p50_nanos).collect());
         let p75_nanos = median_of_options(runs.iter().filter_map(|r| r.p75_nanos).collect());
         let p99_nanos = median_of_options(runs.iter().filter_map(|r| r.p99_nanos).collect());
         let p995_nanos = median_of_options(runs.iter().filter_map(|r| r.p995_nanos).collect());
-        
+
         // Aggregate memory stats (average)
         let bytes_per_op = {
             let values: Vec<u64> = runs.iter().filter_map(|r| r.bytes_per_op).collect();
-            if values.is_empty() { None } else { Some(values.iter().sum::<u64>() / values.len() as u64) }
+            if values.is_empty() {
+                None
+            } else {
+                Some(values.iter().sum::<u64>() / values.len() as u64)
+            }
         };
         let allocs_per_op = {
             let values: Vec<u64> = runs.iter().filter_map(|r| r.allocs_per_op).collect();
-            if values.is_empty() { None } else { Some(values.iter().sum::<u64>() / values.len() as u64) }
+            if values.is_empty() {
+                None
+            } else {
+                Some(values.iter().sum::<u64>() / values.len() as u64)
+            }
         };
-        
+
         // Total samples across all runs
         let total_samples: u64 = runs.iter().filter_map(|r| r.samples).sum();
         let total_outliers: u64 = runs.iter().filter_map(|r| r.outliers_removed).sum();
-        
+
         // Calculate cross-run CV and RME
-        let cv_percent = if mean > 0.0 { Some((std_dev / mean) * 100.0) } else { None };
-        let rme_percent = if median > 0.0 { Some((std_error / median) * 100.0 * 1.96) } else { None };
+        let cv_percent = if mean > 0.0 {
+            Some((std_dev / mean) * 100.0)
+        } else {
+            None
+        };
+        let rme_percent = if median > 0.0 {
+            Some((std_error / median) * 100.0 * 1.96)
+        } else {
+            None
+        };
         let is_stable = cv_percent.map(|cv| cv <= DEFAULT_CV_THRESHOLD);
-        
+
         Self {
             iterations: total_iterations,
             total_nanos,
-            nanos_per_op: median,  // Use median as primary value
-            ops_per_sec: if median > 0.0 { 1_000_000_000.0 / median } else { 0.0 },
+            nanos_per_op: median, // Use median as primary value
+            ops_per_sec: if median > 0.0 {
+                1_000_000_000.0 / median
+            } else {
+                0.0
+            },
             min_nanos,
             max_nanos,
             p50_nanos,
@@ -323,7 +349,7 @@ impl Measurement {
             samples: Some(total_samples),
             bytes_per_op,
             allocs_per_op,
-            raw_samples: None,  // Don't combine raw samples (too large)
+            raw_samples: None, // Don't combine raw samples (too large)
             cv_percent,
             outliers_removed: Some(total_outliers),
             is_stable,
@@ -369,28 +395,29 @@ fn percentile_f(sorted: &[u64], p: f64) -> Option<u64> {
 }
 
 /// Remove outliers using the IQR (Interquartile Range) method
-/// 
+///
 /// Outliers are defined as values outside [Q1 - 1.5*IQR, Q3 + 1.5*IQR]
 /// where IQR = Q3 - Q1.
 fn remove_outliers_iqr(sorted: &[u64]) -> Vec<u64> {
     if sorted.len() < 4 {
         return sorted.to_vec();
     }
-    
+
     // Calculate Q1 (25th percentile) and Q3 (75th percentile)
     let q1_idx = sorted.len() / 4;
     let q3_idx = (sorted.len() * 3) / 4;
-    
+
     let q1 = sorted[q1_idx] as f64;
     let q3 = sorted[q3_idx] as f64;
     let iqr = q3 - q1;
-    
+
     // Define bounds for outlier detection
     let lower_bound = (q1 - 1.5 * iqr).max(0.0) as u64;
     let upper_bound = (q3 + 1.5 * iqr) as u64;
-    
+
     // Filter out outliers
-    sorted.iter()
+    sorted
+        .iter()
         .copied()
         .filter(|&s| s >= lower_bound && s <= upper_bound)
         .collect()
@@ -433,7 +460,7 @@ impl Comparison {
         second_lang: String,
     ) -> Self {
         let ratio = first.nanos_per_op / second.nanos_per_op;
-        
+
         let (winner, speedup) = if (ratio - 1.0).abs() < 0.05 {
             (ComparisonWinner::Tie, 1.0)
         } else if ratio > 1.0 {

@@ -465,7 +465,12 @@ const {name}_hex = "{hex_prefix}{hex_data}";
 }
 
 /// Generate benchmark wrapper code
-pub fn generate_benchmark_code(name: &str, impl_code: &str, iterations: u64, warmup: u64) -> String {
+pub fn generate_benchmark_code(
+    name: &str,
+    impl_code: &str,
+    iterations: u64,
+    warmup: u64,
+) -> String {
     format!(
         r#"
 (function() {{

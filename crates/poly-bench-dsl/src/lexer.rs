@@ -3,8 +3,8 @@
 //! Converts source text into a stream of tokens.
 
 use crate::ast::Span;
-use crate::tokens::{Token, TokenKind, keyword_from_str};
 use crate::error::ParseError;
+use crate::tokens::{keyword_from_str, Token, TokenKind};
 
 /// Lexer state
 pub struct Lexer<'a> {
@@ -96,8 +96,8 @@ impl<'a> Lexer<'a> {
             c if c.is_ascii_digit() => self.scan_number_or_duration(pos)?,
             c if c.is_ascii_alphabetic() || c == '_' => self.scan_identifier(pos)?,
             // Code characters - treat as identifiers for inline code
-            '+' | '-' | '*' | '/' | '%' | '=' | '<' | '>' | '!' | '&' | '|' | 
-            ';' | '?' | '^' | '~' | '`' => {
+            '+' | '-' | '*' | '/' | '%' | '=' | '<' | '>' | '!' | '&' | '|' | ';' | '?' | '^'
+            | '~' | '`' => {
                 // Scan the rest as a code expression
                 self.scan_code_expr(pos, ch)?
             }
@@ -143,7 +143,7 @@ impl<'a> Lexer<'a> {
     fn peek(&mut self) -> Option<char> {
         self.chars.peek().map(|(_, ch)| *ch)
     }
-    
+
     /// Peek at the character after next
     fn peek_next(&self) -> Option<char> {
         self.source[self.current_pos..].chars().nth(1)
@@ -180,9 +180,9 @@ impl<'a> Lexer<'a> {
         let start_line = self.line;
         let start_col = self.col - 1; // Account for opening quote
         let start_pos = self.current_pos - 1;
-        
+
         let mut value = String::new();
-        
+
         loop {
             match self.advance() {
                 Some((_, '"')) => break,
@@ -229,14 +229,14 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        
+
         // Check for decimal point (floating point number)
         let is_float = if self.peek() == Some('.') {
             // Peek ahead to make sure it's followed by a digit (not a method call)
             if let Some(next) = self.peek_next() {
                 if next.is_ascii_digit() {
                     self.advance(); // consume '.'
-                    // Scan fractional part
+                                    // Scan fractional part
                     while let Some(c) = self.peek() {
                         if c.is_ascii_digit() || c == '_' {
                             self.advance();
@@ -291,16 +291,20 @@ impl<'a> Lexer<'a> {
         } else if is_float {
             // Parse as floating point number
             let clean = lexeme.replace('_', "");
-            let value = clean.parse::<f64>().map_err(|_| ParseError::InvalidNumber {
-                span: Span::new(start, self.current_pos, self.line, self.col),
-            })?;
+            let value = clean
+                .parse::<f64>()
+                .map_err(|_| ParseError::InvalidNumber {
+                    span: Span::new(start, self.current_pos, self.line, self.col),
+                })?;
             Ok((TokenKind::Float(value), lexeme.to_string()))
         } else {
             // Parse as regular integer
             let clean = lexeme.replace('_', "");
-            let value = clean.parse::<u64>().map_err(|_| ParseError::InvalidNumber {
-                span: Span::new(start, self.current_pos, self.line, self.col),
-            })?;
+            let value = clean
+                .parse::<u64>()
+                .map_err(|_| ParseError::InvalidNumber {
+                    span: Span::new(start, self.current_pos, self.line, self.col),
+                })?;
             Ok((TokenKind::Number(value), lexeme.to_string()))
         }
     }
@@ -330,10 +334,10 @@ impl<'a> Lexer<'a> {
         }
 
         let lexeme = &self.source[start..self.current_pos];
-        
+
         // Check if it's a keyword
-        let kind = keyword_from_str(lexeme)
-            .unwrap_or_else(|| TokenKind::Identifier(lexeme.to_string()));
+        let kind =
+            keyword_from_str(lexeme).unwrap_or_else(|| TokenKind::Identifier(lexeme.to_string()));
 
         Ok((kind, lexeme.to_string()))
     }
@@ -343,32 +347,30 @@ impl<'a> Lexer<'a> {
         let start_line = self.line;
         let start_col = self.col - 1;
         let start_pos = self.current_pos - 1;
-        
+
         let mut value = String::new();
-        
+
         loop {
             match self.advance() {
                 Some((_, '\'')) => break,
-                Some((_, '\\')) => {
-                    match self.advance() {
-                        Some((_, 'n')) => value.push('\n'),
-                        Some((_, 't')) => value.push('\t'),
-                        Some((_, 'r')) => value.push('\r'),
-                        Some((_, '\\')) => value.push('\\'),
-                        Some((_, '\'')) => value.push('\''),
-                        Some((_, c)) => {
-                            return Err(ParseError::InvalidEscape {
-                                char: c,
-                                span: Span::new(start_pos, self.current_pos, start_line, start_col),
-                            });
-                        }
-                        None => {
-                            return Err(ParseError::UnterminatedString {
-                                span: Span::new(start_pos, self.current_pos, start_line, start_col),
-                            });
-                        }
+                Some((_, '\\')) => match self.advance() {
+                    Some((_, 'n')) => value.push('\n'),
+                    Some((_, 't')) => value.push('\t'),
+                    Some((_, 'r')) => value.push('\r'),
+                    Some((_, '\\')) => value.push('\\'),
+                    Some((_, '\'')) => value.push('\''),
+                    Some((_, c)) => {
+                        return Err(ParseError::InvalidEscape {
+                            char: c,
+                            span: Span::new(start_pos, self.current_pos, start_line, start_col),
+                        });
                     }
-                }
+                    None => {
+                        return Err(ParseError::UnterminatedString {
+                            span: Span::new(start_pos, self.current_pos, start_line, start_col),
+                        });
+                    }
+                },
                 Some((_, c)) => value.push(c),
                 None => {
                     return Err(ParseError::UnterminatedString {
@@ -382,21 +384,25 @@ impl<'a> Lexer<'a> {
     }
 
     /// Scan a code expression (for inline code)
-    fn scan_code_expr(&mut self, start: usize, first_char: char) -> Result<(TokenKind, String), ParseError> {
+    fn scan_code_expr(
+        &mut self,
+        start: usize,
+        first_char: char,
+    ) -> Result<(TokenKind, String), ParseError> {
         let mut expr = first_char.to_string();
-        
+
         // Continue until we hit a delimiter
         while let Some(c) = self.peek() {
             // Stop at structural delimiters
             if matches!(c, '{' | '}' | '\n' | '#') {
                 break;
             }
-            
+
             // Include most characters in the code expression
             expr.push(c);
             self.advance();
         }
-        
+
         let trimmed = expr.trim().to_string();
         Ok((TokenKind::Identifier(trimmed.clone()), trimmed))
     }
@@ -411,7 +417,7 @@ mod tests {
         let source = "suite hash { }";
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens.len(), 5); // suite, hash, {, }, EOF
         assert_eq!(tokens[0].kind, TokenKind::Suite);
         assert!(matches!(tokens[1].kind, TokenKind::Identifier(_)));
@@ -425,7 +431,7 @@ mod tests {
         let source = r#""hello world""#;
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert!(matches!(&tokens[0].kind, TokenKind::String(s) if s == "hello world"));
     }
 
@@ -434,7 +440,7 @@ mod tests {
         let source = "12345";
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert!(matches!(tokens[0].kind, TokenKind::Number(12345)));
     }
 
@@ -443,7 +449,7 @@ mod tests {
         let source = "suite # this is a comment\nhash";
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens.len(), 3); // suite, hash, EOF
         assert_eq!(tokens[0].kind, TokenKind::Suite);
         assert!(matches!(tokens[1].kind, TokenKind::Identifier(_)));
@@ -454,7 +460,7 @@ mod tests {
         let source = r#"@file("path.hex")"#;
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0].kind, TokenKind::FileRef);
         assert_eq!(tokens[1].kind, TokenKind::LParen);
         assert!(matches!(&tokens[2].kind, TokenKind::String(s) if s == "path.hex"));
@@ -466,7 +472,7 @@ mod tests {
         let source = r#"["foo", "bar"]"#;
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0].kind, TokenKind::LBracket);
         assert!(matches!(&tokens[1].kind, TokenKind::String(s) if s == "foo"));
         assert_eq!(tokens[2].kind, TokenKind::Comma);
@@ -479,7 +485,7 @@ mod tests {
         let source = "30s";
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert!(matches!(tokens[0].kind, TokenKind::Duration(30000))); // 30 seconds = 30000ms
     }
 
@@ -488,7 +494,7 @@ mod tests {
         let source = "500ms";
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert!(matches!(tokens[0].kind, TokenKind::Duration(500)));
     }
 
@@ -497,7 +503,7 @@ mod tests {
         let source = "2m";
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert!(matches!(tokens[0].kind, TokenKind::Duration(120000))); // 2 minutes = 120000ms
     }
 
@@ -506,7 +512,7 @@ mod tests {
         let source = "declare init helpers import timeout tags skip validate before after each requires order compare baseline shape async";
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0].kind, TokenKind::Declare);
         assert_eq!(tokens[1].kind, TokenKind::Init);
         assert_eq!(tokens[2].kind, TokenKind::Helpers);
@@ -531,7 +537,7 @@ mod tests {
         let source = "use";
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0].kind, TokenKind::Use);
     }
 
@@ -540,7 +546,7 @@ mod tests {
         let source = "std::constants";
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert!(matches!(tokens[0].kind, TokenKind::Identifier(ref s) if s == "std"));
         assert_eq!(tokens[1].kind, TokenKind::DoubleColon);
         assert!(matches!(tokens[2].kind, TokenKind::Identifier(ref s) if s == "constants"));
@@ -551,7 +557,7 @@ mod tests {
         let source = "use std::constants";
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0].kind, TokenKind::Use);
         assert!(matches!(tokens[1].kind, TokenKind::Identifier(ref s) if s == "std"));
         assert_eq!(tokens[2].kind, TokenKind::DoubleColon);
@@ -564,7 +570,7 @@ mod tests {
         let source = "foo: bar::baz";
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert!(matches!(tokens[0].kind, TokenKind::Identifier(ref s) if s == "foo"));
         assert_eq!(tokens[1].kind, TokenKind::Colon);
         assert!(matches!(tokens[2].kind, TokenKind::Identifier(ref s) if s == "bar"));
@@ -577,7 +583,7 @@ mod tests {
         let source = "anvil.spawnAnvil";
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert!(matches!(tokens[0].kind, TokenKind::Identifier(ref s) if s == "anvil"));
         assert_eq!(tokens[1].kind, TokenKind::Dot);
         assert!(matches!(tokens[2].kind, TokenKind::Identifier(ref s) if s == "spawnAnvil"));
@@ -588,7 +594,7 @@ mod tests {
         let source = "anvil.spawnAnvil()";
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert!(matches!(tokens[0].kind, TokenKind::Identifier(ref s) if s == "anvil"));
         assert_eq!(tokens[1].kind, TokenKind::Dot);
         assert!(matches!(tokens[2].kind, TokenKind::Identifier(ref s) if s == "spawnAnvil"));

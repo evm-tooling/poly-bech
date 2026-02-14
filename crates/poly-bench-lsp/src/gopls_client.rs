@@ -15,9 +15,10 @@ static GOPLS_CLIENT: OnceCell<Arc<GoplsClient>> = OnceCell::new();
 
 /// Initialize the global gopls client with a workspace root
 pub fn init_gopls_client(workspace_root: &str) -> Option<Arc<GoplsClient>> {
-    GOPLS_CLIENT.get_or_try_init(|| {
-        GoplsClient::new(workspace_root).map(Arc::new)
-    }).ok().cloned()
+    GOPLS_CLIENT
+        .get_or_try_init(|| GoplsClient::new(workspace_root).map(Arc::new))
+        .ok()
+        .cloned()
 }
 
 /// Configuration for gopls
@@ -26,15 +27,15 @@ pub struct GoplsConfig;
 impl LspConfig for GoplsConfig {
     const SERVER_NAME: &'static str = "gopls";
     const LANGUAGE_ID: &'static str = "go";
-    
+
     fn find_executable() -> Option<String> {
         find_gopls()
     }
-    
+
     fn server_args() -> Vec<String> {
         vec!["serve".to_string()]
     }
-    
+
     fn additional_capabilities() -> Value {
         json!({})
     }

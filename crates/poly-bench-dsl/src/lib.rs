@@ -2,18 +2,20 @@
 //!
 //! This crate provides the lexer, parser, and AST types for the poly-bench DSL.
 
-mod tokens;
-mod lexer;
-mod parser;
 mod ast;
 mod error;
 mod formatter;
+mod lexer;
+mod parser;
+mod tokens;
 pub mod validate;
 
 pub use ast::*;
+pub use error::{NamedSource, ParseError};
 pub use formatter::{format_file, format_file_with_source};
-pub use error::{ParseError, NamedSource};
-pub use validate::{ValidationResult, ValidationError, ValidationWarning, validate_file, validate_suite};
+pub use validate::{
+    validate_file, validate_suite, ValidationError, ValidationResult, ValidationWarning,
+};
 
 use miette::Result;
 

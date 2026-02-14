@@ -76,10 +76,7 @@ impl ParsedDocument {
     }
 
     /// Convert an LSP Position to a byte offset
-    pub fn position_to_offset(
-        &self,
-        position: tower_lsp::lsp_types::Position,
-    ) -> Option<usize> {
+    pub fn position_to_offset(&self, position: tower_lsp::lsp_types::Position) -> Option<usize> {
         let line = position.line as usize;
         if line >= self.rope.len_lines() {
             return None;
@@ -156,10 +153,7 @@ impl ParsedDocument {
     }
 
     /// Get text before the cursor on the current line (for completion context)
-    pub fn text_before_position(
-        &self,
-        position: tower_lsp::lsp_types::Position,
-    ) -> Option<String> {
+    pub fn text_before_position(&self, position: tower_lsp::lsp_types::Position) -> Option<String> {
         let line = position.line as usize;
         if line >= self.rope.len_lines() {
             return None;

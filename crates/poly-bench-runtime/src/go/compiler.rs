@@ -1,6 +1,6 @@
 //! Go plugin compilation
 
-use miette::{Result, miette};
+use miette::{miette, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
@@ -19,16 +19,19 @@ impl GoCompiler {
         let go_binary = which::which("go")
             .map_err(|_| miette!("Go compiler not found in PATH. Please install Go."))?;
 
-        let temp_dir = TempDir::new()
-            .map_err(|e| miette!("Failed to create temp directory: {}", e))?;
+        let temp_dir =
+            TempDir::new().map_err(|e| miette!("Failed to create temp directory: {}", e))?;
 
-        Ok(Self { temp_dir, go_binary })
+        Ok(Self {
+            temp_dir,
+            go_binary,
+        })
     }
 
     /// Compile Go source code to a plugin
     pub fn compile(&self, source: &str, module_name: &str) -> Result<PathBuf> {
         let src_dir = self.temp_dir.path();
-        
+
         // Write go.mod
         let go_mod = format!("module {}\n\ngo 1.21\n", module_name);
         std::fs::write(src_dir.join("go.mod"), go_mod)
@@ -36,8 +39,7 @@ impl GoCompiler {
 
         // Write main.go
         let main_go = src_dir.join("main.go");
-        std::fs::write(&main_go, source)
-            .map_err(|e| miette!("Failed to write main.go: {}", e))?;
+        std::fs::write(&main_go, source).map_err(|e| miette!("Failed to write main.go: {}", e))?;
 
         // Output plugin path
         let plugin_path = src_dir.join("benchmark.so");
@@ -85,7 +87,7 @@ var Hello = func() string { return "Hello" }
 "#;
         let compiler = GoCompiler::new().unwrap();
         let result = compiler.compile(source, "test");
-        
+
         // This will fail on systems without Go plugin support (e.g., macOS)
         // but should succeed on Linux
         if let Ok(path) = result {

@@ -15,7 +15,9 @@ const POLY_BENCH_LOGO: &str = r#"
 const SENTINEL_FILENAME: &str = ".welcome_shown";
 
 fn config_dir() -> Option<PathBuf> {
-    std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".polybench"))
+    std::env::var("HOME")
+        .ok()
+        .map(|h| PathBuf::from(h).join(".polybench"))
 }
 
 fn sentinel_path() -> Option<PathBuf> {

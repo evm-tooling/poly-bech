@@ -1,20 +1,20 @@
 //! Go runtime executor
 
-use poly_bench_dsl::{Lang, BenchMode};
-use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use crate::go::compiler::GoCompiler;
 use crate::measurement::Measurement;
 use crate::traits::Runtime;
-use poly_bench_stdlib as stdlib;
 use async_trait::async_trait;
 use libloading::{Library, Symbol};
-use miette::{Result, miette};
+use miette::{miette, Result};
+use poly_bench_dsl::{BenchMode, Lang};
+use poly_bench_ir::{BenchmarkSpec, SuiteIR};
+use poly_bench_stdlib as stdlib;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
 use super::shared::{
-    self, SinkMemoryDecls, BENCH_RESULT_STRUCT,
-    generate_bench_call, generate_suite_code, generate_fixtures_for_spec,
+    self, generate_bench_call, generate_fixtures_for_spec, generate_suite_code, SinkMemoryDecls,
+    BENCH_RESULT_STRUCT,
 };
 
 /// Go runtime using plugin system
@@ -46,7 +46,7 @@ impl GoRuntime {
     pub fn set_module_root(&mut self, path: Option<PathBuf>) {
         self.module_root = path;
     }
-    
+
     /// Set the Anvil RPC URL to pass to subprocess
     pub fn set_anvil_rpc_url(&mut self, url: String) {
         self.anvil_rpc_url = Some(url);
@@ -76,7 +76,11 @@ impl Runtime for GoRuntime {
         Ok(())
     }
 
-    async fn run_benchmark(&mut self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<Measurement> {
+    async fn run_benchmark(
+        &mut self,
+        spec: &BenchmarkSpec,
+        suite: &SuiteIR,
+    ) -> Result<Measurement> {
         // If we have a loaded library, try to use it
         if let Some(ref lib) = self.library {
             match self.run_via_plugin(lib, spec) {
@@ -86,7 +90,7 @@ impl Runtime for GoRuntime {
                 }
             }
         }
-        
+
         // Fall back to subprocess execution
         self.run_via_subprocess(spec, suite).await
     }
@@ -105,22 +109,29 @@ impl GoRuntime {
             let run_benchmark: Symbol<fn(&str, i32) -> String> = lib
                 .get(b"RunBenchmark")
                 .map_err(|e| miette!("Failed to get RunBenchmark symbol: {}", e))?;
-            
+
             let result_json = run_benchmark(&spec.full_name, spec.iterations as i32);
-            
+
             let result: BenchResultJson = serde_json::from_str(&result_json)
                 .map_err(|e| miette!("Failed to parse benchmark result: {}", e))?;
-            
+
             Ok(result.into_measurement_with_options(spec.outlier_detection, spec.cv_threshold))
         }
     }
 
     /// Run benchmark via subprocess (fallback for unsupported platforms)
-    async fn run_via_subprocess(&self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<Measurement> {
+    async fn run_via_subprocess(
+        &self,
+        spec: &BenchmarkSpec,
+        suite: &SuiteIR,
+    ) -> Result<Measurement> {
         let source = generate_standalone_benchmark(spec, suite)?;
-        
+
         let (src_path, working_dir) = if let Some(ref module_root) = self.module_root {
-            let is_runtime_env = module_root.as_os_str().to_string_lossy().contains("runtime-env");
+            let is_runtime_env = module_root
+                .as_os_str()
+                .to_string_lossy()
+                .contains("runtime-env");
             let src_path = if is_runtime_env {
                 module_root.join("bench_standalone.go")
             } else {
@@ -131,40 +142,47 @@ impl GoRuntime {
             };
             (src_path, module_root.clone())
         } else {
-            let compiler = self.compiler.as_ref()
+            let compiler = self
+                .compiler
+                .as_ref()
                 .ok_or_else(|| miette!("Compiler not initialized"))?;
-            
+
             let src_path = compiler.temp_path().join("bench_standalone.go");
             (src_path, compiler.temp_path().to_path_buf())
         };
-        
+
         std::fs::write(&src_path, &source)
             .map_err(|e| miette!("Failed to write benchmark source: {}", e))?;
-        
-        let go_binary = which::which("go")
-            .map_err(|_| miette!("Go not found in PATH"))?;
-        
+
+        let go_binary = which::which("go").map_err(|_| miette!("Go not found in PATH"))?;
+
         let mut cmd = tokio::process::Command::new(&go_binary);
         cmd.args(["run", src_path.to_str().unwrap()])
             .current_dir(&working_dir);
-        
+
         if let Some(ref url) = self.anvil_rpc_url {
             cmd.env("ANVIL_RPC_URL", url);
         }
-        
-        let output = cmd.output()
+
+        let output = cmd
+            .output()
             .await
             .map_err(|e| miette!("Failed to run Go benchmark: {}", e))?;
-        
+
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(miette!("Go benchmark failed:\n{}", stderr));
         }
-        
+
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let result: BenchResultJson = serde_json::from_str(&stdout)
-            .map_err(|e| miette!("Failed to parse benchmark result: {}\nOutput: {}", e, stdout))?;
-        
+        let result: BenchResultJson = serde_json::from_str(&stdout).map_err(|e| {
+            miette!(
+                "Failed to parse benchmark result: {}\nOutput: {}",
+                e,
+                stdout
+            )
+        })?;
+
         Ok(result.into_measurement_with_options(spec.outlier_detection, spec.cv_threshold))
     }
 }
@@ -185,7 +203,11 @@ struct BenchResultJson {
 }
 
 impl BenchResultJson {
-    fn into_measurement_with_options(self, outlier_detection: bool, cv_threshold: f64) -> Measurement {
+    fn into_measurement_with_options(
+        self,
+        outlier_detection: bool,
+        cv_threshold: f64,
+    ) -> Measurement {
         let mut m = if self.samples.is_empty() {
             Measurement::from_aggregate(self.iterations, self.total_nanos)
         } else {
@@ -196,22 +218,23 @@ impl BenchResultJson {
                 cv_threshold,
             )
         };
-        
+
         if self.bytes_per_op > 0 || self.allocs_per_op > 0 {
             m = m.with_allocs(self.bytes_per_op, self.allocs_per_op);
         }
-        
+
         m
     }
 }
 
 /// Generate a standalone Go program for subprocess execution
 fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<String> {
-    let impl_code = spec.get_impl(Lang::Go)
+    let impl_code = spec
+        .get_impl(Lang::Go)
         .ok_or_else(|| miette!("No Go implementation for benchmark {}", spec.name))?;
-    
+
     let mut code = String::new();
-    
+
     // Package declaration
     code.push_str("package main\n\n");
 
@@ -221,7 +244,7 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     all_imports.insert("\"encoding/json\"");
     all_imports.insert("\"fmt\"");
     all_imports.insert("\"time\"");
-    
+
     if spec.use_sink || spec.memory {
         all_imports.insert("\"runtime\"");
     }
@@ -236,7 +259,7 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     for import_spec in &stdlib_imports {
         all_imports.insert(import_spec);
     }
-    
+
     code.push_str("import (\n");
     let mut sorted_imports: Vec<_> = all_imports.into_iter().collect();
     sorted_imports.sort();
@@ -271,12 +294,35 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
 
     // Generate main function based on mode
     if spec.concurrency > 1 {
-        return generate_concurrent_main(&mut code, spec, &decls, &bench_call, before_hook, after_hook);
+        return generate_concurrent_main(
+            &mut code,
+            spec,
+            &decls,
+            &bench_call,
+            before_hook,
+            after_hook,
+        );
     }
-    
+
     match spec.mode {
-        BenchMode::Auto => generate_auto_main(&mut code, spec, &decls, &bench_call, before_hook, after_hook, each_hook),
-        BenchMode::Fixed => generate_fixed_main(&mut code, spec, &decls, &bench_call, before_hook, after_hook, each_hook),
+        BenchMode::Auto => generate_auto_main(
+            &mut code,
+            spec,
+            &decls,
+            &bench_call,
+            before_hook,
+            after_hook,
+            each_hook,
+        ),
+        BenchMode::Fixed => generate_fixed_main(
+            &mut code,
+            spec,
+            &decls,
+            &bench_call,
+            before_hook,
+            after_hook,
+            each_hook,
+        ),
     }
 
     // Memory profiling after measurement
@@ -289,10 +335,14 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
             code.push_str(&format!("\t{}\n", line));
         }
     }
-    
+
     // Result calculation and output
     let memory_result = SinkMemoryDecls::memory_result_fields(spec.memory, "iterations");
-    code.push_str(&shared::generate_result_return("iterations", &memory_result, true));
+    code.push_str(&shared::generate_result_return(
+        "iterations",
+        &memory_result,
+        true,
+    ));
     code.push_str("}\n");
 
     Ok(code)
@@ -309,10 +359,13 @@ fn generate_auto_main(
     each_hook: Option<&String>,
 ) {
     // Note: targetNanos is declared inside generate_auto_mode_loop, not here
-    code.push_str(&format!(r#"
+    code.push_str(&format!(
+        r#"
 func main() {{
 {}{}
-"#, decls.sink_decl, decls.memory_decl));
+"#,
+        decls.sink_decl, decls.memory_decl
+    ));
 
     // Before hook
     if let Some(before) = before_hook {
@@ -321,18 +374,38 @@ func main() {{
             code.push_str(&format!("\t{}\n", line));
         }
     }
-    
+
     code.push_str(decls.memory_before);
 
     // Warmup
-    code.push_str(&format!("\n{}", shared::generate_warmup_loop(bench_call, decls.sink_keepalive, each_hook, "100")));
-    
+    code.push_str(&format!(
+        "\n{}",
+        shared::generate_warmup_loop(bench_call, decls.sink_keepalive, each_hook, "100")
+    ));
+
     // Auto-calibration loop
-    code.push_str(&format!("\n{}", shared::generate_auto_mode_loop(bench_call, decls.sink_keepalive, each_hook, spec.target_time_ms)));
-    
+    code.push_str(&format!(
+        "\n{}",
+        shared::generate_auto_mode_loop(
+            bench_call,
+            decls.sink_keepalive,
+            each_hook,
+            spec.target_time_ms
+        )
+    ));
+
     // Sample collection
-    code.push_str(&format!("\n{}", shared::generate_sample_collection(bench_call, decls.sink_keepalive, each_hook, "1000", "totalIterations")));
-    
+    code.push_str(&format!(
+        "\n{}",
+        shared::generate_sample_collection(
+            bench_call,
+            decls.sink_keepalive,
+            each_hook,
+            "1000",
+            "totalIterations"
+        )
+    ));
+
     code.push_str("\n\titerations := totalIterations\n");
 }
 
@@ -346,13 +419,16 @@ fn generate_fixed_main(
     _after_hook: Option<&String>,
     each_hook: Option<&String>,
 ) {
-    code.push_str(&format!(r#"
+    code.push_str(&format!(
+        r#"
 func main() {{
 	iterations := {}
 	warmup := {}
 	samples := make([]uint64, iterations)
 {}{}
-"#, spec.iterations, spec.warmup, decls.sink_decl, decls.memory_decl));
+"#,
+        spec.iterations, spec.warmup, decls.sink_decl, decls.memory_decl
+    ));
 
     // Before hook
     if let Some(before) = before_hook {
@@ -361,14 +437,20 @@ func main() {{
             code.push_str(&format!("\t{}\n", line));
         }
     }
-    
+
     code.push_str(decls.memory_before);
 
     // Warmup
-    code.push_str(&format!("\n{}", shared::generate_warmup_loop(bench_call, decls.sink_keepalive, each_hook, "warmup")));
-    
+    code.push_str(&format!(
+        "\n{}",
+        shared::generate_warmup_loop(bench_call, decls.sink_keepalive, each_hook, "warmup")
+    ));
+
     // Fixed measurement loop
-    code.push_str(&format!("\n{}", shared::generate_fixed_mode_loop(bench_call, decls.sink_keepalive, each_hook, "iterations")));
+    code.push_str(&format!(
+        "\n{}",
+        shared::generate_fixed_mode_loop(bench_call, decls.sink_keepalive, each_hook, "iterations")
+    ));
 }
 
 /// Generate concurrent execution main function
@@ -382,18 +464,28 @@ fn generate_concurrent_main(
 ) -> Result<String> {
     let concurrency = spec.concurrency;
     let memory_result = SinkMemoryDecls::memory_result_fields(spec.memory, "totalIterations");
-    let sink_keepalive = if spec.use_sink { "\n\truntime.KeepAlive(__sink)\n" } else { "" };
-    
+    let sink_keepalive = if spec.use_sink {
+        "\n\truntime.KeepAlive(__sink)\n"
+    } else {
+        ""
+    };
+
     let warmup_call = if spec.use_sink {
-        format!("_ = {}", spec.get_impl(Lang::Go).unwrap_or(&"nil".to_string()))
+        format!(
+            "_ = {}",
+            spec.get_impl(Lang::Go).unwrap_or(&"nil".to_string())
+        )
     } else {
         bench_call.to_string()
     };
-    
-    code.push_str(&format!(r#"
+
+    code.push_str(&format!(
+        r#"
 func main() {{
 {}{}
-"#, decls.sink_decl, decls.memory_decl));
+"#,
+        decls.sink_decl, decls.memory_decl
+    ));
 
     // Before hook
     if let Some(before) = before_hook {
@@ -402,11 +494,19 @@ func main() {{
             code.push_str(&format!("\t{}\n", line));
         }
     }
-    
+
     code.push_str(decls.memory_before);
-    
+
     // Concurrent execution
-    code.push_str(&format!("\n{}", shared::generate_concurrent_execution(bench_call, &warmup_call, concurrency, &spec.iterations.to_string())));
+    code.push_str(&format!(
+        "\n{}",
+        shared::generate_concurrent_execution(
+            bench_call,
+            &warmup_call,
+            concurrency,
+            &spec.iterations.to_string()
+        )
+    ));
     code.push_str(sink_keepalive);
     code.push_str(decls.memory_after);
 
@@ -417,12 +517,16 @@ func main() {{
             code.push_str(&format!("\t{}\n", line));
         }
     }
-    
+
     // Sample collection
-    code.push_str(&format!("\n{}", shared::generate_sample_collection(bench_call, "", None, "100", "totalIterations")));
-    
+    code.push_str(&format!(
+        "\n{}",
+        shared::generate_sample_collection(bench_call, "", None, "100", "totalIterations")
+    ));
+
     // Result output
-    code.push_str(&format!(r#"
+    code.push_str(&format!(
+        r#"
 	nanosPerOp := float64(totalNanos) / float64(totalIterations)
 	opsPerSec := 1e9 / nanosPerOp
 	
@@ -437,7 +541,9 @@ func main() {{
 	jsonBytes, _ := json.Marshal(result)
 	fmt.Println(string(jsonBytes))
 }}
-"#, memory_result));
+"#,
+        memory_result
+    ));
 
     Ok(code.clone())
 }

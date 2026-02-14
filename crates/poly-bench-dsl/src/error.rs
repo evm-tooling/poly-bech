@@ -130,11 +130,11 @@ impl miette::SourceCode for NamedSource {
         context_lines_after: usize,
     ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, miette::MietteError> {
         let contents = self.source.as_str();
-        
+
         let start = span.offset();
         let len = span.len();
         let end = start + len;
-        
+
         // Find line boundaries for context
         let mut line_start = start;
         let mut lines_before = 0;
@@ -148,7 +148,7 @@ impl miette::SourceCode for NamedSource {
             }
             line_start = i;
         }
-        
+
         let mut line_end = end;
         let mut lines_after = 0;
         for (i, c) in contents[end..].char_indices() {
@@ -161,11 +161,11 @@ impl miette::SourceCode for NamedSource {
             line_end = end + i + 1;
         }
         line_end = line_end.min(contents.len());
-        
+
         // Count line number
         let line = contents[..start].chars().filter(|&c| c == '\n').count();
         let column = start - contents[..start].rfind('\n').map(|p| p + 1).unwrap_or(0);
-        
+
         Ok(Box::new(miette::MietteSpanContents::new_named(
             self.name.clone(),
             contents[line_start..line_end].as_bytes(),

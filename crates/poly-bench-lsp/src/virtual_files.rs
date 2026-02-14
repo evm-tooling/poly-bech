@@ -47,19 +47,19 @@ pub trait VirtualFile {
     fn section_mappings(&self) -> &[SectionMapping];
     /// Get the original bench URI
     fn bench_uri(&self) -> &str;
-    
+
     /// Translate a .bench file offset to a position in the virtual file
     fn bench_to_virtual(&self, bench_offset: usize) -> Option<Position> {
         for mapping in self.section_mappings() {
             let span = &mapping.bench_span;
-            
+
             if bench_offset >= span.start && bench_offset < span.end {
                 let relative_offset = bench_offset - span.start;
                 let code_bytes = mapping.code.as_bytes();
                 let mut line_in_block: u32 = 0;
                 let mut col: u32 = 0;
                 let mut current_offset = 0;
-                
+
                 for &byte in code_bytes.iter().take(relative_offset) {
                     if byte == b'\n' {
                         line_in_block += 1;
@@ -69,20 +69,20 @@ pub trait VirtualFile {
                     }
                     current_offset += 1;
                 }
-                
+
                 if current_offset < relative_offset && relative_offset <= code_bytes.len() {
                     col += (relative_offset - current_offset) as u32;
                 }
-                
+
                 let virtual_line = mapping.virtual_start_line + line_in_block;
-                
+
                 return Some(Position {
                     line: virtual_line,
                     character: col,
                 });
             }
         }
-        
+
         None
     }
 
@@ -90,12 +90,12 @@ pub trait VirtualFile {
     fn virtual_to_bench(&self, line: u32, character: u32) -> Option<usize> {
         for mapping in self.section_mappings() {
             let section_end_line = mapping.virtual_start_line + mapping.line_count;
-            
+
             if line >= mapping.virtual_start_line && line < section_end_line {
                 let line_in_block = line - mapping.virtual_start_line;
                 let mut offset_in_code = 0usize;
                 let mut current_line = 0u32;
-                
+
                 for (i, byte) in mapping.code.bytes().enumerate() {
                     if current_line == line_in_block {
                         offset_in_code = i + character as usize;
@@ -105,33 +105,33 @@ pub trait VirtualFile {
                         current_line += 1;
                     }
                 }
-                
+
                 if current_line < line_in_block {
                     return None;
                 }
-                
+
                 offset_in_code = offset_in_code.min(mapping.code.len());
                 let bench_offset = mapping.bench_span.start + offset_in_code;
-                
+
                 return Some(bench_offset);
             }
         }
-        
+
         None
     }
 
     /// Check if a .bench file offset is within a code block
     fn contains_offset(&self, bench_offset: usize) -> bool {
-        self.section_mappings().iter().any(|m| {
-            bench_offset >= m.bench_span.start && bench_offset < m.bench_span.end
-        })
+        self.section_mappings()
+            .iter()
+            .any(|m| bench_offset >= m.bench_span.start && bench_offset < m.bench_span.end)
     }
 
     /// Find the block containing a .bench file offset
     fn block_at_offset(&self, bench_offset: usize) -> Option<&SectionMapping> {
-        self.section_mappings().iter().find(|m| {
-            bench_offset >= m.bench_span.start && bench_offset < m.bench_span.end
-        })
+        self.section_mappings()
+            .iter()
+            .find(|m| bench_offset >= m.bench_span.start && bench_offset < m.bench_span.end)
     }
 }
 
@@ -184,12 +184,24 @@ impl VirtualGoFile {
 }
 
 impl VirtualFile for VirtualGoFile {
-    fn uri(&self) -> &str { &self.0.uri }
-    fn path(&self) -> &str { &self.0.path }
-    fn content(&self) -> &str { &self.0.content }
-    fn version(&self) -> i32 { self.0.version }
-    fn section_mappings(&self) -> &[SectionMapping] { &self.0.section_mappings }
-    fn bench_uri(&self) -> &str { &self.0.bench_uri }
+    fn uri(&self) -> &str {
+        &self.0.uri
+    }
+    fn path(&self) -> &str {
+        &self.0.path
+    }
+    fn content(&self) -> &str {
+        &self.0.content
+    }
+    fn version(&self) -> i32 {
+        self.0.version
+    }
+    fn section_mappings(&self) -> &[SectionMapping] {
+        &self.0.section_mappings
+    }
+    fn bench_uri(&self) -> &str {
+        &self.0.bench_uri
+    }
 }
 
 // =============================================================================
@@ -209,7 +221,8 @@ impl VirtualTsFile {
         blocks: &[&EmbeddedBlock],
         version: i32,
     ) -> Self {
-        let mut builder = VirtualFileBuilder::new_ts(bench_uri, bench_path, ts_module_root, version);
+        let mut builder =
+            VirtualFileBuilder::new_ts(bench_uri, bench_path, ts_module_root, version);
         builder.build_ts(blocks);
         Self(builder.finish())
     }
@@ -226,12 +239,24 @@ impl VirtualTsFile {
 }
 
 impl VirtualFile for VirtualTsFile {
-    fn uri(&self) -> &str { &self.0.uri }
-    fn path(&self) -> &str { &self.0.path }
-    fn content(&self) -> &str { &self.0.content }
-    fn version(&self) -> i32 { self.0.version }
-    fn section_mappings(&self) -> &[SectionMapping] { &self.0.section_mappings }
-    fn bench_uri(&self) -> &str { &self.0.bench_uri }
+    fn uri(&self) -> &str {
+        &self.0.uri
+    }
+    fn path(&self) -> &str {
+        &self.0.path
+    }
+    fn content(&self) -> &str {
+        &self.0.content
+    }
+    fn version(&self) -> i32 {
+        self.0.version
+    }
+    fn section_mappings(&self) -> &[SectionMapping] {
+        &self.0.section_mappings
+    }
+    fn bench_uri(&self) -> &str {
+        &self.0.bench_uri
+    }
 }
 
 // =============================================================================
@@ -254,13 +279,13 @@ impl VirtualFileBuilder {
         let mut hasher = DefaultHasher::new();
         bench_path.hash(&mut hasher);
         let hash = hasher.finish();
-        
+
         let subdir = Path::new(go_mod_root).join(".lsp_virtual");
         let filename = format!("virtual_{:016x}.go", hash);
         let path = subdir.join(&filename);
         let path_str = path.to_string_lossy().to_string();
         let uri = format!("file://{}", path_str);
-        
+
         Self {
             bench_uri: bench_uri.to_string(),
             uri,
@@ -276,12 +301,12 @@ impl VirtualFileBuilder {
         let mut hasher = DefaultHasher::new();
         bench_path.hash(&mut hasher);
         let hash = hasher.finish();
-        
+
         let filename = format!("polybench_virtual_{:016x}.ts", hash);
         let path = Path::new(ts_module_root).join(&filename);
         let path_str = path.to_string_lossy().to_string();
         let uri = format!("file://{}", path_str);
-        
+
         Self {
             bench_uri: bench_uri.to_string(),
             uri,
@@ -375,33 +400,46 @@ impl VirtualFileBuilder {
         }
     }
 
-    fn categorize_blocks<'a>(blocks: &[&'a EmbeddedBlock]) -> (
+    fn categorize_blocks<'a>(
+        blocks: &[&'a EmbeddedBlock],
+    ) -> (
         Vec<&'a EmbeddedBlock>,
         Vec<&'a EmbeddedBlock>,
         Vec<&'a EmbeddedBlock>,
         Vec<&'a EmbeddedBlock>,
         Vec<&'a EmbeddedBlock>,
     ) {
-        let imports: Vec<_> = blocks.iter()
+        let imports: Vec<_> = blocks
+            .iter()
             .filter(|b| b.block_type == BlockType::SetupImport)
             .copied()
             .collect();
-        let declares: Vec<_> = blocks.iter()
+        let declares: Vec<_> = blocks
+            .iter()
             .filter(|b| b.block_type == BlockType::SetupDeclare)
             .copied()
             .collect();
-        let helpers: Vec<_> = blocks.iter()
+        let helpers: Vec<_> = blocks
+            .iter()
             .filter(|b| b.block_type == BlockType::SetupHelpers)
             .copied()
             .collect();
-        let inits: Vec<_> = blocks.iter()
+        let inits: Vec<_> = blocks
+            .iter()
             .filter(|b| b.block_type == BlockType::SetupInit)
             .copied()
             .collect();
-        let other: Vec<_> = blocks.iter()
-            .filter(|b| !matches!(b.block_type, 
-                BlockType::SetupImport | BlockType::SetupDeclare | 
-                BlockType::SetupHelpers | BlockType::SetupInit))
+        let other: Vec<_> = blocks
+            .iter()
+            .filter(|b| {
+                !matches!(
+                    b.block_type,
+                    BlockType::SetupImport
+                        | BlockType::SetupDeclare
+                        | BlockType::SetupHelpers
+                        | BlockType::SetupInit
+                )
+            })
             .copied()
             .collect();
 
@@ -428,7 +466,7 @@ impl VirtualFileBuilder {
     fn add_block_content(&mut self, block: &EmbeddedBlock) {
         let code = &block.code;
         let line_count = code.lines().count().max(1) as u32;
-        
+
         self.section_mappings.push(SectionMapping {
             virtual_start_line: self.current_line,
             line_count,
@@ -441,7 +479,7 @@ impl VirtualFileBuilder {
         if !code.ends_with('\n') {
             self.content.push('\n');
         }
-        
+
         self.current_line += line_count;
     }
 
@@ -468,7 +506,9 @@ pub struct VirtualFileManager {
 
 impl VirtualFileManager {
     pub fn new() -> Self {
-        Self { files: dashmap::DashMap::new() }
+        Self {
+            files: dashmap::DashMap::new(),
+        }
     }
 
     pub fn get_or_create(
@@ -485,7 +525,8 @@ impl VirtualFileManager {
             }
         }
 
-        let virtual_file = VirtualGoFile::from_blocks(bench_uri, bench_path, go_mod_root, blocks, version);
+        let virtual_file =
+            VirtualGoFile::from_blocks(bench_uri, bench_path, go_mod_root, blocks, version);
 
         // Ensure directory exists and write file
         if let Some(parent) = Path::new(virtual_file.path()).parent() {
@@ -495,7 +536,8 @@ impl VirtualFileManager {
             eprintln!("[gopls] Failed to write virtual file: {}", e);
         }
 
-        self.files.insert(bench_uri.to_string(), virtual_file.clone());
+        self.files
+            .insert(bench_uri.to_string(), virtual_file.clone());
         virtual_file
     }
 
@@ -511,7 +553,9 @@ impl VirtualFileManager {
 }
 
 impl Default for VirtualFileManager {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Manager for virtual TypeScript files
@@ -539,7 +583,8 @@ impl VirtualTsFileManager {
             let _ = std::fs::write(&tsconfig_path, tsconfig_content);
         }
 
-        self.initialized_roots.insert(ts_module_root.to_string(), ());
+        self.initialized_roots
+            .insert(ts_module_root.to_string(), ());
     }
 
     pub fn get_or_create(
@@ -558,13 +603,15 @@ impl VirtualTsFileManager {
             }
         }
 
-        let virtual_file = VirtualTsFile::from_blocks(bench_uri, bench_path, ts_module_root, blocks, version);
+        let virtual_file =
+            VirtualTsFile::from_blocks(bench_uri, bench_path, ts_module_root, blocks, version);
 
         if let Err(e) = std::fs::write(virtual_file.path(), virtual_file.content()) {
             eprintln!("[tsserver] Failed to write virtual file: {}", e);
         }
 
-        self.files.insert(bench_uri.to_string(), virtual_file.clone());
+        self.files
+            .insert(bench_uri.to_string(), virtual_file.clone());
         virtual_file
     }
 
@@ -576,7 +623,9 @@ impl VirtualTsFileManager {
 }
 
 impl Default for VirtualTsFileManager {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // =============================================================================
@@ -590,10 +639,15 @@ mod tests {
     fn make_block(code: &str, block_type: BlockType, start: usize) -> EmbeddedBlock {
         let end = start + code.len();
         EmbeddedBlock {
-            lang: Lang::Go,
+            lang: poly_bench_dsl::Lang::Go,
             block_type,
             code: code.to_string(),
-            span: Span { start, end, line: 1, col: 1 },
+            span: Span {
+                start,
+                end,
+                line: 1,
+                col: 1,
+            },
             context_name: "test".to_string(),
         }
     }
@@ -602,17 +656,12 @@ mod tests {
     fn test_virtual_file_generation() {
         let import_block = make_block("\"fmt\"", BlockType::SetupImport, 100);
         let bench_block = make_block("fmt.Println(\"hello\")", BlockType::Benchmark, 200);
-        
+
         let blocks: Vec<&EmbeddedBlock> = vec![&import_block, &bench_block];
-        
-        let vf = VirtualGoFile::from_blocks(
-            "file:///test.bench",
-            "/test.bench",
-            "/tmp/go",
-            &blocks,
-            1,
-        );
-        
+
+        let vf =
+            VirtualGoFile::from_blocks("file:///test.bench", "/test.bench", "/tmp/go", &blocks, 1);
+
         assert!(vf.content().contains("package main"));
         assert!(vf.content().contains("\"fmt\""));
         assert!(vf.content().contains("fmt.Println"));
@@ -624,20 +673,15 @@ mod tests {
         let code = "fmt.Println(\"hello\")";
         let block = make_block(code, BlockType::Benchmark, 100);
         let blocks: Vec<&EmbeddedBlock> = vec![&block];
-        
-        let vf = VirtualGoFile::from_blocks(
-            "file:///test.bench",
-            "/test.bench",
-            "/tmp/go",
-            &blocks,
-            1,
-        );
-        
+
+        let vf =
+            VirtualGoFile::from_blocks("file:///test.bench", "/test.bench", "/tmp/go", &blocks, 1);
+
         let pos = vf.bench_to_go(100);
         assert!(pos.is_some());
         let pos = pos.unwrap();
         assert_eq!(pos.character, 0);
-        
+
         let offset = vf.go_to_bench(pos.line, pos.character);
         assert!(offset.is_some());
         assert_eq!(offset.unwrap(), 100);

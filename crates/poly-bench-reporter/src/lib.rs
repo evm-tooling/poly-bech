@@ -1,8 +1,9 @@
 //! Report generation modules
 
-pub mod console;
-pub mod markdown;
-pub mod json;
-pub mod svg;
+pub mod chart_executor;
 pub mod charts;
-pub mod chart_executor;pub use chart_executor::{execute_chart_directives, GeneratedChart};
+pub mod console;
+pub mod json;
+pub mod markdown;
+pub mod svg;
+pub use chart_executor::{execute_chart_directives, GeneratedChart};

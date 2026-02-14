@@ -3,13 +3,13 @@
 //! Provides bar charts, pie charts, and line charts for visualizing benchmark results.
 
 pub mod bar_chart;
-pub mod pie_chart;
 pub mod line_chart;
+pub mod pie_chart;
 
 use poly_bench_dsl::Lang;
+use poly_bench_executor::comparison::BenchmarkResult;
 use poly_bench_ir::ChartDirectiveIR;
 use poly_bench_runtime::measurement::ComparisonWinner;
-use poly_bench_executor::comparison::BenchmarkResult;
 
 // Default chart dimensions
 pub const DEFAULT_WIDTH: i32 = 880;
@@ -120,14 +120,22 @@ pub fn svg_title(width: i32, title: &str, subtitle: Option<&str>) -> String {
 
 /// Generate a legend
 pub fn svg_legend(width: i32, y: i32, items: &[(&str, &str)]) -> String {
-    let mut svg = format!("<g transform=\"translate({},{})\">\n", width / 2 - (items.len() as i32 * 50), y);
+    let mut svg = format!(
+        "<g transform=\"translate({},{})\">\n",
+        width / 2 - (items.len() as i32 * 50),
+        y
+    );
 
     for (i, (color, label)) in items.iter().enumerate() {
         let x = i as i32 * 100;
         svg.push_str(&format!(
             "  <rect x=\"{}\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\n\
   <text x=\"{}\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
-            x, color, x + 18, TEXT_TERTIARY, escape_xml(label)
+            x,
+            color,
+            x + 18,
+            TEXT_TERTIARY,
+            escape_xml(label)
         ));
     }
 
@@ -144,70 +152,73 @@ pub fn filter_benchmarks<'a>(
     benchmarks: Vec<&'a BenchmarkResult>,
     directive: &ChartDirectiveIR,
 ) -> Vec<&'a BenchmarkResult> {
-    let mut filtered: Vec<&BenchmarkResult> = benchmarks
-        .into_iter()
-        .filter(|bench| {
-            // Apply include filter
-            if !directive.include_benchmarks.is_empty() {
-                if !directive.include_benchmarks.iter().any(|name: &String| {
-                    bench.name.to_lowercase().contains(&name.to_lowercase())
-                }) {
-                    return false;
-                }
-            }
-            
-            // Apply exclude filter
-            if directive.exclude_benchmarks.iter().any(|name: &String| {
-                bench.name.to_lowercase().contains(&name.to_lowercase())
-            }) {
-                return false;
-            }
-            
-            // Apply min_speedup filter
-            if let Some(min_speedup) = directive.min_speedup {
-                if let Some(ref comparison) = bench.comparison {
-                    let speedup = if comparison.first.nanos_per_op > 0.0 {
-                        comparison.second.nanos_per_op / comparison.first.nanos_per_op
-                    } else {
-                        1.0
-                    };
-                    if speedup.abs() < min_speedup {
+    let mut filtered: Vec<&BenchmarkResult> =
+        benchmarks
+            .into_iter()
+            .filter(|bench| {
+                // Apply include filter
+                if !directive.include_benchmarks.is_empty() {
+                    if !directive.include_benchmarks.iter().any(|name: &String| {
+                        bench.name.to_lowercase().contains(&name.to_lowercase())
+                    }) {
                         return false;
                     }
                 }
-            }
-            
-            // Apply filter_winner filter
-            if let Some(ref winner_filter) = directive.filter_winner {
-                if let Some(ref comparison) = bench.comparison {
-                    let wf = winner_filter.to_lowercase();
-                    match wf.as_str() {
-                        "go" => {
-                            if comparison.winner != ComparisonWinner::First {
-                                return false;
-                            }
+
+                // Apply exclude filter
+                if directive
+                    .exclude_benchmarks
+                    .iter()
+                    .any(|name: &String| bench.name.to_lowercase().contains(&name.to_lowercase()))
+                {
+                    return false;
+                }
+
+                // Apply min_speedup filter
+                if let Some(min_speedup) = directive.min_speedup {
+                    if let Some(ref comparison) = bench.comparison {
+                        let speedup = if comparison.first.nanos_per_op > 0.0 {
+                            comparison.second.nanos_per_op / comparison.first.nanos_per_op
+                        } else {
+                            1.0
+                        };
+                        if speedup.abs() < min_speedup {
+                            return false;
                         }
-                        "ts" | "typescript" => {
-                            if comparison.winner != ComparisonWinner::Second {
-                                return false;
-                            }
-                        }
-                        "all" | _ => {} // No filter
                     }
                 }
-            }
-            
-            true
-        })
-        .collect();
-    
+
+                // Apply filter_winner filter
+                if let Some(ref winner_filter) = directive.filter_winner {
+                    if let Some(ref comparison) = bench.comparison {
+                        let wf = winner_filter.to_lowercase();
+                        match wf.as_str() {
+                            "go" => {
+                                if comparison.winner != ComparisonWinner::First {
+                                    return false;
+                                }
+                            }
+                            "ts" | "typescript" => {
+                                if comparison.winner != ComparisonWinner::Second {
+                                    return false;
+                                }
+                            }
+                            "all" | _ => {} // No filter
+                        }
+                    }
+                }
+
+                true
+            })
+            .collect();
+
     // Apply limit
     if let Some(limit) = directive.limit {
         if limit > 0 {
             filtered.truncate(limit as usize);
         }
     }
-    
+
     filtered
 }
 
@@ -215,47 +226,69 @@ pub fn filter_benchmarks<'a>(
 pub fn sort_benchmarks(benchmarks: &mut [&BenchmarkResult], directive: &ChartDirectiveIR) {
     let sort_by = directive.sort_by.as_deref().unwrap_or("name");
     let sort_desc = directive.sort_order.as_deref().unwrap_or("asc") == "desc";
-    
+
     benchmarks.sort_by(|a, b| {
         let cmp = match sort_by {
             "speedup" => {
-                let speedup_a = a.comparison.as_ref().map(|c| {
-                    if c.first.nanos_per_op > 0.0 {
-                        c.second.nanos_per_op / c.first.nanos_per_op
-                    } else {
-                        1.0
-                    }
-                }).unwrap_or(1.0);
-                let speedup_b = b.comparison.as_ref().map(|c| {
-                    if c.first.nanos_per_op > 0.0 {
-                        c.second.nanos_per_op / c.first.nanos_per_op
-                    } else {
-                        1.0
-                    }
-                }).unwrap_or(1.0);
-                speedup_a.partial_cmp(&speedup_b).unwrap_or(std::cmp::Ordering::Equal)
+                let speedup_a = a
+                    .comparison
+                    .as_ref()
+                    .map(|c| {
+                        if c.first.nanos_per_op > 0.0 {
+                            c.second.nanos_per_op / c.first.nanos_per_op
+                        } else {
+                            1.0
+                        }
+                    })
+                    .unwrap_or(1.0);
+                let speedup_b = b
+                    .comparison
+                    .as_ref()
+                    .map(|c| {
+                        if c.first.nanos_per_op > 0.0 {
+                            c.second.nanos_per_op / c.first.nanos_per_op
+                        } else {
+                            1.0
+                        }
+                    })
+                    .unwrap_or(1.0);
+                speedup_a
+                    .partial_cmp(&speedup_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             }
             "time" => {
-                let time_a = a.comparison.as_ref()
+                let time_a = a
+                    .comparison
+                    .as_ref()
                     .map(|c| c.first.nanos_per_op.min(c.second.nanos_per_op))
                     .unwrap_or(f64::MAX);
-                let time_b = b.comparison.as_ref()
+                let time_b = b
+                    .comparison
+                    .as_ref()
                     .map(|c| c.first.nanos_per_op.min(c.second.nanos_per_op))
                     .unwrap_or(f64::MAX);
-                time_a.partial_cmp(&time_b).unwrap_or(std::cmp::Ordering::Equal)
+                time_a
+                    .partial_cmp(&time_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             }
             "ops" => {
-                let ops_a = a.comparison.as_ref()
+                let ops_a = a
+                    .comparison
+                    .as_ref()
                     .map(|c| c.first.ops_per_sec.max(c.second.ops_per_sec))
                     .unwrap_or(0.0);
-                let ops_b = b.comparison.as_ref()
+                let ops_b = b
+                    .comparison
+                    .as_ref()
                     .map(|c| c.first.ops_per_sec.max(c.second.ops_per_sec))
                     .unwrap_or(0.0);
-                ops_a.partial_cmp(&ops_b).unwrap_or(std::cmp::Ordering::Equal)
+                ops_a
+                    .partial_cmp(&ops_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             }
             "name" | _ => a.name.cmp(&b.name),
         };
-        
+
         if sort_desc {
             cmp.reverse()
         } else {
@@ -265,9 +298,13 @@ pub fn sort_benchmarks(benchmarks: &mut [&BenchmarkResult], directive: &ChartDir
 }
 
 /// Format duration with custom time unit
-pub fn format_duration_with_unit(nanos: f64, time_unit: Option<&str>, precision: Option<u32>) -> String {
+pub fn format_duration_with_unit(
+    nanos: f64,
+    time_unit: Option<&str>,
+    precision: Option<u32>,
+) -> String {
     let precision = precision.unwrap_or(2) as usize;
-    
+
     match time_unit {
         Some("ns") => format!("{:.precision$}ns", nanos),
         Some("us") => format!("{:.precision$}µs", nanos / 1_000.0),
@@ -299,7 +336,7 @@ pub fn format_config_footer(
     order: Option<&str>,
 ) -> String {
     let mut parts = Vec::new();
-    
+
     if let Some(iter) = iterations {
         parts.push(format!("{} iterations", iter));
     }
@@ -312,7 +349,7 @@ pub fn format_config_footer(
     if let Some(ord) = order {
         parts.push(ord.to_string());
     }
-    
+
     parts.join(" | ")
 }
 
@@ -342,7 +379,7 @@ pub fn calculate_geo_mean(benchmarks: &[&BenchmarkResult]) -> f64 {
             })
         })
         .collect();
-    
+
     if log_speedups.is_empty() {
         1.0
     } else {
@@ -356,7 +393,7 @@ pub fn count_wins(benchmarks: &[&BenchmarkResult]) -> (usize, usize, usize) {
     let mut go_wins = 0;
     let mut ts_wins = 0;
     let mut ties = 0;
-    
+
     for bench in benchmarks {
         if let Some(ref comparison) = bench.comparison {
             match comparison.winner {
@@ -366,6 +403,6 @@ pub fn count_wins(benchmarks: &[&BenchmarkResult]) -> (usize, usize, usize) {
             }
         }
     }
-    
+
     (go_wins, ts_wins, ties)
 }

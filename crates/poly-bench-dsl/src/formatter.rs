@@ -10,7 +10,7 @@
 //! - Comments (when using `format_file_with_source`)
 //! - Original embedded code formatting (Go, TypeScript, etc.)
 
-use crate::ast::{*, HookStyle};
+use crate::ast::{HookStyle, *};
 use crate::ChartType;
 use std::fmt::Write;
 
@@ -24,7 +24,7 @@ fn preserve_embedded_code(code: &str, base_indent: &str) -> Vec<String> {
     if lines.is_empty() {
         return Vec::new();
     }
-    
+
     // Find minimum indent among non-empty lines
     let min_indent = lines
         .iter()
@@ -32,7 +32,7 @@ fn preserve_embedded_code(code: &str, base_indent: &str) -> Vec<String> {
         .map(|l| l.len() - l.trim_start().len())
         .min()
         .unwrap_or(0);
-    
+
     // Strip the minimum indent and apply base_indent
     let mut result = Vec::new();
     for line in &lines {
@@ -47,24 +47,24 @@ fn preserve_embedded_code(code: &str, base_indent: &str) -> Vec<String> {
             result.push(format!("{}{}", base_indent, stripped));
         }
     }
-    
+
     result
 }
 
 /// Format an AST into a string with consistent indentation and style.
 pub fn format_file(file: &File) -> String {
     let mut out = String::new();
-    
+
     // Format use statements first
     for use_std in &file.use_stds {
         writeln!(out, "use std::{}", use_std.module).unwrap();
     }
-    
+
     // Add blank line after use statements if there are any
     if !file.use_stds.is_empty() {
         out.push('\n');
     }
-    
+
     // Format file-level globalSetup if present (and not inherited by suites)
     // Only output file-level globalSetup if it exists and is different from suite-level
     if let Some(ref global_setup) = file.global_setup {
@@ -77,14 +77,14 @@ pub fn format_file(file: &File) -> String {
                 false
             }
         });
-        
+
         // Only output file-level if no suite overrides it
         if !any_suite_has_own {
             format_global_setup(&mut out, global_setup, 0);
             out.push('\n');
         }
     }
-    
+
     // Format suites
     for (i, suite) in file.suites.iter().enumerate() {
         if i > 0 {
@@ -99,12 +99,12 @@ pub fn format_file(file: &File) -> String {
 }
 
 /// Format an AST into a string, preserving comments from the original source.
-/// 
+///
 /// This function extracts comments from the original source and places them
 /// appropriately in the formatted output.
 pub fn format_file_with_source(file: &File, original_source: &str) -> String {
     let mut out = String::new();
-    
+
     // Extract leading comments (before first use statement or suite)
     let leading_comments = extract_leading_comments(original_source);
     if !leading_comments.is_empty() {
@@ -113,17 +113,17 @@ pub fn format_file_with_source(file: &File, original_source: &str) -> String {
             out.push('\n');
         }
     }
-    
+
     // Format use statements first
     for use_std in &file.use_stds {
         writeln!(out, "use std::{}", use_std.module).unwrap();
     }
-    
+
     // Add blank line after use statements if there are any
     if !file.use_stds.is_empty() {
         out.push('\n');
     }
-    
+
     // Format file-level globalSetup if present
     if let Some(ref global_setup) = file.global_setup {
         // Check if any suite has its own globalSetup
@@ -134,13 +134,13 @@ pub fn format_file_with_source(file: &File, original_source: &str) -> String {
                 false
             }
         });
-        
+
         if !any_suite_has_own {
             format_global_setup(&mut out, global_setup, 0);
             out.push('\n');
         }
     }
-    
+
     // Format suites with comment preservation
     for (i, suite) in file.suites.iter().enumerate() {
         if i > 0 {
@@ -148,7 +148,7 @@ pub fn format_file_with_source(file: &File, original_source: &str) -> String {
         }
         format_suite_with_source(&mut out, suite, 0, original_source);
     }
-    
+
     if !out.is_empty() && !out.ends_with('\n') {
         out.push('\n');
     }
@@ -156,7 +156,12 @@ pub fn format_file_with_source(file: &File, original_source: &str) -> String {
 }
 
 /// Format a suite, preserving comments from the original source
-fn format_suite_with_source(out: &mut String, suite: &Suite, indent_level: usize, original_source: &str) {
+fn format_suite_with_source(
+    out: &mut String,
+    suite: &Suite,
+    indent_level: usize,
+    original_source: &str,
+) {
     let pad = INDENT.repeat(indent_level);
     let inner = INDENT.repeat(indent_level + 1);
 
@@ -193,7 +198,7 @@ fn format_suite_with_source(out: &mut String, suite: &Suite, indent_level: usize
     if let Some(baseline) = suite.baseline {
         write!(out, "{}baseline: \"{}\"\n", inner, baseline.as_str()).unwrap();
     }
-    
+
     // Benchmark accuracy settings - only output non-default values
     if let Some(mode) = suite.mode {
         write!(out, "{}mode: \"{}\"\n", inner, mode.as_str()).unwrap();
@@ -227,7 +232,10 @@ fn format_suite_with_source(out: &mut String, suite: &Suite, indent_level: usize
     }
 
     // Add blank line after properties
-    let has_content = suite.global_setup.is_some() || !suite.setups.is_empty() || !suite.fixtures.is_empty() || !suite.benchmarks.is_empty();
+    let has_content = suite.global_setup.is_some()
+        || !suite.setups.is_empty()
+        || !suite.fixtures.is_empty()
+        || !suite.benchmarks.is_empty();
     if has_content {
         out.push('\n');
     }
@@ -255,7 +263,8 @@ fn format_suite_with_source(out: &mut String, suite: &Suite, indent_level: usize
     let mut last_bench_end = 0usize;
     for bench in &suite.benchmarks {
         // Extract comments between last benchmark and this one
-        let comments_before = extract_comments_between(original_source, last_bench_end, bench.span.start);
+        let comments_before =
+            extract_comments_between(original_source, last_bench_end, bench.span.start);
         if !comments_before.is_empty() {
             // Output preserved comments
             for comment_line in comments_before.lines() {
@@ -266,7 +275,7 @@ fn format_suite_with_source(out: &mut String, suite: &Suite, indent_level: usize
                 }
             }
         }
-        
+
         format_benchmark(out, bench, indent_level + 1);
         last_bench_end = bench.span.end;
     }
@@ -284,10 +293,10 @@ fn extract_comments_between(source: &str, start: usize, end: usize) -> String {
     if start >= end || start >= source.len() {
         return String::new();
     }
-    
+
     let slice = &source[start..end.min(source.len())];
     let mut comments = String::new();
-    
+
     for line in slice.lines() {
         let trimmed = line.trim();
         // Only preserve lines that are pure comments (start with #)
@@ -299,14 +308,14 @@ fn extract_comments_between(source: &str, start: usize, end: usize) -> String {
             comments.push('\n');
         }
     }
-    
+
     comments
 }
 
 /// Extract leading comments from source (comments before any code)
 fn extract_leading_comments(source: &str) -> String {
     let mut comments = String::new();
-    
+
     for line in source.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
@@ -321,7 +330,7 @@ fn extract_leading_comments(source: &str) -> String {
             break;
         }
     }
-    
+
     // Trim trailing newlines but keep one
     let trimmed = comments.trim_end();
     if trimmed.is_empty() {
@@ -335,17 +344,23 @@ fn extract_leading_comments(source: &str) -> String {
 fn format_global_setup(out: &mut String, global_setup: &GlobalSetup, indent_level: usize) {
     let pad = INDENT.repeat(indent_level);
     let inner = INDENT.repeat(indent_level + 1);
-    
+
     writeln!(out, "{}globalSetup {{", pad).unwrap();
-    
+
     if let Some(ref anvil_config) = global_setup.anvil_config {
         if let Some(ref fork_url) = anvil_config.fork_url {
-            writeln!(out, "{}anvil.spawnAnvil(fork: \"{}\")", inner, escape_string(fork_url)).unwrap();
+            writeln!(
+                out,
+                "{}anvil.spawnAnvil(fork: \"{}\")",
+                inner,
+                escape_string(fork_url)
+            )
+            .unwrap();
         } else {
             writeln!(out, "{}anvil.spawnAnvil()", inner).unwrap();
         }
     }
-    
+
     writeln!(out, "{}}}", pad).unwrap();
 }
 
@@ -386,7 +401,7 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
     if let Some(baseline) = suite.baseline {
         write!(out, "{}baseline: \"{}\"\n", inner, baseline.as_str()).unwrap();
     }
-    
+
     // Benchmark accuracy settings - only output non-default values
     if let Some(mode) = suite.mode {
         write!(out, "{}mode: \"{}\"\n", inner, mode.as_str()).unwrap();
@@ -404,7 +419,7 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
         // Only output sink: false since true is the default
         write!(out, "{}sink: false\n", inner).unwrap();
     }
-    
+
     // Statistical analysis settings - only output non-default values
     if !suite.outlier_detection {
         // Only output outlierDetection: false since true is the default
@@ -416,7 +431,7 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
     if let Some(count) = suite.count {
         write!(out, "{}count: {}\n", inner, count).unwrap();
     }
-    
+
     // Observability settings (Phase 2B) - only output non-default values
     if suite.memory {
         // Only output memory: true since false is the default
@@ -428,7 +443,10 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
     }
 
     // Add blank line after properties if there are any setups, fixtures, or benchmarks
-    let has_content = suite.global_setup.is_some() || !suite.setups.is_empty() || !suite.fixtures.is_empty() || !suite.benchmarks.is_empty();
+    let has_content = suite.global_setup.is_some()
+        || !suite.setups.is_empty()
+        || !suite.fixtures.is_empty()
+        || !suite.benchmarks.is_empty();
     if has_content {
         out.push('\n');
     }
@@ -508,7 +526,11 @@ fn format_setup(out: &mut String, lang: &Lang, setup: &StructuredSetup, indent_l
         if wrote_section {
             out.push('\n');
         }
-        let kw = if setup.async_init { "async init" } else { "init" };
+        let kw = if setup.async_init {
+            "async init"
+        } else {
+            "init"
+        };
         write_code_block(out, kw, init, &inner);
         wrote_section = true;
     }
@@ -549,16 +571,20 @@ fn write_code_block(out: &mut String, keyword: &str, block: &CodeBlock, inner: &
 /// but preserving the internal indentation structure
 fn trim_code_block(code: &str) -> String {
     let lines: Vec<&str> = code.lines().collect();
-    
+
     // Find first non-empty line
     let start = lines.iter().position(|l| !l.trim().is_empty()).unwrap_or(0);
     // Find last non-empty line
-    let end = lines.iter().rposition(|l| !l.trim().is_empty()).map(|i| i + 1).unwrap_or(lines.len());
-    
+    let end = lines
+        .iter()
+        .rposition(|l| !l.trim().is_empty())
+        .map(|i| i + 1)
+        .unwrap_or(lines.len());
+
     if start >= end {
         return String::new();
     }
-    
+
     lines[start..end].join("\n")
 }
 
@@ -632,10 +658,14 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
         write!(out, "{}timeout: {}\n", inner, n).unwrap();
     }
     if !bench.tags.is_empty() {
-        let tags: Vec<_> = bench.tags.iter().map(|t| format!("\"{}\"", escape_string(t))).collect();
+        let tags: Vec<_> = bench
+            .tags
+            .iter()
+            .map(|t| format!("\"{}\"", escape_string(t)))
+            .collect();
         write!(out, "{}tags: [{}]\n", inner, tags.join(", ")).unwrap();
     }
-    
+
     // Benchmark accuracy overrides - only output if set (Option::Some)
     if let Some(mode) = bench.mode {
         write!(out, "{}mode: \"{}\"\n", inner, mode.as_str()).unwrap();
@@ -651,11 +681,23 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
     }
     if let Some(sink) = bench.sink {
         // Only output if explicitly set to override suite default
-        write!(out, "{}sink: {}\n", inner, if sink { "true" } else { "false" }).unwrap();
+        write!(
+            out,
+            "{}sink: {}\n",
+            inner,
+            if sink { "true" } else { "false" }
+        )
+        .unwrap();
     }
     if let Some(outlier_detection) = bench.outlier_detection {
         // Only output if explicitly set to override suite default
-        write!(out, "{}outlierDetection: {}\n", inner, if outlier_detection { "true" } else { "false" }).unwrap();
+        write!(
+            out,
+            "{}outlierDetection: {}\n",
+            inner,
+            if outlier_detection { "true" } else { "false" }
+        )
+        .unwrap();
     }
     if let Some(cv_threshold) = bench.cv_threshold {
         write!(out, "{}cvThreshold: {}\n", inner, cv_threshold).unwrap();
@@ -663,10 +705,16 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
     if let Some(count) = bench.count {
         write!(out, "{}count: {}\n", inner, count).unwrap();
     }
-    
+
     // Observability settings (Phase 2B) - only output if explicitly set
     if let Some(memory) = bench.memory {
-        write!(out, "{}memory: {}\n", inner, if memory { "true" } else { "false" }).unwrap();
+        write!(
+            out,
+            "{}memory: {}\n",
+            inner,
+            if memory { "true" } else { "false" }
+        )
+        .unwrap();
     }
     if let Some(concurrency) = bench.concurrency {
         write!(out, "{}concurrency: {}\n", inner, concurrency).unwrap();
@@ -687,7 +735,7 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
             out.push('\n');
         }
     }
-    
+
     // Lifecycle hooks - respect original style (grouped vs flat)
     match bench.hook_style {
         HookStyle::Grouped => {
@@ -753,9 +801,9 @@ fn format_grouped_hooks(
     if hooks.is_empty() {
         return;
     }
-    
+
     let inner2 = format!("{}{}", inner, INDENT);
-    
+
     out.push('\n');
     writeln!(out, "{}{}: {{", inner, hook_name).unwrap();
     for lang in lang_order {
@@ -806,25 +854,29 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
         if i > 0 {
             out.push('\n');
         }
-        
+
         // Determine function name based on chart type
         let func_name = match directive.chart_type {
             ChartType::BarChart => "drawBarChart",
             ChartType::PieChart => "drawPieChart",
             ChartType::LineChart => "drawLineChart",
         };
-        
+
         // Collect all the parameters to output
         let mut params: Vec<String> = Vec::new();
-        
+
         // Title and description
         if let Some(ref title) = directive.title {
             params.push(format!("{}title: \"{}\"", inner2, escape_string(title)));
         }
         if let Some(ref desc) = directive.description {
-            params.push(format!("{}description: \"{}\"", inner2, escape_string(desc)));
+            params.push(format!(
+                "{}description: \"{}\"",
+                inner2,
+                escape_string(desc)
+            ));
         }
-        
+
         // Axis labels (for line/bar charts)
         if let Some(ref xlabel) = directive.x_label {
             params.push(format!("{}xlabel: \"{}\"", inner2, escape_string(xlabel)));
@@ -832,12 +884,12 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
         if let Some(ref ylabel) = directive.y_label {
             params.push(format!("{}ylabel: \"{}\"", inner2, escape_string(ylabel)));
         }
-        
+
         // Output file
         if let Some(ref output) = directive.output_file {
             params.push(format!("{}output: \"{}\"", inner2, escape_string(output)));
         }
-        
+
         // Display toggles - only output non-default values
         // Defaults: showStats=true, showConfig=true, showWinCounts=true, showGeoMean=true,
         //           showDistribution=true, showMemory=false, showTotalTime=false, compact=false
@@ -865,38 +917,58 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
         if directive.compact {
             params.push(format!("{}compact: true", inner2));
         }
-        
+
         // Filtering
         if let Some(min_speedup) = directive.min_speedup {
             params.push(format!("{}minSpeedup: {}", inner2, min_speedup));
         }
         if let Some(ref filter_winner) = directive.filter_winner {
-            params.push(format!("{}filterWinner: \"{}\"", inner2, escape_string(filter_winner)));
+            params.push(format!(
+                "{}filterWinner: \"{}\"",
+                inner2,
+                escape_string(filter_winner)
+            ));
         }
         if !directive.include_benchmarks.is_empty() {
-            let items: Vec<_> = directive.include_benchmarks.iter()
+            let items: Vec<_> = directive
+                .include_benchmarks
+                .iter()
                 .map(|s| format!("\"{}\"", escape_string(s)))
                 .collect();
-            params.push(format!("{}includeBenchmarks: [{}]", inner2, items.join(", ")));
+            params.push(format!(
+                "{}includeBenchmarks: [{}]",
+                inner2,
+                items.join(", ")
+            ));
         }
         if !directive.exclude_benchmarks.is_empty() {
-            let items: Vec<_> = directive.exclude_benchmarks.iter()
+            let items: Vec<_> = directive
+                .exclude_benchmarks
+                .iter()
                 .map(|s| format!("\"{}\"", escape_string(s)))
                 .collect();
-            params.push(format!("{}excludeBenchmarks: [{}]", inner2, items.join(", ")));
+            params.push(format!(
+                "{}excludeBenchmarks: [{}]",
+                inner2,
+                items.join(", ")
+            ));
         }
         if let Some(limit) = directive.limit {
             params.push(format!("{}limit: {}", inner2, limit));
         }
-        
+
         // Sorting
         if let Some(ref sort_by) = directive.sort_by {
             params.push(format!("{}sortBy: \"{}\"", inner2, escape_string(sort_by)));
         }
         if let Some(ref sort_order) = directive.sort_order {
-            params.push(format!("{}sortOrder: \"{}\"", inner2, escape_string(sort_order)));
+            params.push(format!(
+                "{}sortOrder: \"{}\"",
+                inner2,
+                escape_string(sort_order)
+            ));
         }
-        
+
         // Layout
         if let Some(width) = directive.width {
             params.push(format!("{}width: {}", inner2, width));
@@ -910,15 +982,19 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
         if let Some(margin_left) = directive.margin_left {
             params.push(format!("{}marginLeft: {}", inner2, margin_left));
         }
-        
+
         // Data display
         if let Some(precision) = directive.precision {
             params.push(format!("{}precision: {}", inner2, precision));
         }
         if let Some(ref time_unit) = directive.time_unit {
-            params.push(format!("{}timeUnit: \"{}\"", inner2, escape_string(time_unit)));
+            params.push(format!(
+                "{}timeUnit: \"{}\"",
+                inner2,
+                escape_string(time_unit)
+            ));
         }
-        
+
         // Output the directive
         if params.is_empty() {
             writeln!(out, "{}charting.{}()", inner, func_name).unwrap();
@@ -979,16 +1055,38 @@ suite example {
 }"#;
         let ast = parse(input, "test.bench").unwrap();
         assert_eq!(ast.suites.len(), 1);
-        assert_eq!(ast.suites[0].chart_directives.len(), 3, "Expected 3 chart directives");
-        
+        assert_eq!(
+            ast.suites[0].chart_directives.len(),
+            3,
+            "Expected 3 chart directives"
+        );
+
         let formatted = format_file(&ast);
-        assert!(formatted.contains("after {"), "Expected 'after {{' block in output");
-        assert!(formatted.contains("charting.drawBarChart"), "Expected drawBarChart call in output");
-        assert!(formatted.contains("charting.drawLineChart"), "Expected drawLineChart call in output");
-        assert!(formatted.contains("charting.drawPieChart"), "Expected drawPieChart call in output");
+        assert!(
+            formatted.contains("after {"),
+            "Expected 'after {{' block in output"
+        );
+        assert!(
+            formatted.contains("charting.drawBarChart"),
+            "Expected drawBarChart call in output"
+        );
+        assert!(
+            formatted.contains("charting.drawLineChart"),
+            "Expected drawLineChart call in output"
+        );
+        assert!(
+            formatted.contains("charting.drawPieChart"),
+            "Expected drawPieChart call in output"
+        );
         // Verify non-default values are preserved
-        assert!(formatted.contains("sortBy: \"speedup\""), "Expected sortBy parameter");
-        assert!(formatted.contains("showTotalTime: true"), "Expected showTotalTime parameter");
+        assert!(
+            formatted.contains("sortBy: \"speedup\""),
+            "Expected sortBy parameter"
+        );
+        assert!(
+            formatted.contains("showTotalTime: true"),
+            "Expected showTotalTime parameter"
+        );
     }
 
     #[test]
@@ -1034,10 +1132,16 @@ suite example {
 }"#;
         let ast = parse(input, "test.bench").unwrap();
         let formatted = format_file(&ast);
-        
+
         // Verify use statement is preserved
-        assert!(formatted.contains("use std::anvil"), "use statement should be preserved");
-        assert!(formatted.starts_with("use std::anvil"), "use statement should be at the start");
+        assert!(
+            formatted.contains("use std::anvil"),
+            "use statement should be preserved"
+        );
+        assert!(
+            formatted.starts_with("use std::anvil"),
+            "use statement should be at the start"
+        );
     }
 
     #[test]
@@ -1054,12 +1158,21 @@ suite example {
 }"#;
         let ast = parse(input, "test.bench").unwrap();
         let formatted = format_file_with_source(&ast, input);
-        
+
         // Verify comments are preserved
-        assert!(formatted.contains("# This is a comment about the benchmark"), "first comment should be preserved");
-        assert!(formatted.contains("# Another comment line"), "second comment should be preserved");
+        assert!(
+            formatted.contains("# This is a comment about the benchmark"),
+            "first comment should be preserved"
+        );
+        assert!(
+            formatted.contains("# Another comment line"),
+            "second comment should be preserved"
+        );
         // Verify use statement is preserved
-        assert!(formatted.contains("use std::anvil"), "use statement should be preserved");
+        assert!(
+            formatted.contains("use std::anvil"),
+            "use statement should be preserved"
+        );
     }
 
     #[test]
@@ -1077,12 +1190,21 @@ suite example {
 }"#;
         let ast = parse(input, "test.bench").unwrap();
         let formatted = format_file(&ast);
-        
+
         // Verify use statement is preserved
-        assert!(formatted.contains("use std::anvil"), "use statement should be preserved");
+        assert!(
+            formatted.contains("use std::anvil"),
+            "use statement should be preserved"
+        );
         // Verify globalSetup is inside suite
-        assert!(formatted.contains("globalSetup {"), "globalSetup should be present");
-        assert!(formatted.contains("anvil.spawnAnvil()"), "spawnAnvil call should be present");
+        assert!(
+            formatted.contains("globalSetup {"),
+            "globalSetup should be present"
+        );
+        assert!(
+            formatted.contains("anvil.spawnAnvil()"),
+            "spawnAnvil call should be present"
+        );
     }
 
     #[test]

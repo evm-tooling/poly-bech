@@ -40,31 +40,34 @@ impl ParsedSetup {
 pub fn extract_go_imports(setup: &str) -> ParsedSetup {
     let mut imports = Vec::new();
     let mut body = String::new();
-    
+
     // First, try to handle line-based format (original source)
     if setup.contains('\n') {
         return extract_go_imports_line_based(setup);
     }
-    
+
     // Handle single-line reconstructed code with imports
     // We need to find and extract import statements
     let mut remaining = setup.to_string();
-    
+
     // Pattern 1: import ( ... ) - grouped imports
     while let Some(start) = remaining.find("import (") {
         // Add content before the import to body
         body.push_str(&remaining[..start]);
         remaining = remaining[start..].to_string();
-        
+
         // Find the matching closing paren
         if let Some(end) = remaining.find(')') {
             let import_block = &remaining[8..end]; // Skip "import ("
-            // Extract each import from the block
+                                                   // Extract each import from the block
             for part in import_block.split('"') {
                 let trimmed = part.trim();
                 if !trimmed.is_empty() && !trimmed.starts_with(')') {
                     // Check if it's an alias or special prefix
-                    if trimmed.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.') {
+                    if trimmed
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+                    {
                         // This is an alias, wait for next quoted part
                     }
                 }
@@ -76,20 +79,20 @@ pub fn extract_go_imports(setup: &str) -> ParsedSetup {
             break; // Malformed, stop processing
         }
     }
-    
+
     // Pattern 2: import "pkg" or import alias "pkg" - single imports
     // Handle remaining single imports
     let mut i = 0;
     let chars: Vec<char> = remaining.chars().collect();
     let mut new_body = String::new();
-    
+
     while i < chars.len() {
         // Look for "import " not followed by "("
         if remaining[i..].starts_with("import ") && !remaining[i..].starts_with("import (") {
             // Find the import spec
             let import_start = i + 7; // Skip "import "
             let rest = &remaining[import_start..];
-            
+
             // Find the end of this import (next import or non-import code)
             if let Some((import_spec, consumed)) = extract_single_import_spec(rest) {
                 imports.push(import_spec);
@@ -97,14 +100,14 @@ pub fn extract_go_imports(setup: &str) -> ParsedSetup {
                 continue;
             }
         }
-        
+
         new_body.push(chars[i]);
         i += 1;
     }
-    
+
     // Combine body parts
     body.push_str(&new_body);
-    
+
     ParsedSetup::new(imports, body.trim().to_string())
 }
 
@@ -186,7 +189,7 @@ fn extract_imports_from_block(block: &str, imports: &mut Vec<String>) {
     let mut current_alias = String::new();
     let mut in_quotes = false;
     let mut current_pkg = String::new();
-    
+
     for ch in block.chars() {
         if ch == '"' {
             if in_quotes {
@@ -222,11 +225,11 @@ fn extract_imports_from_block(block: &str, imports: &mut Vec<String>) {
 fn extract_single_import_spec(rest: &str) -> Option<(String, usize)> {
     let trimmed = rest.trim_start();
     let consumed_leading = rest.len() - trimmed.len();
-    
+
     // Look for quoted string (the package path)
     let mut chars = trimmed.chars().peekable();
     let mut alias = String::new();
-    
+
     // Check for alias (., _, or identifier)
     while let Some(&ch) = chars.peek() {
         if ch == '"' {
@@ -239,13 +242,13 @@ fn extract_single_import_spec(rest: &str) -> Option<(String, usize)> {
         alias.push(ch);
         chars.next();
     }
-    
+
     // Now find the quoted package path
     if chars.peek() != Some(&'"') {
         return None;
     }
     chars.next(); // Skip opening quote
-    
+
     let mut pkg_path = String::new();
     while let Some(ch) = chars.next() {
         if ch == '"' {
@@ -253,25 +256,25 @@ fn extract_single_import_spec(rest: &str) -> Option<(String, usize)> {
         }
         pkg_path.push(ch);
     }
-    
+
     if pkg_path.is_empty() {
         return None;
     }
-    
+
     let alias = alias.trim();
     let import_spec = if alias.is_empty() || alias == "import" {
         format!("\"{}\"", pkg_path)
     } else {
         format!("{} \"{}\"", alias, pkg_path)
     };
-    
+
     // Calculate how many characters we consumed
     let _spec_len = if alias.is_empty() || alias == "import" {
         pkg_path.len() + 2 // quotes
     } else {
         alias.len() + 1 + pkg_path.len() + 2 // alias + space + quotes
     };
-    
+
     // Find actual consumed length by looking for the closing quote in original
     let mut consumed = consumed_leading;
     let mut found_pkg = false;
@@ -284,7 +287,7 @@ fn extract_single_import_spec(rest: &str) -> Option<(String, usize)> {
             found_pkg = !found_pkg;
         }
     }
-    
+
     Some((import_spec, consumed))
 }
 
@@ -309,7 +312,7 @@ pub fn extract_ts_imports(setup: &str) -> ParsedSetup {
         if in_multiline_import {
             current_import.push_str(line);
             current_import.push('\n');
-            
+
             // Import is complete when we have balanced braces AND have the `from 'pkg'` part
             if is_import_complete(&current_import) {
                 imports.push(current_import.trim().to_string());
@@ -351,20 +354,20 @@ fn is_import_complete(import_text: &str) -> bool {
     // Must have balanced braces
     let open_braces = import_text.matches('{').count();
     let close_braces = import_text.matches('}').count();
-    
+
     if open_braces != close_braces {
         return false;
     }
-    
+
     // Must have a module path (quoted string after 'from' or standalone)
     // Check for 'from' followed by quotes, or just quotes for side-effect imports
-    let has_from_clause = import_text.contains(" from ") && 
-        (count_quotes(import_text, '\'') >= 2 || count_quotes(import_text, '"') >= 2);
-    
+    let has_from_clause = import_text.contains(" from ")
+        && (count_quotes(import_text, '\'') >= 2 || count_quotes(import_text, '"') >= 2);
+
     // Side effect import: import 'pkg' (no 'from', just the quoted path)
-    let is_side_effect = !import_text.contains(" from ") && 
-        (count_quotes(import_text, '\'') >= 2 || count_quotes(import_text, '"') >= 2);
-    
+    let is_side_effect = !import_text.contains(" from ")
+        && (count_quotes(import_text, '\'') >= 2 || count_quotes(import_text, '"') >= 2);
+
     has_from_clause || is_side_effect
 }
 
@@ -401,37 +404,70 @@ func foo() {}"#;
         func init() {
             var err error
         }"#;
-        
+
         let parsed = extract_go_imports(setup);
-        
+
         // Should extract 3 imports
-        assert_eq!(parsed.imports.len(), 3, "Expected 3 imports, got: {:?}", parsed.imports);
-        
+        assert_eq!(
+            parsed.imports.len(),
+            3,
+            "Expected 3 imports, got: {:?}",
+            parsed.imports
+        );
+
         // Body should NOT contain import statements
-        assert!(!parsed.body.contains("import \""), "Body should not contain imports: {}", parsed.body);
-        
+        assert!(
+            !parsed.body.contains("import \""),
+            "Body should not contain imports: {}",
+            parsed.body
+        );
+
         // Body should contain the rest
-        assert!(parsed.body.contains("var benchERC20ABI"), "Body should contain var declaration");
+        assert!(
+            parsed.body.contains("var benchERC20ABI"),
+            "Body should contain var declaration"
+        );
     }
 
     #[test]
     fn test_go_single_line_reconstructed() {
         // This simulates what the parser's reconstruct_code produces
         let setup = r#"import "math/big" import "github.com/ethereum/go-ethereum/common" import "github.com/ChefBingbong/viem-go/abi" // Mirror setup var benchERC20ABI * abi . ABI var balanceOfAddr = common . HexToAddress ( "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" )"#;
-        
+
         let parsed = extract_go_imports(setup);
-        
+
         // Should extract 3 imports
-        assert_eq!(parsed.imports.len(), 3, "Expected 3 imports, got: {:?}", parsed.imports);
-        assert!(parsed.imports.iter().any(|i| i.contains("math/big")), "Should have math/big");
-        assert!(parsed.imports.iter().any(|i| i.contains("go-ethereum")), "Should have go-ethereum");
-        assert!(parsed.imports.iter().any(|i| i.contains("viem-go")), "Should have viem-go");
-        
+        assert_eq!(
+            parsed.imports.len(),
+            3,
+            "Expected 3 imports, got: {:?}",
+            parsed.imports
+        );
+        assert!(
+            parsed.imports.iter().any(|i| i.contains("math/big")),
+            "Should have math/big"
+        );
+        assert!(
+            parsed.imports.iter().any(|i| i.contains("go-ethereum")),
+            "Should have go-ethereum"
+        );
+        assert!(
+            parsed.imports.iter().any(|i| i.contains("viem-go")),
+            "Should have viem-go"
+        );
+
         // Body should NOT contain import statements
-        assert!(!parsed.body.contains("import \""), "Body should not contain imports: {}", parsed.body);
-        
+        assert!(
+            !parsed.body.contains("import \""),
+            "Body should not contain imports: {}",
+            parsed.body
+        );
+
         // Body should contain the rest
-        assert!(parsed.body.contains("var benchERC20ABI"), "Body should contain var declaration");
+        assert!(
+            parsed.body.contains("var benchERC20ABI"),
+            "Body should contain var declaration"
+        );
     }
 
     #[test]
@@ -447,7 +483,9 @@ var x = 1"#;
         assert_eq!(parsed.imports.len(), 3);
         assert!(parsed.imports.contains(&"\"fmt\"".to_string()));
         assert!(parsed.imports.contains(&"\"time\"".to_string()));
-        assert!(parsed.imports.contains(&"\"github.com/example/pkg\"".to_string()));
+        assert!(parsed
+            .imports
+            .contains(&"\"github.com/example/pkg\"".to_string()));
         assert!(parsed.body.contains("var x = 1"));
     }
 
@@ -464,8 +502,12 @@ func bar() {}"#;
         let parsed = extract_go_imports(setup);
         assert_eq!(parsed.imports.len(), 4);
         assert!(parsed.imports.contains(&"big \"math/big\"".to_string()));
-        assert!(parsed.imports.contains(&". \"github.com/example/dot\"".to_string()));
-        assert!(parsed.imports.contains(&"_ \"github.com/example/blank\"".to_string()));
+        assert!(parsed
+            .imports
+            .contains(&". \"github.com/example/dot\"".to_string()));
+        assert!(parsed
+            .imports
+            .contains(&"_ \"github.com/example/blank\"".to_string()));
     }
 
     #[test]

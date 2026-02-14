@@ -51,7 +51,12 @@ fn get_cached_hover(uri: &Url, position: Position) -> Option<Option<Hover>> {
 
     if let Some(cached) = HOVER_CACHE.get(&key) {
         if cached.timestamp.elapsed() < Duration::from_millis(HOVER_CACHE_TTL_MS) {
-            eprintln!("[hover-cache] Cache hit for {:?} at {}:{}", uri.path(), position.line, position.character);
+            eprintln!(
+                "[hover-cache] Cache hit for {:?} at {}:{}",
+                uri.path(),
+                position.line,
+                position.character
+            );
             return Some(cached.hover.clone());
         }
     }
@@ -104,36 +109,44 @@ pub fn get_hover_with_gopls(
     let offset = match doc.position_to_offset(position) {
         Some(o) => o,
         None => {
-            eprintln!("[hover] Failed to convert position {:?} to offset", position);
+            eprintln!(
+                "[hover] Failed to convert position {:?} to offset",
+                position
+            );
             return get_hover(doc, position);
         }
     };
-    
+
     eprintln!("[hover] Position {:?} -> offset {}", position, offset);
-    
+
     // Extract embedded blocks
     let blocks = extract_embedded_blocks(doc);
-    
+
     // Separate Go and TypeScript blocks
-    let go_blocks: Vec<&EmbeddedBlock> = blocks.iter()
-        .filter(|b| b.lang == Lang::Go)
-        .collect();
-    let ts_blocks: Vec<&EmbeddedBlock> = blocks.iter()
+    let go_blocks: Vec<&EmbeddedBlock> = blocks.iter().filter(|b| b.lang == Lang::Go).collect();
+    let ts_blocks: Vec<&EmbeddedBlock> = blocks
+        .iter()
         .filter(|b| b.lang == Lang::TypeScript)
         .collect();
-    
-    eprintln!("[hover] Found {} Go blocks, {} TS blocks", go_blocks.len(), ts_blocks.len());
-    
+
+    eprintln!(
+        "[hover] Found {} Go blocks, {} TS blocks",
+        go_blocks.len(),
+        ts_blocks.len()
+    );
+
     // Check if the offset is within a Go code block
     if let Some(go_block) = find_block_at_offset(&go_blocks, offset) {
-        eprintln!("[hover] Offset {} is in Go block {:?} (span {}..{})", 
-            offset, go_block.block_type, go_block.span.start, go_block.span.end);
-        
+        eprintln!(
+            "[hover] Offset {} is in Go block {:?} (span {}..{})",
+            offset, go_block.block_type, go_block.span.start, go_block.span.end
+        );
+
         // Check cache first for embedded language hover
         if let Some(cached) = get_cached_hover(uri, position) {
             return cached;
         }
-        
+
         // Try to get hover from gopls
         if let Some(go_mod_root) = &config.go_mod_root {
             eprintln!("[hover] go_mod_root: {}", go_mod_root);
@@ -145,33 +158,35 @@ pub fn get_hover_with_gopls(
                 go_mod_root,
                 virtual_file_manager,
             );
-            
+
             // Cache the result (even if None)
             cache_hover(uri, position, hover.clone());
-            
+
             if hover.is_some() {
                 return hover;
             }
         } else {
             eprintln!("[hover] No go_mod_root configured");
         }
-        
+
         // Fallback: check for stdlib symbols when gopls returns None
         if let Some(hover) = get_stdlib_symbol_hover(doc, position) {
             return Some(hover);
         }
     }
-    
+
     // Check if the offset is within a TypeScript code block
     if let Some(ts_block) = find_block_at_offset(&ts_blocks, offset) {
-        eprintln!("[hover] Offset {} is in TS block {:?} (span {}..{})", 
-            offset, ts_block.block_type, ts_block.span.start, ts_block.span.end);
-        
+        eprintln!(
+            "[hover] Offset {} is in TS block {:?} (span {}..{})",
+            offset, ts_block.block_type, ts_block.span.start, ts_block.span.end
+        );
+
         // Check cache first for embedded language hover
         if let Some(cached) = get_cached_hover(uri, position) {
             return cached;
         }
-        
+
         // Try to get hover from tsserver
         if let Some(ts_module_root) = &config.ts_module_root {
             eprintln!("[hover] ts_module_root: {}", ts_module_root);
@@ -183,36 +198,40 @@ pub fn get_hover_with_gopls(
                 ts_module_root,
                 virtual_ts_file_manager,
             );
-            
+
             // Cache the result (even if None)
             cache_hover(uri, position, hover.clone());
-            
+
             if hover.is_some() {
                 return hover;
             }
         } else {
             eprintln!("[hover] No ts_module_root configured");
         }
-        
+
         // Fallback: check for stdlib symbols when tsserver returns None
         if let Some(hover) = get_stdlib_symbol_hover(doc, position) {
             return Some(hover);
         }
     }
-    
+
     if go_blocks.is_empty() && ts_blocks.is_empty() {
         eprintln!("[hover] No embedded language blocks found");
     } else {
         eprintln!("[hover] Offset {} is NOT in any embedded block", offset);
     }
-    
+
     // Fall back to standard hover
     get_hover(doc, position)
 }
 
 /// Find the block containing the given offset
-fn find_block_at_offset<'a>(blocks: &[&'a EmbeddedBlock], offset: usize) -> Option<&'a EmbeddedBlock> {
-    blocks.iter()
+fn find_block_at_offset<'a>(
+    blocks: &[&'a EmbeddedBlock],
+    offset: usize,
+) -> Option<&'a EmbeddedBlock> {
+    blocks
+        .iter()
         .find(|b| offset >= b.span.start && offset < b.span.end)
         .copied()
 }
@@ -226,8 +245,11 @@ fn get_gopls_hover(
     go_mod_root: &str,
     virtual_file_manager: &VirtualFileManager,
 ) -> Option<Hover> {
-    eprintln!("[gopls] get_gopls_hover called for offset {} in {}", bench_offset, bench_uri);
-    
+    eprintln!(
+        "[gopls] get_gopls_hover called for offset {} in {}",
+        bench_offset, bench_uri
+    );
+
     // Initialize gopls client if needed
     let client = match init_gopls_client(go_mod_root) {
         Some(c) => c,
@@ -236,14 +258,17 @@ fn get_gopls_hover(
             return None;
         }
     };
-    
+
     // Get or create the virtual file
     let bench_uri_str = bench_uri.as_str();
     let bench_path = bench_uri.to_file_path().ok()?;
     let bench_path_str = bench_path.to_string_lossy();
-    
-    eprintln!("[gopls] Creating virtual file from {} Go blocks", go_blocks.len());
-    
+
+    eprintln!(
+        "[gopls] Creating virtual file from {} Go blocks",
+        go_blocks.len()
+    );
+
     let virtual_file = virtual_file_manager.get_or_create(
         bench_uri_str,
         &bench_path_str,
@@ -251,44 +276,54 @@ fn get_gopls_hover(
         go_blocks,
         doc.version,
     );
-    
+
     eprintln!("[gopls] Virtual file: {}", virtual_file.path());
-    
+
     // Translate position from .bench to virtual Go file
     let go_position = match virtual_file.bench_to_go(bench_offset) {
         Some(pos) => {
-            eprintln!("[gopls] Translated bench offset {} to Go position {}:{}", 
-                bench_offset, pos.line, pos.character);
+            eprintln!(
+                "[gopls] Translated bench offset {} to Go position {}:{}",
+                bench_offset, pos.line, pos.character
+            );
             pos
         }
         None => {
-            eprintln!("[gopls] Failed to translate bench offset {} to Go position", bench_offset);
+            eprintln!(
+                "[gopls] Failed to translate bench offset {} to Go position",
+                bench_offset
+            );
             return None;
         }
     };
-    
+
     // Ensure the virtual file is synced with gopls
-    if let Err(e) = client.did_change(virtual_file.uri(), virtual_file.content(), virtual_file.version()) {
+    if let Err(e) = client.did_change(
+        virtual_file.uri(),
+        virtual_file.content(),
+        virtual_file.version(),
+    ) {
         eprintln!("[gopls] Failed to sync virtual file: {}", e);
         return None;
     }
-    
-    eprintln!("[gopls] Requesting hover at {}:{}", go_position.line, go_position.character);
-    
+
+    eprintln!(
+        "[gopls] Requesting hover at {}:{}",
+        go_position.line, go_position.character
+    );
+
     // Request hover from gopls
     match client.hover(virtual_file.uri(), go_position.line, go_position.character) {
         Ok(Some(mut hover)) => {
             eprintln!("[gopls] Got hover response!");
             // Translate the range back to .bench file if present
             if let Some(ref go_range) = hover.range {
-                if let Some(bench_start_offset) = virtual_file.go_to_bench(
-                    go_range.start.line,
-                    go_range.start.character,
-                ) {
-                    if let Some(bench_end_offset) = virtual_file.go_to_bench(
-                        go_range.end.line,
-                        go_range.end.character,
-                    ) {
+                if let Some(bench_start_offset) =
+                    virtual_file.go_to_bench(go_range.start.line, go_range.start.character)
+                {
+                    if let Some(bench_end_offset) =
+                        virtual_file.go_to_bench(go_range.end.line, go_range.end.character)
+                    {
                         hover.range = Some(tower_lsp::lsp_types::Range {
                             start: doc.offset_to_position(bench_start_offset),
                             end: doc.offset_to_position(bench_end_offset),
@@ -318,8 +353,11 @@ fn get_tsserver_hover(
     ts_module_root: &str,
     virtual_ts_file_manager: &VirtualTsFileManager,
 ) -> Option<Hover> {
-    eprintln!("[tsserver] get_tsserver_hover called for offset {} in {}", bench_offset, bench_uri);
-    
+    eprintln!(
+        "[tsserver] get_tsserver_hover called for offset {} in {}",
+        bench_offset, bench_uri
+    );
+
     // Initialize tsserver client if needed
     let client = match init_tsserver_client(ts_module_root) {
         Some(c) => c,
@@ -328,12 +366,12 @@ fn get_tsserver_hover(
             return None;
         }
     };
-    
+
     // Get or create the virtual file
     let bench_uri_str = bench_uri.as_str();
     let bench_path = bench_uri.to_file_path().ok()?;
     let bench_path_str = bench_path.to_string_lossy();
-    
+
     let virtual_file = virtual_ts_file_manager.get_or_create(
         bench_uri_str,
         &bench_path_str,
@@ -341,44 +379,54 @@ fn get_tsserver_hover(
         ts_blocks,
         doc.version,
     );
-    
+
     eprintln!("[tsserver] Virtual file: {}", virtual_file.path());
-    
+
     // Translate position from .bench to virtual TS file
     let ts_position = match virtual_file.bench_to_ts(bench_offset) {
         Some(pos) => {
-            eprintln!("[tsserver] Translated bench offset {} to TS position {}:{}", 
-                bench_offset, pos.line, pos.character);
+            eprintln!(
+                "[tsserver] Translated bench offset {} to TS position {}:{}",
+                bench_offset, pos.line, pos.character
+            );
             pos
         }
         None => {
-            eprintln!("[tsserver] Failed to translate bench offset {} to TS position", bench_offset);
+            eprintln!(
+                "[tsserver] Failed to translate bench offset {} to TS position",
+                bench_offset
+            );
             return None;
         }
     };
-    
+
     // Ensure the virtual file is synced with tsserver
-    if let Err(e) = client.did_change(virtual_file.uri(), virtual_file.content(), virtual_file.version()) {
+    if let Err(e) = client.did_change(
+        virtual_file.uri(),
+        virtual_file.content(),
+        virtual_file.version(),
+    ) {
         eprintln!("[tsserver] Failed to sync virtual file: {}", e);
         return None;
     }
-    
-    eprintln!("[tsserver] Requesting hover at {}:{}", ts_position.line, ts_position.character);
-    
+
+    eprintln!(
+        "[tsserver] Requesting hover at {}:{}",
+        ts_position.line, ts_position.character
+    );
+
     // Request hover from tsserver
     match client.hover(virtual_file.uri(), ts_position.line, ts_position.character) {
         Ok(Some(mut hover)) => {
             eprintln!("[tsserver] Got hover response!");
             // Translate the range back to .bench file if present
             if let Some(ref ts_range) = hover.range {
-                if let Some(bench_start_offset) = virtual_file.ts_to_bench(
-                    ts_range.start.line,
-                    ts_range.start.character,
-                ) {
-                    if let Some(bench_end_offset) = virtual_file.ts_to_bench(
-                        ts_range.end.line,
-                        ts_range.end.character,
-                    ) {
+                if let Some(bench_start_offset) =
+                    virtual_file.ts_to_bench(ts_range.start.line, ts_range.start.character)
+                {
+                    if let Some(bench_end_offset) =
+                        virtual_file.ts_to_bench(ts_range.end.line, ts_range.end.character)
+                    {
                         hover.range = Some(tower_lsp::lsp_types::Range {
                             start: doc.offset_to_position(bench_start_offset),
                             end: doc.offset_to_position(bench_end_offset),
@@ -402,7 +450,7 @@ fn get_tsserver_hover(
 /// Get hover information at a position (DSL keywords and AST only)
 pub fn get_hover(doc: &ParsedDocument, position: Position) -> Option<Hover> {
     let (word, range) = doc.word_at_position(position)?;
-    
+
     // Convert position to offset for span-based matching
     let offset = doc.position_to_offset(position);
 
@@ -420,7 +468,7 @@ pub fn get_hover(doc: &ParsedDocument, position: Position) -> Option<Hover> {
                         range: Some(range),
                     });
                 }
-                
+
                 // Check if hovering over 'std' namespace
                 if offset >= use_std.std_span.start && offset < use_std.std_span.end {
                     return Some(Hover {
@@ -431,7 +479,7 @@ pub fn get_hover(doc: &ParsedDocument, position: Position) -> Option<Hover> {
                         range: Some(range),
                     });
                 }
-                
+
                 // Check if hovering over module name
                 if offset >= use_std.module_span.start && offset < use_std.module_span.end {
                     if let Some(docs) = stdlib_module_docs(&use_std.module) {
@@ -469,7 +517,7 @@ pub fn get_hover(doc: &ParsedDocument, position: Position) -> Option<Hover> {
             range: Some(range),
         });
     }
-    
+
     // Check if it's a stdlib symbol (spawnAnvil, ANVIL_RPC_URL, PI, E)
     if let Some(docs) = stdlib_symbol_docs(&word) {
         return Some(Hover {
@@ -546,7 +594,11 @@ pub fn get_hover(doc: &ParsedDocument, position: Position) -> Option<Hover> {
                     if !benchmark.tags.is_empty() {
                         content.push_str(&format!("\n\n**Tags:** {}", benchmark.tags.join(", ")));
                     }
-                    let langs: Vec<_> = benchmark.implementations.keys().map(|l| l.as_str()).collect();
+                    let langs: Vec<_> = benchmark
+                        .implementations
+                        .keys()
+                        .map(|l| l.as_str())
+                        .collect();
                     if !langs.is_empty() {
                         content.push_str(&format!("\n\n**Implementations:** {}", langs.join(", ")));
                     }
@@ -1027,7 +1079,7 @@ fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
 /// Get hover information for stdlib symbols in embedded code blocks
 fn get_stdlib_symbol_hover(doc: &ParsedDocument, position: Position) -> Option<Hover> {
     let (word, range) = doc.word_at_position(position)?;
-    
+
     if let Some(docs) = stdlib_symbol_docs(&word) {
         eprintln!("[hover] Found stdlib symbol: {}", word);
         return Some(Hover {
@@ -1038,7 +1090,7 @@ fn get_stdlib_symbol_hover(doc: &ParsedDocument, position: Position) -> Option<H
             range: Some(range),
         });
     }
-    
+
     None
 }
 
@@ -1047,19 +1099,19 @@ fn lang_docs(word: &str) -> Option<&'static str> {
     match word.to_lowercase().as_str() {
         "go" => Some(
             "**Go** language\n\n\
-            Implementations are compiled and executed via Go plugin system."
+            Implementations are compiled and executed via Go plugin system.",
         ),
         "ts" | "typescript" => Some(
             "**TypeScript** language\n\n\
-            Implementations are transpiled and executed via embedded V8 runtime."
+            Implementations are transpiled and executed via embedded V8 runtime.",
         ),
         "rust" | "rs" => Some(
             "**Rust** language *(planned)*\n\n\
-            Native Rust benchmark support."
+            Native Rust benchmark support.",
         ),
         "python" | "py" => Some(
             "**Python** language *(planned)*\n\n\
-            Python benchmark support."
+            Python benchmark support.",
         ),
         _ => None,
     }

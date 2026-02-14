@@ -113,11 +113,8 @@ pub fn run_command_with_spinner(
     spinner: &ProgressBar,
     cmd: &mut Command,
 ) -> std::io::Result<Output> {
-    let output = cmd
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output();
-    
+    let output = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output();
+
     ensure_min_display(spinner);
     output
 }

@@ -13,24 +13,24 @@ use super::document::ParsedDocument;
 /// Token types used by the semantic token provider
 pub static TOKEN_TYPES: Lazy<Vec<SemanticTokenType>> = Lazy::new(|| {
     vec![
-        SemanticTokenType::KEYWORD,    // 0
-        SemanticTokenType::TYPE,       // 1 (language names)
-        SemanticTokenType::FUNCTION,   // 2 (benchmark/fixture names)
-        SemanticTokenType::VARIABLE,   // 3 (fixture references)
-        SemanticTokenType::PROPERTY,   // 4 (description, iterations, etc.)
-        SemanticTokenType::STRING,     // 5
-        SemanticTokenType::NUMBER,     // 6
-        SemanticTokenType::COMMENT,    // 7
-        SemanticTokenType::NAMESPACE,  // 8 (suite names)
+        SemanticTokenType::KEYWORD,   // 0
+        SemanticTokenType::TYPE,      // 1 (language names)
+        SemanticTokenType::FUNCTION,  // 2 (benchmark/fixture names)
+        SemanticTokenType::VARIABLE,  // 3 (fixture references)
+        SemanticTokenType::PROPERTY,  // 4 (description, iterations, etc.)
+        SemanticTokenType::STRING,    // 5
+        SemanticTokenType::NUMBER,    // 6
+        SemanticTokenType::COMMENT,   // 7
+        SemanticTokenType::NAMESPACE, // 8 (suite names)
     ]
 });
 
 /// Token modifiers
 pub static TOKEN_MODIFIERS: Lazy<Vec<SemanticTokenModifier>> = Lazy::new(|| {
     vec![
-        SemanticTokenModifier::DECLARATION,  // 0
-        SemanticTokenModifier::DEFINITION,   // 1
-        SemanticTokenModifier::READONLY,     // 2
+        SemanticTokenModifier::DECLARATION, // 0
+        SemanticTokenModifier::DEFINITION,  // 1
+        SemanticTokenModifier::READONLY,    // 2
     ]
 });
 
@@ -84,7 +84,13 @@ pub fn get_semantic_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
 
         for suite in &ast.suites {
             // Suite keyword and name
-            add_keyword_tokens(doc, &mut tokens, &mut prev_line, &mut prev_char, &suite.span);
+            add_keyword_tokens(
+                doc,
+                &mut tokens,
+                &mut prev_line,
+                &mut prev_char,
+                &suite.span,
+            );
 
             // Setup blocks
             for (lang, setup) in &suite.setups {
@@ -142,21 +148,56 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
     let mut prev_char = 0u32;
 
     let keywords = [
-        "suite", "bench", "setup", "fixture", "hex", "description", "iterations",
-        "warmup", "declare", "init", "helpers", "import", "timeout", "tags",
-        "skip", "validate", "before", "after", "each", "requires", "order",
-        "compare", "baseline", "shape", "async", "use", "globalSetup",
+        "suite",
+        "bench",
+        "setup",
+        "fixture",
+        "hex",
+        "description",
+        "iterations",
+        "warmup",
+        "declare",
+        "init",
+        "helpers",
+        "import",
+        "timeout",
+        "tags",
+        "skip",
+        "validate",
+        "before",
+        "after",
+        "each",
+        "requires",
+        "order",
+        "compare",
+        "baseline",
+        "shape",
+        "async",
+        "use",
+        "globalSetup",
         // Auto-calibration keywords
-        "mode", "targetTime", "minIterations", "maxIterations",
+        "mode",
+        "targetTime",
+        "minIterations",
+        "maxIterations",
         // Performance keywords
         "sink",
         // Statistical keywords
-        "outlierDetection", "cvThreshold",
+        "outlierDetection",
+        "cvThreshold",
         // Observability keywords (Phase 2B)
-        "memory", "concurrency",
+        "memory",
+        "concurrency",
         // Charting keywords (used as parameters in charting calls)
-        "title", "xlabel", "ylabel", "sortBy", "sortOrder", "timeUnit",
-        "showTotalTime", "showLegend", "showGrid",
+        "title",
+        "xlabel",
+        "ylabel",
+        "sortBy",
+        "sortOrder",
+        "timeUnit",
+        "showTotalTime",
+        "showLegend",
+        "showGrid",
     ];
 
     // std and stdlib module names get NAMESPACE highlighting
@@ -165,11 +206,17 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
     let lang_keywords = ["go", "ts", "typescript", "rust", "python"];
 
     let order_values = ["sequential", "parallel", "random", "auto", "fixed"];
-    
+
     // Charting library methods get FUNCTION highlighting
     let charting_methods = [
-        "drawBarChart", "drawLineChart", "drawPieChart", "drawScatterPlot",
-        "drawHistogram", "drawHeatmap", "drawBoxPlot", "drawAreaChart",
+        "drawBarChart",
+        "drawLineChart",
+        "drawPieChart",
+        "drawScatterPlot",
+        "drawHistogram",
+        "drawHeatmap",
+        "drawBoxPlot",
+        "drawAreaChart",
     ];
 
     // Simple tokenizer
@@ -235,7 +282,8 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
                     // Skip this comment token
                 } else {
                     // Find end of line
-                    let remaining: String = doc.source[i..].chars().take_while(|&x| x != '\n').collect();
+                    let remaining: String =
+                        doc.source[i..].chars().take_while(|&x| x != '\n').collect();
 
                     // Use saturating_sub as a safety net
                     let delta_line = line.saturating_sub(prev_line);

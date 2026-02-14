@@ -117,7 +117,10 @@ pub fn add_go_dependency(spec: &str) -> Result<()> {
     // Running tidy without a .go file that imports the deps would remove them.
     // Tidy will run automatically when `poly-bench run` generates bench code.
 
-    terminal::finish_success(&spinner, &format!("Added {}@{} to polybench.toml", package, version));
+    terminal::finish_success(
+        &spinner,
+        &format!("Added {}@{} to polybench.toml", package, version),
+    );
 
     Ok(())
 }
@@ -175,7 +178,10 @@ pub fn add_ts_dependency(spec: &str) -> Result<()> {
         return Err(miette::miette!("npm install failed"));
     }
 
-    terminal::finish_success(&spinner, &format!("Added {}@{} to polybench.toml", package, version));
+    terminal::finish_success(
+        &spinner,
+        &format!("Added {}@{} to polybench.toml", package, version),
+    );
 
     Ok(())
 }
@@ -190,7 +196,10 @@ pub fn install_all() -> Result<()> {
 
     let manifest = crate::load_manifest(&project_root)?;
 
-    let spinner = terminal::step_spinner(&format!("Installing dependencies for {}...", manifest.project.name));
+    let spinner = terminal::step_spinner(&format!(
+        "Installing dependencies for {}...",
+        manifest.project.name
+    ));
     terminal::ensure_min_display(&spinner);
     spinner.finish_and_clear();
 
@@ -220,8 +229,7 @@ fn install_go_deps(project_root: &Path, go_config: &manifest::GoConfig) -> Resul
 
     let go_mod_path = go_root.join("go.mod");
     if !go_mod_path.exists() {
-        let go_mod_content =
-            templates::go_mod(&go_config.module, go_config.version.as_deref());
+        let go_mod_content = templates::go_mod(&go_config.module, go_config.version.as_deref());
         std::fs::write(&go_mod_path, go_mod_content)
             .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
         terminal::success_indented("Created go.mod");
@@ -242,12 +250,11 @@ fn install_go_deps(project_root: &Path, go_config: &manifest::GoConfig) -> Resul
 
         if !output.status.success() {
             let err_msg = terminal::first_error_line(&output.stderr);
-            terminal::finish_failure_indented(&spinner, &format!("Failed to install {}: {}", package, err_msg));
-            return Err(miette::miette!(
-                "go get {} failed: {}",
-                go_get_arg,
-                err_msg
-            ));
+            terminal::finish_failure_indented(
+                &spinner,
+                &format!("Failed to install {}: {}", package, err_msg),
+            );
+            return Err(miette::miette!("go get {} failed: {}", go_get_arg, err_msg));
         }
         terminal::finish_success_indented(&spinner, package);
     }
@@ -287,9 +294,7 @@ fn install_ts_deps(
     let spinner = terminal::indented_spinner("Running npm install...");
     let output = terminal::run_command_with_spinner(
         &spinner,
-        Command::new("npm")
-            .args(["install"])
-            .current_dir(&ts_root),
+        Command::new("npm").args(["install"]).current_dir(&ts_root),
     )
     .map_err(|e| miette::miette!("Failed to run npm install: {}", e))?;
 
@@ -304,10 +309,7 @@ fn install_ts_deps(
 }
 
 /// Update package.json with dependencies from the manifest
-fn update_package_json_deps(
-    project_root: &Path,
-    ts_config: &manifest::TsConfig,
-) -> Result<()> {
+fn update_package_json_deps(project_root: &Path, ts_config: &manifest::TsConfig) -> Result<()> {
     let package_json_path = project_root.join("package.json");
     let content = std::fs::read_to_string(&package_json_path)
         .map_err(|e| miette::miette!("Failed to read package.json: {}", e))?;
