@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = ["poly-bench-*"]
 
 [workspace.package]
 version = "0.0.22"
@@ -11,14 +11,14 @@ repository = "https://github.com/evanmcgrane/poly-bench"
 
 [workspace.dependencies]
 # Internal crates
-poly-bench-dsl = { path = "crates/poly-bench-dsl" }
-poly-bench-stdlib = { path = "crates/poly-bench-stdlib" }
-poly-bench-ir = { path = "crates/poly-bench-ir" }
-poly-bench-project = { path = "crates/poly-bench-project" }
-poly-bench-runtime = { path = "crates/poly-bench-runtime" }
-poly-bench-executor = { path = "crates/poly-bench-executor" }
-poly-bench-reporter = { path = "crates/poly-bench-reporter" }
-poly-bench-lsp = { path = "crates/poly-bench-lsp" }
+poly-bench-dsl = { path = "poly-bench-dsl" }
+poly-bench-stdlib = { path = "poly-bench-stdlib" }
+poly-bench-ir = { path = "poly-bench-ir" }
+poly-bench-project = { path = "poly-bench-project" }
+poly-bench-runtime = { path = "poly-bench-runtime" }
+poly-bench-executor = { path = "poly-bench-executor" }
+poly-bench-reporter = { path = "poly-bench-reporter" }
+poly-bench-lsp = { path = "poly-bench-lsp" }
 
 # Shared dependencies
 miette = { version = "7", features = ["fancy"] }
@@ -114,11 +114,11 @@ pretty_assertions.workspace = true
 
 [[bin]]
 name = "poly-bench"
-path = "src/main.rs"
+path = "cli/main.rs"
 
 [[bin]]
 name = "poly-bench-lsp"
-path = "src/lsp_main.rs"
+path = "cli/lsp_main.rs"
 
 [profile.release]
 opt-level = 3
