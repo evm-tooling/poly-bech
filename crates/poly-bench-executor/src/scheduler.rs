@@ -6,7 +6,7 @@ use colored::Colorize;
 use miette::Result;
 use poly_bench_dsl::{BenchMode, Lang};
 use poly_bench_ir::BenchmarkIR;
-use poly_bench_runtime::{go::GoRuntime, js::JsRuntime, measurement::Measurement, traits::Runtime};
+use poly_bench_runtime::{go::GoRuntime, js::JsRuntime, rust::RustRuntime, measurement::Measurement, traits::Runtime};
 use std::{
     collections::HashMap,
     io::Write,
@@ -159,6 +159,7 @@ pub async fn run(
         // Initialize runtimes
         let mut go_runtime: Option<GoRuntime> = None;
         let mut js_runtime: Option<JsRuntime> = None;
+        let mut rust_runtime: Option<RustRuntime> = None;
 
         if langs.contains(&Lang::Go) {
             let mut rt = GoRuntime::new();
@@ -189,6 +190,19 @@ pub async fn run(
                 Err(e) => {
                     eprintln!("  {} JS runtime not available: {}", "⚠".yellow(), e);
                 }
+            }
+        }
+
+        if langs.contains(&Lang::Rust) {
+            let mut rt = RustRuntime::new();
+            rt.set_project_root(project_roots.rust_root.clone());
+            if let Some(ref url) = anvil_rpc_url {
+                rt.set_anvil_rpc_url(url.clone());
+            }
+            if let Err(e) = rt.initialize(suite).await {
+                eprintln!("  {} Rust runtime initialization failed: {}", "⚠".yellow(), e);
+            } else {
+                rust_runtime = Some(rt);
             }
         }
 
@@ -415,27 +429,130 @@ pub async fn run(
                 }
             }
 
+            // Run Rust benchmark
+            if spec.has_lang(Lang::Rust) {
+                if let Some(ref mut rt) = rust_runtime {
+                    let lang_start = Instant::now();
+
+                    if spec_clone.count > 1 {
+                        // Multiple runs for statistical consistency with live timer
+                        let timer = start_multi_run_timer("Rust:", "yellow", spec_clone.count);
+                        let mut run_measurements = Vec::new();
+
+                        for run_idx in 0..spec_clone.count {
+                            timer.current_run.store(run_idx + 1, Ordering::Relaxed);
+
+                            match rt.run_benchmark(&spec_clone, suite).await {
+                                Ok(m) => run_measurements.push(m),
+                                Err(e) => {
+                                    eprintln!(
+                                        "\n    {} run {} failed: {}",
+                                        "Rust:".red(),
+                                        run_idx + 1,
+                                        e
+                                    );
+                                }
+                            }
+                        }
+
+                        stop_multi_run_timer(&timer);
+
+                        if !run_measurements.is_empty() {
+                            let aggregated = Measurement::aggregate_runs(run_measurements);
+                            let elapsed = lang_start.elapsed();
+                            let ci_str = if let (Some(median), Some(ci_upper)) =
+                                (aggregated.median_across_runs, aggregated.ci_95_upper)
+                            {
+                                format!(" ±{}", Measurement::format_duration(ci_upper - median))
+                            } else {
+                                String::new()
+                            };
+                            print!(
+                                "\r    {} {}{} ({}x runs, {:.2}s)                    ",
+                                "Rust:".yellow(),
+                                Measurement::format_duration(aggregated.nanos_per_op),
+                                ci_str,
+                                spec_clone.count,
+                                elapsed.as_secs_f64()
+                            );
+                            measurements.insert(Lang::Rust, aggregated);
+                        }
+                    } else {
+                        // Single run with live timer
+                        let timer = start_timer("Rust:", "yellow");
+                        let result = rt.run_benchmark(&spec_clone, suite).await;
+                        stop_timer(&timer);
+
+                        match result {
+                            Ok(m) => {
+                                let elapsed = lang_start.elapsed();
+                                print!(
+                                    "\r    {} {} ({})                    ",
+                                    "Rust:".yellow(),
+                                    Measurement::format_duration(m.nanos_per_op),
+                                    format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
+                                );
+                                measurements.insert(Lang::Rust, m);
+                            }
+                            Err(e) => {
+                                print!(
+                                    "\r    {} {}                    ",
+                                    "Rust:".red(),
+                                    format!("{}", e).red()
+                                );
+                            }
+                        }
+                    }
+                    println!();
+                }
+            }
+
             let bench_elapsed = bench_start.elapsed();
 
-            // Show comparison if both ran
+            // Show comparison summary
+            let mut comparison_parts = Vec::new();
             if let (Some(go_m), Some(ts_m)) =
                 (measurements.get(&Lang::Go), measurements.get(&Lang::TypeScript))
             {
                 let ratio = go_m.nanos_per_op / ts_m.nanos_per_op;
-                let (winner, _speedup) = if (ratio - 1.0).abs() < 0.05 {
-                    ("tie".dimmed().to_string(), 1.0)
+                if (ratio - 1.0).abs() < 0.05 {
+                    comparison_parts.push("Go≈TS".dimmed().to_string());
                 } else if ratio > 1.0 {
-                    (format!("TS {}x faster", format!("{:.2}", ratio)).cyan().to_string(), ratio)
+                    comparison_parts.push(format!("TS {}x vs Go", format!("{:.2}", ratio)).cyan().to_string());
                 } else {
-                    (
-                        format!("Go {}x faster", format!("{:.2}", 1.0 / ratio)).green().to_string(),
-                        1.0 / ratio,
-                    )
-                };
+                    comparison_parts.push(format!("Go {}x vs TS", format!("{:.2}", 1.0 / ratio)).green().to_string());
+                }
+            }
+            if let (Some(go_m), Some(rust_m)) =
+                (measurements.get(&Lang::Go), measurements.get(&Lang::Rust))
+            {
+                let ratio = go_m.nanos_per_op / rust_m.nanos_per_op;
+                if (ratio - 1.0).abs() < 0.05 {
+                    comparison_parts.push("Go≈Rust".dimmed().to_string());
+                } else if ratio > 1.0 {
+                    comparison_parts.push(format!("Rust {}x vs Go", format!("{:.2}", ratio)).yellow().to_string());
+                } else {
+                    comparison_parts.push(format!("Go {}x vs Rust", format!("{:.2}", 1.0 / ratio)).green().to_string());
+                }
+            }
+            if let (Some(ts_m), Some(rust_m)) =
+                (measurements.get(&Lang::TypeScript), measurements.get(&Lang::Rust))
+            {
+                let ratio = ts_m.nanos_per_op / rust_m.nanos_per_op;
+                if (ratio - 1.0).abs() < 0.05 {
+                    comparison_parts.push("TS≈Rust".dimmed().to_string());
+                } else if ratio > 1.0 {
+                    comparison_parts.push(format!("Rust {}x vs TS", format!("{:.2}", ratio)).yellow().to_string());
+                } else {
+                    comparison_parts.push(format!("TS {}x vs Rust", format!("{:.2}", 1.0 / ratio)).cyan().to_string());
+                }
+            }
+
+            if !comparison_parts.is_empty() {
                 println!(
                     "    {} [{}]",
                     format!("total: {:.2}s", bench_elapsed.as_secs_f64()).dimmed(),
-                    winner
+                    comparison_parts.join(", ")
                 );
             } else {
                 println!("    {}", format!("total: {:.2}s", bench_elapsed.as_secs_f64()).dimmed());
@@ -457,6 +574,9 @@ pub async fn run(
             let _ = rt.shutdown().await;
         }
         if let Some(mut rt) = js_runtime {
+            let _ = rt.shutdown().await;
+        }
+        if let Some(mut rt) = rust_runtime {
             let _ = rt.shutdown().await;
         }
 
