@@ -271,6 +271,17 @@ impl FixtureIR {
 
         format!("new Uint8Array([{}])", bytes.join(", "))
     }
+
+    /// Get Rust byte slice literal (comma-separated hex bytes for vec! or array)
+    pub fn as_rust_bytes(&self) -> String {
+        if self.data.is_empty() {
+            return String::new();
+        }
+
+        let bytes: Vec<String> = self.data.iter().map(|b| format!("0x{:02x}", b)).collect();
+
+        bytes.join(", ")
+    }
 }
 
 /// A single benchmark specification
