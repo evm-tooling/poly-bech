@@ -21,6 +21,7 @@ pub const DEFAULT_MARGIN_RIGHT: i32 = 100;
 // Default colors
 pub const GO_COLOR: &str = "#00ADD8";
 pub const TS_COLOR: &str = "#3178C6";
+pub const RUST_COLOR: &str = "#DEA584"; // Rust's official logo color (orange-ish)
 pub const TIE_COLOR: &str = "#9CA3AF";
 pub const BG_COLOR: &str = "#FAFAFA";
 pub const BORDER_COLOR: &str = "#E5E7EB";
@@ -30,11 +31,13 @@ pub const TEXT_TERTIARY: &str = "#4B5563";
 pub const TEXT_MUTED: &str = "#9CA3AF";
 pub const GO_GRADIENT_END: &str = "#0891B2";
 pub const TS_GRADIENT_END: &str = "#1D4ED8";
+pub const RUST_GRADIENT_END: &str = "#B7410E"; // Darker rust color
 
 // Color palette for pie charts
 pub const PIE_COLORS: &[&str] = &[
     "#00ADD8", // Go blue
     "#3178C6", // TS blue
+    "#DEA584", // Rust orange
     "#10B981", // Emerald
     "#F59E0B", // Amber
     "#EF4444", // Red
@@ -53,6 +56,7 @@ pub fn lang_color(lang: Lang) -> &'static str {
     match lang {
         Lang::Go => GO_COLOR,
         Lang::TypeScript => TS_COLOR,
+        Lang::Rust => RUST_COLOR,
         _ => TIE_COLOR,
     }
 }
@@ -83,12 +87,17 @@ pub fn svg_header(width: i32, height: i32) -> String {
     <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
     <stop offset=\"100%\" stop-color=\"{}\" stop-opacity=\"0.85\"/>\n\
   </linearGradient>\n\
+  <linearGradient id=\"rustGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
+    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
+    <stop offset=\"100%\" stop-color=\"{}\" stop-opacity=\"0.85\"/>\n\
+  </linearGradient>\n\
 </defs>\n\
 <rect width=\"{}\" height=\"{}\" fill=\"{}\" rx=\"12\"/>\n\
 <rect x=\".5\" y=\".5\" width=\"{}\" height=\"{}\" fill=\"none\" stroke=\"{}\" rx=\"12\"/>\n",
         width, height, width, height,
         GO_COLOR, GO_GRADIENT_END,
         TS_COLOR, TS_GRADIENT_END,
+        RUST_COLOR, RUST_GRADIENT_END,
         width, height, BG_COLOR,
         width - 1, height - 1, BORDER_COLOR
     )
@@ -183,6 +192,8 @@ pub fn filter_benchmarks<'a>(
                 }
 
                 // Apply filter_winner filter
+                // Note: Currently filter_winner is designed for 2-language comparisons
+                // For multi-language scenarios, the comparison module would need to be updated
                 if let Some(ref winner_filter) = directive.filter_winner {
                     if let Some(ref comparison) = bench.comparison {
                         let wf = winner_filter.to_lowercase();
@@ -196,6 +207,11 @@ pub fn filter_benchmarks<'a>(
                                 if comparison.winner != ComparisonWinner::Second {
                                     return false;
                                 }
+                            }
+                            // Rust filtering would require multi-language comparison support
+                            "rust" => {
+                                // For now, Rust wins would need to be added to the comparison module
+                                // This is a placeholder for future multi-language support
                             }
                             "all" | _ => {} // No filter
                         }
@@ -376,21 +392,48 @@ pub fn calculate_geo_mean(benchmarks: &[&BenchmarkResult]) -> f64 {
     }
 }
 
-/// Count wins by language
-pub fn count_wins(benchmarks: &[&BenchmarkResult]) -> (usize, usize, usize) {
+/// Count wins by language (returns go_wins, ts_wins, rust_wins, ties)
+pub fn count_wins(benchmarks: &[&BenchmarkResult]) -> (usize, usize, usize, usize) {
     let mut go_wins = 0;
     let mut ts_wins = 0;
+    let mut rust_wins = 0;
     let mut ties = 0;
 
     for bench in benchmarks {
-        if let Some(ref comparison) = bench.comparison {
-            match comparison.winner {
-                ComparisonWinner::First => go_wins += 1,
-                ComparisonWinner::Second => ts_wins += 1,
-                ComparisonWinner::Tie => ties += 1,
+        // Determine winner across all available languages
+        let go_ns = bench.measurements.get(&Lang::Go).map(|m| m.nanos_per_op);
+        let ts_ns = bench.measurements.get(&Lang::TypeScript).map(|m| m.nanos_per_op);
+        let rust_ns = bench.measurements.get(&Lang::Rust).map(|m| m.nanos_per_op);
+
+        let mut times: Vec<(Lang, f64)> = vec![];
+        if let Some(ns) = go_ns {
+            times.push((Lang::Go, ns));
+        }
+        if let Some(ns) = ts_ns {
+            times.push((Lang::TypeScript, ns));
+        }
+        if let Some(ns) = rust_ns {
+            times.push((Lang::Rust, ns));
+        }
+
+        if times.len() >= 2 {
+            times.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            let (fastest_lang, fastest_time) = times[0];
+            let (_, second_time) = times[1];
+
+            let speedup = second_time / fastest_time;
+            if speedup < 1.05 {
+                ties += 1;
+            } else {
+                match fastest_lang {
+                    Lang::Go => go_wins += 1,
+                    Lang::TypeScript => ts_wins += 1,
+                    Lang::Rust => rust_wins += 1,
+                    _ => {}
+                }
             }
         }
     }
 
-    (go_wins, ts_wins, ties)
+    (go_wins, ts_wins, rust_wins, ties)
 }

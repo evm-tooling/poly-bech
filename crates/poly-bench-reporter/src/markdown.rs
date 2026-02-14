@@ -25,6 +25,9 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
         Some(Lang::TypeScript) => {
             md.push_str(&format!("**🏆 {}**\n\n", summary.winner_description));
         }
+        Some(Lang::Rust) => {
+            md.push_str(&format!("**🏆 {}**\n\n", summary.winner_description));
+        }
         _ => {
             md.push_str(&format!("**🤝 {}**\n\n", summary.winner_description));
         }
@@ -58,6 +61,7 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
         let icon = match suite.summary.winner {
             Some(Lang::Go) => "🟢",
             Some(Lang::TypeScript) => "🔵",
+            Some(Lang::Rust) => "🟠",
             _ => "⚪",
         };
 
@@ -70,8 +74,16 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
             md.push_str(&format!("_{}_\n\n", desc));
         }
 
-        md.push_str("| Benchmark | Go | TypeScript | Result |\n");
-        md.push_str("|-----------|-----|------------|--------|\n");
+        // Determine which languages are present in this suite
+        let has_rust = suite.benchmarks.iter().any(|b| b.measurements.contains_key(&Lang::Rust));
+
+        if has_rust {
+            md.push_str("| Benchmark | Go | TypeScript | Rust | Result |\n");
+            md.push_str("|-----------|-----|------------|------|--------|\n");
+        } else {
+            md.push_str("| Benchmark | Go | TypeScript | Result |\n");
+            md.push_str("|-----------|-----|------------|--------|\n");
+        }
 
         for bench in &suite.benchmarks {
             let go_str = bench
@@ -86,6 +98,12 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
                 .map(|m| Measurement::format_duration(m.nanos_per_op))
                 .unwrap_or_else(|| "-".to_string());
 
+            let rust_str = bench
+                .measurements
+                .get(&Lang::Rust)
+                .map(|m| Measurement::format_duration(m.nanos_per_op))
+                .unwrap_or_else(|| "-".to_string());
+
             let result_str = if let Some(ref cmp) = bench.comparison {
                 let icon = match cmp.winner {
                     poly_bench_runtime::measurement::ComparisonWinner::First => "🟢",
@@ -97,10 +115,17 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
                 "-".to_string()
             };
 
-            md.push_str(&format!(
-                "| {} | {} | {} | {} |\n",
-                bench.name, go_str, ts_str, result_str
-            ));
+            if has_rust {
+                md.push_str(&format!(
+                    "| {} | {} | {} | {} | {} |\n",
+                    bench.name, go_str, ts_str, rust_str, result_str
+                ));
+            } else {
+                md.push_str(&format!(
+                    "| {} | {} | {} | {} |\n",
+                    bench.name, go_str, ts_str, result_str
+                ));
+            }
         }
 
         md.push_str("\n");
@@ -110,6 +135,7 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
     md.push_str("## Legend\n\n");
     md.push_str("- 🟢 Go faster\n");
     md.push_str("- 🔵 TypeScript faster\n");
+    md.push_str("- 🟠 Rust faster\n");
     md.push_str("- ⚪ Similar (within 5%)\n");
     md.push_str("- ns/op = nanoseconds per operation (lower is better)\n");
 

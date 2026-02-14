@@ -261,7 +261,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         let box_padding = 12;
 
         // Calculate stats
-        let (go_wins, ts_wins, ties) = count_wins(&filtered);
+        let (go_wins, ts_wins, _rust_wins, ties) = count_wins(&filtered);
         let geo_mean = calculate_geo_mean(&filtered);
 
         // Box background with border

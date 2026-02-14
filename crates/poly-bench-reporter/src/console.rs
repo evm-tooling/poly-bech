@@ -109,6 +109,9 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
         Some(Lang::TypeScript) => {
             println!("  {} {}", "🏆".cyan(), summary.winner_description.cyan().bold());
         }
+        Some(Lang::Rust) => {
+            println!("  {} {}", "🏆".yellow(), summary.winner_description.yellow().bold());
+        }
         _ => {
             println!("  {} {}", "🤝", summary.winner_description.dimmed());
         }
@@ -129,6 +132,12 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
         "TypeScript Wins:",
         summary.ts_wins,
         (summary.ts_wins * 100) / summary.total_benchmarks.max(1)
+    );
+    println!(
+        "  {:<20} {} ({}%)",
+        "Rust Wins:",
+        summary.rust_wins,
+        (summary.rust_wins * 100) / summary.total_benchmarks.max(1)
     );
     println!(
         "  {:<20} {} ({}%)",
@@ -193,7 +202,7 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
     // Legend
     println!("{}", "─".repeat(110));
     println!("{}", "LEGEND".dimmed());
-    println!("  {} = Go result  |  {} = TypeScript result", "go".green(), "ts".cyan());
+    println!("  {} = Go result  |  {} = TypeScript result  |  {} = Rust result", "go".green(), "ts".cyan(), "rust".yellow());
     println!("  {} = operations per second (higher is better)", "hz".dimmed());
     println!(
         "  {} = minimum latency  |  {} = maximum latency  |  {} = mean latency (all in ms)",
@@ -243,14 +252,16 @@ fn print_suite_with_options(suite: &SuiteResults, options: &ReportOptions) {
     // Suite summary footer
     let go_wins = suite.summary.go_wins;
     let ts_wins = suite.summary.ts_wins;
+    let rust_wins = suite.summary.rust_wins;
     let ties = suite.summary.ties;
 
     println!();
     println!(
-        "   {} Go: {} wins | TS: {} wins | Ties: {} | Geo mean: {:.2}x",
+        "   {} Go: {} wins | TS: {} wins | Rust: {} wins | Ties: {} | Geo mean: {:.2}x",
         "Summary:".dimmed(),
         format!("{}", go_wins).green(),
         format!("{}", ts_wins).cyan(),
+        format!("{}", rust_wins).yellow(),
         format!("{}", ties).dimmed(),
         suite.summary.geo_mean_speedup
     );
@@ -324,6 +335,22 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
         .iter()
         .filter_map(|b| {
             b.measurements.get(&Lang::TypeScript).map(|m| (b.name.as_str(), m.ops_per_sec))
+        })
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(name, _)| name);
+
+    let rust_fastest: Option<&str> = benchmarks
+        .iter()
+        .filter_map(|b| {
+            b.measurements.get(&Lang::Rust).map(|m| (b.name.as_str(), m.ops_per_sec))
+        })
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(name, _)| name);
+
+    let rust_slowest: Option<&str> = benchmarks
+        .iter()
+        .filter_map(|b| {
+            b.measurements.get(&Lang::Rust).map(|m| (b.name.as_str(), m.ops_per_sec))
         })
         .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(name, _)| name);
@@ -501,18 +528,125 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
             }
         }
 
-        // Comparison row
-        if let Some(ref cmp) = bench.comparison {
-            let winner_str = match cmp.winner {
-                poly_bench_runtime::measurement::ComparisonWinner::First => {
-                    format!("  → Go is {:.2}x faster", cmp.speedup).green().to_string()
-                }
-                poly_bench_runtime::measurement::ComparisonWinner::Second => {
-                    format!("  → TS is {:.2}x faster", 1.0 / cmp.speedup).cyan().to_string()
-                }
-                poly_bench_runtime::measurement::ComparisonWinner::Tie => {
-                    "  → Similar performance".dimmed().to_string()
-                }
+        // Rust row
+        if let Some(m) = bench.measurements.get(&Lang::Rust) {
+            let badge = if Some(bench.name.as_str()) == rust_fastest && benchmarks.len() > 1 {
+                " fastest".green().to_string()
+            } else if Some(bench.name.as_str()) == rust_slowest && benchmarks.len() > 1 {
+                " slowest".yellow().to_string()
+            } else {
+                String::new()
+            };
+
+            let name = format!("· rust: {}", bench.name);
+
+            if has_multi_run && m.run_count.unwrap_or(1) > 1 {
+                // Multi-run format: show median and 95% CI
+                let median_ns = m.median_across_runs.unwrap_or(m.nanos_per_op);
+                let ci_str = if let (Some(lower), Some(upper)) = (m.ci_95_lower, m.ci_95_upper) {
+                    format!("±{}", format_ms((upper - lower) / 2.0))
+                } else {
+                    "-".to_string()
+                };
+                let min_ns = m.min_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let max_ns = m.max_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let p75_ns = m.p75_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let p99_ns = m.p99_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let rme = m.rme_percent.unwrap_or(0.0);
+                let cv = m.cv_percent.unwrap_or(0.0);
+                let runs = m.run_count.unwrap_or(1);
+
+                let cv_str = if m.is_stable == Some(false) {
+                    format!("{:.1}%", cv).yellow().to_string()
+                } else {
+                    format!("{:.1}%", cv)
+                };
+
+                println!(
+                    "   {:<40} {:>12} {:>10} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8}% {:>7} {:>6}{}",
+                    name.yellow(),
+                    format_hz(m.ops_per_sec),
+                    format_ms(median_ns),
+                    ci_str,
+                    format_ms(min_ns),
+                    format_ms(max_ns),
+                    format_ms(p75_ns),
+                    format_ms(p99_ns),
+                    format!("±{:.2}", rme),
+                    cv_str,
+                    runs,
+                    badge
+                );
+            } else {
+                // Single-run format (existing)
+                let min_ns = m.min_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let max_ns = m.max_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let mean_ns = m.nanos_per_op;
+                let p75_ns = m.p75_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let p99_ns = m.p99_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let p995_ns =
+                    m.p995_nanos.unwrap_or(m.p99_nanos.unwrap_or(m.nanos_per_op as u64)) as f64;
+                let rme = m.rme_percent.unwrap_or(0.0);
+                let cv = m.cv_percent.unwrap_or(0.0);
+                let samples = m.samples.unwrap_or(1000);
+
+                let cv_str = if m.is_stable == Some(false) {
+                    format!("{:.1}%", cv).yellow().to_string()
+                } else {
+                    format!("{:.1}%", cv)
+                };
+
+                println!(
+                    "   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}% {:>7} {:>8}{}",
+                    name.yellow(),
+                    format_hz(m.ops_per_sec),
+                    format_ms(min_ns),
+                    format_ms(max_ns),
+                    format_ms(mean_ns),
+                    format_ms(p75_ns),
+                    format_ms(p99_ns),
+                    format_ms(p995_ns),
+                    format!("±{:.2}", rme),
+                    cv_str,
+                    samples,
+                    badge
+                );
+            }
+        }
+
+        // Multi-language comparison row
+        let go_ns = bench.measurements.get(&Lang::Go).map(|m| m.nanos_per_op);
+        let ts_ns = bench.measurements.get(&Lang::TypeScript).map(|m| m.nanos_per_op);
+        let rust_ns = bench.measurements.get(&Lang::Rust).map(|m| m.nanos_per_op);
+
+        // Find winner across all languages present
+        let mut times: Vec<(&str, f64)> = vec![];
+        if let Some(ns) = go_ns {
+            times.push(("Go", ns));
+        }
+        if let Some(ns) = ts_ns {
+            times.push(("TS", ns));
+        }
+        if let Some(ns) = rust_ns {
+            times.push(("Rust", ns));
+        }
+
+        if times.len() >= 2 {
+            times.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            let (fastest_name, fastest_time) = times[0];
+            let (_, second_time) = times[1];
+            let speedup = second_time / fastest_time;
+
+            let winner_str = if speedup < 1.05 {
+                "  → Similar performance".dimmed().to_string()
+            } else {
+                let color_fn = match fastest_name {
+                    "Go" => |s: String| s.green().to_string(),
+                    "TS" => |s: String| s.cyan().to_string(),
+                    "Rust" => |s: String| s.yellow().to_string(),
+                    _ => |s: String| s,
+                };
+                color_fn(format!("  → {} is {:.2}x faster", fastest_name, speedup))
             };
             println!("{}", winner_str);
         }
