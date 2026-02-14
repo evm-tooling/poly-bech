@@ -213,6 +213,16 @@ fn validate_structured_setup(
         );
     }
 
+    // Warning: Rust setup should have init section
+    if lang == Lang::Rust && setup.init.is_none() && !setup.is_empty() {
+        result.add_warning(
+            ValidationWarning::new(
+                "Rust setup has no init section - consider adding one for initialization code",
+            )
+            .with_location(location.clone()),
+        );
+    }
+
     // Warning: TypeScript async init but no init code
     if setup.async_init && setup.init.is_none() {
         result.add_warning(
