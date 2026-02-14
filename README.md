@@ -20,10 +20,16 @@ poly-bench allows you to define benchmarks once and run them across multiple pro
 
 ## Installation
 
-**One-liner (downloads latest release, installs to `~/.local/bin`):**
+**One-liner (downloads latest release binary, installs to `~/.local/bin`):**
 
 ```bash
-curl -L https://raw.githubusercontent.com/evm-tooling/poly-bench/main/scripts/install.sh | bash
+curl -L https://raw.githubusercontent.com/evanmcgrane/poly-bench/main/scripts/install.sh | bash
+```
+
+The script is served from **main** (dev branch); the **binary** is downloaded from the latest GitHub Release (built from **production** when you merge the release PR and run `/release`). To use the install script from the **production** (release) branch instead: use `production` in the URL below.
+
+```bash
+curl -L https://raw.githubusercontent.com/evanmcgrane/poly-bench/production/scripts/install.sh | bash
 ```
 
 Then add to your PATH if needed (the script will remind you):
@@ -35,7 +41,7 @@ export PATH="$HOME/.local/bin:$PATH"
 **Custom install directory:**
 
 ```bash
-curl -L https://raw.githubusercontent.com/evm-tooling/poly-bench/main/scripts/install.sh | bash -s -- -d /usr/local/bin
+curl -L https://raw.githubusercontent.com/evanmcgrane/poly-bench/main/scripts/install.sh | bash -s -- -d /usr/local/bin
 ```
 
 **From source:**
