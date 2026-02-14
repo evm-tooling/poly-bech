@@ -1,7 +1,7 @@
 //! Cross-language comparison types and logic
 
 use poly_bench_dsl::Lang;
-use poly_bench_runtime::measurement::{Comparison, ComparisonWinner, Measurement};
+use poly_bench_runtime::measurement::{Comparison, Measurement};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -95,6 +95,8 @@ pub struct SuiteSummary {
     pub go_wins: usize,
     /// TypeScript wins
     pub ts_wins: usize,
+    /// Rust wins
+    pub rust_wins: usize,
     /// Ties
     pub ties: usize,
     /// Geometric mean speedup (>1 means Go is faster)
@@ -111,6 +113,7 @@ impl SuiteSummary {
     fn calculate(benchmarks: &[BenchmarkResult]) -> Self {
         let mut go_wins = 0;
         let mut ts_wins = 0;
+        let mut rust_wins = 0;
         let mut ties = 0;
         let mut log_speedups = Vec::new();
         let mut unstable_count = 0;
@@ -127,19 +130,47 @@ impl SuiteSummary {
                 }
             }
 
-            if let Some(ref comparison) = bench.comparison {
-                match comparison.winner {
-                    ComparisonWinner::First => go_wins += 1,
-                    ComparisonWinner::Second => ts_wins += 1,
-                    ComparisonWinner::Tie => ties += 1,
+            // Determine winner across all available languages
+            let go_ns = bench.measurements.get(&Lang::Go).map(|m| m.nanos_per_op);
+            let ts_ns = bench.measurements.get(&Lang::TypeScript).map(|m| m.nanos_per_op);
+            let rust_ns = bench.measurements.get(&Lang::Rust).map(|m| m.nanos_per_op);
+
+            // Find the fastest language among those present
+            let mut times: Vec<(Lang, f64)> = vec![];
+            if let Some(ns) = go_ns {
+                times.push((Lang::Go, ns));
+            }
+            if let Some(ns) = ts_ns {
+                times.push((Lang::TypeScript, ns));
+            }
+            if let Some(ns) = rust_ns {
+                times.push((Lang::Rust, ns));
+            }
+
+            if times.len() >= 2 {
+                // Sort by time (fastest first)
+                times.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+                let (fastest_lang, fastest_time) = times[0];
+                let (_, second_time) = times[1];
+
+                // Check for tie (within 5%)
+                let speedup = second_time / fastest_time;
+                if speedup < 1.05 {
+                    ties += 1;
+                } else {
+                    match fastest_lang {
+                        Lang::Go => go_wins += 1,
+                        Lang::TypeScript => ts_wins += 1,
+                        Lang::Rust => rust_wins += 1,
+                        _ => {}
+                    }
                 }
 
-                // For geometric mean: log of (ts_time / go_time)
-                // > 0 means Go is faster
-                let go_ns = comparison.first.nanos_per_op;
-                let ts_ns = comparison.second.nanos_per_op;
-                if go_ns > 0.0 && ts_ns > 0.0 {
-                    log_speedups.push((ts_ns / go_ns).ln());
+                // For geometric mean: use Go vs TS comparison if both present (for backwards compatibility)
+                if let (Some(go), Some(ts)) = (go_ns, ts_ns) {
+                    if go > 0.0 && ts > 0.0 {
+                        log_speedups.push((ts / go).ln());
+                    }
                 }
             }
         }
@@ -151,18 +182,22 @@ impl SuiteSummary {
             1.0
         };
 
-        let winner = if (geo_mean_speedup - 1.0).abs() < 0.05 {
+        // Determine overall winner by most wins
+        let winner = if go_wins == ts_wins && go_wins == rust_wins {
             None
-        } else if geo_mean_speedup > 1.0 {
+        } else if go_wins >= ts_wins && go_wins >= rust_wins {
             Some(Lang::Go)
-        } else {
+        } else if ts_wins >= go_wins && ts_wins >= rust_wins {
             Some(Lang::TypeScript)
+        } else {
+            Some(Lang::Rust)
         };
 
         Self {
             total_benchmarks: benchmarks.len(),
             go_wins,
             ts_wins,
+            rust_wins,
             ties,
             geo_mean_speedup,
             winner,
@@ -183,6 +218,8 @@ pub struct OverallSummary {
     pub go_wins: usize,
     /// TypeScript wins
     pub ts_wins: usize,
+    /// Rust wins
+    pub rust_wins: usize,
     /// Ties
     pub ties: usize,
     /// Geometric mean speedup across all benchmarks
@@ -203,6 +240,7 @@ impl OverallSummary {
         let mut total_benchmarks = 0;
         let mut go_wins = 0;
         let mut ts_wins = 0;
+        let mut rust_wins = 0;
         let mut ties = 0;
         let mut unstable_count = 0;
         let mut total_outliers_removed = 0u64;
@@ -212,16 +250,18 @@ impl OverallSummary {
             total_benchmarks += suite.benchmarks.len();
             go_wins += suite.summary.go_wins;
             ts_wins += suite.summary.ts_wins;
+            rust_wins += suite.summary.rust_wins;
             ties += suite.summary.ties;
             unstable_count += suite.summary.unstable_count;
             total_outliers_removed += suite.summary.total_outliers_removed;
 
+            // For geometric mean, use Go vs TS comparison if both present
             for bench in &suite.benchmarks {
-                if let Some(ref comparison) = bench.comparison {
-                    let go_ns = comparison.first.nanos_per_op;
-                    let ts_ns = comparison.second.nanos_per_op;
-                    if go_ns > 0.0 && ts_ns > 0.0 {
-                        log_speedups.push((ts_ns / go_ns).ln());
+                let go_ns = bench.measurements.get(&Lang::Go).map(|m| m.nanos_per_op);
+                let ts_ns = bench.measurements.get(&Lang::TypeScript).map(|m| m.nanos_per_op);
+                if let (Some(go), Some(ts)) = (go_ns, ts_ns) {
+                    if go > 0.0 && ts > 0.0 {
+                        log_speedups.push((ts / go).ln());
                     }
                 }
             }
@@ -234,15 +274,22 @@ impl OverallSummary {
             1.0
         };
 
-        let (winner, winner_description) = if (geo_mean_speedup - 1.0).abs() < 0.05 {
+        // Determine winner by most wins
+        let (winner, winner_description) = if go_wins == ts_wins && go_wins == rust_wins && go_wins == 0 {
+            (None, "No benchmark results".to_string())
+        } else if go_wins == ts_wins && go_wins == rust_wins {
             (None, "Similar performance".to_string())
-        } else if geo_mean_speedup > 1.0 {
+        } else if go_wins >= ts_wins && go_wins >= rust_wins {
             (Some(Lang::Go), format!("Go is {:.2}x faster overall", geo_mean_speedup))
-        } else {
+        } else if ts_wins >= go_wins && ts_wins >= rust_wins {
             (
                 Some(Lang::TypeScript),
                 format!("TypeScript is {:.2}x faster overall", 1.0 / geo_mean_speedup),
             )
+        } else {
+            // Rust wins - calculate Rust's speedup vs the average of Go/TS
+            let rust_desc = format!("Rust wins {} benchmarks", rust_wins);
+            (Some(Lang::Rust), rust_desc)
         };
 
         Self {
@@ -250,6 +297,7 @@ impl OverallSummary {
             total_benchmarks,
             go_wins,
             ts_wins,
+            rust_wins,
             ties,
             geo_mean_speedup,
             winner,

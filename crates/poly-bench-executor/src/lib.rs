@@ -15,6 +15,8 @@ pub struct ProjectRoots {
     pub go_root: Option<PathBuf>,
     /// Node.js project root (directory containing package.json or node_modules)
     pub node_root: Option<PathBuf>,
+    /// Rust project root (directory containing Cargo.toml)
+    pub rust_root: Option<PathBuf>,
 }
 
 pub use comparison::{BenchmarkResult, BenchmarkResults, SuiteResults};
