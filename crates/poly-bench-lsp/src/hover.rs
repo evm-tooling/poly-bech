@@ -1,8 +1,8 @@
 //! Hover provider for the LSP
 //!
 //! This module provides hover information for keywords and identifiers
-//! in poly-bench files, including embedded Go code via gopls and
-//! TypeScript code via typescript-language-server.
+//! in poly-bench files, including embedded Go code via gopls,
+//! TypeScript code via typescript-language-server, and Rust code via rust-analyzer.
 
 use std::{
     sync::atomic::{AtomicU64, Ordering},
@@ -18,8 +18,9 @@ use super::{
     document::ParsedDocument,
     embedded::{extract_embedded_blocks, EmbeddedBlock, EmbeddedConfig},
     gopls_client::init_gopls_client,
+    rust_analyzer_client::init_rust_analyzer_client,
     tsserver_client::init_tsserver_client,
-    virtual_files::{VirtualFile, VirtualFileManager, VirtualTsFileManager},
+    virtual_files::{VirtualFile, VirtualFileManager, VirtualRustFileManager, VirtualTsFileManager},
 };
 
 /// Cache TTL for embedded language hover results (in milliseconds)
@@ -86,16 +87,17 @@ fn cleanup_expired_cache() {
 
 /// Get hover information at a position (with embedded language support)
 ///
-/// This function first checks if the position is within a Go or TypeScript code block.
+/// This function first checks if the position is within a Go, TypeScript, or Rust code block.
 /// If so, it delegates to the appropriate language server for rich type information.
 /// Otherwise, it falls back to keyword and AST hover.
-pub fn get_hover_with_gopls(
+pub fn get_hover_with_embedded(
     doc: &ParsedDocument,
     position: Position,
     config: &EmbeddedConfig,
     uri: &Url,
     virtual_file_manager: &VirtualFileManager,
     virtual_ts_file_manager: &VirtualTsFileManager,
+    virtual_rust_file_manager: &VirtualRustFileManager,
 ) -> Option<Hover> {
     // Convert position to offset
     let offset = match doc.position_to_offset(position) {
@@ -111,12 +113,19 @@ pub fn get_hover_with_gopls(
     // Extract embedded blocks
     let blocks = extract_embedded_blocks(doc);
 
-    // Separate Go and TypeScript blocks
+    // Separate Go, TypeScript, and Rust blocks
     let go_blocks: Vec<&EmbeddedBlock> = blocks.iter().filter(|b| b.lang == Lang::Go).collect();
     let ts_blocks: Vec<&EmbeddedBlock> =
         blocks.iter().filter(|b| b.lang == Lang::TypeScript).collect();
+    let rust_blocks: Vec<&EmbeddedBlock> =
+        blocks.iter().filter(|b| b.lang == Lang::Rust).collect();
 
-    eprintln!("[hover] Found {} Go blocks, {} TS blocks", go_blocks.len(), ts_blocks.len());
+    eprintln!(
+        "[hover] Found {} Go blocks, {} TS blocks, {} Rust blocks",
+        go_blocks.len(),
+        ts_blocks.len(),
+        rust_blocks.len()
+    );
 
     // Check if the offset is within a Go code block
     if let Some(go_block) = find_block_at_offset(&go_blocks, offset) {
@@ -192,7 +201,47 @@ pub fn get_hover_with_gopls(
         }
     }
 
-    if go_blocks.is_empty() && ts_blocks.is_empty() {
+    // Check if the offset is within a Rust code block
+    if let Some(rust_block) = find_block_at_offset(&rust_blocks, offset) {
+        eprintln!(
+            "[hover] Offset {} is in Rust block {:?} (span {}..{})",
+            offset, rust_block.block_type, rust_block.span.start, rust_block.span.end
+        );
+
+        // Check cache first for embedded language hover
+        if let Some(cached) = get_cached_hover(uri, position) {
+            return cached;
+        }
+
+        // Try to get hover from rust-analyzer
+        if let Some(rust_project_root) = &config.rust_project_root {
+            eprintln!("[hover] rust_project_root: {}", rust_project_root);
+            let hover = get_rust_analyzer_hover(
+                doc,
+                uri,
+                offset,
+                &rust_blocks,
+                rust_project_root,
+                virtual_rust_file_manager,
+            );
+
+            // Cache the result (even if None)
+            cache_hover(uri, position, hover.clone());
+
+            if hover.is_some() {
+                return hover;
+            }
+        } else {
+            eprintln!("[hover] No rust_project_root configured");
+        }
+
+        // Fallback: check for stdlib symbols when rust-analyzer returns None
+        if let Some(hover) = get_stdlib_symbol_hover(doc, position) {
+            return Some(hover);
+        }
+    }
+
+    if go_blocks.is_empty() && ts_blocks.is_empty() && rust_blocks.is_empty() {
         eprintln!("[hover] No embedded language blocks found");
     } else {
         eprintln!("[hover] Offset {} is NOT in any embedded block", offset);
@@ -396,6 +445,285 @@ fn get_tsserver_hover(
             eprintln!("[tsserver] Hover request failed: {}", e);
             None
         }
+    }
+}
+
+/// Get hover information from rust-analyzer for embedded Rust code
+fn get_rust_analyzer_hover(
+    doc: &ParsedDocument,
+    bench_uri: &Url,
+    bench_offset: usize,
+    rust_blocks: &[&EmbeddedBlock],
+    rust_project_root: &str,
+    virtual_rust_file_manager: &VirtualRustFileManager,
+) -> Option<Hover> {
+    eprintln!(
+        "[rust-analyzer] get_rust_analyzer_hover called for offset {} in {}",
+        bench_offset, bench_uri
+    );
+
+    // Initialize rust-analyzer client if needed
+    let client = match init_rust_analyzer_client(rust_project_root) {
+        Some(c) => c,
+        None => {
+            eprintln!("[rust-analyzer] Failed to initialize rust-analyzer client");
+            return None;
+        }
+    };
+
+    // Get or create the virtual file
+    let bench_uri_str = bench_uri.as_str();
+    let bench_path = bench_uri.to_file_path().ok()?;
+    let bench_path_str = bench_path.to_string_lossy();
+
+    let virtual_file = virtual_rust_file_manager.get_or_create(
+        bench_uri_str,
+        &bench_path_str,
+        rust_project_root,
+        rust_blocks,
+        doc.version,
+    );
+
+    eprintln!("[rust-analyzer] Virtual file: {}", virtual_file.path());
+
+    // Translate position from .bench to virtual Rust file
+    let rust_position = match virtual_file.bench_to_rust(bench_offset) {
+        Some(pos) => {
+            eprintln!(
+                "[rust-analyzer] Translated bench offset {} to Rust position {}:{}",
+                bench_offset, pos.line, pos.character
+            );
+            pos
+        }
+        None => {
+            eprintln!(
+                "[rust-analyzer] Failed to translate bench offset {} to Rust position",
+                bench_offset
+            );
+            return None;
+        }
+    };
+
+    // Ensure the virtual file is synced with rust-analyzer
+    if let Err(e) =
+        client.did_change(virtual_file.uri(), virtual_file.content(), virtual_file.version())
+    {
+        eprintln!("[rust-analyzer] Failed to sync virtual file: {}", e);
+        return None;
+    }
+
+    eprintln!(
+        "[rust-analyzer] Requesting hover at {}:{}",
+        rust_position.line, rust_position.character
+    );
+
+    // Request hover from rust-analyzer
+    match client.hover(virtual_file.uri(), rust_position.line, rust_position.character) {
+        Ok(Some(mut hover)) => {
+            eprintln!("[rust-analyzer] Got hover response: {:?}", hover.contents);
+
+            // Enhance the hover content with proper markdown formatting
+            hover.contents = enhance_rust_hover_content(hover.contents);
+
+            // Translate the range back to .bench file if present
+            if let Some(ref rust_range) = hover.range {
+                if let Some(bench_start_offset) =
+                    virtual_file.rust_to_bench(rust_range.start.line, rust_range.start.character)
+                {
+                    if let Some(bench_end_offset) =
+                        virtual_file.rust_to_bench(rust_range.end.line, rust_range.end.character)
+                    {
+                        hover.range = Some(tower_lsp::lsp_types::Range {
+                            start: doc.offset_to_position(bench_start_offset),
+                            end: doc.offset_to_position(bench_end_offset),
+                        });
+                    }
+                }
+            }
+            Some(hover)
+        }
+        Ok(None) => {
+            eprintln!("[rust-analyzer] Hover returned None");
+            None
+        }
+        Err(e) => {
+            eprintln!("[rust-analyzer] Hover request failed: {}", e);
+            None
+        }
+    }
+}
+
+/// Enhance Rust hover content with proper markdown formatting
+fn enhance_rust_hover_content(contents: HoverContents) -> HoverContents {
+    match contents {
+        HoverContents::Markup(markup) => {
+            let value = &markup.value;
+
+            // Check if already properly formatted as markdown with code blocks
+            if value.contains("```rust") || value.contains("```rs") {
+                return HoverContents::Markup(markup);
+            }
+
+            // Split into lines for processing
+            let lines: Vec<&str> = value.lines().collect();
+            if lines.is_empty() {
+                return HoverContents::Markup(markup);
+            }
+
+            let mut formatted_parts = Vec::new();
+            let mut code_lines = Vec::new();
+            let mut doc_lines = Vec::new();
+            let mut in_signature = false;
+            let mut seen_signature = false;
+
+            for line in &lines {
+                let trimmed = line.trim();
+
+                // Skip empty lines
+                if trimmed.is_empty() {
+                    // If we were in a signature, end it
+                    if in_signature && !code_lines.is_empty() {
+                        formatted_parts.push(format!("```rust\n{}\n```", code_lines.join("\n")));
+                        code_lines.clear();
+                        in_signature = false;
+                        seen_signature = true;
+                    }
+                    continue;
+                }
+
+                // Skip virtual file module names and internal module paths
+                if trimmed.starts_with("_lsp_virtual")
+                    || trimmed.starts_with("polybench_runner")
+                {
+                    continue;
+                }
+
+                // Check if this looks like a module path (single identifier, no spaces)
+                // These appear at the start before signatures
+                if !seen_signature
+                    && !in_signature
+                    && !trimmed.contains(' ')
+                    && trimmed.chars().all(|c| c.is_alphanumeric() || c == '_' || c == ':')
+                {
+                    // Skip module paths like "tiny_keccak::keccak::Keccak"
+                    continue;
+                }
+
+                // Detect function/struct/type signatures
+                let is_signature_start = trimmed.starts_with("fn ")
+                    || trimmed.starts_with("pub fn ")
+                    || trimmed.starts_with("async fn ")
+                    || trimmed.starts_with("pub async fn ")
+                    || trimmed.starts_with("unsafe fn ")
+                    || trimmed.starts_with("pub unsafe fn ")
+                    || trimmed.starts_with("struct ")
+                    || trimmed.starts_with("pub struct ")
+                    || trimmed.starts_with("type ")
+                    || trimmed.starts_with("pub type ")
+                    || trimmed.starts_with("const ")
+                    || trimmed.starts_with("pub const ")
+                    || trimmed.starts_with("static ")
+                    || trimmed.starts_with("pub static ")
+                    || trimmed.starts_with("impl ")
+                    || trimmed.starts_with("impl<")
+                    || trimmed.starts_with("trait ")
+                    || trimmed.starts_with("pub trait ")
+                    || trimmed.starts_with("enum ")
+                    || trimmed.starts_with("pub enum ")
+                    || trimmed.starts_with("mod ")
+                    || trimmed.starts_with("pub mod ")
+                    || trimmed.starts_with("use ")
+                    || trimmed.starts_with("pub use ")
+                    || trimmed.starts_with("extern crate ");
+
+                if is_signature_start {
+                    // Flush any previous signature
+                    if !code_lines.is_empty() {
+                        formatted_parts.push(format!("```rust\n{}\n```", code_lines.join("\n")));
+                        code_lines.clear();
+                    }
+                    in_signature = true;
+                    code_lines.push(*line);
+                } else if in_signature
+                    && (trimmed.starts_with("where")
+                        || trimmed.ends_with(',')
+                        || trimmed.ends_with('{')
+                        || trimmed.ends_with('>'))
+                {
+                    // Continue collecting signature lines
+                    code_lines.push(*line);
+                } else {
+                    // End signature mode and collect as documentation
+                    if in_signature && !code_lines.is_empty() {
+                        formatted_parts.push(format!("```rust\n{}\n```", code_lines.join("\n")));
+                        code_lines.clear();
+                        in_signature = false;
+                        seen_signature = true;
+                    }
+                    doc_lines.push(*line);
+                }
+            }
+
+            // Flush remaining code lines
+            if !code_lines.is_empty() {
+                formatted_parts.push(format!("```rust\n{}\n```", code_lines.join("\n")));
+            }
+
+            // Format documentation - truncate if too long and clean up
+            if !doc_lines.is_empty() {
+                let doc_text = doc_lines.join(" ");
+                // Clean up the text - remove excessive whitespace
+                let cleaned: String = doc_text
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+
+                // Truncate very long documentation
+                let max_doc_len = 400;
+                let truncated_doc = if cleaned.len() > max_doc_len {
+                    // Find a good break point (end of sentence or word)
+                    let truncate_at = cleaned[..max_doc_len]
+                        .rfind(". ")
+                        .map(|i| i + 1) // Include the period
+                        .or_else(|| cleaned[..max_doc_len].rfind(' '))
+                        .unwrap_or(max_doc_len);
+                    format!("{}...", &cleaned[..truncate_at])
+                } else {
+                    cleaned
+                };
+
+                if !truncated_doc.is_empty() {
+                    formatted_parts.push(truncated_doc);
+                }
+            }
+
+            // If we couldn't parse anything meaningful, just format it simply
+            if formatted_parts.is_empty() && !value.trim().is_empty() {
+                let trimmed_value = value.trim();
+                // If it looks like code, wrap in code block
+                if trimmed_value.contains("fn ")
+                    || trimmed_value.contains("struct ")
+                    || trimmed_value.contains("::")
+                {
+                    // Truncate if needed
+                    let display_value = if trimmed_value.len() > 500 {
+                        format!("{}...", &trimmed_value[..500])
+                    } else {
+                        trimmed_value.to_string()
+                    };
+                    formatted_parts.push(format!("```rust\n{}\n```", display_value));
+                } else {
+                    formatted_parts.push(trimmed_value.to_string());
+                }
+            }
+
+            HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: formatted_parts.join("\n\n"),
+            })
+        }
+        // For other content types, return as-is
+        other => other,
     }
 }
 

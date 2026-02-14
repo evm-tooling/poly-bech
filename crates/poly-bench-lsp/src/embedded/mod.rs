@@ -4,6 +4,7 @@
 //! embedded within `.bench` files.
 
 pub mod go_bridge;
+pub mod rust_bridge;
 pub mod ts_bridge;
 
 use poly_bench_dsl::{Benchmark, Fixture, Lang, Span, StructuredSetup, Suite};
@@ -58,6 +59,8 @@ pub struct EmbeddedConfig {
     pub go_mod_root: Option<String>,
     /// Path to TypeScript module root (containing package.json/node_modules)
     pub ts_module_root: Option<String>,
+    /// Path to Rust project root (containing Cargo.toml)
+    pub rust_project_root: Option<String>,
 }
 
 /// Extract all embedded code blocks from a parsed document
@@ -265,6 +268,7 @@ pub struct EmbeddedCheckResult {
     pub diagnostics: Vec<Diagnostic>,
     pub go_blocks_checked: usize,
     pub ts_blocks_checked: usize,
+    pub rust_blocks_checked: usize,
     pub debug_messages: Vec<String>,
 }
 
@@ -278,12 +282,14 @@ pub fn check_embedded_blocks(
         diagnostics: Vec::new(),
         go_blocks_checked: 0,
         ts_blocks_checked: 0,
+        rust_blocks_checked: 0,
         debug_messages: Vec::new(),
     };
 
     // Build context from setup blocks (imports + declarations) per language
     let mut go_context = SetupContext::default();
     let mut ts_context = SetupContext::default();
+    let mut rust_context = SetupContext::default();
 
     for block in blocks {
         match (block.lang, block.block_type) {
@@ -305,6 +311,15 @@ pub fn check_embedded_blocks(
             (Lang::TypeScript, BlockType::SetupHelpers) => {
                 ts_context.helpers = Some(block.code.clone());
             }
+            (Lang::Rust, BlockType::SetupImport) => {
+                rust_context.imports = Some(block.code.clone());
+            }
+            (Lang::Rust, BlockType::SetupDeclare) => {
+                rust_context.declarations = Some(block.code.clone());
+            }
+            (Lang::Rust, BlockType::SetupHelpers) => {
+                rust_context.helpers = Some(block.code.clone());
+            }
             _ => {}
         }
     }
@@ -325,6 +340,12 @@ pub fn check_embedded_blocks(
             let ts_stdlib = stdlib::get_stdlib_code(&stdlib_imports, Lang::TypeScript);
             if !ts_stdlib.is_empty() {
                 ts_context.stdlib_code = Some(ts_stdlib);
+            }
+
+            // Generate Rust stdlib code
+            let rust_stdlib = stdlib::get_stdlib_code(&stdlib_imports, Lang::Rust);
+            if !rust_stdlib.is_empty() {
+                rust_context.stdlib_code = Some(rust_stdlib);
             }
 
             result.debug_messages.push(format!("Stdlib imports: {:?}", stdlib_imports));
@@ -452,6 +473,64 @@ pub fn check_embedded_blocks(
         result.debug_messages.push(format!("  -> {} diagnostics", ts_diags.len()));
         result.ts_blocks_checked += 1;
         for diag in ts_diags {
+            result.diagnostics.push(convert_diagnostic(doc, &diag));
+        }
+    }
+
+    // === Rust blocks ===
+    // First, check all setup sections together (import, declare, helpers, init)
+    let rust_setup_blocks: Vec<_> = blocks
+        .iter()
+        .filter(|b| b.lang == Lang::Rust)
+        .filter(|b| {
+            matches!(
+                b.block_type,
+                BlockType::SetupImport |
+                    BlockType::SetupDeclare |
+                    BlockType::SetupHelpers |
+                    BlockType::SetupInit
+            )
+        })
+        .collect();
+
+    if !rust_setup_blocks.is_empty() {
+        result
+            .debug_messages
+            .push(format!("Checking {} Rust setup blocks combined", rust_setup_blocks.len()));
+        let setup_diags = rust_bridge::check_rust_setup_combined(
+            &rust_setup_blocks,
+            &rust_context,
+            config.rust_project_root.as_deref(),
+        );
+        result.debug_messages.push(format!("  -> {} diagnostics from Rust setup", setup_diags.len()));
+        result.rust_blocks_checked += rust_setup_blocks.len();
+        for diag in setup_diags {
+            result.diagnostics.push(convert_diagnostic(doc, &diag));
+        }
+    }
+
+    // Check non-setup Rust blocks (fixtures, benchmarks, hooks, etc.) individually with context
+    let rust_other_blocks: Vec<_> = blocks
+        .iter()
+        .filter(|b| b.lang == Lang::Rust)
+        .filter(|b| {
+            !matches!(
+                b.block_type,
+                BlockType::SetupImport |
+                    BlockType::SetupDeclare |
+                    BlockType::SetupHelpers |
+                    BlockType::SetupInit
+            )
+        })
+        .collect();
+
+    for block in &rust_other_blocks {
+        result.debug_messages.push(format!("Checking Rust {:?} block", block.block_type));
+        let rust_diags =
+            rust_bridge::check_rust_block(block, &rust_context, config.rust_project_root.as_deref());
+        result.debug_messages.push(format!("  -> {} diagnostics", rust_diags.len()));
+        result.rust_blocks_checked += 1;
+        for diag in rust_diags {
             result.diagnostics.push(convert_diagnostic(doc, &diag));
         }
     }

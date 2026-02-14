@@ -259,6 +259,61 @@ impl VirtualFile for VirtualTsFile {
 }
 
 // =============================================================================
+// Rust Virtual Files
+// =============================================================================
+
+/// A virtual Rust file generated from embedded blocks
+#[derive(Debug, Clone)]
+pub struct VirtualRustFile(VirtualFileData);
+
+impl VirtualRustFile {
+    /// Create a new virtual Rust file from embedded blocks
+    pub fn from_blocks(
+        bench_uri: &str,
+        bench_path: &str,
+        rust_project_root: &str,
+        blocks: &[&EmbeddedBlock],
+        version: i32,
+    ) -> Self {
+        let mut builder =
+            VirtualFileBuilder::new_rust(bench_uri, bench_path, rust_project_root, version);
+        builder.build_rust(blocks);
+        Self(builder.finish())
+    }
+
+    /// Translate bench offset to Rust position (convenience method)
+    pub fn bench_to_rust(&self, bench_offset: usize) -> Option<Position> {
+        self.bench_to_virtual(bench_offset)
+    }
+
+    /// Translate Rust position to bench offset (convenience method)
+    pub fn rust_to_bench(&self, line: u32, character: u32) -> Option<usize> {
+        self.virtual_to_bench(line, character)
+    }
+}
+
+impl VirtualFile for VirtualRustFile {
+    fn uri(&self) -> &str {
+        &self.0.uri
+    }
+    fn path(&self) -> &str {
+        &self.0.path
+    }
+    fn content(&self) -> &str {
+        &self.0.content
+    }
+    fn version(&self) -> i32 {
+        self.0.version
+    }
+    fn section_mappings(&self) -> &[SectionMapping] {
+        &self.0.section_mappings
+    }
+    fn bench_uri(&self) -> &str {
+        &self.0.bench_uri
+    }
+}
+
+// =============================================================================
 // Unified Builder
 // =============================================================================
 
@@ -303,6 +358,30 @@ impl VirtualFileBuilder {
 
         let filename = format!("polybench_virtual_{:016x}.ts", hash);
         let path = Path::new(ts_module_root).join(&filename);
+        let path_str = path.to_string_lossy().to_string();
+        let uri = format!("file://{}", path_str);
+
+        Self {
+            bench_uri: bench_uri.to_string(),
+            uri,
+            path: path_str,
+            content: String::new(),
+            version,
+            current_line: 0,
+            section_mappings: Vec::new(),
+        }
+    }
+
+    fn new_rust(bench_uri: &str, bench_path: &str, rust_project_root: &str, version: i32) -> Self {
+        let mut hasher = DefaultHasher::new();
+        bench_path.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        // Place virtual files in src/bin/ so they're recognized as binary targets by rust-analyzer
+        // This allows rust-analyzer to resolve dependencies from Cargo.toml
+        let subdir = Path::new(rust_project_root).join("src/bin");
+        let filename = format!("_lsp_virtual_{:016x}.rs", hash);
+        let path = subdir.join(&filename);
         let path_str = path.to_string_lossy().to_string();
         let uri = format!("file://{}", path_str);
 
@@ -397,6 +476,54 @@ impl VirtualFileBuilder {
             self.write_line("}");
             self.write_line("");
         }
+    }
+
+    fn build_rust(&mut self, blocks: &[&EmbeddedBlock]) {
+        let (imports, declares, helpers, inits, other) = Self::categorize_blocks(blocks);
+
+        // Rust header with allow attributes to suppress warnings
+        self.write_line("#![allow(unused_imports, unused_variables, dead_code, unused_mut)]");
+        self.write_line("");
+
+        // Imports (use statements)
+        for block in &imports {
+            self.add_block_content(block);
+            self.write_line("");
+        }
+
+        // Declarations (statics, consts, types)
+        for block in &declares {
+            self.add_block_content(block);
+            self.write_line("");
+        }
+
+        // Helpers (functions)
+        for block in &helpers {
+            self.add_block_content(block);
+            self.write_line("");
+        }
+
+        // Init code wrapped in function
+        if !inits.is_empty() {
+            self.write_line("fn __polybench_init() {");
+            for block in &inits {
+                self.add_block_content(block);
+            }
+            self.write_line("}");
+            self.write_line("");
+        }
+
+        // Other blocks wrapped in Rust functions
+        for (i, block) in other.iter().enumerate() {
+            let func_name = Self::func_name_for_block(block.block_type, i);
+            self.write_line(&format!("fn {}() {{", func_name));
+            self.add_block_content(block);
+            self.write_line("}");
+            self.write_line("");
+        }
+
+        // Add main function to make it a valid Rust program
+        self.write_line("fn main() {}");
     }
 
     fn categorize_blocks<'a>(
@@ -602,6 +729,82 @@ impl VirtualTsFileManager {
 }
 
 impl Default for VirtualTsFileManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Manager for virtual Rust files
+pub struct VirtualRustFileManager {
+    files: dashmap::DashMap<String, VirtualRustFile>,
+    initialized_roots: dashmap::DashMap<String, ()>,
+}
+
+impl VirtualRustFileManager {
+    pub fn new() -> Self {
+        Self {
+            files: dashmap::DashMap::new(),
+            initialized_roots: dashmap::DashMap::new(),
+        }
+    }
+
+    /// Ensure the virtual file directory exists
+    fn ensure_project_setup(&self, rust_project_root: &str) {
+        if self.initialized_roots.contains_key(rust_project_root) {
+            return;
+        }
+
+        // Create src/bin/ directory for virtual files
+        // Files in src/bin/*.rs are auto-discovered as binary targets by Cargo/rust-analyzer
+        let virtual_dir = Path::new(rust_project_root).join("src/bin");
+        let _ = std::fs::create_dir_all(&virtual_dir);
+
+        self.initialized_roots.insert(rust_project_root.to_string(), ());
+    }
+
+    pub fn get_or_create(
+        &self,
+        bench_uri: &str,
+        bench_path: &str,
+        rust_project_root: &str,
+        blocks: &[&EmbeddedBlock],
+        version: i32,
+    ) -> VirtualRustFile {
+        self.ensure_project_setup(rust_project_root);
+
+        if let Some(existing) = self.files.get(bench_uri) {
+            if existing.version() >= version {
+                return existing.clone();
+            }
+        }
+
+        let virtual_file =
+            VirtualRustFile::from_blocks(bench_uri, bench_path, rust_project_root, blocks, version);
+
+        // Ensure directory exists and write file
+        if let Some(parent) = Path::new(virtual_file.path()).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Err(e) = std::fs::write(virtual_file.path(), virtual_file.content()) {
+            eprintln!("[rust-analyzer] Failed to write virtual file: {}", e);
+        }
+
+        self.files.insert(bench_uri.to_string(), virtual_file.clone());
+        virtual_file
+    }
+
+    pub fn remove(&self, bench_uri: &str) {
+        if let Some((_, vf)) = self.files.remove(bench_uri) {
+            let _ = std::fs::remove_file(vf.path());
+        }
+    }
+
+    pub fn get(&self, bench_uri: &str) -> Option<VirtualRustFile> {
+        self.files.get(bench_uri).map(|r| r.clone())
+    }
+}
+
+impl Default for VirtualRustFileManager {
     fn default() -> Self {
         Self::new()
     }

@@ -22,6 +22,10 @@ pub struct Manifest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ts: Option<TsConfig>,
 
+    /// Rust-specific configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rust: Option<RustConfig>,
+
     /// Output configuration
     #[serde(default)]
     pub output: OutputConfig,
@@ -115,6 +119,92 @@ fn default_ts_runtime() -> String {
     "node".to_string()
 }
 
+/// Rust-specific configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RustConfig {
+    /// Rust edition (e.g., "2021")
+    #[serde(default = "default_rust_edition")]
+    pub edition: String,
+
+    /// Cargo dependencies - supports both simple strings and tables with features
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub dependencies: HashMap<String, RustDependency>,
+}
+
+fn default_rust_edition() -> String {
+    "2021".to_string()
+}
+
+/// Rust dependency specification - supports both simple version strings and detailed specs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RustDependency {
+    /// Simple version string: `serde = "1.0"`
+    Simple(String),
+    /// Detailed specification: `tiny-keccak = { version = "2.0", features = ["keccak"] }`
+    Detailed(RustDependencyDetail),
+}
+
+impl RustDependency {
+    /// Get the version string
+    pub fn version(&self) -> &str {
+        match self {
+            RustDependency::Simple(v) => v,
+            RustDependency::Detailed(d) => &d.version,
+        }
+    }
+
+    /// Get optional features
+    pub fn features(&self) -> Option<&[String]> {
+        match self {
+            RustDependency::Simple(_) => None,
+            RustDependency::Detailed(d) => d.features.as_deref(),
+        }
+    }
+
+    /// Convert to Cargo.toml format string
+    pub fn to_cargo_toml_value(&self) -> String {
+        match self {
+            RustDependency::Simple(v) => format!("\"{}\"", v),
+            RustDependency::Detailed(d) => {
+                let mut parts = vec![format!("version = \"{}\"", d.version)];
+                if let Some(features) = &d.features {
+                    let features_str: Vec<String> =
+                        features.iter().map(|f| format!("\"{}\"", f)).collect();
+                    parts.push(format!("features = [{}]", features_str.join(", ")));
+                }
+                if let Some(default_features) = d.default_features {
+                    if !default_features {
+                        parts.push("default-features = false".to_string());
+                    }
+                }
+                if let Some(optional) = d.optional {
+                    if optional {
+                        parts.push("optional = true".to_string());
+                    }
+                }
+                format!("{{ {} }}", parts.join(", "))
+            }
+        }
+    }
+}
+
+/// Detailed Rust dependency specification
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RustDependencyDetail {
+    /// Version requirement
+    pub version: String,
+    /// Optional features to enable
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub features: Option<Vec<String>>,
+    /// Whether to use default features (defaults to true)
+    #[serde(skip_serializing_if = "Option::is_none", rename = "default-features")]
+    pub default_features: Option<bool>,
+    /// Whether this dependency is optional
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub optional: Option<bool>,
+}
+
 /// Output configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutputConfig {
@@ -154,6 +244,7 @@ impl Manifest {
     pub fn new(name: &str, languages: &[String]) -> Self {
         let has_go = languages.iter().any(|l| l == "go");
         let has_ts = languages.iter().any(|l| l == "ts" || l == "typescript");
+        let has_rust = languages.iter().any(|l| l == "rust" || l == "rs");
 
         Self {
             project: ProjectConfig {
@@ -176,6 +267,14 @@ impl Manifest {
             } else {
                 None
             },
+            rust: if has_rust {
+                Some(RustConfig {
+                    edition: default_rust_edition(),
+                    dependencies: HashMap::new(),
+                })
+            } else {
+                None
+            },
             output: OutputConfig::default(),
         }
     }
@@ -190,6 +289,11 @@ impl Manifest {
         self.ts.is_some()
     }
 
+    /// Check if Rust is enabled
+    pub fn has_rust(&self) -> bool {
+        self.rust.is_some()
+    }
+
     /// Get enabled languages
     pub fn enabled_languages(&self) -> Vec<String> {
         let mut langs = Vec::new();
@@ -198,6 +302,9 @@ impl Manifest {
         }
         if self.has_ts() {
             langs.push("ts".to_string());
+        }
+        if self.has_rust() {
+            langs.push("rust".to_string());
         }
         langs
     }
@@ -217,6 +324,17 @@ impl Manifest {
             .as_mut()
             .ok_or_else(|| miette::miette!("TypeScript is not enabled in this project"))?;
         ts.dependencies.insert(package.to_string(), version.to_string());
+        Ok(())
+    }
+
+    /// Add a Rust dependency
+    pub fn add_rust_dependency(&mut self, crate_name: &str, version: &str) -> Result<()> {
+        let rust = self
+            .rust
+            .as_mut()
+            .ok_or_else(|| miette::miette!("Rust is not enabled in this project"))?;
+        rust.dependencies
+            .insert(crate_name.to_string(), RustDependency::Simple(version.to_string()));
         Ok(())
     }
 }
@@ -252,6 +370,21 @@ mod tests {
         assert_eq!(manifest.project.name, "my-project");
         assert!(manifest.has_go());
         assert!(manifest.has_ts());
+        assert!(!manifest.has_rust());
+    }
+
+    #[test]
+    fn test_manifest_new_with_rust() {
+        let manifest = Manifest::new(
+            "my-project",
+            &["go".to_string(), "ts".to_string(), "rust".to_string()],
+        );
+
+        assert_eq!(manifest.project.name, "my-project");
+        assert!(manifest.has_go());
+        assert!(manifest.has_ts());
+        assert!(manifest.has_rust());
+        assert_eq!(manifest.rust.as_ref().unwrap().edition, "2021");
     }
 
     #[test]
@@ -263,14 +396,32 @@ mod tests {
         assert_eq!(parsed.project.name, "test-project");
         assert!(parsed.has_go());
         assert!(!parsed.has_ts());
+        assert!(!parsed.has_rust());
+    }
+
+    #[test]
+    fn test_manifest_roundtrip_rust() {
+        let manifest = Manifest::new("test-project", &["rust".to_string()]);
+        let toml_str = toml::to_string_pretty(&manifest).unwrap();
+        let parsed: Manifest = toml::from_str(&toml_str).unwrap();
+
+        assert_eq!(parsed.project.name, "test-project");
+        assert!(!parsed.has_go());
+        assert!(!parsed.has_ts());
+        assert!(parsed.has_rust());
+        assert_eq!(parsed.rust.as_ref().unwrap().edition, "2021");
     }
 
     #[test]
     fn test_add_dependency() {
-        let mut manifest = Manifest::new("test", &["go".to_string(), "ts".to_string()]);
+        let mut manifest = Manifest::new(
+            "test",
+            &["go".to_string(), "ts".to_string(), "rust".to_string()],
+        );
 
         manifest.add_go_dependency("github.com/pkg/errors", "v0.9.1").unwrap();
         manifest.add_ts_dependency("viem", "^2.0.0").unwrap();
+        manifest.add_rust_dependency("serde", "1.0").unwrap();
 
         assert_eq!(
             manifest.go.as_ref().unwrap().dependencies.get("github.com/pkg/errors"),
@@ -279,6 +430,16 @@ mod tests {
         assert_eq!(
             manifest.ts.as_ref().unwrap().dependencies.get("viem"),
             Some(&"^2.0.0".to_string())
+        );
+        assert_eq!(
+            manifest
+                .rust
+                .as_ref()
+                .unwrap()
+                .dependencies
+                .get("serde")
+                .map(|d| d.version()),
+            Some("1.0")
         );
     }
 }

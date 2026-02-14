@@ -1,16 +1,22 @@
 //! Template strings for generated project files
 
 /// Generate the example.bench file content
-pub fn example_bench(has_go: bool, has_ts: bool) -> String {
+pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool) -> String {
     let mut content = String::new();
 
     content.push_str("suite example {\n");
     content.push_str("    description: \"Example benchmark to get you started\"\n");
     content.push_str("    iterations: 50\n");
     content.push_str("    warmup: 100\n");
-    if has_go && has_ts {
+    // Enable comparison if more than one language
+    let lang_count = has_go as i32 + has_ts as i32 + has_rust as i32;
+    if lang_count > 1 {
         content.push_str("    compare: true\n");
-        content.push_str("    baseline: \"go\"\n");
+        if has_go {
+            content.push_str("    baseline: \"go\"\n");
+        } else if has_rust {
+            content.push_str("    baseline: \"rust\"\n");
+        }
     }
     content.push('\n');
 
@@ -53,6 +59,26 @@ pub fn example_bench(has_go: bool, has_ts: bool) -> String {
         content.push('\n');
     }
 
+    if has_rust {
+        content.push_str("    setup rust {\n");
+        content.push_str("        import {\n");
+        content.push_str("            use sha2::{Sha256, Digest};\n");
+        content.push_str("        }\n");
+        content.push('\n');
+        content.push_str("        init {\n");
+        content.push_str("        }\n");
+        content.push('\n');
+        content.push_str("        helpers {\n");
+        content.push_str("            fn sha256_sum_rust(data: &[u8]) -> [u8; 32] {\n");
+        content.push_str("                let mut hasher = Sha256::new();\n");
+        content.push_str("                hasher.update(data);\n");
+        content.push_str("                hasher.finalize().into()\n");
+        content.push_str("            }\n");
+        content.push_str("        }\n");
+        content.push_str("    }\n");
+        content.push('\n');
+    }
+
     // Fixture
     content.push_str("    fixture data {\n");
     content.push_str("        hex: \"68656c6c6f20776f726c64\"\n");
@@ -67,11 +93,14 @@ pub fn example_bench(has_go: bool, has_ts: bool) -> String {
     if has_ts {
         content.push_str("        ts: sha256SumTs(data)\n");
     }
+    if has_rust {
+        content.push_str("        rust: sha256_sum_rust(&data)\n");
+    }
     content.push_str("    }\n");
     content.push('\n');
 
     // Charting example (commented out)
-    if has_go && has_ts {
+    if lang_count > 1 {
         content.push_str("    # Generate a bar chart after benchmarks complete:\n");
         content.push_str("    # after {\n");
         content.push_str("    #     charting.drawBarChart(\n");
@@ -88,16 +117,21 @@ pub fn example_bench(has_go: bool, has_ts: bool) -> String {
 }
 
 /// Generate a new benchmark file template
-pub fn new_bench(name: &str, has_go: bool, has_ts: bool) -> String {
+pub fn new_bench(name: &str, has_go: bool, has_ts: bool, has_rust: bool) -> String {
     let mut content = String::new();
 
     content.push_str(&format!("suite {} {{\n", name));
     content.push_str(&format!("    description: \"{} benchmarks\"\n", name));
     content.push_str("    iterations: 50\n");
     content.push_str("    warmup: 100\n");
-    if has_go && has_ts {
+    let lang_count = has_go as i32 + has_ts as i32 + has_rust as i32;
+    if lang_count > 1 {
         content.push_str("    compare: true\n");
-        content.push_str("    baseline: \"go\"\n");
+        if has_go {
+            content.push_str("    baseline: \"go\"\n");
+        } else if has_rust {
+            content.push_str("    baseline: \"rust\"\n");
+        }
     }
     content.push('\n');
 
@@ -136,6 +170,23 @@ pub fn new_bench(name: &str, has_go: bool, has_ts: bool) -> String {
         content.push('\n');
     }
 
+    if has_rust {
+        content.push_str("    setup rust {\n");
+        content.push_str("        import {\n");
+        content.push_str("            // Add your Rust use statements here\n");
+        content.push_str("        }\n");
+        content.push('\n');
+        content.push_str("        init {\n");
+        content.push_str("            // Initialize variables, parse data, etc.\n");
+        content.push_str("        }\n");
+        content.push('\n');
+        content.push_str("        helpers {\n");
+        content.push_str("            // Define helper functions here\n");
+        content.push_str("        }\n");
+        content.push_str("    }\n");
+        content.push('\n');
+    }
+
     // Fixture placeholder
     content.push_str("    # Define fixtures with hex data for portability:\n");
     content.push_str("    # fixture myData {\n");
@@ -151,6 +202,9 @@ pub fn new_bench(name: &str, has_go: bool, has_ts: bool) -> String {
     }
     if has_ts {
         content.push_str("    #     ts: myHelperFunction(myData)\n");
+    }
+    if has_rust {
+        content.push_str("    #     rust: my_helper_function(&my_data)\n");
     }
     content.push_str("    # }\n");
 
@@ -205,6 +259,33 @@ pub fn package_json_pretty(name: &str) -> String {
     .unwrap_or_else(|_| package_json(name))
 }
 
+/// Generate Cargo.toml content for Rust runtime environment
+pub fn cargo_toml(name: &str, edition: &str) -> String {
+    format!(
+        r#"[package]
+name = "{}"
+version = "0.1.0"
+edition = "{}"
+default-run = "{}"
+
+# Mark this as a standalone workspace to avoid being included in parent workspaces
+[workspace]
+
+[dependencies]
+serde = {{ version = "1", features = ["derive"] }}
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+"#,
+        name.replace('-', "_"),
+        edition,
+        name.replace('-', "_")
+    )
+}
+
 /// Generate tsconfig.json content for TypeScript runtime environment
 pub fn tsconfig_json() -> String {
     r#"{
@@ -241,6 +322,10 @@ out/
 *.so
 *.dylib
 
+# Rust
+target/
+Cargo.lock
+
 # Node.js
 node_modules/
 npm-debug.log*
@@ -261,7 +346,7 @@ Thumbs.db
 }
 
 /// Generate README.md content
-pub fn readme(name: &str, has_go: bool, has_ts: bool) -> String {
+pub fn readme(name: &str, has_go: bool, has_ts: bool, has_rust: bool) -> String {
     let mut content = String::new();
 
     content.push_str(&format!("# {}\n\n", name));
@@ -297,6 +382,11 @@ pub fn readme(name: &str, has_go: bool, has_ts: bool) -> String {
             "        └── ts/           # package.json, node_modules, generated bench code\n",
         );
     }
+    if has_rust {
+        content.push_str(
+            "        └── rust/         # Cargo.toml, target/, generated bench code\n",
+        );
+    }
     content.push_str("```\n\n");
 
     content.push_str("## Adding Dependencies\n\n");
@@ -312,6 +402,13 @@ pub fn readme(name: &str, has_go: bool, has_ts: bool) -> String {
         content.push_str("### TypeScript\n\n");
         content.push_str("```bash\n");
         content.push_str("poly-bench add --ts \"viem@^2.0.0\"\n");
+        content.push_str("```\n\n");
+    }
+
+    if has_rust {
+        content.push_str("### Rust\n\n");
+        content.push_str("```bash\n");
+        content.push_str("poly-bench add --rs \"sha2@0.10\"\n");
         content.push_str("```\n\n");
     }
 
@@ -341,6 +438,12 @@ pub fn readme(name: &str, has_go: bool, has_ts: bool) -> String {
         content.push_str("    }\n");
         content.push_str("\n");
     }
+    if has_rust {
+        content.push_str("    setup rust {\n");
+        content.push_str("        use my_crate::my_func;\n");
+        content.push_str("    }\n");
+        content.push_str("\n");
+    }
     content.push_str("    fixture data {\n");
     content.push_str("        hex: \"68656c6c6f\"  // Binary data as hex\n");
     content.push_str("    }\n");
@@ -351,6 +454,9 @@ pub fn readme(name: &str, has_go: bool, has_ts: bool) -> String {
     }
     if has_ts {
         content.push_str("        ts: myFunc(data)\n");
+    }
+    if has_rust {
+        content.push_str("        rust: my_func(&data)\n");
     }
     content.push_str("    }\n");
     content.push_str("}\n");
@@ -365,7 +471,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_both_languages() {
-        let content = example_bench(true, true);
+        let content = example_bench(true, true, false);
         assert!(content.contains("setup go"));
         assert!(content.contains("setup ts"));
         assert!(content.contains("sha256SumGo(data)"));
@@ -377,9 +483,32 @@ mod tests {
 
     #[test]
     fn test_example_bench_go_only() {
-        let content = example_bench(true, false);
+        let content = example_bench(true, false, false);
         assert!(content.contains("setup go"));
         assert!(!content.contains("setup ts"));
+        assert!(!content.contains("compare: true")); // No comparison with single language
+    }
+
+    #[test]
+    fn test_example_bench_all_languages() {
+        let content = example_bench(true, true, true);
+        assert!(content.contains("setup go"));
+        assert!(content.contains("setup ts"));
+        assert!(content.contains("setup rust"));
+        assert!(content.contains("sha256SumGo(data)"));
+        assert!(content.contains("sha256SumTs(data)"));
+        assert!(content.contains("sha256_sum_rust(&data)"));
+        assert!(content.contains("compare: true"));
+        assert!(content.contains("baseline: \"go\""));
+    }
+
+    #[test]
+    fn test_example_bench_rust_only() {
+        let content = example_bench(false, false, true);
+        assert!(!content.contains("setup go"));
+        assert!(!content.contains("setup ts"));
+        assert!(content.contains("setup rust"));
+        assert!(content.contains("sha256_sum_rust(&data)"));
         assert!(!content.contains("compare: true")); // No comparison with single language
     }
 
@@ -398,6 +527,20 @@ mod tests {
         assert!(content.contains("@types/node"));
         assert!(content.contains("typescript"));
         assert!(content.contains("devDependencies"));
+    }
+
+    #[test]
+    fn test_cargo_toml() {
+        let content = cargo_toml("my-project", "2021");
+        assert!(content.contains("name = \"my_project\""));
+        assert!(content.contains("edition = \"2021\""));
+        assert!(content.contains("serde"));
+        assert!(content.contains("serde_json"));
+        // Verify release profile optimizations are included
+        assert!(content.contains("[profile.release]"));
+        assert!(content.contains("opt-level = 3"));
+        assert!(content.contains("lto = true"));
+        assert!(content.contains("codegen-units = 1"));
     }
 
     #[test]

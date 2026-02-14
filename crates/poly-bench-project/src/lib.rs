@@ -30,6 +30,8 @@ pub const RUNTIME_ENV_DIR: &str = ".polybench/runtime-env";
 pub const RUNTIME_ENV_GO: &str = "go";
 /// TypeScript/Node runtime env subdir (package.json, node_modules, generated bench code)
 pub const RUNTIME_ENV_TS: &str = "ts";
+/// Rust runtime env subdir (Cargo.toml, Cargo.lock, generated bench code)
+pub const RUNTIME_ENV_RUST: &str = "rust";
 
 /// Path to the Go runtime env for a project (where go.mod and deps live)
 pub fn runtime_env_go(project_root: &Path) -> PathBuf {
@@ -39,6 +41,11 @@ pub fn runtime_env_go(project_root: &Path) -> PathBuf {
 /// Path to the TypeScript runtime env for a project
 pub fn runtime_env_ts(project_root: &Path) -> PathBuf {
     project_root.join(RUNTIME_ENV_DIR).join(RUNTIME_ENV_TS)
+}
+
+/// Path to the Rust runtime env for a project
+pub fn runtime_env_rust(project_root: &Path) -> PathBuf {
+    project_root.join(RUNTIME_ENV_DIR).join(RUNTIME_ENV_RUST)
 }
 
 /// True if path looks like a runtime-env root (e.g. .../runtime-env/go)
