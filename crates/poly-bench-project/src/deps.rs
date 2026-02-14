@@ -184,6 +184,11 @@ pub fn add_ts_dependency(spec: &str) -> Result<()> {
 
 /// Add a Rust dependency to the project
 pub fn add_rust_dependency(spec: &str) -> Result<()> {
+    add_rust_dependency_with_features(spec, None)
+}
+
+/// Add a Rust dependency with optional features to the project
+pub fn add_rust_dependency_with_features(spec: &str, features: Option<&[String]>) -> Result<()> {
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
 
@@ -198,26 +203,41 @@ pub fn add_rust_dependency(spec: &str) -> Result<()> {
 
     let (crate_name, version) = parse_dep_spec(spec);
 
-    // Add to manifest
-    manifest.add_rust_dependency(&crate_name, &version)?;
-    crate::save_manifest(&project_root, &manifest)?;
-
     let rust_root = resolve_rust_root(&project_root);
     ensure_rust_env(&rust_root, manifest.rust.as_ref().unwrap(), &manifest.project.name)?;
 
-    // Use cargo add for dependency installation
+    // Use cargo add for dependency installation - it resolves "latest" automatically
     let cargo_spec = if version == "latest" {
         crate_name.clone()
     } else {
         format!("{}@{}", crate_name, version)
     };
 
-    let spinner = terminal::step_spinner(&format!("Installing {}...", cargo_spec));
+    let display_spec = if let Some(feats) = features {
+        if !feats.is_empty() {
+            format!("{} --features {}", cargo_spec, feats.join(","))
+        } else {
+            cargo_spec.clone()
+        }
+    } else {
+        cargo_spec.clone()
+    };
+
+    let spinner = terminal::step_spinner(&format!("Installing {}...", display_spec));
+
+    // Build cargo add args
+    let mut args = vec!["add".to_string(), cargo_spec.clone()];
+    if let Some(feats) = features {
+        if !feats.is_empty() {
+            args.push("--features".to_string());
+            args.push(feats.join(","));
+        }
+    }
 
     let output = terminal::run_command_with_spinner(
         &spinner,
         Command::new("cargo")
-            .args(["add", &cargo_spec])
+            .args(&args)
             .current_dir(&rust_root),
     )
     .map_err(|e| miette::miette!("Failed to run cargo add: {}", e))?;
@@ -228,12 +248,67 @@ pub fn add_rust_dependency(spec: &str) -> Result<()> {
         return Err(miette::miette!("cargo add failed"));
     }
 
+    // Read the resolved version from Cargo.toml
+    let resolved_version = read_cargo_dep_version(&rust_root, &crate_name)
+        .unwrap_or_else(|| version.clone());
+
+    // Add to manifest with features if specified
+    if let Some(feats) = features {
+        if !feats.is_empty() {
+            manifest.add_rust_dependency_with_features(&crate_name, &resolved_version, feats)?;
+        } else {
+            manifest.add_rust_dependency(&crate_name, &resolved_version)?;
+        }
+    } else {
+        manifest.add_rust_dependency(&crate_name, &resolved_version)?;
+    }
+    crate::save_manifest(&project_root, &manifest)?;
+
+    let feature_suffix = if let Some(feats) = features {
+        if !feats.is_empty() {
+            format!(" with features [{}]", feats.join(", "))
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+
     terminal::finish_success(
         &spinner,
-        &format!("Added {}@{} to polybench.toml", crate_name, version),
+        &format!("Added {}@{}{} to polybench.toml", crate_name, resolved_version, feature_suffix),
     );
 
     Ok(())
+}
+
+/// Read a dependency version from Cargo.toml
+fn read_cargo_dep_version(rust_root: &Path, crate_name: &str) -> Option<String> {
+    let cargo_toml_path = rust_root.join("Cargo.toml");
+    let content = std::fs::read_to_string(&cargo_toml_path).ok()?;
+    let doc: toml_edit::DocumentMut = content.parse().ok()?;
+
+    let deps = doc.get("dependencies")?.as_table()?;
+    let dep = deps.get(crate_name)?;
+
+    // Handle both simple string and inline table formats
+    if let Some(version) = dep.as_str() {
+        return Some(version.to_string());
+    }
+
+    if let Some(table) = dep.as_inline_table() {
+        if let Some(version) = table.get("version").and_then(|v| v.as_str()) {
+            return Some(version.to_string());
+        }
+    }
+
+    if let Some(table) = dep.as_table() {
+        if let Some(version) = table.get("version").and_then(|v| v.as_str()) {
+            return Some(version.to_string());
+        }
+    }
+
+    None
 }
 
 /// Ensure Cargo.toml exists in rust_root
@@ -468,46 +543,48 @@ fn install_rust_deps(
     Ok(())
 }
 
-/// Update Cargo.toml with dependencies from the manifest
+/// Update Cargo.toml with dependencies from the manifest using cargo add
 fn update_cargo_toml_deps(rust_root: &Path, rust_config: &manifest::RustConfig) -> Result<()> {
-    let cargo_toml_path = rust_root.join("Cargo.toml");
-    let content = std::fs::read_to_string(&cargo_toml_path)
-        .map_err(|e| miette::miette!("Failed to read Cargo.toml: {}", e))?;
+    for (name, dep) in &rust_config.dependencies {
+        let version = dep.version();
 
-    let mut doc: toml_edit::DocumentMut = content
-        .parse()
-        .map_err(|e| miette::miette!("Failed to parse Cargo.toml: {}", e))?;
+        // Build cargo add arguments
+        let mut args = vec!["add".to_string()];
 
-    // Ensure dependencies table exists
-    if doc.get("dependencies").is_none() {
-        doc["dependencies"] = toml_edit::Item::Table(toml_edit::Table::new());
-    }
+        // If version is "latest", just use the crate name; otherwise use name@version
+        if version == "latest" {
+            args.push(name.clone());
+        } else {
+            args.push(format!("{}@{}", name, version));
+        }
 
-    // Add dependencies from manifest
-    if let Some(deps) = doc["dependencies"].as_table_mut() {
-        for (name, dep) in &rust_config.dependencies {
-            // Parse the cargo toml value string into a proper toml_edit item
-            let dep_value = dep.to_cargo_toml_value();
-            // Simple version string
-            if dep_value.starts_with('"') {
-                deps[name] = toml_edit::value(dep.version());
-            } else {
-                // Inline table for detailed dependencies
-                let parsed: toml_edit::DocumentMut = format!("{} = {}", name, dep_value)
-                    .parse()
-                    .unwrap_or_else(|_| {
-                        // Fallback to simple version
-                        format!("{} = \"{}\"", name, dep.version()).parse().unwrap()
-                    });
-                if let Some(item) = parsed.get(name) {
-                    deps[name] = item.clone();
-                }
+        // Add features if present
+        if let Some(features) = dep.features() {
+            if !features.is_empty() {
+                args.push("--features".to_string());
+                args.push(features.join(","));
+            }
+        }
+
+        // Run cargo add
+        let output = Command::new("cargo")
+            .args(&args)
+            .current_dir(rust_root)
+            .output()
+            .map_err(|e| miette::miette!("Failed to run cargo add: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            // Don't fail if the dependency already exists with same version
+            if !stderr.contains("already present") {
+                return Err(miette::miette!(
+                    "cargo add {} failed: {}",
+                    name,
+                    stderr.lines().next().unwrap_or("unknown error")
+                ));
             }
         }
     }
-
-    std::fs::write(&cargo_toml_path, doc.to_string())
-        .map_err(|e| miette::miette!("Failed to write Cargo.toml: {}", e))?;
 
     Ok(())
 }

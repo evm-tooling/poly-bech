@@ -1,36 +1,68 @@
-suite example {
-    description: "Example benchmark to get you started"
-    iterations: 50
+use std::charting
+
+suite keccakT {
+    description: "Keccak256 benchmark - Rust should win here"
     warmup: 100
     compare: true
     baseline: "go"
+    mode: "auto"
+    targetTime: 3000ms
+    count: 3
 
     setup go {
         import (
-            "crypto/sha256"
+        "golang.org/x/crypto/sha3"
         )
 
         init {
+
+
+
         }
 
         helpers {
-            func sha256SumGo(data []byte) [32]byte {
-                return sha256.Sum256(data)
+            func keccak256Go(data []byte) []byte {
+                h := sha3.NewLegacyKeccak256()
+                h.Write(data)
+                return h.Sum(nil)
             }
         }
     }
 
     setup ts {
         import {
-            import { createHash } from 'node:crypto';
+            import { keccak256 } from 'viem';
         }
 
         init {
+
+
         }
 
         helpers {
-            function sha256SumTs(data: Uint8Array): Buffer {
-                return createHash('sha256').update(Buffer.from(data)).digest()
+            function keccak256Ts(data: Uint8Array): Uint8Array {
+                return keccak256(data, 'bytes')
+            }
+        }
+    }
+
+    setup rust {
+        import {
+            use tiny_keccak::{Hasher, Keccak};
+        }
+
+        init {
+
+
+        }
+
+        helpers {
+            fn keccak256_rust(data: &[u8]) -> [u8; 32] {
+                let mut hasher = Keccak::v256();
+                let mut output = [0u8; 32];
+                hasher.update(data);
+                hasher.finalize(&mut output);
+                output
             }
         }
     }
@@ -39,17 +71,18 @@ suite example {
         hex: "68656c6c6f20776f726c64"
     }
 
-    bench sha256Bench {
-        go: sha256SumGo(data)
-        ts: sha256SumTs(data)
+    bench keccak256Bench {
+        go: keccak256Go(data)
+        ts: keccak256Ts(data)
+        rust: keccak256_rust(&data)
     }
 
-    # Generate a bar chart after benchmarks complete:
-    # after {
-    #     charting.drawBarChart(
-    #         title: "SHA256 Performance",
-    #         xlabel: "Time (ns)",
-    #         ylabel: "Benchmark"
-    #     )
-    # }
+    after {
+        charting.drawBarChart(
+            title: "Keccak256 Performance",
+            xlabel: "Time (ns)",
+            ylabel: "Benchmark"
+        )
+    }
+
 }

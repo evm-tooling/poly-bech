@@ -8,6 +8,7 @@ warmup = 100
 languages = [
     "go",
     "ts",
+    "rust",
 ]
 
 [go]
@@ -16,12 +17,30 @@ version = "1.21"
 
 [go.dependencies]
 "github.com/ChefBingbong/viem-go" = "latest"
+"golang.org/x/crypto/sha3" = "latest"
 
 [ts]
 runtime = "node"
 
 [ts.dependencies]
 viem = "latest"
+
+[rust]
+edition = "2021"
+
+[rust.dependencies]
+sha2 = "0.10"
+
+[rust.dependencies.tiny-keccak]
+version = "2.0"
+features = ["keccak"]
+
+[rust.dependencies.tiny_keccak]
+version = "latest"
+features = [
+    "keccak",
+    "sha3",
+]
 
 [output]
 report_formats = []

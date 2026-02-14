@@ -134,9 +134,13 @@ enum Commands {
         #[arg(long)]
         ts: Option<String>,
 
-        /// Rust crate (e.g., "sha2@0.10")
+        /// Rust crate (e.g., "sha2@0.10" or "tiny-keccak@2.0")
         #[arg(long)]
         rs: Option<String>,
+
+        /// Rust crate features (comma-separated, e.g., "keccak,sha3")
+        #[arg(long, value_delimiter = ',')]
+        features: Option<Vec<String>>,
     },
 
     /// Install dependencies from polybench.toml
@@ -219,8 +223,8 @@ async fn main() -> Result<()> {
         Commands::New { name } => {
             cmd_new(&name)?;
         }
-        Commands::Add { go, ts, rs } => {
-            cmd_add(go, ts, rs)?;
+        Commands::Add { go, ts, rs, features } => {
+            cmd_add(go, ts, rs, features)?;
         }
         Commands::Install => {
             cmd_install()?;
@@ -727,7 +731,12 @@ fn cmd_new(name: &str) -> Result<()> {
     Ok(())
 }
 
-fn cmd_add(go: Option<String>, ts: Option<String>, rs: Option<String>) -> Result<()> {
+fn cmd_add(
+    go: Option<String>,
+    ts: Option<String>,
+    rs: Option<String>,
+    features: Option<Vec<String>>,
+) -> Result<()> {
     if go.is_none() && ts.is_none() && rs.is_none() {
         return Err(miette::miette!(
             "No dependency specified. Use --go, --ts, or --rs to add a dependency."
@@ -743,7 +752,7 @@ fn cmd_add(go: Option<String>, ts: Option<String>, rs: Option<String>) -> Result
     }
 
     if let Some(ref spec) = rs {
-        project::deps::add_rust_dependency(spec)?;
+        project::deps::add_rust_dependency_with_features(spec, features.as_deref())?;
     }
 
     Ok(())
