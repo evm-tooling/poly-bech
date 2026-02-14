@@ -10,5 +10,11 @@
   "[polybench]": {
     "editor.defaultFormatter": "evm-tooling.poly-bench",
     "editor.formatOnSave": true
-  }
+  },
+
+  // Tell rust-analyzer about standalone Rust projects that aren't in the main workspace
+  "rust-analyzer.linkedProjects": [
+    "debug/rust-bench/Cargo.toml",
+    "examples/test/.polybench/runtime-env/rust/Cargo.toml"
+  ]
 }

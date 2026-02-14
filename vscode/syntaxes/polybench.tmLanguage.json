@@ -163,6 +163,9 @@
           "include": "#setup-ts-block"
         },
         {
+          "include": "#setup-rust-block"
+        },
+        {
           "include": "#fixture-block"
         },
         {
@@ -438,6 +441,32 @@
         }
       ]
     },
+    "setup-rust-block": {
+      "name": "meta.block.setup.rust.bench",
+      "begin": "\\b(setup)\\s+(rust)\\s*\\{\\s*$",
+      "end": "^(\\s{2,4})\\}\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.bench"
+        },
+        "2": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#setup-section-keywords"
+        },
+        {
+          "include": "source.rust"
+        }
+      ]
+    },
     "fixture-block": {
       "begin": "\\b(fixture)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
       "end": "^(\\s{2,4})\\}\\s*$",
@@ -466,6 +495,9 @@
         },
         {
           "include": "#fixture-ts-block"
+        },
+        {
+          "include": "#fixture-rust-block"
         },
         {
           "name": "string.quoted.double.bench",
@@ -525,10 +557,16 @@
           "include": "#bench-ts-block"
         },
         {
+          "include": "#bench-rust-block"
+        },
+        {
           "include": "#bench-go-line"
         },
         {
           "include": "#bench-ts-line"
+        },
+        {
+          "include": "#bench-rust-line"
         }
       ]
     },
@@ -646,7 +684,7 @@
     "bench-hooks": {
       "patterns": [
         {
-          "match": "\\b(skip|validate)\\s+(go|ts)\\s*:",
+          "match": "\\b(skip|validate)\\s+(go|ts|rust)\\s*:",
           "captures": {
             "1": {
               "name": "keyword.control.hook.bench"
@@ -657,7 +695,7 @@
           }
         },
         {
-          "match": "\\b(before|after|each)\\s+(go|ts)\\s*:",
+          "match": "\\b(before|after|each)\\s+(go|ts|rust)\\s*:",
           "captures": {
             "1": {
               "name": "keyword.control.hook.bench"
@@ -790,6 +828,64 @@
       "patterns": [
         {
           "include": "source.ts"
+        }
+      ]
+    },
+    "fixture-rust-block": {
+      "name": "meta.block.fixture.rust.bench",
+      "begin": "\\b(rust)\\s*:\\s*\\{\\s*$",
+      "end": "^(\\s{6,8})\\}\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "contentName": "source.rust.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.rust"
+        }
+      ]
+    },
+    "bench-rust-block": {
+      "name": "meta.block.bench.rust.bench",
+      "begin": "\\b(rust)\\s*:\\s*\\{\\s*$",
+      "end": "^(\\s{6,8})\\}\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "contentName": "source.rust.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.rust"
+        }
+      ]
+    },
+    "bench-rust-line": {
+      "name": "meta.expression.rust.bench",
+      "begin": "\\b(rust)\\s*:\\s*",
+      "end": "$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "contentName": "source.rust.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.rust"
         }
       ]
     }
