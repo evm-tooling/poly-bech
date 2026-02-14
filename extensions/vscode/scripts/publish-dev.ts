@@ -53,7 +53,7 @@ async function main() {
     process.exit(1);
   }
 
-  const root = process.cwd(); // run from vscode/ folder
+  const root = process.cwd(); // run from extensions/vscode/ folder
   const pkgPath = path.join(root, "package.json");
 
   // 1) Update package.json

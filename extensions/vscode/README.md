@@ -8,14 +8,14 @@ Adds syntax highlighting for `.bench` files:
 
 ## Install (development)
 
-1. Open the `vscode` folder in VS Code or Cursor.
+1. Open the `extensions/vscode` folder in VS Code or Cursor.
 2. Press F5 (or Run > Start Debugging) to launch a new window with the extension loaded.
 3. Open a `.bench` file to see highlighting.
 
 ## Install (from repo)
 
 1. In VS Code/Cursor: **Extensions** → **...** → **Install from VSIX** (if you built one).
-2. Or copy the `vscode` folder into your workspace and use **Developer: Install Extension from Location** with the `vscode` path.
+2. Or copy the `extensions/vscode` folder into your workspace and use **Developer: Install Extension from Location** with the `extensions/vscode` path.
 
 ## Publishing to the Marketplace
 
@@ -26,7 +26,7 @@ Adds syntax highlighting for `.bench` files:
    npm install -g @vscode/vsce
    ```
 
-3. **Build and package** (from the `vscode` folder):
+3. **Build and package** (from the `extensions/vscode` folder):
    ```bash
    npm run compile
    vsce package
