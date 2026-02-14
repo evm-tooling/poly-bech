@@ -2,7 +2,8 @@
 
 use crate::{
     manifest::{self, Manifest},
-    runtime_env_go, runtime_env_ts, templates, terminal, BENCHMARKS_DIR, MANIFEST_FILENAME,
+    runtime_env_go, runtime_env_rust, runtime_env_ts, templates, terminal, BENCHMARKS_DIR,
+    MANIFEST_FILENAME,
 };
 use miette::Result;
 use std::{path::PathBuf, process::Command};
@@ -58,12 +59,14 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         .iter()
         .map(|l| match l.as_str() {
             "typescript" => "ts".to_string(),
+            "rs" => "rust".to_string(),
             other => other.to_string(),
         })
         .collect();
 
     let has_go = languages.iter().any(|l| l == "go");
     let has_ts = languages.iter().any(|l| l == "ts");
+    let has_rust = languages.iter().any(|l| l == "rust");
 
     // Create manifest
     let manifest = Manifest::new(&project_name, &languages);
@@ -84,7 +87,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     // Create example benchmark
     if !options.no_example {
         let example_path = benchmarks_dir.join("example.bench");
-        let example_content = templates::example_bench(has_go, has_ts);
+        let example_content = templates::example_bench(has_go, has_ts, has_rust);
         std::fs::write(&example_path, example_content)
             .map_err(|e| miette::miette!("Failed to write example.bench: {}", e))?;
         if !options.quiet {
@@ -148,6 +151,28 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         }
     }
 
+    if has_rust {
+        let rust_env = runtime_env_rust(&project_dir);
+        std::fs::create_dir_all(&rust_env)
+            .map_err(|e| miette::miette!("Failed to create {}: {}", rust_env.display(), e))?;
+        let rust_edition =
+            manifest.rust.as_ref().map(|r| r.edition.as_str()).unwrap_or("2021");
+        let cargo_toml_content = templates::cargo_toml(&project_name, rust_edition);
+        std::fs::write(rust_env.join("Cargo.toml"), cargo_toml_content)
+            .map_err(|e| miette::miette!("Failed to write Cargo.toml: {}", e))?;
+
+        // Create src/main.rs placeholder
+        let src_dir = rust_env.join("src");
+        std::fs::create_dir_all(&src_dir)
+            .map_err(|e| miette::miette!("Failed to create src dir: {}", e))?;
+        std::fs::write(src_dir.join("main.rs"), "fn main() {}\n")
+            .map_err(|e| miette::miette!("Failed to write main.rs: {}", e))?;
+
+        if !options.quiet {
+            terminal::success("Created .polybench/runtime-env/rust/ (Cargo.toml, src/main.rs)");
+        }
+    }
+
     // Create .gitignore
     let gitignore_path = project_dir.join(".gitignore");
     // Append to existing .gitignore or create new one
@@ -170,7 +195,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     // Create README.md
     let readme_path = project_dir.join("README.md");
     if !readme_path.exists() {
-        let readme_content = templates::readme(&project_name, has_go, has_ts);
+        let readme_content = templates::readme(&project_name, has_go, has_ts, has_rust);
         std::fs::write(&readme_path, readme_content)
             .map_err(|e| miette::miette!("Failed to write README.md: {}", e))?;
         if !options.quiet {
@@ -208,6 +233,7 @@ pub fn new_benchmark(name: &str) -> Result<PathBuf> {
     let manifest = crate::load_manifest(&project_root)?;
     let has_go = manifest.has_go();
     let has_ts = manifest.has_ts();
+    let has_rust = manifest.has_rust();
 
     // Create benchmarks directory if it doesn't exist
     let benchmarks_dir = project_root.join(BENCHMARKS_DIR);
@@ -226,7 +252,7 @@ pub fn new_benchmark(name: &str) -> Result<PathBuf> {
         ));
     }
 
-    let content = templates::new_bench(name, has_go, has_ts);
+    let content = templates::new_bench(name, has_go, has_ts, has_rust);
     std::fs::write(&bench_path, content)
         .map_err(|e| miette::miette!("Failed to write {}: {}", bench_filename, e))?;
 

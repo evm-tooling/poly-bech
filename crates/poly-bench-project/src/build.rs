@@ -7,7 +7,7 @@
 //! Use this when the .polybench directory is deleted, corrupted, or after cloning
 //! a repo where it was gitignored.
 
-use crate::{manifest, runtime_env_go, runtime_env_ts, templates, terminal};
+use crate::{manifest, runtime_env_go, runtime_env_rust, runtime_env_ts, templates, terminal};
 use miette::Result;
 use std::{path::Path, process::Command};
 
@@ -54,6 +54,15 @@ pub fn build_project(options: &BuildOptions) -> Result<()> {
             &project_root,
             manifest.ts.as_ref().unwrap(),
             &manifest.project.name,
+            options,
+        )?;
+    }
+
+    // Build Rust environment
+    if manifest.has_rust() {
+        build_rust_env(
+            &project_root,
+            manifest.rust.as_ref().unwrap(),
             options,
         )?;
     }
@@ -218,6 +227,135 @@ fn build_ts_env(
     }
 
     terminal::success_indented("TypeScript environment ready");
+
+    Ok(())
+}
+
+/// Build/regenerate the Rust runtime environment
+fn build_rust_env(
+    project_root: &Path,
+    rust_config: &manifest::RustConfig,
+    options: &BuildOptions,
+) -> Result<()> {
+    terminal::section("Rust environment");
+
+    let rust_env = runtime_env_rust(project_root);
+
+    // Create directory structure
+    std::fs::create_dir_all(rust_env.join("src"))
+        .map_err(|e| miette::miette!("Failed to create {}/src: {}", rust_env.display(), e))?;
+
+    let cargo_toml_path = rust_env.join("Cargo.toml");
+    let cargo_toml_exists = cargo_toml_path.exists();
+
+    // Create or recreate Cargo.toml
+    if !cargo_toml_exists || options.force {
+        let cargo_toml_content = templates::cargo_toml("polybench-runner", &rust_config.edition);
+        std::fs::write(&cargo_toml_path, &cargo_toml_content)
+            .map_err(|e| miette::miette!("Failed to write Cargo.toml: {}", e))?;
+
+        if cargo_toml_exists && options.force {
+            terminal::success_indented("Regenerated Cargo.toml");
+        } else {
+            terminal::success_indented("Created Cargo.toml");
+        }
+    } else {
+        terminal::info_indented("Cargo.toml exists (use --force to regenerate)");
+    }
+
+    // Create placeholder main.rs if it doesn't exist
+    let main_rs_path = rust_env.join("src").join("main.rs");
+    if !main_rs_path.exists() {
+        std::fs::write(&main_rs_path, "fn main() {}\n")
+            .map_err(|e| miette::miette!("Failed to write src/main.rs: {}", e))?;
+        terminal::success_indented("Created src/main.rs");
+    }
+
+    // Add user dependencies from manifest to Cargo.toml
+    if !rust_config.dependencies.is_empty() {
+        update_cargo_toml_deps(&rust_env, rust_config)?;
+        terminal::success_indented(&format!(
+            "Added {} dependencies to Cargo.toml",
+            rust_config.dependencies.len()
+        ));
+    }
+
+    // Run cargo check to download dependencies if not skipped
+    if !options.skip_install && !rust_config.dependencies.is_empty() {
+        let spinner = terminal::indented_spinner("Running cargo fetch...");
+
+        let output = terminal::run_command_with_spinner(
+            &spinner,
+            Command::new("cargo").args(["fetch"]).current_dir(&rust_env),
+        );
+
+        match output {
+            Ok(out) if out.status.success() => {
+                terminal::finish_success_indented(&spinner, "Cargo dependencies fetched");
+            }
+            Ok(out) => {
+                let err_msg = terminal::first_error_line(&out.stderr);
+                terminal::finish_warning_indented(
+                    &spinner,
+                    &format!("cargo fetch failed: {}", err_msg),
+                );
+                eprintln!("    Run 'cargo fetch' manually in {}", rust_env.display());
+            }
+            Err(e) => {
+                terminal::finish_warning_indented(&spinner, &format!("Could not run cargo: {}", e));
+                eprintln!("    Run 'cargo fetch' manually in {}", rust_env.display());
+            }
+        }
+    } else if options.skip_install {
+        terminal::info_indented("Skipping cargo fetch (--skip-install)");
+    }
+
+    terminal::success_indented("Rust environment ready");
+
+    Ok(())
+}
+
+/// Update Cargo.toml with dependencies from the manifest
+fn update_cargo_toml_deps(rust_root: &Path, rust_config: &manifest::RustConfig) -> Result<()> {
+    let cargo_toml_path = rust_root.join("Cargo.toml");
+    let content = std::fs::read_to_string(&cargo_toml_path)
+        .map_err(|e| miette::miette!("Failed to read Cargo.toml: {}", e))?;
+
+    let mut doc = content
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|e| miette::miette!("Failed to parse Cargo.toml: {}", e))?;
+
+    // Ensure dependencies table exists
+    if doc.get("dependencies").is_none() {
+        doc["dependencies"] = toml_edit::Item::Table(toml_edit::Table::new());
+    }
+
+    // Add dependencies from manifest
+    if let Some(deps) = doc["dependencies"].as_table_mut() {
+        for (name, dep) in &rust_config.dependencies {
+            // Parse the cargo toml value string into a proper toml_edit item
+            let dep_value = dep.to_cargo_toml_value();
+            // Simple version string
+            if dep_value.starts_with('"') {
+                deps.insert(name, toml_edit::value(dep.version()));
+            } else {
+                // Inline table for detailed dependencies
+                let parsed: toml_edit::DocumentMut = format!("{} = {}", name, dep_value)
+                    .parse()
+                    .unwrap_or_else(|_| {
+                        // Fallback to simple version
+                        format!("{} = \"{}\"", name, dep.version()).parse().unwrap()
+                    });
+                if let Some(item) = parsed.get(name) {
+                    deps.insert(name, item.clone());
+                }
+            }
+        }
+    }
+
+    // Write back
+    std::fs::write(&cargo_toml_path, doc.to_string())
+        .map_err(|e| miette::miette!("Failed to write Cargo.toml: {}", e))?;
 
     Ok(())
 }

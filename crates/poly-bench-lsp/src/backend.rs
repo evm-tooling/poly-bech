@@ -27,9 +27,9 @@ use super::{
     diagnostics::compute_diagnostics_with_config,
     document::ParsedDocument,
     embedded::EmbeddedConfig,
-    hover::{get_hover, get_hover_with_gopls},
+    hover::{get_hover, get_hover_with_embedded},
     semantic_tokens::{get_semantic_tokens, LEGEND},
-    virtual_files::{VirtualFileManager, VirtualTsFileManager},
+    virtual_files::{VirtualFileManager, VirtualRustFileManager, VirtualTsFileManager},
 };
 
 /// Debounce delay for document changes (in milliseconds)
@@ -54,6 +54,8 @@ pub struct Backend {
     virtual_file_manager: VirtualFileManager,
     /// Virtual file manager for tsserver integration
     virtual_ts_file_manager: VirtualTsFileManager,
+    /// Virtual file manager for rust-analyzer integration
+    virtual_rust_file_manager: VirtualRustFileManager,
     /// Pending document changes for debouncing
     pending_changes: DashMap<Url, PendingChange>,
     /// Counter for generating unique change IDs
@@ -69,6 +71,7 @@ impl Backend {
             embedded_configs: DashMap::new(),
             virtual_file_manager: VirtualFileManager::new(),
             virtual_ts_file_manager: VirtualTsFileManager::new(),
+            virtual_rust_file_manager: VirtualRustFileManager::new(),
             pending_changes: DashMap::new(),
             change_counter: AtomicU64::new(0),
         }
@@ -142,7 +145,7 @@ impl Backend {
         self.client.publish_diagnostics(uri, diagnostics, Some(version)).await;
     }
 
-    /// Find Go module root and TypeScript module root for embedded checking
+    /// Find Go module root, TypeScript module root, and Rust project root for embedded checking
     fn find_embedded_config(&self, uri: &Url) -> EmbeddedConfig {
         let mut config = EmbeddedConfig::default();
 
@@ -159,6 +162,9 @@ impl Backend {
 
             // Look for TypeScript module root
             config.ts_module_root = find_ts_module_root(dir, project_root.as_deref());
+
+            // Look for Rust project root
+            config.rust_project_root = find_rust_project_root(dir, project_root.as_deref());
         }
 
         config
@@ -217,6 +223,29 @@ fn find_ts_module_root(start: &Path, project_root: Option<&str>) -> Option<Strin
     let mut current = start;
     loop {
         if current.join("package.json").exists() {
+            return Some(current.to_string_lossy().to_string());
+        }
+        match current.parent() {
+            Some(parent) => current = parent,
+            None => return None,
+        }
+    }
+}
+
+/// Find Rust project root (directory containing Cargo.toml)
+fn find_rust_project_root(start: &Path, project_root: Option<&str>) -> Option<String> {
+    // First check .polybench/runtime-env/rust relative to project root
+    if let Some(root) = project_root {
+        let polybench_rust = Path::new(root).join(".polybench/runtime-env/rust");
+        if polybench_rust.join("Cargo.toml").exists() {
+            return Some(polybench_rust.to_string_lossy().to_string());
+        }
+    }
+
+    // Walk up from start looking for Cargo.toml
+    let mut current = start;
+    loop {
+        if current.join("Cargo.toml").exists() {
             return Some(current.to_string_lossy().to_string());
         }
         match current.parent() {
@@ -320,6 +349,7 @@ impl LanguageServer for Backend {
         self.pending_changes.remove(uri);
         self.virtual_file_manager.remove(uri.as_str());
         self.virtual_ts_file_manager.remove(uri.as_str());
+        self.virtual_rust_file_manager.remove(uri.as_str());
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -330,13 +360,14 @@ impl LanguageServer for Backend {
             // Wrap in catch_unwind to prevent panics from crashing the LSP
             let result = if let Some(config) = self.embedded_configs.get(uri) {
                 catch_unwind(AssertUnwindSafe(|| {
-                    get_hover_with_gopls(
+                    get_hover_with_embedded(
                         &doc,
                         position,
                         &config,
                         uri,
                         &self.virtual_file_manager,
                         &self.virtual_ts_file_manager,
+                        &self.virtual_rust_file_manager,
                     )
                 }))
             } else {

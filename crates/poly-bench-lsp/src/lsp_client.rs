@@ -5,7 +5,7 @@
 
 use std::{
     io::{BufRead, BufReader, Write},
-    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
+    process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio},
     sync::{
         atomic::{AtomicBool, AtomicI64, Ordering},
         Arc, Mutex,
@@ -115,11 +115,16 @@ impl<C: LspConfig> LspClient<C> {
             .stdout
             .take()
             .ok_or_else(|| format!("Failed to get {} stdout", C::SERVER_NAME))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| format!("Failed to get {} stderr", C::SERVER_NAME))?;
 
         *self.stdin.lock().map_err(|e| e.to_string())? = Some(stdin);
         *process_guard = Some(child);
 
         self.start_reader_thread(stdout);
+        self.start_stderr_thread(stderr);
 
         eprintln!("[{}] Subprocess started", C::SERVER_NAME);
         Ok(())
@@ -209,6 +214,24 @@ impl<C: LspConfig> LspClient<C> {
                     eprintln!("[{}-reader] Received notification: {}", server_name, method);
                 }
             }
+        });
+    }
+
+    /// Start a thread to read stderr from the server (for debugging)
+    fn start_stderr_thread(&self, stderr: ChildStderr) {
+        let server_name = C::SERVER_NAME;
+
+        thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines() {
+                match line {
+                    Ok(line) => {
+                        eprintln!("[{}-stderr] {}", server_name, line);
+                    }
+                    Err(_) => break,
+                }
+            }
+            eprintln!("[{}-stderr] stderr reader thread exited", server_name);
         });
     }
 

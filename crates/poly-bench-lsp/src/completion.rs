@@ -330,19 +330,19 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
 
     // Check if we're after a colon (but not for go: or ts: in bench blocks)
     if line_text.ends_with(':') || line_text.contains(": ") {
-        // Check if this is a go: or ts: line in a bench block first
-        if !trimmed.starts_with("go:") && !trimmed.starts_with("ts:") {
+        // Check if this is a go:, ts:, or rust: line in a bench block first
+        if !trimmed.starts_with("go:") && !trimmed.starts_with("ts:") && !trimmed.starts_with("rust:") {
             if let Some(keyword) = extract_keyword_before_colon(line_text) {
-                // Don't return AfterColon for go/ts - we'll handle those below
-                if keyword != "go" && keyword != "ts" {
+                // Don't return AfterColon for go/ts/rust - we'll handle those below
+                if keyword != "go" && keyword != "ts" && keyword != "rust" {
                     return Context::AfterColon(keyword);
                 }
             }
         }
     }
 
-    // Check if we're on a go: or ts: line (embedded bench code)
-    if trimmed.starts_with("go:") || trimmed.starts_with("ts:") {
+    // Check if we're on a go:, ts:, or rust: line (embedded bench code)
+    if trimmed.starts_with("go:") || trimmed.starts_with("ts:") || trimmed.starts_with("rust:") {
         return Context::InsideEmbeddedBenchCode;
     }
 
@@ -673,7 +673,7 @@ completion_item(
 // Setup blocks
 completion_item(
     "setup",
-    "setup ${1|go,ts|} {\n    $0\n}",
+    "setup ${1|go,ts,rust|} {\n    $0\n}",
     "Language-specific setup block",
     CompletionItemKind::KEYWORD,
 ),
@@ -687,6 +687,12 @@ completion_item(
     "setup ts",
     "setup ts {\n    import {\n        $1\n    }\n    init {\n        $0\n    }\n}",
     "TypeScript setup block",
+    CompletionItemKind::KEYWORD,
+),
+completion_item(
+    "setup rust",
+    "setup rust {\n    import {\n        use $1;\n    }\n    init {\n        $0\n    }\n}",
+    "Rust setup block",
     CompletionItemKind::KEYWORD,
 ),
 
@@ -919,6 +925,13 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "TypeScript implementation (multi-line)",
             CompletionItemKind::PROPERTY,
         ),
+        completion_item("rust:", "rust: $0", "Rust implementation", CompletionItemKind::PROPERTY),
+        completion_item(
+            "rust: (block)",
+            "rust: {\n    $0\n}",
+            "Rust implementation (multi-line)",
+            CompletionItemKind::PROPERTY,
+        ),
         // Configuration properties
         completion_item(
             "description",
@@ -959,7 +972,7 @@ fn bench_body_completions() -> Vec<CompletionItem> {
         // Skip conditions
         completion_item(
             "skip",
-            "skip ${1|go,ts|}: $0",
+            "skip ${1|go,ts,rust|}: $0",
             "Skip condition for a language",
             CompletionItemKind::KEYWORD,
         ),
@@ -975,10 +988,16 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "Skip condition for TypeScript",
             CompletionItemKind::KEYWORD,
         ),
+        completion_item(
+            "skip rust",
+            "skip rust: $0",
+            "Skip condition for Rust",
+            CompletionItemKind::KEYWORD,
+        ),
         // Lifecycle hooks - Go
         completion_item(
             "before",
-            "before ${1|go,ts|}: {\n    $0\n}",
+            "before ${1|go,ts,rust|}: {\n    $0\n}",
             "Before hook (runs once before benchmark)",
             CompletionItemKind::KEYWORD,
         ),
@@ -990,7 +1009,7 @@ fn bench_body_completions() -> Vec<CompletionItem> {
         ),
         completion_item(
             "after",
-            "after ${1|go,ts|}: {\n    $0\n}",
+            "after ${1|go,ts,rust|}: {\n    $0\n}",
             "After hook (runs once after benchmark)",
             CompletionItemKind::KEYWORD,
         ),
@@ -1002,7 +1021,7 @@ fn bench_body_completions() -> Vec<CompletionItem> {
         ),
         completion_item(
             "each",
-            "each ${1|go,ts|}: {\n    $0\n}",
+            "each ${1|go,ts,rust|}: {\n    $0\n}",
             "Each hook (runs per iteration)",
             CompletionItemKind::KEYWORD,
         ),
@@ -1029,6 +1048,25 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "each ts",
             "each ts: {\n    $0\n}",
             "Per-iteration hook for TypeScript",
+            CompletionItemKind::KEYWORD,
+        ),
+        // Lifecycle hooks - Rust
+        completion_item(
+            "before rust",
+            "before rust: {\n    $0\n}",
+            "Before hook for Rust",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "after rust",
+            "after rust: {\n    $0\n}",
+            "After hook for Rust",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "each rust",
+            "each rust: {\n    $0\n}",
+            "Per-iteration hook for Rust",
             CompletionItemKind::KEYWORD,
         ),
         // Auto-calibration overrides
@@ -1120,6 +1158,12 @@ fn fixture_body_completions() -> Vec<CompletionItem> {
             CompletionItemKind::PROPERTY,
         ),
         completion_item(
+            "rust:",
+            "rust: {\n    $0\n}",
+            "Rust fixture implementation",
+            CompletionItemKind::PROPERTY,
+        ),
+        completion_item(
             "description",
             "description: \"$0\"",
             "Fixture description",
@@ -1144,6 +1188,7 @@ fn after_colon_completions(keyword: &str) -> Vec<CompletionItem> {
         "baseline" => vec![
             simple_completion("\"go\"", CompletionItemKind::ENUM_MEMBER),
             simple_completion("\"ts\"", CompletionItemKind::ENUM_MEMBER),
+            simple_completion("\"rust\"", CompletionItemKind::ENUM_MEMBER),
         ],
         "compare" | "sink" | "outlierDetection" | "memory" => vec![
             simple_completion("true", CompletionItemKind::ENUM_MEMBER),
@@ -1212,7 +1257,7 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
         ),
         completion_item(
             "setup",
-            "setup ${1|go,ts|} {\n    $0\n}",
+            "setup ${1|go,ts,rust|} {\n    $0\n}",
             "Language-specific setup block",
             CompletionItemKind::KEYWORD,
         ),
@@ -1261,6 +1306,12 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
             "TypeScript language implementation",
             CompletionItemKind::KEYWORD,
         ),
+        completion_item(
+            "rust",
+            "rust: $0",
+            "Rust language implementation",
+            CompletionItemKind::KEYWORD,
+        ),
         // Configuration properties
         completion_item(
             "description",
@@ -1294,7 +1345,7 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
         ),
         completion_item(
             "skip",
-            "skip ${1|go,ts|}: $0",
+            "skip ${1|go,ts,rust|}: $0",
             "Skip condition for a language",
             CompletionItemKind::KEYWORD,
         ),
@@ -1307,26 +1358,26 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
         // Lifecycle hooks
         completion_item(
             "before",
-            "before ${1|go,ts|}: {\n    $0\n}",
+            "before ${1|go,ts,rust|}: {\n    $0\n}",
             "Before hook (runs once before benchmark)",
             CompletionItemKind::KEYWORD,
         ),
         completion_item(
             "after",
-            "after ${1|go,ts|}: {\n    $0\n}",
+            "after ${1|go,ts,rust|}: {\n    $0\n}",
             "After hook (runs once after benchmark)",
             CompletionItemKind::KEYWORD,
         ),
         completion_item(
             "each",
-            "each ${1|go,ts|}: {\n    $0\n}",
+            "each ${1|go,ts,rust|}: {\n    $0\n}",
             "Each hook (runs per iteration)",
             CompletionItemKind::KEYWORD,
         ),
         // Suite configuration
         completion_item(
             "requires",
-            "requires: [\"${1:go}\", \"${2:ts}\"]",
+            "requires: [\"${1:go}\", \"${2:ts}\", \"${3:rust}\"]",
             "Required language implementations",
             CompletionItemKind::PROPERTY,
         ),
@@ -1344,7 +1395,7 @@ fn all_keyword_completions() -> Vec<CompletionItem> {
         ),
         completion_item(
             "baseline",
-            "baseline: \"${1|go,ts|}\"",
+            "baseline: \"${1|go,ts,rust|}\"",
             "Baseline language for comparison",
             CompletionItemKind::PROPERTY,
         ),
@@ -1688,6 +1739,81 @@ fn extract_symbols_from_code(code: &str, lang: Lang, source: &str) -> Vec<Comple
                 }
             }
         }
+        Lang::Rust => {
+            // Rust function: fn name(
+            if let Ok(re) = Regex::new(r"fn\s+(\w+)\s*\(") {
+                for cap in re.captures_iter(code) {
+                    if let Some(name) = cap.get(1) {
+                        let name_str = name.as_str();
+                        if seen.insert(name_str.to_string()) {
+                            items.push(CompletionItem {
+                                label: format!("{}()", name_str),
+                                kind: Some(CompletionItemKind::FUNCTION),
+                                detail: Some(format!("Rust {} function", source)),
+                                insert_text: Some(format!("{}($0)", name_str)),
+                                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+            // Rust let binding: let name or let mut name
+            if let Ok(re) = Regex::new(r"let\s+(?:mut\s+)?(\w+)") {
+                for cap in re.captures_iter(code) {
+                    if let Some(name) = cap.get(1) {
+                        let name_str = name.as_str();
+                        // Skip common Rust patterns
+                        if !["_", "mut"].contains(&name_str) &&
+                            seen.insert(name_str.to_string())
+                        {
+                            items.push(CompletionItem {
+                                label: name_str.to_string(),
+                                kind: Some(CompletionItemKind::VARIABLE),
+                                detail: Some(format!("Rust {} variable", source)),
+                                insert_text: Some(name_str.to_string()),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+            // Rust const: const NAME
+            if let Ok(re) = Regex::new(r"const\s+(\w+)") {
+                for cap in re.captures_iter(code) {
+                    if let Some(name) = cap.get(1) {
+                        let name_str = name.as_str();
+                        if seen.insert(name_str.to_string()) {
+                            items.push(CompletionItem {
+                                label: name_str.to_string(),
+                                kind: Some(CompletionItemKind::CONSTANT),
+                                detail: Some(format!("Rust {} constant", source)),
+                                insert_text: Some(name_str.to_string()),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+            // Rust static: static NAME
+            if let Ok(re) = Regex::new(r"static\s+(?:mut\s+)?(\w+)") {
+                for cap in re.captures_iter(code) {
+                    if let Some(name) = cap.get(1) {
+                        let name_str = name.as_str();
+                        if seen.insert(name_str.to_string()) {
+                            items.push(CompletionItem {
+                                label: name_str.to_string(),
+                                kind: Some(CompletionItemKind::VARIABLE),
+                                detail: Some(format!("Rust {} static", source)),
+                                insert_text: Some(name_str.to_string()),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        // Unsupported languages - no symbol extraction
         _ => {}
     }
 
