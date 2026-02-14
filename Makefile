@@ -207,8 +207,8 @@ endif
 	@echo "==> Bumping versions to $(VERSION)..."
 	@VER=$$(echo $(VERSION) | sed 's/^v//'); \
 	sed -i.bak "s/^version = \".*\"/version = \"$$VER\"/" Cargo.toml && rm -f Cargo.toml.bak; \
-	sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$$VER\"/" vscode/package.json && rm -f vscode/package.json.bak; \
-	git add Cargo.toml vscode/package.json && \
+	sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$$VER\"/" extensions/vscode/package.json && rm -f extensions/vscode/package.json.bak; \
+	git add Cargo.toml extensions/vscode/package.json && \
 	git diff --staged --quiet && echo "==> No version changes (already at $(VERSION)?)" || (git commit -m "chore: release $(VERSION)" && git push origin main)
 	@echo "==> Creating tag $(VERSION)..."
 	@git tag -a $(VERSION) -m "Release $(VERSION)"

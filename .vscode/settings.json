@@ -6,7 +6,7 @@
   "poly-bench.formatOnSave": true,
 
   // Use the Poly-Bench extension (LSP) as the formatter for .bench files
-  // Language id is "polybench" (see vscode/package.json)
+  // Language id is "polybench" (see extensions/vscode/package.json)
   "[polybench]": {
     "editor.defaultFormatter": "evm-tooling.poly-bench",
     "editor.formatOnSave": true
