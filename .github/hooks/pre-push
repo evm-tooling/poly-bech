@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+echo "Running pre-push checks..."
+go run build/ci.go fmt
+go run build/ci.go lint
+go run build/ci.go test
+echo "Done."

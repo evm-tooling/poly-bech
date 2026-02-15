@@ -3,7 +3,7 @@
 # Quick commands for local development and CI
 
 .PHONY: help check check-compile build build-debug watch release release-build release-both clean install-tools reload cli run \
-        cli-release init add install pb-build pb-run fmt fmt-check lint test test-cover
+        cli-release init add install pb-build pb-run fmt fmt-check lint test test-cover oncommit install-hooks
 
 # Default target
 help:
@@ -50,8 +50,9 @@ help:
 	@echo "  make release-both  - Build poly-bench + poly-bench-lsp (legacy)"
 	@echo ""
 	@echo "Utilities:"
-	@echo "  make clean    - Clean build artifacts"
+	@echo "  make clean         - Clean build artifacts"
 	@echo "  make install-tools - Install cargo-watch"
+	@echo "  make install-hooks - Install git pre-push hook"
 	@echo ""
 	@echo "After building, reload VS Code for LSP: Cmd+Shift+P → 'Developer: Reload Window'"
 
@@ -79,6 +80,13 @@ test-cover:
 # Full check: formatting + lint + test (CI)
 check: fmt-check lint test
 	@echo "==> All checks passed!"
+
+# Install git hooks for pre-push checks
+install-hooks:
+	@echo "Installing git hooks..."
+	@cp .github/hooks/pre-push .git/hooks/pre-push
+	@chmod +x .git/hooks/pre-push
+	@echo "==> Git hooks installed!"
 
 # Release build: single binary (poly-bench includes LSP via 'poly-bench lsp')
 build: cli-release
