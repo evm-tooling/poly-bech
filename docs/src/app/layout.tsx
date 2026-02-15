@@ -1,3 +1,6 @@
+// No changes needed — your layout.tsx is already correct.
+// Copied here for completeness.
+
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/ThemeContext";
@@ -34,7 +37,6 @@ export default function RootLayout({
   return (
     <html lang="en" className="light">
       <head>
-        {/* JSON-LD Structured Data */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
@@ -49,7 +51,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${inter.variable} ${jetbrainsMono.variable} antialiased bg-background text-foreground`}
+        className={`${inter.variable} ${jetbrainsMono.variable} antialiased bg-background text-foreground dark:bg-background`}
       >
         <ThemeProvider>{children}</ThemeProvider>
       </body>

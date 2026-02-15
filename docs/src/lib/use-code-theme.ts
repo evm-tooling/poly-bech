@@ -19,6 +19,7 @@ const darkCodeTheme: PrismTheme = {
     { types: ["variable"], style: { color: "#e06c75" } },
     { types: ["parameter"], style: { color: "#e06c75" } },
     { types: ["regex", "important"], style: { color: "#c678dd" } },
+    { types: ["use-statement", "stdlib-call", "setup-go-block", "setup-ts-block", "setup-rust-block", "lang-go-block", "lang-ts-block", "lang-rust-block", "lang-go-line", "lang-ts-line", "lang-rust-line", "embedded-go", "embedded-ts", "embedded-rust"], style: {} },
     { types: ["plain"], style: { color: "#abb2bf" } },
   ],
 };
@@ -43,6 +44,7 @@ const lightCodeTheme: PrismTheme = {
     { types: ["inserted"], style: { color: "#22863a" } },
     { types: ["changed"], style: { color: "#e36209" } },
     { types: ["parameter"], style: { color: "#e36209" } },
+    { types: ["use-statement", "stdlib-call", "setup-go-block", "setup-ts-block", "setup-rust-block", "lang-go-block", "lang-ts-block", "lang-rust-block", "lang-go-line", "lang-ts-line", "lang-rust-line", "embedded-go", "embedded-ts", "embedded-rust"], style: {} },
     { types: ["plain"], style: { color: "#24292e" } },
   ],
 };
