@@ -1,0 +1,678 @@
+---
+title: DSL Reference
+description: Complete syntax reference for poly-bench .bench files
+---
+
+<div data-pagefind-weight="10">
+
+The poly-bench DSL is a declarative language for defining cross-language benchmarks. This reference covers the complete syntax for `.bench` files.
+
+### File Structure
+
+A `.bench` file consists of optional imports followed by one or more suite definitions:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Structure",
+      language: "rust",
+      code: `// Optional standard library imports
+use std::anvil
+use std::charting
+
+// One or more suites
+suite mySuite {
+    // Suite configuration
+    // Setup blocks
+    // Fixtures
+    // Benchmarks
+    // Lifecycle hooks
+}`
+    },
+  ]}
+/>
+
+</div>
+
+### Suite Definition
+
+A suite groups related benchmarks with shared configuration and setup code.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Syntax",
+      language: "rust",
+      code: `suite <name> {
+    // Configuration options
+    description: "Human-readable description"
+    warmup: 100
+    compare: true
+    baseline: "go"
+    
+    // Setup blocks, fixtures, benchmarks, hooks
+}`
+    },
+  ]}
+/>
+
+### Configuration Options
+
+| Option | Type | Description | Default |
+|--------|------|-------------|---------|
+| `description` | string | Human-readable description of the suite | - |
+| `iterations` | number | Fixed iteration count (legacy mode) | - |
+| `warmup` | number | Warmup iterations before timing | 0 |
+| `mode` | string | `"auto"` (calibrate) or `"fixed"` | `"fixed"` |
+| `targetTime` | duration | Target time for auto mode | `3000ms` |
+| `minIterations` | number | Minimum iterations in auto mode | 1 |
+| `maxIterations` | number | Maximum iterations in auto mode | 10000000 |
+| `count` | number | Number of runs per benchmark | 1 |
+| `baseline` | string | Language for comparison ratios (`"go"`, `"ts"`, `"rust"`) | - |
+| `compare` | boolean | Enable comparison table output | false |
+| `memory` | boolean | Enable memory allocation tracking | false |
+| `concurrency` | number | Parallel workers/goroutines | 1 |
+| `outlierDetection` | boolean | IQR-based outlier removal | false |
+| `cvThreshold` | number | Target coefficient of variation (%) | - |
+| `timeout` | number | Suite timeout in milliseconds | - |
+| `sink` | boolean | Prevent dead code elimination | false |
+
+<Aside type="tip">
+<span>Use <code>mode: "auto"</code> for most benchmarks. It automatically calibrates iteration counts to reach <code>targetTime</code>, ensuring stable measurements regardless of operation speed.</span>
+</Aside>
+
+
+### Duration Syntax
+
+Durations can be specified with units:
+
+| Unit | Example | Meaning |
+|------|---------|---------|
+| `ms` | `3000ms` | 3000 milliseconds |
+| `s` | `5s` | 5 seconds |
+| `m` | `1m` | 1 minute |
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Examples",
+      language: "rust",
+      code: `suite timing {
+    targetTime: 3000ms    // 3 seconds
+    timeout: 60000ms      // 1 minute
+    // or
+    targetTime: 3s
+    timeout: 1m
+}`
+    },
+  ]}
+/>
+
+
+### Setup Blocks
+
+Setup blocks define language-specific imports, initialization, and helper functions.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Syntax",
+      language: "rust",
+      code: `setup <language> {
+    import <import-statement>
+    
+    init {
+        // Initialization code (runs once before benchmarks)
+    }
+    
+    helpers {
+        // Helper functions available to benchmarks
+    }
+}`
+    },
+  ]}
+/>
+
+Supported languages: `go`, `ts`, `rust`
+
+### Import Statements
+
+Imports are language-specific:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Go",
+      language: "rust",
+      code: `setup go {
+    import "fmt"
+    import "golang.org/x/crypto/sha3"
+    import "github.com/ethereum/go-ethereum/common"
+}`
+    },
+    {
+      title: "TypeScript",
+      language: "rust",
+      code: `setup ts {
+    import { keccak256, toHex } from 'viem';
+    import * as crypto from 'crypto';
+}`
+    },
+    {
+      title: "Rust",
+      language: "rust",
+      code: `setup rust {
+    import { use tiny_keccak::{Hasher, Keccak}; }
+    import { use alloy_primitives::Address; }
+}`
+    },
+  ]}
+/>
+
+<Aside type="note">
+<span>Rust imports use <code>import { ... }</code> syntax where the contents are raw Rust <code>use</code> statements. This allows any valid Rust import syntax.</span>
+</Aside>
+
+
+### Init Block
+
+The `init` block runs once before any benchmarks in the suite. Use it for one-time setup like creating clients or connections.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Example",
+      language: "rust",
+      code: `setup go {
+    import "github.com/ethereum/go-ethereum/ethclient"
+    
+    init {
+        client, _ := ethclient.Dial("https://eth.llamarpc.com")
+    }
+    
+    helpers {
+        func getBlock() *types.Block {
+            block, _ := client.BlockByNumber(context.Background(), nil)
+            return block
+        }
+    }
+}`
+    },
+  ]}
+/>
+
+
+### Helpers Block
+
+The `helpers` block defines functions available to benchmarks. These are inlined into the generated benchmark code.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Go",
+      language: "rust",
+      code: `setup go {
+    helpers {
+        func add(a, b int) int {
+            return a + b
+        }
+        
+        func multiply(a, b int) int {
+            return a * b
+        }
+    }
+}`
+    },
+    {
+      title: "TypeScript",
+      language: "rust",
+      code: `setup ts {
+    helpers {
+        function add(a: number, b: number): number {
+            return a + b
+        }
+        
+        function multiply(a: number, b: number): number {
+            return a * b
+        }
+    }
+}`
+    },
+    {
+      title: "Rust",
+      language: "rust",
+      code: `setup rust {
+    helpers {
+        fn add(a: i32, b: i32) -> i32 {
+            a + b
+        }
+        
+        fn multiply(a: i32, b: i32) -> i32 {
+            a * b
+        }
+    }
+}`
+    },
+  ]}
+/>
+
+
+### Fixtures
+
+Fixtures define shared test data available to all benchmarks. They ensure all languages operate on identical input.
+
+### Hex Fixtures
+
+Define binary data as hex-encoded strings:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Syntax",
+      language: "rust",
+      code: `fixture <name> {
+    hex: "68656c6c6f20776f726c64"
+}`
+    },
+  ]}
+/>
+
+The hex string is converted to a byte array in each language:
+- Go: `[]byte{0x68, 0x65, 0x6c, 0x6c, 0x6f, ...}`
+- TypeScript: `new Uint8Array([0x68, 0x65, 0x6c, 0x6c, 0x6f, ...])`
+- Rust: `&[u8]` or `[u8; N]`
+
+### JSON Fixtures
+
+Define structured data as JSON:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Syntax",
+      language: "rust",
+      code: `fixture <name> {
+    json: {"key": "value", "numbers": [1, 2, 3]}
+}`
+    },
+  ]}
+/>
+
+JSON fixtures are serialized to a string and parsed at runtime in each language.
+
+### File Fixtures
+
+Load fixture data from an external file:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Syntax",
+      language: "rust",
+      code: `fixture <name> {
+    file: "path/to/data.bin"
+}`
+    },
+  ]}
+/>
+
+<Aside type="tip">
+<span>Use hex fixtures for small binary data and file fixtures for larger payloads. This keeps your <code>.bench</code> files readable.</span>
+</Aside>
+
+
+### Benchmark Definitions
+
+Benchmarks define the operations to time. Each benchmark specifies an expression for each target language.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Syntax",
+      language: "rust",
+      code: `bench <name> {
+    go: <go-expression>
+    ts: <ts-expression>
+    rust: <rust-expression>
+}`
+    },
+  ]}
+/>
+
+### Examples
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Simple",
+      language: "rust",
+      code: `bench addition {
+    go: add(1, 2)
+    ts: add(1, 2)
+    rust: add(1, 2)
+}`
+    },
+    {
+      title: "With Fixtures",
+      language: "rust",
+      code: `fixture data {
+    hex: "68656c6c6f"
+}
+
+bench hashData {
+    go: keccak256(data)
+    ts: keccak256(data)
+    rust: keccak256(&data)
+}`
+    },
+    {
+      title: "Async (TS)",
+      language: "rust",
+      code: `bench fetchBlock {
+    go: getBlockNumber()
+    ts: await getBlockNumber()
+    rust: get_block_number()
+}`
+    },
+  ]}
+/>
+
+<Aside type="note">
+<span>For TypeScript async operations, use <code>await</code> in the expression. poly-bench handles the async context automatically.</span>
+</Aside>
+
+
+### Partial Language Coverage
+
+You can define benchmarks for a subset of languages:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Go vs TypeScript Only",
+      language: "rust",
+      code: `setup go {
+    // ...
+}
+
+setup ts {
+    // ...
+}
+
+// No setup rust block
+
+bench operation {
+    go: doSomething()
+    ts: doSomething()
+    // No rust: line — Rust is skipped
+}`
+    },
+  ]}
+/>
+
+
+### Lifecycle Hooks
+
+Hooks run at specific points in the benchmark lifecycle.
+
+### before
+
+Runs once before any benchmarks in the suite:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Syntax",
+      language: "rust",
+      code: `before {
+    // Directives run before benchmarks
+    anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
+}`
+    },
+  ]}
+/>
+
+### after
+
+Runs once after all benchmarks complete:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Syntax",
+      language: "rust",
+      code: `after {
+    // Directives run after benchmarks
+    charting.drawBarChart(title: "Results")
+    anvil.stopAnvil()
+}`
+    },
+  ]}
+/>
+
+### each
+
+Runs before each individual benchmark:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Syntax",
+      language: "rust",
+      code: `each {
+    // Reset state between benchmarks
+}`
+    },
+  ]}
+/>
+
+<Aside type="tip">
+<span>Use <code>before</code> for expensive one-time setup (spawning services, loading data). Use <code>each</code> for resetting state between benchmarks.</span>
+</Aside>
+
+
+### Standard Library Imports
+
+Import standard library modules at the top of your file:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Available Modules",
+      language: "rust",
+      code: `use std::anvil      // Ethereum node spawning
+use std::charting   // Chart generation
+use std::constants  // Mathematical constants`
+    },
+  ]}
+/>
+
+See the [Standard Library](/docs/clients/wallet/) reference for module details.
+
+
+### Directives
+
+Directives are function-like calls used in lifecycle hooks. They invoke standard library functionality.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Syntax",
+      language: "rust",
+      code: `<module>.<function>(
+    arg1: value1,
+    arg2: value2
+)`
+    },
+  ]}
+/>
+
+### Examples
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "anvil",
+      language: "rust",
+      code: `before {
+    anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
+}
+
+after {
+    anvil.stopAnvil()
+}`
+    },
+    {
+      title: "charting",
+      language: "rust",
+      code: `after {
+    charting.drawBarChart(
+        title: "Performance Comparison",
+        xlabel: "Implementation",
+        ylabel: "Time (ns/op)"
+    )
+    
+    charting.drawPieChart(
+        title: "Time Distribution",
+        benchmark: "myBench"
+    )
+}`
+    },
+  ]}
+/>
+
+
+### Comments
+
+Single-line comments use `//`:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Comments",
+      language: "rust",
+      code: `suite example {
+    // This is a comment
+    warmup: 100  // Inline comment
+    
+    // Comments can appear anywhere
+    bench test {
+        go: doSomething()  // After expressions too
+    }
+}`
+    },
+  ]}
+/>
+
+
+### Complete Example
+
+Here's a complete `.bench` file showing all features:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "complete.bench",
+      language: "rust",
+      code: `use std::anvil
+use std::charting
+
+suite cryptoBenchmarks {
+    description: "Cryptographic operation benchmarks"
+    warmup: 100
+    compare: true
+    baseline: "go"
+    mode: "auto"
+    targetTime: 3000ms
+    count: 3
+    memory: true
+    outlierDetection: true
+
+    before {
+        anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
+    }
+
+    setup go {
+        import "golang.org/x/crypto/sha3"
+        import "github.com/ethereum/go-ethereum/common"
+        
+        init {
+            // One-time initialization
+        }
+        
+        helpers {
+            func keccak256(data []byte) []byte {
+                h := sha3.NewLegacyKeccak256()
+                h.Write(data)
+                return h.Sum(nil)
+            }
+        }
+    }
+
+    setup ts {
+        import { keccak256 } from 'viem';
+        
+        helpers {
+            function keccak256Ts(data: Uint8Array): Uint8Array {
+                return keccak256(data, 'bytes')
+            }
+        }
+    }
+
+    setup rust {
+        import { use tiny_keccak::{Hasher, Keccak}; }
+        
+        helpers {
+            fn keccak256_rust(data: &[u8]) -> [u8; 32] {
+                let mut hasher = Keccak::v256();
+                let mut output = [0u8; 32];
+                hasher.update(data);
+                hasher.finalize(&mut output);
+                output
+            }
+        }
+    }
+
+    // Fixtures
+    fixture shortData {
+        hex: "68656c6c6f"
+    }
+
+    fixture longData {
+        file: "fixtures/large-payload.bin"
+    }
+
+    // Benchmarks
+    bench hashShort {
+        go: keccak256(shortData)
+        ts: keccak256Ts(shortData)
+        rust: keccak256_rust(&shortData)
+    }
+
+    bench hashLong {
+        go: keccak256(longData)
+        ts: keccak256Ts(longData)
+        rust: keccak256_rust(&longData)
+    }
+
+    after {
+        charting.drawBarChart(
+            title: "Keccak256 Performance",
+            xlabel: "Input Size",
+            ylabel: "Time (ns/op)"
+        )
+        
+        anvil.stopAnvil()
+    }
+}`
+    },
+  ]}
+/>
+
+
+### Further Reading
+
+- [Standard Library](/docs/clients/wallet/) — Module reference for `std::anvil`, `std::charting`, `std::constants`
+- [Examples](/docs/examples/) — Real-world benchmark patterns
+- [CLI Reference](/docs/clients/transports/http/) — Command-line options
+- [Architecture](/docs/clients/intro/) — How the DSL compiles to native code

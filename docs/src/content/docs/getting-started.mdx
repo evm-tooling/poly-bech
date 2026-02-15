@@ -1,0 +1,314 @@
+---
+title: Getting Started
+description: Get up and running with poly-bench in minutes
+---
+
+
+<div data-pagefind-weight="10">
+
+### Installation
+
+Install poly-bench using Cargo:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Cargo",
+      language: "bash",
+      code: `cargo install poly-bench`
+    },
+  ]}
+/>
+
+### Prerequisites
+
+poly-bench generates and runs native code in each target language. Make sure you have the runtimes installed for the languages you want to benchmark:
+
+| Language | Requirement |
+|----------|-------------|
+| Go | Go 1.21+ (`go version`) |
+| TypeScript | Node.js 18+ (`node --version`) |
+| Rust | Rust 1.70+ (`rustc --version`) |
+
+<Aside type="note">
+<span>You only need the runtimes for languages you're actually benchmarking. If you're only comparing Go and TypeScript, Rust isn't required.</span>
+</Aside>
+
+### Quick Start
+
+Follow this guide to create your first benchmark comparing a keccak256 implementation across Go, TypeScript, and Rust.
+
+</div>
+
+### 1. Initialize a Project
+
+Create a new poly-bench project:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `poly-bench init my-benchmarks
+cd my-benchmarks`
+    },
+  ]}
+/>
+
+This creates a project structure:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Structure",
+      language: "text",
+      code: `my-benchmarks/
+├── polybench.toml      # Project configuration
+├── benchmarks/
+│   └── example.bench   # Example benchmark file
+└── .polybench/
+    └── runtime-env/    # Generated runtime environments`
+    },
+  ]}
+/>
+
+
+### 2. Add Dependencies
+
+Add the libraries you want to benchmark. poly-bench manages dependencies for each language:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Add Go dependencies
+poly-bench add --go golang.org/x/crypto
+
+# Add npm dependencies  
+poly-bench add --ts viem
+
+# Add Rust crates
+poly-bench add --rs tiny-keccak`
+    },
+  ]}
+/>
+
+Then install all dependencies:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `poly-bench install`
+    },
+  ]}
+/>
+
+<Aside type="tip">
+<span>Dependencies are isolated per-project in the <code>.polybench/runtime-env/</code> directory. This keeps your benchmarks reproducible and avoids polluting your global environment.</span>
+</Aside>
+
+
+### 3. Create a Benchmark
+
+Create a new `.bench` file in the `benchmarks/` directory:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "benchmarks/keccak.bench",
+      language: "rust",
+      code: `suite keccak {
+    description: "Keccak256 hash benchmark"
+    warmup: 100
+    compare: true
+    baseline: "go"
+    mode: "auto"
+    targetTime: 3000ms
+    count: 3
+
+    setup go {
+        import "golang.org/x/crypto/sha3"
+        helpers {
+            func keccak256Go(data []byte) []byte {
+                h := sha3.NewLegacyKeccak256()
+                h.Write(data)
+                return h.Sum(nil)
+            }
+        }
+    }
+
+    setup ts {
+        import { keccak256 } from 'viem';
+        helpers {
+            function keccak256Ts(data: Uint8Array): Uint8Array {
+                return keccak256(data, 'bytes')
+            }
+        }
+    }
+
+    setup rust {
+        import { use tiny_keccak::{Hasher, Keccak}; }
+        helpers {
+            fn keccak256_rust(data: &[u8]) -> [u8; 32] {
+                let mut hasher = Keccak::v256();
+                let mut output = [0u8; 32];
+                hasher.update(data);
+                hasher.finalize(&mut output);
+                output
+            }
+        }
+    }
+
+    fixture data {
+        hex: "68656c6c6f20776f726c64"
+    }
+
+    bench keccak256Bench {
+        go: keccak256Go(data)
+        ts: keccak256Ts(data)
+        rust: keccak256_rust(&data)
+    }
+}`
+    },
+  ]}
+/>
+
+<Aside type="note">
+<span>The <code>fixture</code> block defines shared test data as hex-encoded bytes. This ensures all languages hash the exact same input for fair comparison.</span>
+</Aside>
+
+
+### 4. Run Benchmarks
+
+Execute your benchmark:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `poly-bench run benchmarks/keccak.bench`
+    },
+  ]}
+/>
+
+You'll see output like:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Output",
+      language: "text",
+      code: `Running suite: keccak
+  Calibrating iterations...
+  Target time: 3000ms
+  
+  Running: keccak256Bench
+    go:   1,234 ns/op (810,372 ops/s) ± 2.1%
+    ts:   15,678 ns/op (63,784 ops/s) ± 3.4%
+    rust: 987 ns/op (1,013,171 ops/s) ± 1.8%
+
+  Comparison (baseline: go):
+    rust: 1.25x faster
+    ts:   12.70x slower
+
+  ✓ Suite completed in 9.2s`
+    },
+  ]}
+/>
+
+
+### 5. Generate Reports
+
+poly-bench can output results in multiple formats:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Console output (default)
+poly-bench run keccak.bench
+
+# Markdown report
+poly-bench run keccak.bench --report markdown --output results/
+
+# JSON for CI/automation
+poly-bench run keccak.bench --report json --output results/
+
+# Generate SVG charts (via charting directives in .bench file)
+poly-bench run keccak.bench --output results/`
+    },
+  ]}
+/>
+
+<Aside type="tip">
+<span>Add <code>charting.drawBarChart(...)</code> directives in your <code>after</code> block to automatically generate SVG visualizations. See the <a href="/docs/performance/">Reporting</a> page for details.</span>
+</Aside>
+
+
+### Configuration Options
+
+The suite configuration controls how benchmarks run:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `iterations` | Fixed iteration count (legacy mode) | - |
+| `warmup` | Warmup iterations before timing | 0 |
+| `mode` | `"auto"` (calibrate) or `"fixed"` | `"fixed"` |
+| `targetTime` | Target time for auto mode | `3000ms` |
+| `minIterations` | Minimum iterations (auto mode) | 1 |
+| `maxIterations` | Maximum iterations (auto mode) | 10000000 |
+| `count` | Runs per benchmark for statistics | 1 |
+| `baseline` | Language for comparison ratios | - |
+| `compare` | Enable comparison table | false |
+| `memory` | Enable memory profiling | false |
+
+
+### Run Specific Languages
+
+You don't have to run all languages every time:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Run only Go benchmarks
+poly-bench run keccak.bench --lang go
+
+# Run Go and Rust only
+poly-bench run keccak.bench --lang go --lang rust`
+    },
+  ]}
+/>
+
+
+### Validate Without Running
+
+Check your `.bench` file for errors without executing:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `poly-bench check benchmarks/keccak.bench`
+    },
+  ]}
+/>
+
+
+### Next Steps
+
+- Learn about the [DSL Reference](/docs/clients/public/) for full syntax documentation
+- Explore the [Standard Library](/docs/clients/wallet/) for `std::anvil` and `std::charting`
+- See [Examples](/docs/examples/) for real-world benchmark patterns
+- Check out [CLI Reference](/docs/clients/transports/http/) for all command options
+
+<Aside type="note">
+<span>Need help? Run <code>poly-bench --help</code> or <code>poly-bench run --help</code> for command-line documentation.</span>
+</Aside>

@@ -1,0 +1,485 @@
+---
+title: LSP / Editor Support
+description: Language Server Protocol support and editor configuration for poly-bench
+---
+
+<div data-pagefind-weight="10">
+
+poly-bench includes a full Language Server Protocol (LSP) implementation that provides rich editor support for `.bench` files. This includes real-time diagnostics, completions, hover documentation, formatting, and semantic highlighting.
+
+### Features
+
+| Feature | Description |
+|---------|-------------|
+| Diagnostics | Real-time error and warning reporting as you type |
+| Formatting | Format documents on save or on demand |
+| Completions | Intelligent completions for keywords, stdlib, and user symbols |
+| Hover | Documentation and type information on hover |
+| Semantic highlighting | Syntax highlighting tokens for accurate coloring |
+| Embedded languages | Delegates to gopls, tsserver, and rust-analyzer for code blocks |
+
+</div>
+
+### Starting the LSP Server
+
+The LSP server runs over stdio. Start it with:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `poly-bench lsp`
+    },
+  ]}
+/>
+
+This is typically invoked by your editor's extension, not run manually.
+
+
+---
+
+### VS Code / Cursor Setup
+
+### Install the Extension
+
+The poly-bench extension is available from the VS Code marketplace or can be installed from a `.vsix` file.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# From marketplace (when available)
+code --install-extension poly-bench.poly-bench
+
+# From local .vsix file
+code --install-extension poly-bench-0.0.22.vsix`
+    },
+  ]}
+/>
+
+### Manual Configuration
+
+If you're not using the extension, configure the LSP manually in `settings.json`:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "settings.json",
+      language: "json",
+      code: `{
+  "poly-bench.serverPath": "poly-bench",
+  "poly-bench.serverArgs": ["lsp"],
+  "[bench]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "poly-bench.poly-bench"
+  }
+}`
+    },
+  ]}
+/>
+
+### File Association
+
+Associate `.bench` files with the poly-bench language:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "settings.json",
+      language: "json",
+      code: `{
+  "files.associations": {
+    "*.bench": "bench"
+  }
+}`
+    },
+  ]}
+/>
+
+<Aside type="tip">
+<span>The extension automatically associates <code>.bench</code> files when installed. Manual configuration is only needed if you're setting up the LSP client yourself.</span>
+</Aside>
+
+
+---
+
+### Neovim Setup
+
+### Using nvim-lspconfig
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "init.lua",
+      language: "lua",
+      code: `-- Add poly-bench to lspconfig
+local lspconfig = require('lspconfig')
+local configs = require('lspconfig.configs')
+
+-- Define the poly-bench language server
+if not configs.polybench then
+  configs.polybench = {
+    default_config = {
+      cmd = { 'poly-bench', 'lsp' },
+      filetypes = { 'bench' },
+      root_dir = lspconfig.util.root_pattern('polybench.toml', '.git'),
+      settings = {},
+    },
+  }
+end
+
+-- Set up the server
+lspconfig.polybench.setup({
+  on_attach = function(client, bufnr)
+    -- Your on_attach configuration
+  end,
+  capabilities = require('cmp_nvim_lsp').default_capabilities(),
+})`
+    },
+  ]}
+/>
+
+### File Type Detection
+
+Add file type detection for `.bench` files:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "ftdetect/bench.lua",
+      language: "lua",
+      code: `vim.filetype.add({
+  extension = {
+    bench = 'bench',
+  },
+})`
+    },
+  ]}
+/>
+
+### Syntax Highlighting
+
+For basic syntax highlighting before Tree-sitter support:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "syntax/bench.vim",
+      language: "vim",
+      code: `" Keywords
+syn keyword benchKeyword suite setup bench fixture before after each use
+syn keyword benchKeyword import init helpers
+syn keyword benchLang go ts rust
+syn keyword benchOption description warmup compare baseline mode
+syn keyword benchOption targetTime minIterations maxIterations count
+syn keyword benchOption memory concurrency outlierDetection cvThreshold
+syn keyword benchOption timeout sink iterations
+
+" Standard library
+syn keyword benchStdlib std anvil charting constants
+
+" Booleans
+syn keyword benchBoolean true false
+
+" Strings
+syn region benchString start=/"/ end=/"/ skip=/\\"/
+
+" Numbers
+syn match benchNumber '\<\d\+\>'
+syn match benchDuration '\<\d\+\(ms\|s\|m\)\>'
+
+" Comments
+syn match benchComment '//.*$'
+
+" Hex values
+syn match benchHex '\<0x[0-9a-fA-F]\+\>'
+syn match benchHex '"[0-9a-fA-F]\+"'
+
+" Highlighting
+hi def link benchKeyword Keyword
+hi def link benchLang Type
+hi def link benchOption Identifier
+hi def link benchStdlib Constant
+hi def link benchBoolean Boolean
+hi def link benchString String
+hi def link benchNumber Number
+hi def link benchDuration Number
+hi def link benchComment Comment
+hi def link benchHex String`
+    },
+  ]}
+/>
+
+
+---
+
+### Helix Setup
+
+Add to your `languages.toml`:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "languages.toml",
+      language: "toml",
+      code: `[[language]]
+name = "bench"
+scope = "source.bench"
+injection-regex = "bench"
+file-types = ["bench"]
+roots = ["polybench.toml"]
+comment-token = "//"
+indent = { tab-width = 4, unit = "    " }
+language-servers = ["polybench"]
+
+[language-server.polybench]
+command = "poly-bench"
+args = ["lsp"]`
+    },
+  ]}
+/>
+
+
+---
+
+### Zed Setup
+
+Add to your `settings.json`:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "settings.json",
+      language: "json",
+      code: `{
+  "languages": {
+    "Bench": {
+      "language_servers": ["polybench"]
+    }
+  },
+  "lsp": {
+    "polybench": {
+      "binary": {
+        "path": "poly-bench",
+        "arguments": ["lsp"]
+      }
+    }
+  }
+}`
+    },
+  ]}
+/>
+
+
+---
+
+### LSP Features in Detail
+
+### Diagnostics
+
+The LSP reports errors and warnings in real-time:
+
+| Severity | Examples |
+|----------|----------|
+| Error | Syntax errors, undefined fixtures, missing required fields |
+| Warning | Unused fixtures, deprecated syntax |
+| Hint | Style suggestions |
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Example Errors",
+      language: "text",
+      code: `error: undefined fixture 'data' at line 15
+  --> keccak.bench:15:9
+   |
+15 |     go: keccak256(data)
+   |         ^^^^^^^^^^^^^^
+   |
+   = help: define a fixture named 'data' before using it
+
+error: missing 'go' implementation in benchmark 'hash'
+  --> keccak.bench:20:5
+   |
+20 |     bench hash {
+   |     ^^^^^^^^^^
+   |
+   = help: add 'go: <expression>' to the benchmark block`
+    },
+  ]}
+/>
+
+### Completions
+
+The LSP provides context-aware completions:
+
+| Context | Completions |
+|---------|-------------|
+| Top-level | `suite`, `use` |
+| Suite body | `setup`, `bench`, `fixture`, `before`, `after`, `each`, config options |
+| Setup block | `import`, `init`, `helpers` |
+| After block | Standard library directives (`charting.drawBarChart`, etc.) |
+| Bench block | Language names (`go:`, `ts:`, `rust:`), fixture names |
+
+<Aside type="tip">
+<span>Type <code>charting.</code> in an <code>after</code> block to see available chart directives with documentation.</span>
+</Aside>
+
+### Hover Documentation
+
+Hover over keywords and symbols to see documentation:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Example Hover",
+      language: "text",
+      code: `targetTime
+─────────────────────────────────
+Target execution time for auto-calibration mode.
+When mode is set to "auto", poly-bench adjusts
+the iteration count to reach this target time.
+
+Type: duration (e.g., 3000ms, 5s)
+Default: 3000ms`
+    },
+  ]}
+/>
+
+### Formatting
+
+The formatter enforces consistent style:
+- 4-space indentation
+- Consistent brace placement
+- Aligned configuration options
+- Proper spacing around operators
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Before",
+      language: "rust",
+      code: `suite test{
+warmup:100
+compare:true
+
+setup go{
+helpers{
+func add(a,b int)int{return a+b}
+}}
+
+bench addition{
+go:add(1,2)
+}}`
+    },
+    {
+      title: "After",
+      language: "rust",
+      code: `suite test {
+    warmup: 100
+    compare: true
+
+    setup go {
+        helpers {
+            func add(a, b int) int {
+                return a + b
+            }
+        }
+    }
+
+    bench addition {
+        go: add(1, 2)
+    }
+}`
+    },
+  ]}
+/>
+
+### Semantic Highlighting
+
+The LSP provides semantic tokens for accurate highlighting:
+
+| Token Type | Examples |
+|------------|----------|
+| `keyword` | `suite`, `setup`, `bench`, `fixture` |
+| `type` | `go`, `ts`, `rust` |
+| `variable` | Fixture names, benchmark names |
+| `function` | Helper function names |
+| `string` | String literals, hex values |
+| `number` | Numeric literals, durations |
+| `comment` | Comments |
+| `namespace` | Standard library modules |
+
+
+---
+
+### Embedded Language Support
+
+The LSP delegates to language-specific servers for code inside `helpers` and `init` blocks:
+
+| Language | Delegate Server |
+|----------|-----------------|
+| Go | gopls |
+| TypeScript | tsserver |
+| Rust | rust-analyzer |
+
+This provides:
+- Completions from language-specific libraries
+- Type checking within code blocks
+- Go-to-definition for imported symbols
+
+<Aside type="note">
+<span>Embedded language support requires the respective language servers to be installed and available in your PATH.</span>
+</Aside>
+
+
+---
+
+### Troubleshooting
+
+### LSP Not Starting
+
+1. Verify poly-bench is installed: `poly-bench --version`
+2. Check the server path in your editor settings
+3. Look for errors in your editor's LSP log
+
+### No Completions
+
+1. Ensure the file has a `.bench` extension
+2. Check file type association in your editor
+3. Verify the LSP is connected (check language server status)
+
+### Formatting Not Working
+
+1. Check if format-on-save is enabled for `.bench` files
+2. Verify the formatter is set to poly-bench
+3. Try manual format command (`Format Document`)
+
+### Debug Logging
+
+Enable verbose logging for debugging:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Set Rust log level
+RUST_LOG=debug poly-bench lsp
+
+# Or trace level for maximum detail
+RUST_LOG=trace poly-bench lsp`
+    },
+  ]}
+/>
+
+
+---
+
+### Further Reading
+
+- [Getting Started](/docs/getting-started/) — Quick start guide
+- [DSL Reference](/docs/clients/public/) — Complete syntax documentation
+- [CLI Reference](/docs/clients/transports/http/) — Command-line options

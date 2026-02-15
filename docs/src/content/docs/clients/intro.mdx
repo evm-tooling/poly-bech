@@ -1,0 +1,406 @@
+---
+title: Architecture
+description: How poly-bench is structured, how benchmarks flow, and how the runtime isolation works
+---
+
+poly-bench is built as a modular Rust workspace where each crate handles a specific responsibility. This architecture enables clean separation between parsing, validation, code generation, execution, and reporting.
+
+### The Big Idea
+
+- **DSL files** (`.bench`) are the source of truth for benchmark definitions
+- **IR (Intermediate Representation)** is a normalized, validated structure that all downstream tools consume
+- **Runtimes** are isolated per-language execution environments that run generated benchmark code
+- **Reporters** transform raw timing data into human-readable output (console, markdown, JSON, charts)
+
+<Aside type="note">
+<span>The DSL compiles to native benchmark code in each language. Go benchmarks use Go's runtime, TypeScript runs in Node.js, and Rust uses Cargo. There's no interpretation or FFI — each language runs at full native speed.</span>
+</Aside>
+
+### Component Map
+
+Every benchmark flows through the same pipeline. Your `.bench` file is parsed into an AST, lowered to IR, used to generate language-specific code, executed in isolated runtimes, and finally reported.
+
+<FlowDiagram
+  nodes={[
+    {
+      label: "Your .bench file",
+      variant: "accent"
+    },
+    {
+      label: "DSL Parser",
+      sublabel: "poly-bench-dsl",
+      items: [
+        "Lexer → Token stream",
+        "Parser → AST (Abstract Syntax Tree)",
+        "Validator → Semantic checks"
+      ]
+    },
+    {
+      label: "IR Lowering",
+      sublabel: "poly-bench-ir",
+      items: [
+        "Normalize configuration",
+        "Resolve fixtures and imports",
+        "Validate language blocks"
+      ]
+    },
+    {
+      label: "Code Generation",
+      sublabel: "poly-bench-runtime",
+      items: [
+        "Go: Generate benchmark_gen.go",
+        "TypeScript: Generate benchmark_gen.ts",
+        "Rust: Generate benchmark_gen.rs"
+      ]
+    },
+    {
+      label: "Runtime Execution",
+      sublabel: "poly-bench-executor",
+      items: [
+        "Spawn isolated subprocess per language",
+        "Run warmup iterations",
+        "Collect timing measurements",
+        "Track memory allocations"
+      ]
+    },
+    {
+      label: "Reporting",
+      sublabel: "poly-bench-reporter",
+      items: [
+        "Console: Colored tables",
+        "Markdown: Documentation-ready",
+        "JSON: CI/automation",
+        "SVG: Generated charts"
+      ]
+    },
+    {
+      label: "Results",
+      variant: "accent"
+    }
+  ]}
+/>
+
+### Crate Responsibilities
+
+| Crate | What it's for |
+|-------|---------------|
+| `poly-bench-dsl` | Lexer, parser, AST, formatter, and validator for `.bench` files |
+| `poly-bench-ir` | Intermediate representation — normalized, validated benchmark structures |
+| `poly-bench-runtime` | Language-specific code generation and runtime execution (Go, TS, Rust) |
+| `poly-bench-executor` | Orchestrates benchmark runs, manages calibration, collects measurements |
+| `poly-bench-reporter` | Generates output in console, markdown, JSON, and SVG chart formats |
+| `poly-bench-project` | Project initialization, dependency management, manifest handling |
+| `poly-bench-stdlib` | Standard library modules (`std::anvil`, `std::charting`, `std::constants`) |
+| `poly-bench-lsp` | Language Server Protocol implementation for editor support |
+
+<Aside type="tip">
+<span>The modular design means you can use individual crates in your own tooling. For example, use <code>poly-bench-dsl</code> to parse <code>.bench</code> files in a custom analysis tool.</span>
+</Aside>
+
+
+### How Benchmarks Flow
+
+### 1. Parse & Validate
+
+When you run `poly-bench run benchmark.bench`, the DSL parser tokenizes and parses your file into an AST. The validator checks for semantic errors like undefined fixtures or missing language blocks.
+
+<FlowDiagram
+  nodes={[
+    {
+      label: ".bench source",
+      variant: "accent"
+    },
+    {
+      label: "Lexer",
+      sublabel: "Character stream → Tokens",
+      variant: "muted"
+    },
+    {
+      label: "Parser",
+      sublabel: "Tokens → AST nodes (Suite, Setup, Bench, Fixture)"
+    },
+    {
+      label: "Validator",
+      sublabel: "Check references, types, configuration"
+    },
+    {
+      label: "AST",
+      sublabel: "In-memory representation of your benchmark",
+      variant: "accent"
+    }
+  ]}
+/>
+
+### 2. Lower to IR
+
+The AST is lowered to an Intermediate Representation that's fully resolved and normalized. This step:
+- Resolves all fixture references
+- Merges configuration with defaults
+- Validates that all referenced symbols exist
+- Prepares data structures for code generation
+
+<FlowDiagram
+  nodes={[
+    {
+      label: "AST",
+      variant: "accent"
+    },
+    {
+      label: "IR Lowering",
+      items: [
+        "Resolve fixture hex/json to bytes",
+        "Apply default configuration",
+        "Validate language block completeness",
+        "Normalize import statements"
+      ]
+    },
+    {
+      label: "BenchmarkIR",
+      sublabel: "Fully resolved, ready for codegen",
+      variant: "accent"
+    }
+  ]}
+/>
+
+### 3. Generate Code
+
+For each target language, poly-bench generates native benchmark code. The generated code includes:
+- Import statements from setup blocks
+- Helper functions from setup blocks
+- Fixture data as byte arrays
+- Benchmark harness with timing code
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Generated Go",
+      language: "go",
+      code: `// Auto-generated by poly-bench
+package main
+
+import (
+    "golang.org/x/crypto/sha3"
+    "time"
+)
+
+// Fixture: data
+var data = []byte{0x68, 0x65, 0x6c, 0x6c, 0x6f, ...}
+
+// Helper from setup block
+func keccak256Go(data []byte) []byte {
+    h := sha3.NewLegacyKeccak256()
+    h.Write(data)
+    return h.Sum(nil)
+}
+
+func benchmark_keccak256Bench(iterations int) time.Duration {
+    start := time.Now()
+    for i := 0; i < iterations; i++ {
+        _ = keccak256Go(data)
+    }
+    return time.Since(start)
+}`
+    },
+    {
+      title: "Generated TypeScript",
+      language: "ts",
+      code: `// Auto-generated by poly-bench
+import { keccak256 } from 'viem';
+
+// Fixture: data
+const data = new Uint8Array([0x68, 0x65, 0x6c, 0x6c, 0x6f, ...]);
+
+// Helper from setup block
+function keccak256Ts(data: Uint8Array): Uint8Array {
+    return keccak256(data, 'bytes')
+}
+
+async function benchmark_keccak256Bench(iterations: number): Promise<number> {
+    const start = performance.now();
+    for (let i = 0; i < iterations; i++) {
+        keccak256Ts(data);
+    }
+    return performance.now() - start;
+}`
+    },
+    {
+      title: "Generated Rust",
+      language: "rust",
+      code: `// Auto-generated by poly-bench
+use tiny_keccak::{Hasher, Keccak};
+use std::time::Instant;
+
+// Fixture: data
+static DATA: &[u8] = &[0x68, 0x65, 0x6c, 0x6c, 0x6f, ...];
+
+// Helper from setup block
+fn keccak256_rust(data: &[u8]) -> [u8; 32] {
+    let mut hasher = Keccak::v256();
+    let mut output = [0u8; 32];
+    hasher.update(data);
+    hasher.finalize(&mut output);
+    output
+}
+
+fn benchmark_keccak256_bench(iterations: usize) -> std::time::Duration {
+    let start = Instant::now();
+    for _ in 0..iterations {
+        let _ = keccak256_rust(DATA);
+    }
+    start.elapsed()
+}`
+    }
+  ]}
+/>
+
+### 4. Execute in Isolated Runtimes
+
+Each language runs in its own isolated subprocess:
+
+| Language | Runtime | Memory Tracking |
+|----------|---------|-----------------|
+| Go | Plugin-based execution or subprocess | `runtime.ReadMemStats` |
+| TypeScript | Node.js subprocess | `process.memoryUsage()` |
+| Rust | Cargo build + subprocess | Custom allocator tracking |
+
+<FlowDiagram
+  nodes={[
+    {
+      label: "Executor",
+      sublabel: "poly-bench-executor",
+      variant: "accent"
+    }
+  ]}
+  branches={[
+    {
+      condition: "Go",
+      label: "go run / go plugin → collect timing + memory"
+    },
+    {
+      condition: "TypeScript",
+      label: "node benchmark_gen.ts → collect timing + memory"
+    },
+    {
+      condition: "Rust",
+      label: "cargo run --release → collect timing + memory"
+    }
+  ]}
+/>
+
+<Aside type="note">
+<span>Runtime environments are isolated in <code>.polybench/runtime-env/</code>. Each language has its own dependency directory, ensuring reproducible builds and no global pollution.</span>
+</Aside>
+
+
+### Calibration Mode
+
+In `mode: "auto"`, poly-bench calibrates the iteration count to hit a target execution time:
+
+<FlowDiagram
+  nodes={[
+    {
+      label: "Start calibration",
+      variant: "accent"
+    },
+    {
+      label: "Run pilot (100 iterations)",
+      sublabel: "Measure baseline timing"
+    },
+    {
+      label: "Calculate iterations",
+      sublabel: "iterations = targetTime / (pilot_time / 100)",
+      variant: "muted"
+    },
+    {
+      label: "Clamp to bounds",
+      sublabel: "Apply minIterations / maxIterations"
+    },
+    {
+      label: "Execute benchmark",
+      sublabel: "Run with calibrated iteration count",
+      variant: "accent"
+    }
+  ]}
+/>
+
+This ensures:
+- Fast operations get enough iterations for stable timing
+- Slow operations don't run for hours
+- All languages use the same iteration count for fair comparison
+
+
+### Statistics Pipeline
+
+After collecting raw measurements, poly-bench computes statistics:
+
+1. **Warmup removal**: Discard the first N iterations (configurable via `warmup`)
+2. **Multi-run aggregation**: Run the benchmark `count` times
+3. **Outlier detection**: Optionally remove outliers using IQR method
+4. **Statistics**: Calculate mean, standard deviation, operations per second
+5. **Comparison**: Compute speedup ratios relative to baseline
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Statistics Output",
+      language: "text",
+      code: `  Summary: keccak256Bench
+  ─────────────────────────────────────────────
+  
+  │ Lang │ Mean (ns/op) │ Std Dev │ Ops/s    │
+  ├──────┼──────────────┼─────────┼──────────┤
+  │ rust │ 993          │ ± 1.8%  │ 1,006,752│
+  │ go   │ 1,216        │ ± 2.1%  │ 822,714  │
+  │ ts   │ 15,667       │ ± 3.1%  │ 63,839   │
+
+  Comparison (baseline: go):
+    rust: 1.22x faster
+    ts:   12.88x slower`
+    },
+  ]}
+/>
+
+
+### Standard Library Architecture
+
+The standard library (`poly-bench-stdlib`) provides built-in modules:
+
+| Module | Purpose | Key Features |
+|--------|---------|--------------|
+| `std::anvil` | Ethereum development | Spawn local Anvil node, provide RPC URL |
+| `std::charting` | Visualization | Bar charts, pie charts, line charts as SVG |
+| `std::constants` | Math constants | Pi, E, and other common values |
+
+Standard library modules are implemented in Rust and invoked via directives in `before`/`after` blocks:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: ".bench",
+      language: "rust",
+      code: `use std::anvil
+use std::charting
+
+suite example {
+    before {
+        anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
+    }
+
+    // ... benchmarks ...
+
+    after {
+        charting.drawBarChart(title: "Results")
+        anvil.stopAnvil()
+    }
+}`
+    },
+  ]}
+/>
+
+
+### Further Reading
+
+- [DSL Reference](/docs/clients/public/) — Complete syntax documentation
+- [Standard Library](/docs/clients/wallet/) — Module reference
+- [CLI Reference](/docs/clients/transports/http/) — Command-line options
+- [Examples](/docs/examples/) — Real-world benchmark patterns

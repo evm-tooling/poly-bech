@@ -1,0 +1,189 @@
+---
+title: Why poly-bench
+description: A multi-language benchmarking framework for fair cross-language comparisons
+---
+
+
+<div data-pagefind-weight="10">
+
+poly-bench is a multi-language benchmarking framework that lets you define benchmarks once and run them across Go, TypeScript, and Rust with unified output and fair comparisons.
+
+- **No unified cross-language benchmarking**: Comparing library performance across Go, TypeScript, and Rust typically requires writing separate benchmark harnesses in each language with different APIs and measurement methodologies.
+- **Fair comparisons are hard**: Different iteration counts, warmup strategies, and data inputs make it difficult to draw meaningful conclusions between implementations.
+- **Results are scattered**: Each language's benchmark output looks different, making side-by-side comparisons tedious.
+- **Define once, run everywhere**: poly-bench uses a custom DSL (`.bench` files) to define benchmarks that compile to native code in each target language.
+- **Unified measurement**: Same iterations, same data, same warmup strategy across all languages ensures apples-to-apples comparisons.
+- **Rich output**: Console tables, markdown reports, JSON for CI, and SVG charts from a single benchmark run.
+
+<Aside type="tip">
+<span>poly-bench is built in Rust for speed and reliability. The framework handles code generation, runtime isolation, and statistics — you just write the benchmark logic.</span>
+</Aside>
+
+### Key Features
+
+poly-bench provides everything you need for rigorous cross-language benchmarking:
+
+| Feature | Description |
+|---------|-------------|
+| Custom DSL | Write benchmarks in a clean, declarative syntax with language-specific setup blocks |
+| Auto-calibration | Automatically adjusts iteration counts to reach target execution time |
+| Memory profiling | Track allocations across Go, TypeScript, and Rust |
+| Portable fixtures | Share hex-encoded test data across all language implementations |
+| Chart generation | Generate SVG bar charts, pie charts, and line charts from results |
+| LSP support | Full editor integration with diagnostics, completions, and formatting |
+
+</div>
+
+### The Problem
+
+Imagine you're building a library that needs implementations in Go, TypeScript, and Rust. You want to know which is fastest for different operations. Today, you'd write:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Go",
+      language: "go",
+      code: `func BenchmarkKeccak(b *testing.B) {
+    data := []byte("hello world")
+    for i := 0; i < b.N; i++ {
+        keccak256(data)
+    }
+}`
+    },
+    {
+      title: "TypeScript",
+      language: "ts",
+      code: `bench('keccak256', () => {
+  keccak256(data)
+})`
+    },
+    {
+      title: "Rust",
+      language: "rust",
+      code: `#[bench]
+fn bench_keccak(b: &mut Bencher) {
+    let data = b"hello world";
+    b.iter(|| keccak256(data));
+}`
+    }
+  ]}
+/>
+
+Three different APIs. Three different output formats. Three different iteration strategies. No easy way to compare.
+
+### The Solution
+
+With poly-bench, you write one `.bench` file:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: ".bench",
+      language: "rust",
+      code: `suite keccak {
+    warmup: 100
+    compare: true
+    baseline: "go"
+
+    setup go {
+        import "golang.org/x/crypto/sha3"
+        helpers {
+            func keccak256(data []byte) []byte {
+                h := sha3.NewLegacyKeccak256()
+                h.Write(data)
+                return h.Sum(nil)
+            }
+        }
+    }
+
+    setup ts {
+        import { keccak256 } from 'viem';
+    }
+
+    setup rust {
+        import { use tiny_keccak::{Hasher, Keccak}; }
+        helpers {
+            fn keccak256(data: &[u8]) -> [u8; 32] {
+                let mut hasher = Keccak::v256();
+                let mut output = [0u8; 32];
+                hasher.update(data);
+                hasher.finalize(&mut output);
+                output
+            }
+        }
+    }
+
+    fixture data {
+        hex: "68656c6c6f20776f726c64"
+    }
+
+    bench keccak256 {
+        go: keccak256(data)
+        ts: keccak256(data)
+        rust: keccak256(&data)
+    }
+}`
+    }
+  ]}
+/>
+
+Run `poly-bench run` and get unified results across all three languages with automatic comparison tables.
+
+<Aside type="note">
+<span>The DSL compiles to native benchmark code in each language. Go benchmarks use Go's testing package, TypeScript runs in Node.js, and Rust uses Cargo's bench infrastructure.</span>
+</Aside>
+
+### Design Principles
+
+poly-bench was built with these principles in mind:
+
+### 1. DSL-First
+
+The `.bench` file format is the source of truth. It's designed to be readable, version-controllable, and language-agnostic while supporting language-specific setup when needed.
+
+### 2. Language-Agnostic IR
+
+The DSL compiles to an intermediate representation (IR) that can generate code for any supported language. This ensures consistent behavior and makes adding new languages straightforward.
+
+### 3. Isolated Runtimes
+
+Each language runs in its own isolated environment:
+- **Go**: Plugin-based execution with `runtime.ReadMemStats` for memory tracking
+- **TypeScript**: Node.js subprocess with `process.memoryUsage()`
+- **Rust**: Cargo subprocess with memory profiling support
+
+### 4. Statistics Done Right
+
+poly-bench includes proper statistical methodology:
+- Warmup iterations before timing
+- Multiple runs for reliable statistics
+- IQR-based outlier detection
+- Coefficient of variation targeting
+
+### What's Implemented
+
+<DocsTable
+  headers={['Feature', 'Status']}
+  rows={[
+    ['DSL Parser & Formatter', '✅ Complete'],
+    ['Go Runtime', '✅ Complete'],
+    ['TypeScript Runtime', '✅ Complete'],
+    ['Rust Runtime', '✅ Complete'],
+    ['Console Reporter', '✅ Complete'],
+    ['Markdown Reporter', '✅ Complete'],
+    ['JSON Reporter', '✅ Complete'],
+    ['SVG Chart Generation', '✅ Complete'],
+    ['Auto-calibration Mode', '✅ Complete'],
+    ['Memory Profiling', '✅ Complete'],
+    ['LSP Server', '✅ Complete'],
+    ['Standard Library (anvil, charting)', '✅ Complete'],
+  ]}
+/>
+
+<Aside type="caution">
+<span>poly-bench is under active development. While the core features are stable, some interfaces may change between releases. Check the changelog before upgrading.</span>
+</Aside>
+
+### Getting Started
+
+Ready to benchmark across languages? Head to the [Getting Started](/docs/getting-started/) guide to set up your first poly-bench project.
