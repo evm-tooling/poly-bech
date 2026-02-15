@@ -164,10 +164,10 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
     // Config section (if enabled and config provided)
     if options.show_config {
         let config = &options.config;
-        let has_config = config.iterations.is_some()
-            || config.warmup.is_some()
-            || config.timeout_ms.is_some()
-            || config.order.is_some();
+        let has_config = config.iterations.is_some() ||
+            config.warmup.is_some() ||
+            config.timeout_ms.is_some() ||
+            config.order.is_some();
 
         if has_config {
             println!("{}", "CONFIG".bold().underline());

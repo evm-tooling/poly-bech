@@ -61,10 +61,10 @@ help:
 
 # Format all workspace Rust (examples/ has no crates, so not formatted)
 fmt:
-	@cargo fmt --all
+	@cargo +nightly fmt --all
 
 fmt-check:
-	@cargo fmt --all -- --check
+	@cargo +nightly fmt --all -- --check
 
 lint:
 	@cargo clippy --all-targets -- -D warnings

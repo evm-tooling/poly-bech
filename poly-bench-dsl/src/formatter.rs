@@ -231,10 +231,10 @@ fn format_suite_with_source(
     }
 
     // Add blank line after properties
-    let has_content = suite.global_setup.is_some()
-        || !suite.setups.is_empty()
-        || !suite.fixtures.is_empty()
-        || !suite.benchmarks.is_empty();
+    let has_content = suite.global_setup.is_some() ||
+        !suite.setups.is_empty() ||
+        !suite.fixtures.is_empty() ||
+        !suite.benchmarks.is_empty();
     if has_content {
         out.push('\n');
     }
@@ -437,10 +437,10 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
     }
 
     // Add blank line after properties if there are any setups, fixtures, or benchmarks
-    let has_content = suite.global_setup.is_some()
-        || !suite.setups.is_empty()
-        || !suite.fixtures.is_empty()
-        || !suite.benchmarks.is_empty();
+    let has_content = suite.global_setup.is_some() ||
+        !suite.setups.is_empty() ||
+        !suite.fixtures.is_empty() ||
+        !suite.benchmarks.is_empty();
     if has_content {
         out.push('\n');
     }

@@ -105,9 +105,9 @@ pub fn get_completions(
             items.extend(stdlib_module_name_completions(&stdlib_imports));
         }
         // Embedded code contexts - only show setup symbols, no DSL keywords
-        Context::InsideEmbeddedInit
-        | Context::InsideEmbeddedHelpers
-        | Context::InsideEmbeddedDeclarations => {
+        Context::InsideEmbeddedInit |
+        Context::InsideEmbeddedHelpers |
+        Context::InsideEmbeddedDeclarations => {
             // Inside embedded Go/TypeScript code blocks
             // Only provide setup-declared symbols for reference
             items.extend(extract_setup_symbols(doc));
@@ -331,9 +331,9 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
     // Check if we're after a colon (but not for go: or ts: in bench blocks)
     if line_text.ends_with(':') || line_text.contains(": ") {
         // Check if this is a go:, ts:, or rust: line in a bench block first
-        if !trimmed.starts_with("go:")
-            && !trimmed.starts_with("ts:")
-            && !trimmed.starts_with("rust:")
+        if !trimmed.starts_with("go:") &&
+            !trimmed.starts_with("ts:") &&
+            !trimmed.starts_with("rust:")
         {
             if let Some(keyword) = extract_keyword_before_colon(line_text) {
                 // Don't return AfterColon for go/ts/rust - we'll handle those below
@@ -504,9 +504,9 @@ fn extract_module_name_before_trigger(line_text: &str) -> Option<String> {
         // Also check if it ends with a known module followed by dot
         // (for cases where the doc was already updated)
         for module in known_modules {
-            if word == module
-                || word.ends_with(&format!("{}.", module))
-                || word == format!("{}.", module)
+            if word == module ||
+                word.ends_with(&format!("{}.", module)) ||
+                word == format!("{}.", module)
             {
                 return Some(module.to_string());
             }
@@ -1672,8 +1672,8 @@ fn extract_symbols_from_code(code: &str, lang: Lang, source: &str) -> Vec<Comple
                     if let Some(name) = name {
                         let name_str = name.as_str();
                         // Skip common Go keywords/patterns
-                        if !["err", "ok", "_", "nil"].contains(&name_str)
-                            && seen.insert(name_str.to_string())
+                        if !["err", "ok", "_", "nil"].contains(&name_str) &&
+                            seen.insert(name_str.to_string())
                         {
                             items.push(CompletionItem {
                                 label: name_str.to_string(),

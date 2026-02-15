@@ -98,8 +98,8 @@ impl<'a> Lexer<'a> {
             c if c.is_ascii_digit() => self.scan_number_or_duration(pos)?,
             c if c.is_ascii_alphabetic() || c == '_' => self.scan_identifier(pos)?,
             // Code characters - treat as identifiers for inline code
-            '+' | '-' | '*' | '/' | '%' | '=' | '<' | '>' | '!' | '&' | '|' | ';' | '?' | '^'
-            | '~' | '`' => {
+            '+' | '-' | '*' | '/' | '%' | '=' | '<' | '>' | '!' | '&' | '|' | ';' | '?' | '^' |
+            '~' | '`' => {
                 // Scan the rest as a code expression
                 self.scan_code_expr(pos, ch)?
             }

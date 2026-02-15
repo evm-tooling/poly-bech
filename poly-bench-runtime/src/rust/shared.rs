@@ -409,7 +409,7 @@ mod tests {
 
     #[test]
     fn test_generate_bench_call() {
-        assert_eq!(generate_bench_call("foo()", true), "__sink = Some(Box::new(foo()))");
+        assert_eq!(generate_bench_call("foo()", true), "std::hint::black_box(foo())");
         assert_eq!(generate_bench_call("foo()", false), "let _ = foo()");
     }
 

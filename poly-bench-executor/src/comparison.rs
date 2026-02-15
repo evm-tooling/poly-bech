@@ -166,7 +166,8 @@ impl SuiteSummary {
                     }
                 }
 
-                // For geometric mean: use Go vs TS comparison if both present (for backwards compatibility)
+                // For geometric mean: use Go vs TS comparison if both present (for backwards
+                // compatibility)
                 if let (Some(go), Some(ts)) = (go_ns, ts_ns) {
                     if go > 0.0 && ts > 0.0 {
                         log_speedups.push((ts / go).ln());

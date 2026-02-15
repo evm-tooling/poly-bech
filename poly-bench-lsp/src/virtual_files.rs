@@ -548,10 +548,10 @@ impl VirtualFileBuilder {
             .filter(|b| {
                 !matches!(
                     b.block_type,
-                    BlockType::SetupImport
-                        | BlockType::SetupDeclare
-                        | BlockType::SetupHelpers
-                        | BlockType::SetupInit
+                    BlockType::SetupImport |
+                        BlockType::SetupDeclare |
+                        BlockType::SetupHelpers |
+                        BlockType::SetupInit
                 )
             })
             .copied()

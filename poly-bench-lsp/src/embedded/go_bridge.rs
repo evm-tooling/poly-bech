@@ -56,9 +56,9 @@ pub fn check_go_block(
     };
 
     // Check for "go.mod not found" type errors - skip silently when not in module
-    if !is_in_mod_root
-        && (error_output.contains("go.mod file not found")
-            || error_output.contains("no required module provides package"))
+    if !is_in_mod_root &&
+        (error_output.contains("go.mod file not found") ||
+            error_output.contains("no required module provides package"))
     {
         return diagnostics;
     }
@@ -95,9 +95,9 @@ pub fn check_go_setup_combined(
     };
 
     // Skip module-not-found errors when not in module
-    if !is_in_mod_root
-        && (error_output.contains("go.mod file not found")
-            || error_output.contains("no required module provides package"))
+    if !is_in_mod_root &&
+        (error_output.contains("go.mod file not found") ||
+            error_output.contains("no required module provides package"))
     {
         return Vec::new();
     }
