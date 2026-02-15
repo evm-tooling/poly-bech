@@ -1,0 +1,6 @@
+#!/bin/sh
+set -e
+echo "Running pre-commit checks..."
+go run build/ci.go fmt
+go run build/ci.go lint
+echo "Done."
