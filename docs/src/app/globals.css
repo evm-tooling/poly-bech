@@ -13,12 +13,7 @@
       ============================================================ */
    
    :root {
-     /* ── Backgrounds (4-tier system) ──
-        background          → page root (near-white)
-        background-secondary → raised surfaces, alt sections
-        background-tertiary  → cards, panels
-        background-elevated  → elevated cards, hover states, table headers
-     ── */
+     /* ── Backgrounds (4-tier system) ── */
      --background:           0 0% 99%;
      --background-secondary: 250 18% 96%;
      --background-tertiary:  250 14% 93%;
@@ -86,7 +81,7 @@
      --terminal-output:      145 60% 32%;
      --terminal-cursor:      0 72% 51%;
    
-     /* ── Typography scale ── */
+     /* ── Typography scale (used by .docs-prose and utility classes only) ── */
      --fs-h1:    2.25rem;
      --fs-h2:    1.75rem;
      --fs-h3:    1.5rem;
@@ -246,11 +241,23 @@
      stroke-opacity: 0.5;
    }
    
+   /* ── Dark-mode: no filter needed for dark-bg assets ── */
+   .dark .benchmark-chart {
+     filter: none;
+   }
+   
    /* ── Theme-aware element visibility ── */
+   /* Default (dark theme) */
    .dark-only  { display: block; }
    .light-only { display: none; }
+   
+   /* Light theme overrides */
    .light .dark-only  { display: none; }
    .light .light-only { display: block; }
+   
+   /* Dark theme explicit (for when .dark class is used) */
+   .dark .dark-only  { display: block; }
+   .dark .light-only { display: none; }
    
    /* ============================================================
       TAILWIND v4 THEME — Map tokens → Tailwind classes
@@ -374,11 +381,11 @@
       BASE STYLES
       ============================================================ */
    
-   html {
+   html, html.light {
      color-scheme: light;
    }
    
-   html:not(.light) {
+   html.dark {
      color-scheme: dark;
    }
    
@@ -394,23 +401,21 @@
      border-color: var(--color-border);
    }
    
-   /* ── Heading defaults ── */
+   /* ── Heading defaults ──
+      IMPORTANT: Only letter-spacing is set globally.
+      Font-size, font-weight, line-height, and color are NOT set here
+      so that Tailwind utility classes (text-5xl, font-black, leading-tight,
+      text-white, etc.) work correctly without being overridden.
+      
+      For doc/prose pages, use the .docs-prose class or the heading-1/2/3/4
+      utility classes which include full typography styling.
+   ── */
    h1, h2, h3, h4 {
-     color: var(--color-foreground);
-     font-weight: 650;
-     line-height: var(--lh-heading);
      letter-spacing: var(--tracking-heading);
    }
-   h1 { font-size: var(--fs-h1); }
-   h2 { font-size: var(--fs-h2); }
-   h3 { font-size: var(--fs-h3); }
-   h4 { font-size: var(--fs-h4); }
    
-   p {
-     color: var(--color-foreground-secondary);
-     font-size: var(--fs-body);
-     line-height: var(--lh-body);
-   }
+   /* Paragraph — no global font-size/color/line-height override.
+      Use .docs-prose or text-body utility for doc pages. */
    
    small {
      color: var(--color-foreground-muted);
@@ -420,6 +425,7 @@
    
    /* ============================================================
       TYPOGRAPHY UTILITY CLASSES
+      (Use these explicitly when you want the doc-style typography)
       ============================================================ */
    
    @utility heading-1 {
@@ -641,6 +647,9 @@
    
    /* ============================================================
       DOCS PROSE — Base class for MDX content
+      
+      This scoped class provides full typography styling for doc pages.
+      It does NOT affect the landing page or other components.
       ============================================================ */
    
    .docs-prose {

@@ -8,6 +8,8 @@ import SidebarToggle from "./SidebarToggle";
 import ThemeSwitcher from "./ThemeSwitcher";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
+import lockupHLight from "@/assets/logo-lockup-horizontal-light.png";
+import lockupHDark from "@/assets/logo-lockup-horizontal-dark.png";
 
 function NavLink({
   href,
@@ -49,26 +51,27 @@ function NavLink({
 export default function Header() {
   const pathname = usePathname();
   return (
-    <header className={`sticky top-0 z-50 w-full bg-background py-[5px] opacity-100`}>
-      <div className="px-4 sm:px-6 h-12 flex items-center justify-between gap-3">
+    <header className="sticky top-0 z-50 w-full bg-background/95 dark:bg-background backdrop-blur-sm">
+      <div className="px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
         {/* Left: logo area + search */}
         <div className="flex items-center min-w-0">
-          <div className={`flex items-center gap-3 sm:gap-4 shrink-0 ${pathname === "/" ? "" : "lg:w-[260px] xl:w-[320px] 2xl:w-[355px] xl:pl-12"}`}>
+          <div className={`flex items-center gap-3 sm:gap-4 shrink-0 ${pathname === "/" ? "" : "lg:w-[260px] xl:w-[320px] 2xl:w-[355px] xl:pl-12"} overflow-hidden`}>
             <SidebarToggle />
-            <Link href="/" className="flex items-center gap-2 shrink-0">
+            <Link href="/" className="flex items-center gap-2 shrink-0" style={{ height: '1.25rem' }}>
+              {/* Logo same height as nav text (text-sm line-height) so it doesn't go tiny */}
               <Image
-                height={90}
-                width={90}
-                src="/svg/golem-logo-full-light.svg"
-                alt="viem-go"
-                className="dark-only"
+                src={lockupHDark}
+                alt="poly-bench"
+                className="dark-only w-auto object-contain object-center"
+                style={{ height: '12rem', width: '17rem' }}
+                priority
               />
               <Image
-                height={90}
-                width={90}
-                src="/svg/golem-logo-full-dark.svg"
-                alt="viem-go"
-                className="light-only"
+                src={lockupHLight}
+                alt="poly-bench"
+                className="light-only w-auto object-contain object-center"
+                style={{ height: '12rem', width: '17rem' }}
+                priority
               />
             </Link>
           </div>
@@ -79,22 +82,22 @@ export default function Header() {
           )}
         </div>
 
-        {/* Right: nav links */}
-        <nav className="flex items-center gap-2 shrink-0">
-          <NavLink href="/docs/introduction">Docs</NavLink>
-          <NavLink href="https://github.com/ChefBingbong/viem-go" external>
+        {/* Right: Navigation */}
+        <nav className="flex items-center gap-4">
+          <NavLink href="/docs">Docs</NavLink>
+          <NavLink href="https://github.com/evm-tooling/poly-bench" external>
             GitHub
           </NavLink>
-          {/* Mobile search (icon only) */}
-          {pathname !== "/" && (
-            <div className="sm:hidden">
-              <SearchTrigger compact />
-            </div>
-          )}
-          {/* Theme switcher */}
+          
           <ThemeSwitcher />
-          {/* Version dropdown */}
           <VersionDropdown />
+          
+          <Link 
+            href="/docs/getting-started" 
+            className="hidden sm:inline-flex text-sm font-medium px-4 py-2 rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary-hover"
+          >
+            Get Started
+          </Link>
         </nav>
       </div>
     </header>
