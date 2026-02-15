@@ -1,0 +1,117 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import type { TocEntry } from "@/lib/mdx";
+
+export default function TableOfContents({
+  headings,
+}: {
+  headings: TocEntry[];
+}) {
+  const [activeId, setActiveId] = useState<string>("");
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
+  useEffect(() => {
+    const elements = headings
+      .map((h) => document.getElementById(h.id))
+      .filter(Boolean) as HTMLElement[];
+
+    if (elements.length === 0) return;
+
+    const scrollRoot = document.querySelector("main") || null;
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setActiveId(entry.target.id);
+            break;
+          }
+        }
+      },
+      {
+        root: scrollRoot,
+        rootMargin: "-80px 0px -70% 0px",
+        threshold: 0,
+      }
+    );
+
+    for (const el of elements) {
+      observerRef.current.observe(el);
+    }
+
+    return () => observerRef.current?.disconnect();
+  }, [headings]);
+
+  useEffect(() => {
+    const scrollContainer =
+      document.querySelector("main") || window;
+
+    function onScroll() {
+      const scrollTop =
+        scrollContainer instanceof HTMLElement
+          ? scrollContainer.scrollTop
+          : window.scrollY;
+      const offset = scrollTop + 120;
+      let current = "";
+      for (const h of headings) {
+        const el = document.getElementById(h.id);
+        if (el && el.offsetTop <= offset) {
+          current = h.id;
+        }
+      }
+      if (current) setActiveId(current);
+    }
+    scrollContainer.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => scrollContainer.removeEventListener("scroll", onScroll);
+  }, [headings]);
+
+  if (headings.length === 0) return null;
+
+  return (
+    <aside className="hidden xl:block w-[280px] shrink-0 sticky top-0 self-start h-[calc(100vh)]">
+      <div className="pl-10 pr-2 overflow-y-auto h-full">
+        <p className="text-[0.8125rem] font-semibold text-foreground uppercase tracking-wider mb-2">
+          On this page
+        </p>
+        <nav className="flex flex-col gap-0">
+          {headings.map((heading) => {
+            const isActive = activeId === heading.id;
+            return (
+              <a
+                key={heading.id}
+                href={`#${heading.id}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  const el = document.getElementById(heading.id);
+                  if (el) {
+                    const mainEl = document.querySelector("main");
+                    if (mainEl) {
+                      mainEl.scrollTo({
+                        top: el.offsetTop - 32,
+                        behavior: "smooth",
+                      });
+                    } else {
+                      el.scrollIntoView({ behavior: "smooth" });
+                    }
+                    setActiveId(heading.id);
+                    history.pushState(null, "", `#${heading.id}`);
+                  }
+                }}
+                className={`block text-[0.875rem] leading-snug no-underline py-1.5 transition-all duration-150 border-l-2 ${
+                  heading.depth === 3 ? "pl-12" : "pl-8 text-[0.98rem]"
+                } ${
+                  isActive
+                    ? "text-primary !border-primary"
+                    : "text-foreground-muted border-transparent hover:text-foreground hover:border-foreground-muted"
+                }`}
+              >
+                {heading.text}
+              </a>
+            );
+          })}
+        </nav>
+      </div>
+    </aside>
+  );
+}

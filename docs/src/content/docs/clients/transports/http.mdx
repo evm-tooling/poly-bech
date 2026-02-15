@@ -1,0 +1,565 @@
+---
+title: CLI Reference
+description: Command-line interface reference for poly-bench
+---
+
+<div data-pagefind-weight="10">
+
+poly-bench provides a comprehensive CLI for running benchmarks, managing projects, and formatting files. This reference covers all available commands and options.
+
+### Quick Reference
+
+| Command | Description |
+|---------|-------------|
+| `poly-bench run` | Execute benchmarks |
+| `poly-bench check` | Parse and validate without running |
+| `poly-bench codegen` | Generate code without executing |
+| `poly-bench fmt` | Format .bench files |
+| `poly-bench init` | Initialize a new project |
+| `poly-bench new` | Create a new benchmark file |
+| `poly-bench add` | Add dependencies |
+| `poly-bench install` | Install all dependencies |
+| `poly-bench build` | Build runtime environments |
+| `poly-bench lsp` | Start the language server |
+
+</div>
+
+### poly-bench run
+
+Execute benchmarks from a `.bench` file.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Usage",
+      language: "bash",
+      code: `poly-bench run [OPTIONS] [FILE]`
+    },
+  ]}
+/>
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `FILE` | Path to the `.bench` file. If omitted, runs all `.bench` files in `benchmarks/` |
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--lang <LANG>` | Run only specified language(s). Can be repeated. Values: `go`, `ts`, `rust` | All languages |
+| `--iterations <N>` | Override iteration count (ignores auto-calibration) | From config |
+| `--report <FORMAT>` | Output format: `console`, `markdown`, `json` | `console` |
+| `--output <DIR>` | Output directory for reports and charts | Current dir |
+| `--no-color` | Disable colored output | - |
+| `--verbose` | Verbose output with timing details | - |
+| `--quiet` | Minimal output | - |
+
+### Examples
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Basic",
+      language: "bash",
+      code: `# Run all benchmarks in a file
+poly-bench run benchmarks/keccak.bench
+
+# Run all .bench files in benchmarks/
+poly-bench run`
+    },
+    {
+      title: "Language Selection",
+      language: "bash",
+      code: `# Run only Go benchmarks
+poly-bench run keccak.bench --lang go
+
+# Run Go and Rust only
+poly-bench run keccak.bench --lang go --lang rust
+
+# Run only TypeScript
+poly-bench run keccak.bench --lang ts`
+    },
+    {
+      title: "Output Formats",
+      language: "bash",
+      code: `# Generate markdown report
+poly-bench run keccak.bench --report markdown --output results/
+
+# Generate JSON for CI
+poly-bench run keccak.bench --report json --output results/
+
+# Both markdown and JSON
+poly-bench run keccak.bench --report markdown --report json --output results/`
+    },
+    {
+      title: "Override Settings",
+      language: "bash",
+      code: `# Override iteration count
+poly-bench run keccak.bench --iterations 10000
+
+# Verbose output
+poly-bench run keccak.bench --verbose`
+    },
+  ]}
+/>
+
+<Aside type="tip">
+<span>Use <code>--output</code> to save reports and generated charts. Without it, only console output is shown.</span>
+</Aside>
+
+
+---
+
+### poly-bench check
+
+Parse and validate a `.bench` file without executing benchmarks. Useful for catching syntax errors quickly.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Usage",
+      language: "bash",
+      code: `poly-bench check <FILE>`
+    },
+  ]}
+/>
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `FILE` | Path to the `.bench` file to validate |
+
+### Examples
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Check a single file
+poly-bench check benchmarks/keccak.bench
+
+# Output on success
+✓ benchmarks/keccak.bench is valid
+
+# Output on error
+error: undefined fixture 'data' at line 42
+  --> benchmarks/keccak.bench:42:9
+   |
+42 |     go: keccak256(data)
+   |         ^^^^^^^^^^^^^^
+   |
+   = help: define a fixture named 'data' before using it`
+    },
+  ]}
+/>
+
+<Aside type="note">
+<span>The <code>check</code> command validates syntax and semantics (undefined references, type errors) but doesn't compile or run the benchmark code.</span>
+</Aside>
+
+
+---
+
+### poly-bench codegen
+
+Generate benchmark code for target languages without executing. Useful for debugging or inspecting generated code.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Usage",
+      language: "bash",
+      code: `poly-bench codegen <FILE> --lang <LANG> --output <DIR>`
+    },
+  ]}
+/>
+
+### Options
+
+| Option | Description | Required |
+|--------|-------------|----------|
+| `--lang <LANG>` | Target language: `go`, `ts`, `rust` | Yes |
+| `--output <DIR>` | Output directory for generated code | Yes |
+
+### Examples
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Generate Go code
+poly-bench codegen benchmarks/keccak.bench --lang go --output generated/
+
+# Generate TypeScript code
+poly-bench codegen benchmarks/keccak.bench --lang ts --output generated/
+
+# Generate all languages
+poly-bench codegen benchmarks/keccak.bench --lang go --output generated/
+poly-bench codegen benchmarks/keccak.bench --lang ts --output generated/
+poly-bench codegen benchmarks/keccak.bench --lang rust --output generated/`
+    },
+  ]}
+/>
+
+Generated files:
+- Go: `generated/benchmark_gen.go`
+- TypeScript: `generated/benchmark_gen.ts`
+- Rust: `generated/benchmark_gen.rs`
+
+
+---
+
+### poly-bench fmt
+
+Format `.bench` files with consistent style.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Usage",
+      language: "bash",
+      code: `poly-bench fmt [FILES...]`
+    },
+  ]}
+/>
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `FILES` | One or more `.bench` files to format. If omitted, formats all files in `benchmarks/` |
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--check` | Check formatting without modifying files (exit code 1 if changes needed) |
+| `--diff` | Show diff of formatting changes |
+
+### Examples
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Format a single file
+poly-bench fmt benchmarks/keccak.bench
+
+# Format all .bench files
+poly-bench fmt
+
+# Check formatting (for CI)
+poly-bench fmt --check
+
+# Show what would change
+poly-bench fmt --diff`
+    },
+  ]}
+/>
+
+<Aside type="tip">
+<span>Add <code>poly-bench fmt --check</code> to your CI pipeline to enforce consistent formatting.</span>
+</Aside>
+
+
+---
+
+### poly-bench init
+
+Initialize a new poly-bench project with the standard directory structure.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Usage",
+      language: "bash",
+      code: `poly-bench init [NAME]`
+    },
+  ]}
+/>
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `NAME` | Project name. If omitted, uses current directory name |
+
+### Examples
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Create a new project
+poly-bench init my-benchmarks
+cd my-benchmarks
+
+# Initialize in current directory
+poly-bench init`
+    },
+  ]}
+/>
+
+### Created Structure
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Structure",
+      language: "text",
+      code: `my-benchmarks/
+├── polybench.toml           # Project configuration
+├── benchmarks/
+│   └── example.bench        # Example benchmark file
+└── .polybench/
+    └── runtime-env/         # Runtime environments (gitignored)`
+    },
+  ]}
+/>
+
+
+---
+
+### poly-bench new
+
+Create a new benchmark file from a template.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Usage",
+      language: "bash",
+      code: `poly-bench new <NAME>`
+    },
+  ]}
+/>
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `NAME` | Name for the new benchmark (creates `benchmarks/<NAME>.bench`) |
+
+### Examples
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Create a new benchmark file
+poly-bench new keccak
+
+# Creates benchmarks/keccak.bench with a template`
+    },
+  ]}
+/>
+
+
+---
+
+### poly-bench add
+
+Add dependencies for specific languages.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Usage",
+      language: "bash",
+      code: `poly-bench add --go <PKG>
+poly-bench add --ts <PKG>
+poly-bench add --rs <CRATE>`
+    },
+  ]}
+/>
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--go <PKG>` | Add a Go module (e.g., `golang.org/x/crypto`) |
+| `--ts <PKG>` | Add an npm package (e.g., `viem`) |
+| `--rs <CRATE>` | Add a Rust crate (e.g., `tiny-keccak`) |
+
+### Examples
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Add Go dependencies
+poly-bench add --go golang.org/x/crypto
+poly-bench add --go github.com/ethereum/go-ethereum
+
+# Add npm dependencies
+poly-bench add --ts viem
+poly-bench add --ts ethers
+
+# Add Rust crates
+poly-bench add --rs tiny-keccak
+poly-bench add --rs alloy-primitives`
+    },
+  ]}
+/>
+
+<Aside type="note">
+<span>Dependencies are recorded in <code>polybench.toml</code> and installed to <code>.polybench/runtime-env/</code>. Run <code>poly-bench install</code> after adding dependencies.</span>
+</Aside>
+
+
+---
+
+### poly-bench install
+
+Install all dependencies defined in `polybench.toml`.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Usage",
+      language: "bash",
+      code: `poly-bench install`
+    },
+  ]}
+/>
+
+### Examples
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Install all dependencies
+poly-bench install
+
+# Output
+Installing Go dependencies...
+  go get golang.org/x/crypto
+  go get github.com/ethereum/go-ethereum
+Installing npm dependencies...
+  npm install viem
+Installing Rust crates...
+  cargo add tiny-keccak
+✓ All dependencies installed`
+    },
+  ]}
+/>
+
+
+---
+
+### poly-bench build
+
+Build runtime environments for all languages. This pre-compiles Go plugins and builds Rust binaries.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Usage",
+      language: "bash",
+      code: `poly-bench build`
+    },
+  ]}
+/>
+
+<Aside type="tip">
+<span>Run <code>poly-bench build</code> after <code>poly-bench install</code> to pre-compile runtimes. This speeds up subsequent benchmark runs.</span>
+</Aside>
+
+
+---
+
+### poly-bench lsp
+
+Start the Language Server Protocol server for editor integration.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Usage",
+      language: "bash",
+      code: `poly-bench lsp`
+    },
+  ]}
+/>
+
+The LSP server communicates over stdio. See [LSP / Editor Support](/docs/clients/transports/websocket/) for editor configuration.
+
+### Supported Features
+
+| Feature | Description |
+|---------|-------------|
+| Diagnostics | Real-time error and warning reporting |
+| Formatting | Format on save |
+| Completions | Keyword, standard library, and user symbol completions |
+| Hover | Documentation on hover |
+| Semantic highlighting | Syntax highlighting tokens |
+
+
+---
+
+### Global Options
+
+These options work with all commands:
+
+| Option | Description |
+|--------|-------------|
+| `--help`, `-h` | Show help for a command |
+| `--version`, `-V` | Show version information |
+| `--config <PATH>` | Use a custom `polybench.toml` path |
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Get help
+poly-bench --help
+poly-bench run --help
+
+# Check version
+poly-bench --version`
+    },
+  ]}
+/>
+
+
+---
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error (parse error, validation failure, etc.) |
+| 2 | Command-line usage error |
+
+
+---
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `POLYBENCH_NO_COLOR` | Disable colored output (same as `--no-color`) |
+| `POLYBENCH_CONFIG` | Path to `polybench.toml` |
+| `RUST_LOG` | Set log level for debugging (`debug`, `trace`) |
+
+
+---
+
+### Further Reading
+
+- [Getting Started](/docs/getting-started/) — Quick start guide
+- [DSL Reference](/docs/clients/public/) — Benchmark file syntax
+- [LSP / Editor Support](/docs/clients/transports/websocket/) — Editor configuration

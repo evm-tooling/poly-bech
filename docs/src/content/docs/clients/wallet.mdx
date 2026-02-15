@@ -1,0 +1,522 @@
+---
+title: Standard Library
+description: Built-in modules for common benchmarking tasks
+---
+
+<div data-pagefind-weight="10">
+
+poly-bench includes a standard library with modules for common benchmarking tasks. Import them at the top of your `.bench` file with the `use` keyword.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Imports",
+      language: "rust",
+      code: `use std::anvil      // Ethereum node spawning
+use std::charting   // Chart generation
+use std::constants  // Mathematical constants`
+    },
+  ]}
+/>
+
+</div>
+
+### std::anvil
+
+The `anvil` module provides Ethereum node spawning for RPC benchmarks. It manages a local Anvil instance that all languages can connect to.
+
+<Aside type="note">
+<span>Anvil is a fast local Ethereum node from the Foundry toolkit. poly-bench automatically handles spawning and cleanup — you just call the directives.</span>
+</Aside>
+
+### spawnAnvil
+
+Spawns a local Anvil instance. Call this in a `before` block.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Syntax",
+      language: "rust",
+      code: `anvil.spawnAnvil(
+    fork: "<rpc-url>"    // Optional: Fork from this RPC endpoint
+)`
+    },
+  ]}
+/>
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `fork` | string | No | RPC URL to fork from (e.g., mainnet, Sepolia) |
+
+### Example
+
+<CodeGroup 
+  tabs={[
+    {
+      title: ".bench",
+      language: "rust",
+      code: `use std::anvil
+
+suite rpcBenchmarks {
+    before {
+        // Fork from mainnet
+        anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
+    }
+
+    setup go {
+        import "github.com/ethereum/go-ethereum/ethclient"
+        init {
+            // Connect using the provided URL
+            client, _ := ethclient.Dial(anvil.ANVIL_RPC_URL)
+        }
+    }
+
+    setup ts {
+        import { createPublicClient, http } from 'viem';
+        init {
+            const client = createPublicClient({
+                transport: http(process.env.ANVIL_RPC_URL)
+            })
+        }
+    }
+
+    // ... benchmarks ...
+
+    after {
+        anvil.stopAnvil()
+    }
+}`
+    },
+  ]}
+/>
+
+### ANVIL_RPC_URL
+
+After calling `spawnAnvil()`, the `anvil.ANVIL_RPC_URL` constant is available. It contains the local RPC endpoint (typically `http://127.0.0.1:8545`).
+
+| Language | Access Method |
+|----------|--------------|
+| Go | `anvil.ANVIL_RPC_URL` in init/helpers |
+| TypeScript | `process.env.ANVIL_RPC_URL` |
+| Rust | `std::env::var("ANVIL_RPC_URL")` |
+
+### stopAnvil
+
+Stops the running Anvil instance. Call this in an `after` block to clean up.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Syntax",
+      language: "rust",
+      code: `anvil.stopAnvil()`
+    },
+  ]}
+/>
+
+<Aside type="tip">
+<span>Always call <code>stopAnvil()</code> in your <code>after</code> block to ensure the Anvil process is cleaned up, even if benchmarks fail.</span>
+</Aside>
+
+
+---
+
+### std::charting
+
+The `charting` module generates SVG charts from benchmark results. Call these directives in an `after` block.
+
+### drawBarChart
+
+Generates a bar chart comparing benchmark results across languages.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Syntax",
+      language: "rust",
+      code: `charting.drawBarChart(
+    title: "<chart-title>",
+    xlabel: "<x-axis-label>",
+    ylabel: "<y-axis-label>"
+)`
+    },
+  ]}
+/>
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `title` | string | Yes | Chart title |
+| `xlabel` | string | No | X-axis label |
+| `ylabel` | string | No | Y-axis label |
+
+### Example
+
+<CodeGroup 
+  tabs={[
+    {
+      title: ".bench",
+      language: "rust",
+      code: `use std::charting
+
+suite hashBenchmarks {
+    // ... setup and benchmarks ...
+
+    after {
+        charting.drawBarChart(
+            title: "Hash Function Performance",
+            xlabel: "Implementation",
+            ylabel: "Time (ns/op)"
+        )
+    }
+}`
+    },
+  ]}
+/>
+
+This generates a file like `hash-function-performance.svg` in the output directory.
+
+<Aside type="note">
+<span>Run with <code>--output results/</code> to specify where chart files are saved. Without an output directory, charts won't be generated.</span>
+</Aside>
+
+### drawPieChart
+
+Generates a pie chart showing the relative time distribution for a specific benchmark.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Syntax",
+      language: "rust",
+      code: `charting.drawPieChart(
+    title: "<chart-title>",
+    benchmark: "<benchmark-name>"
+)`
+    },
+  ]}
+/>
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `title` | string | Yes | Chart title |
+| `benchmark` | string | Yes | Name of the benchmark to visualize |
+
+### Example
+
+<CodeGroup 
+  tabs={[
+    {
+      title: ".bench",
+      language: "rust",
+      code: `use std::charting
+
+suite example {
+    bench keccak256 {
+        go: keccak256(data)
+        ts: keccak256(data)
+        rust: keccak256(&data)
+    }
+
+    after {
+        charting.drawPieChart(
+            title: "Keccak256 Time Distribution",
+            benchmark: "keccak256"
+        )
+    }
+}`
+    },
+  ]}
+/>
+
+### drawLineChart
+
+Generates a line chart showing scaling behavior across benchmarks. Useful when you have benchmarks with varying input sizes.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Syntax",
+      language: "rust",
+      code: `charting.drawLineChart(
+    title: "<chart-title>",
+    xlabel: "<x-axis-label>",
+    ylabel: "<y-axis-label>"
+)`
+    },
+  ]}
+/>
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `title` | string | Yes | Chart title |
+| `xlabel` | string | No | X-axis label |
+| `ylabel` | string | No | Y-axis label |
+
+### Example
+
+<CodeGroup 
+  tabs={[
+    {
+      title: ".bench",
+      language: "rust",
+      code: `use std::charting
+
+suite scalingBenchmarks {
+    bench size100 {
+        go: process(data100)
+        ts: process(data100)
+        rust: process(&data100)
+    }
+
+    bench size1000 {
+        go: process(data1000)
+        ts: process(data1000)
+        rust: process(&data1000)
+    }
+
+    bench size10000 {
+        go: process(data10000)
+        ts: process(data10000)
+        rust: process(&data10000)
+    }
+
+    after {
+        charting.drawLineChart(
+            title: "Scaling Behavior",
+            xlabel: "Input Size",
+            ylabel: "Time (ns/op)"
+        )
+    }
+}`
+    },
+  ]}
+/>
+
+<Aside type="tip">
+<span>Line charts work best when benchmark names follow a pattern with sizes (e.g., <code>size100</code>, <code>size1000</code>). The chart extracts numeric values from benchmark names for the x-axis.</span>
+</Aside>
+
+
+### Multiple Charts
+
+You can generate multiple charts in a single `after` block:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: ".bench",
+      language: "rust",
+      code: `use std::charting
+
+suite comprehensive {
+    // ... benchmarks ...
+
+    after {
+        // Bar chart for overall comparison
+        charting.drawBarChart(
+            title: "Overall Performance",
+            xlabel: "Benchmark",
+            ylabel: "Time (ns/op)"
+        )
+
+        // Pie chart for specific benchmark
+        charting.drawPieChart(
+            title: "Main Operation Distribution",
+            benchmark: "mainOperation"
+        )
+
+        // Line chart for scaling
+        charting.drawLineChart(
+            title: "Scaling Analysis",
+            xlabel: "Input Size",
+            ylabel: "Time (ns/op)"
+        )
+    }
+}`
+    },
+  ]}
+/>
+
+
+---
+
+### std::constants
+
+The `constants` module provides common mathematical constants. These are useful for numerical benchmarks.
+
+### Available Constants
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `constants.PI` | 3.14159265358979... | Pi |
+| `constants.E` | 2.71828182845904... | Euler's number |
+| `constants.TAU` | 6.28318530717958... | Tau (2 * Pi) |
+| `constants.PHI` | 1.61803398874989... | Golden ratio |
+| `constants.SQRT2` | 1.41421356237309... | Square root of 2 |
+
+### Example
+
+<CodeGroup 
+  tabs={[
+    {
+      title: ".bench",
+      language: "rust",
+      code: `use std::constants
+
+suite mathBenchmarks {
+    setup go {
+        import "math"
+        helpers {
+            func circleArea(radius float64) float64 {
+                return constants.PI * radius * radius
+            }
+        }
+    }
+
+    setup ts {
+        helpers {
+            function circleArea(radius: number): number {
+                return Math.PI * radius * radius
+            }
+        }
+    }
+
+    setup rust {
+        helpers {
+            fn circle_area(radius: f64) -> f64 {
+                std::f64::consts::PI * radius * radius
+            }
+        }
+    }
+
+    bench area {
+        go: circleArea(10.0)
+        ts: circleArea(10.0)
+        rust: circle_area(10.0)
+    }
+}`
+    },
+  ]}
+/>
+
+<Aside type="note">
+<span>The <code>constants</code> module is primarily for Go benchmarks. TypeScript has <code>Math.PI</code> and Rust has <code>std::f64::consts::PI</code> built-in.</span>
+</Aside>
+
+
+---
+
+### Module Summary
+
+| Module | Purpose | Key Functions |
+|--------|---------|---------------|
+| `std::anvil` | Ethereum development | `spawnAnvil()`, `stopAnvil()`, `ANVIL_RPC_URL` |
+| `std::charting` | Visualization | `drawBarChart()`, `drawPieChart()`, `drawLineChart()` |
+| `std::constants` | Math constants | `PI`, `E`, `TAU`, `PHI`, `SQRT2` |
+
+
+### Complete Example
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "full-example.bench",
+      language: "rust",
+      code: `use std::anvil
+use std::charting
+
+suite ethereumBenchmarks {
+    description: "Ethereum client library benchmarks"
+    warmup: 10
+    compare: true
+    baseline: "go"
+    mode: "auto"
+    targetTime: 5000ms
+    count: 3
+
+    before {
+        anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
+    }
+
+    setup go {
+        import "github.com/ethereum/go-ethereum/ethclient"
+        import "context"
+        
+        init {
+            client, _ := ethclient.Dial(anvil.ANVIL_RPC_URL)
+        }
+        
+        helpers {
+            func getBlockNumber() uint64 {
+                num, _ := client.BlockNumber(context.Background())
+                return num
+            }
+            
+            func getBalance(addr string) *big.Int {
+                balance, _ := client.BalanceAt(
+                    context.Background(),
+                    common.HexToAddress(addr),
+                    nil,
+                )
+                return balance
+            }
+        }
+    }
+
+    setup ts {
+        import { createPublicClient, http } from 'viem';
+        import { mainnet } from 'viem/chains';
+        
+        init {
+            const client = createPublicClient({
+                chain: mainnet,
+                transport: http(process.env.ANVIL_RPC_URL)
+            })
+        }
+        
+        helpers {
+            async function getBlockNumber(): Promise<bigint> {
+                return await client.getBlockNumber()
+            }
+            
+            async function getBalance(addr: string): Promise<bigint> {
+                return await client.getBalance({ address: addr as \`0x\${string}\` })
+            }
+        }
+    }
+
+    fixture vitalikAddress {
+        hex: "d8da6bf26964af9d7eed9e03e53415d37aa96045"
+    }
+
+    bench blockNumber {
+        go: getBlockNumber()
+        ts: await getBlockNumber()
+    }
+
+    bench balance {
+        go: getBalance("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
+        ts: await getBalance("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
+    }
+
+    after {
+        charting.drawBarChart(
+            title: "Ethereum Client Performance",
+            xlabel: "Operation",
+            ylabel: "Time (ns/op)"
+        )
+        
+        anvil.stopAnvil()
+    }
+}`
+    },
+  ]}
+/>
+
+
+### Further Reading
+
+- [DSL Reference](/docs/clients/public/) — Complete syntax documentation
+- [Examples](/docs/examples/) — Real-world benchmark patterns
+- [CLI Reference](/docs/clients/transports/http/) — Command-line options

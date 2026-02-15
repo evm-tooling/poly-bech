@@ -1,0 +1,212 @@
+"use client";
+
+import { useRef, useState, useEffect } from "react";
+import Link from "next/link";
+import CopyButton from "./CopyButton";
+import TerminalTyping from "./TerminalTyping";
+import GitHubStats from "./GitHubStats";
+import Image from "next/image";
+import { Button } from "@/components/ui/button";
+import RotatingText from "./RotatingText";
+import { motion, useReducedMotion, useInView } from "framer-motion";
+import { Code2, Layers, Shield, Cpu, Zap, GitBranch, Lock, Database } from "lucide-react";
+import { Card } from "@/components/ui/card";
+
+const features = [
+  { icon: Layers, title: "Familiar API", desc: "Same Client/Transport and Actions patterns as viem for TypeScript developers" },
+  { icon: Code2, title: "Idiomatic Go", desc: "Built with Go conventions: explicit errors, context, and interfaces" },
+  { icon: Shield, title: "Type Safe", desc: "Go's static typing for contract ABIs, transactions, and RPC calls" },
+  { icon: Cpu, title: "go-ethereum", desc: "Built on proven go-ethereum cryptographic primitives" },
+  { icon: Zap, title: "High Performance", desc: "Leverage Go's concurrency model for parallel RPC operations" },
+  { icon: GitBranch, title: "Composable", desc: "Modular architecture lets you import only what you need" },
+  { icon: Lock, title: "Battle Tested", desc: "Comprehensive test suite running against Anvil" },
+  { icon: Database, title: "ABI Utilities", desc: "Encoding, decoding, and inspection utilities for ABIs" },
+];
+
+const doubled = [...features, ...features];
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 30 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, ease: [0.25, 0.4, 0.25, 1] as [number, number, number, number], delay: i * 0.12 },
+  }),
+};
+
+// Hook to detect mobile screen size
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < breakpoint);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, [breakpoint]);
+  
+  return isMobile;
+}
+
+export default function Hero() {
+  const shouldReduceMotion = useReducedMotion();
+  const isMobile = useIsMobile();
+  const disableAnimations = shouldReduceMotion || isMobile;
+  const marqueeRef = useRef(null);
+  const isMarqueeInView = useInView(marqueeRef, { once: false, margin: "100px" });
+
+  return (
+    <section className="relative pt-26">
+      {/* Background image overlay */}
+      <div
+        className="absolute top-0 left-1/2 lg:left-[calc(50%-30px)] -translate-x-1/2 w-[110vw] min-w-[800px] bottom-0 bg-cover bg-top opacity-25 z-0 pointer-events-none scale-110"
+        style={{
+          backgroundImage: "url('/svg/hero-bg.svg')",
+          maskImage:
+            "linear-gradient(to bottom, black 0%, black 20%, transparent 65%)",
+          WebkitMaskImage:
+            "linear-gradient(to bottom, black 0%, black 20%, transparent 65%)",
+        }}
+      />
+
+      <div className="relative z-10 flex justify-between items-stretch gap-12 mb-20 mt-6 max-lg:flex-col max-lg:items-center max-lg:text-center">
+        {/* Left - text content */}
+        <div className="max-w-[420px] flex flex-col gap-6">
+          <motion.div
+            variants={disableAnimations ? undefined : fadeUp}
+            initial={disableAnimations ? false : "hidden"}
+            animate={disableAnimations ? false : "visible"}
+            custom={0}
+          >
+            <Image
+              className="items-left w-auto max-sm:h-[60px] max-lg:mx-auto dark-only"
+              width={100}
+              height={80}
+              src="/svg/golem-logo-text-light.svg"
+              alt="viem-go logo"
+            />
+            <Image
+              className="items-left w-auto max-sm:h-[60px] max-lg:mx-auto light-only"
+              width={100}
+              height={80}
+              src="/svg/golem-logo-text-dark.svg"
+              alt="viem-go logo"
+            />
+          </motion.div>
+
+          <div>
+            <RotatingText disableAnimation={disableAnimations} />
+          </div>
+
+          <motion.p
+            className="text-lead text-base sm:text-lg"
+            variants={disableAnimations ? undefined : fadeUp}
+            initial={disableAnimations ? false : "hidden"}
+            animate={disableAnimations ? false : "visible"}
+            custom={2}
+          >
+            Build reliable blockchain apps & libraries with{" "}
+            <strong className="text-foreground font-semibold">idiomatic Go</strong>,{" "}
+            <strong className="text-foreground font-semibold">type-safe</strong>, and{" "}
+            <strong className="text-foreground font-semibold">composable</strong> modules that
+            interface with Ethereum — inspired by{" "}
+            <a
+              href="https://viem.sh"
+              className="text-primary hover:underline"
+            >
+              viem
+            </a>
+          </motion.p>
+
+          <motion.div
+            className="flex gap-2 flex-wrap max-lg:justify-center"
+            variants={disableAnimations ? undefined : fadeUp}
+            initial={disableAnimations ? false : "hidden"}
+            animate={disableAnimations ? false : "visible"}
+            custom={3}
+          >
+            <Button asChild size="lg">
+              <Link href="/docs/introduction">Docs</Link>
+            </Button>
+            <Button asChild variant="secondary" size="lg">
+              <Link href="/docs/performance">Benchmarks</Link>
+            </Button>
+            <Button asChild variant="secondary" size="lg">
+              <a
+                href="https://github.com/ChefBingbong/viem-go"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                GitHub
+              </a>
+            </Button>
+          </motion.div>
+        </div>
+
+        {/* Right - terminal + stats */}
+        <motion.div
+          className="w-[520px] shrink-0 flex flex-col justify-start gap-4 max-lg:hidden"
+          variants={fadeUp}
+          initial="hidden"
+          animate="visible"
+          custom={2}
+        >
+          {/* Install terminal */}
+          <div className="flex flex-col rounded-lg overflow-hidden border border-primary/20 bg-code-bg min-h-[180px]">
+            <div className="flex justify-between items-center bg-code-bg/30 border-b border-primary/15 pr-2">
+              <div
+                className="flex items-center gap-2 px-4 py-2.5 text-[0.875rem] font-medium text-foreground bg-secondary/40 border-b-2 border-primary"
+                style={{ fontFamily: "'SF Mono', Menlo, Monaco, 'Courier New', monospace" }}
+              >
+                <svg
+                  className="w-[18px] h-[18px] text-[#00ADD8]"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M1.811 10.231c-.047 0-.058-.023-.035-.059l.246-.315c.023-.035.081-.058.128-.058h4.172c.046 0 .058.035.035.07l-.199.303c-.023.036-.082.07-.117.07zM.047 11.306c-.047 0-.059-.023-.035-.058l.245-.316c.023-.035.082-.058.129-.058h5.328c.047 0 .07.035.058.07l-.093.28c-.012.047-.058.07-.105.07zm2.828 1.075c-.047 0-.059-.035-.035-.07l.163-.292c.023-.035.07-.07.117-.07h2.337c.047 0 .07.035.07.082l-.023.28c0 .047-.047.082-.082.082zm12.129-2.36c-.736.187-1.239.327-1.963.514-.176.046-.187.058-.34-.117-.174-.199-.303-.327-.548-.444-.737-.362-1.45-.257-2.115.175-.795.514-1.204 1.274-1.192 2.22.011.935.654 1.706 1.577 1.835.795.105 1.46-.175 1.987-.77.105-.13.198-.27.315-.434H10.47c-.245 0-.304-.152-.222-.35.152-.362.432-.97.596-1.274a.315.315 0 01.292-.187h4.253c-.023.316-.023.631-.07.947a4.983 4.983 0 01-.958 2.29c-.841 1.11-1.94 1.8-3.33 1.986-1.145.152-2.209-.07-3.143-.77-.865-.655-1.356-1.52-1.484-2.595-.152-1.274.222-2.419.993-3.424.83-1.086 1.928-1.776 3.272-2.02 1.098-.2 2.15-.07 3.096.571.62.41 1.063.97 1.356 1.648.07.105.023.164-.117.2m3.868 6.461c-1.064-.024-2.034-.328-2.852-1.029a3.665 3.665 0 01-1.262-2.255c-.21-1.32.152-2.489.947-3.529.853-1.122 1.881-1.706 3.272-1.95 1.192-.21 2.314-.095 3.33.595.923.63 1.496 1.484 1.648 2.605.198 1.578-.257 2.863-1.344 3.962-.771.783-1.718 1.273-2.805 1.495-.315.06-.63.07-.934.106zm2.78-4.72c-.011-.153-.011-.27-.034-.387-.21-1.157-1.274-1.81-2.384-1.554-1.087.245-1.788.935-2.045 2.033-.21.912.234 1.835 1.075 2.21.643.28 1.285.244 1.905-.07.923-.48 1.425-1.228 1.484-2.233z" />
+                </svg>
+                <span>golang</span>
+              </div>
+              <CopyButton text="go get github.com/ChefBingbong/viem-go" />
+            </div>
+            <div
+              className="flex-1 flex items-start py-2 px-5 text-[1rem]"
+              style={{ fontFamily: "'SF Mono', Menlo, Monaco, 'Courier New', monospace" }}
+            >
+              <TerminalTyping />
+            </div>
+          </div>
+          <GitHubStats />
+        </motion.div>
+      </div>
+
+      {/* Features marquee */}
+      <div
+        ref={marqueeRef}
+        className="relative overflow-hidden pb-10"
+      >
+        <div className="relative flex overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_5%,black_95%,transparent)]">
+          <motion.div
+            className="flex shrink-0 gap-4 sm:gap-5"
+            animate={disableAnimations || !isMarqueeInView ? {} : { x: ["0%", "-50%"] }}
+            transition={disableAnimations ? {} : { duration: 45, repeat: Infinity, ease: "linear" }}
+          >
+            {doubled.map((f, i) => (
+              <Card
+                key={i}
+                variant="surface"
+                className="shrink-0 w-[220px] sm:w-[280px] border-card-border/60 bg-card/60 p-4 sm:p-6 shadow-md shadow-primary/5"
+              >
+                <div className="mb-3 sm:mb-4 icon-box icon-box-primary h-9 w-9 sm:h-10 sm:w-10 rounded-lg">
+                  <f.icon className="h-4 w-4 sm:h-5 sm:w-5" />
+                </div>
+                <h4 className="mb-1.5 sm:mb-2 text-sm sm:text-base text-foreground">{f.title}</h4>
+                <p className="text-xs sm:text-sm text-foreground-secondary">{f.desc}</p>
+              </Card>
+            ))}
+          </motion.div>
+        </div>
+      </div>
+    </section>
+  );
+}
