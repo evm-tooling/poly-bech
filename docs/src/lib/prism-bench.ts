@@ -4,7 +4,7 @@
  * Register by importing this module before highlighting: import "@/lib/prism-bench"
  */
 
-import { Prism } from "prism-react-renderer";
+import { Prism } from 'prism-react-renderer'
 
 Prism.languages.bench = {
   comment: {
@@ -32,17 +32,18 @@ Prism.languages.bench = {
     greedy: true,
   },
 
-  "use-statement": {
+  'use-statement': {
     pattern: /\buse\s+std::[a-zA-Z_][a-zA-Z0-9_]*/,
     inside: {
       keyword: /\buse\b/,
       punctuation: /::/,
-      "class-name": /[a-zA-Z_][a-zA-Z0-9_]*$/,
+      'class-name': /[a-zA-Z_][a-zA-Z0-9_]*$/,
     },
   },
 
   keyword: {
-    pattern: /\b(?:suite|setup|bench|function|fixture|before|after|each|globalSetup|import|init|helpers|declare|async|skip|validate)\b/,
+    pattern:
+      /\b(?:suite|setup|bench|function|fixture|before|after|each|globalSetup|import|init|helpers|declare|async|skip|validate)\b/,
     greedy: true,
   },
 
@@ -51,22 +52,24 @@ Prism.languages.bench = {
     greedy: true,
   },
 
-  "stdlib-call": {
+  'stdlib-call': {
     pattern: /\b(?:anvil|charting|constants|math)\.[a-zA-Z_][a-zA-Z0-9_]*/,
     inside: {
-      "class-name": /^(?:anvil|charting|constants|math)/,
+      'class-name': /^(?:anvil|charting|constants|math)/,
       punctuation: /^\./,
       function: /[a-zA-Z_][a-zA-Z0-9_]*$/,
     },
   },
 
   function: {
-    pattern: /\b(?:spawnAnvil|keccak256_rust|keccak256Go|keccak256Ts|tiny_keccak|stopAnvil|drawBarChart|drawLineChart|drawPieChart|drawScatterPlot|drawHistogram|drawHeatmap|drawBoxPlot|drawAreaChart)\s*\(?/,
+    pattern:
+      /\b(?:spawnAnvil|keccak256_rust|keccak256Go|keccak256Ts|tiny_keccak|stopAnvil|drawBarChart|drawLineChart|drawPieChart|drawScatterPlot|drawHistogram|drawHeatmap|drawBoxPlot|drawAreaChart)\s*\(?/,
     greedy: true,
   },
 
   property: {
-    pattern: /\b(?:description|iterations|warmup|minIterations|maxIterations|concurrency|count|timeout|targetTime|cvThreshold|requires|tags|order|mode|compare|sink|memory|outlierDetection|baseline|hex|shape|title|xlabel|ylabel|sortBy|sortOrder|timeUnit|showTotalTime|showLegend|showGrid|benchmark)\s*:/,
+    pattern:
+      /\b(?:description|iterations|warmup|minIterations|maxIterations|concurrency|count|timeout|targetTime|cvThreshold|requires|tags|order|mode|compare|sink|memory|outlierDetection|baseline|hex|shape|title|xlabel|ylabel|sortBy|sortOrder|timeUnit|showTotalTime|showLegend|showGrid|benchmark)\s*:/,
     greedy: true,
     inside: {
       property: /^[a-zA-Z_][a-zA-Z0-9_]*/,
@@ -77,6 +80,6 @@ Prism.languages.bench = {
   punctuation: {
     pattern: /[{}()[\].,:;]/,
   },
-};
+}
 
 export function registerPrismBench() {}

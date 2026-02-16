@@ -1,29 +1,29 @@
 interface FlowNode {
-  label: string;
-  sublabel?: string;
-  items?: string[];
-  variant?: "default" | "accent" | "muted";
+  label: string
+  sublabel?: string
+  items?: string[]
+  variant?: 'default' | 'accent' | 'muted'
 }
 
 interface FlowBranch {
-  condition: string;
-  label: string;
+  condition: string
+  label: string
 }
 
 interface FlowDiagramProps {
-  nodes: FlowNode[];
+  nodes: FlowNode[]
   /** Optional branching at the end (e.g. HTTP vs WebSocket) */
-  branches?: FlowBranch[];
+  branches?: FlowBranch[]
 }
 
-function nodeColors(variant: FlowNode["variant"] = "default") {
+function nodeColors(variant: FlowNode['variant'] = 'default') {
   switch (variant) {
-    case "accent":
-      return "border-tertiary/40 bg-tertiary/8 text-tertiary";
-    case "muted":
-      return "border-border/60 bg-background-secondary/50 text-foreground-muted";
+    case 'accent':
+      return 'border-tertiary/40 bg-tertiary/8 text-tertiary'
+    case 'muted':
+      return 'border-border/60 bg-background-secondary/50 text-foreground-muted'
     default:
-      return "border-primary/30 bg-primary/6 text-foreground";
+      return 'border-primary/30 bg-primary/6 text-foreground'
   }
 }
 
@@ -40,14 +40,17 @@ function Arrow() {
         <path d="M5 8L0 0h10z" fill="currentColor" />
       </svg>
     </div>
-  );
+  )
 }
 
 export default function FlowDiagram({ nodes, branches }: FlowDiagramProps) {
   return (
     <div className="my-6 flex flex-col items-center">
       {nodes.map((node, i) => (
-        <div key={i} className="flex flex-col items-center w-full max-w-[480px]">
+        <div
+          key={i}
+          className="flex flex-col items-center w-full max-w-[480px]"
+        >
           {i > 0 && <Arrow />}
           <div
             className={`w-full rounded-lg border px-4 py-3 transition-colors ${nodeColors(node.variant)}`}
@@ -99,5 +102,5 @@ export default function FlowDiagram({ nodes, branches }: FlowDiagramProps) {
         </>
       )}
     </div>
-  );
+  )
 }

@@ -1,33 +1,33 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { Highlight } from "prism-react-renderer";
-import { useCodeTheme } from "@/lib/use-code-theme";
+import { AnimatePresence, motion } from 'framer-motion'
+import { Highlight } from 'prism-react-renderer'
+import * as React from 'react'
+import { useCodeTheme } from '@/lib/use-code-theme'
 
 const monoFont =
-  'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+  'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
 
 // ============================================================================
 // Types
 // ============================================================================
 
 interface Slide {
-  src: string;
-  label: string;
-  summary: string;
-  code?: string;
+  src: string
+  label: string
+  summary: string
+  code?: string
 }
 
 interface Suite {
-  id: string;
-  label: string;
-  badge?: string;
-  slides: Slide[];
+  id: string
+  label: string
+  badge?: string
+  slides: Slide[]
 }
 
 interface BenchmarkViewerProps {
-  suites: Suite[];
+  suites: Suite[]
 }
 
 // ============================================================================
@@ -35,28 +35,30 @@ interface BenchmarkViewerProps {
 // ============================================================================
 
 function InlineSvg({ src, alt }: { src: string; alt: string }) {
-  const [svg, setSvg] = React.useState<string | null>(null);
+  const [svg, setSvg] = React.useState<string | null>(null)
 
   React.useEffect(() => {
-    let cancelled = false;
+    let cancelled = false
     fetch(src)
       .then((r) => r.text())
       .then((text) => {
-        if (cancelled) return;
+        if (cancelled) return
         const patched = text.replace(
           /(<rect\s+width="[^"]*"\s+height="[^"]*"\s+fill=")#1E1E20(")/,
-          "$1transparent$2"
-        );
-        setSvg(patched);
+          '$1transparent$2',
+        )
+        setSvg(patched)
       })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [src]);
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [src])
 
   if (!svg) {
     return (
       <div className="w-full aspect-[1200/440] rounded-lg bg-[hsl(var(--code-bg))] animate-pulse" />
-    );
+    )
   }
 
   return (
@@ -66,7 +68,7 @@ function InlineSvg({ src, alt }: { src: string; alt: string }) {
       aria-label={alt}
       dangerouslySetInnerHTML={{ __html: svg }}
     />
-  );
+  )
 }
 
 // ============================================================================
@@ -75,26 +77,53 @@ function InlineSvg({ src, alt }: { src: string; alt: string }) {
 
 function ChevronLeft() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <polyline points="15 18 9 12 15 6" />
     </svg>
-  );
+  )
 }
 
 function ChevronRight() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <polyline points="9 18 15 12 9 6" />
     </svg>
-  );
+  )
 }
 
 function ChevronDown() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <polyline points="6 9 12 15 18 9" />
     </svg>
-  );
+  )
 }
 
 // ============================================================================
@@ -114,78 +143,91 @@ const slideVariants = {
     x: dir > 0 ? -250 : 250,
     opacity: 0,
   }),
-};
+}
 
 const summaryVariants = {
   enter: { y: 12, opacity: 0 },
   center: { y: 0, opacity: 1 },
   exit: { y: -8, opacity: 0 },
-};
+}
 
 // ============================================================================
 // Main component
 // ============================================================================
 
 export default function BenchmarkViewer({ suites }: BenchmarkViewerProps) {
-  const [activeSuiteIdx, setActiveSuiteIdx] = React.useState(0);
-  const [activeSlideIdx, setActiveSlideIdx] = React.useState(0);
-  const [direction, setDirection] = React.useState(0); // +1 = right, -1 = left
-  const [dropdownOpen, setDropdownOpen] = React.useState(false);
-  const codeTheme = useCodeTheme();
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const [activeSuiteIdx, setActiveSuiteIdx] = React.useState(0)
+  const [activeSlideIdx, setActiveSlideIdx] = React.useState(0)
+  const [direction, setDirection] = React.useState(0) // +1 = right, -1 = left
+  const [dropdownOpen, setDropdownOpen] = React.useState(false)
+  const codeTheme = useCodeTheme()
+  const dropdownRef = React.useRef<HTMLDivElement>(null)
 
-  const suite = suites[activeSuiteIdx];
-  const slide = suite.slides[activeSlideIdx];
-  const canPrev = activeSlideIdx > 0;
-  const canNext = activeSlideIdx < suite.slides.length - 1;
+  const suite = suites[activeSuiteIdx]
+  const slide = suite.slides[activeSlideIdx]
+  const canPrev = activeSlideIdx > 0
+  const canNext = activeSlideIdx < suite.slides.length - 1
 
   // Close dropdown on outside click
   React.useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false);
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
+        setDropdownOpen(false)
       }
     }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
 
   function goTo(idx: number) {
-    setDirection(idx > activeSlideIdx ? 1 : -1);
-    setActiveSlideIdx(idx);
+    setDirection(idx > activeSlideIdx ? 1 : -1)
+    setActiveSlideIdx(idx)
   }
 
   function goPrev() {
-    if (!canPrev) return;
-    setDirection(-1);
-    setActiveSlideIdx((i) => i - 1);
+    if (!canPrev) return
+    setDirection(-1)
+    setActiveSlideIdx((i) => i - 1)
   }
 
   function goNext() {
-    if (!canNext) return;
-    setDirection(1);
-    setActiveSlideIdx((i) => i + 1);
+    if (!canNext) return
+    setDirection(1)
+    setActiveSlideIdx((i) => i + 1)
   }
 
   function switchSuite(idx: number) {
-    setActiveSuiteIdx(idx);
-    setActiveSlideIdx(0);
-    setDirection(1);
-    setDropdownOpen(false);
+    setActiveSuiteIdx(idx)
+    setActiveSlideIdx(0)
+    setDirection(1)
+    setDropdownOpen(false)
   }
 
   // Keyboard navigation
   React.useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      const viewer = dropdownRef.current?.closest("[data-benchmark-viewer]");
-      if (!viewer) return;
-      if (!viewer.contains(document.activeElement) && document.activeElement !== viewer) return;
-      if (e.key === "ArrowLeft") { e.preventDefault(); goPrev(); }
-      if (e.key === "ArrowRight") { e.preventDefault(); goNext(); }
+      const viewer = dropdownRef.current?.closest('[data-benchmark-viewer]')
+      if (!viewer) return
+      if (
+        !viewer.contains(document.activeElement) &&
+        document.activeElement !== viewer
+      )
+        return
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        goPrev()
+      }
+      if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        goNext()
+      }
     }
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  });
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  })
 
   return (
     <div
@@ -218,8 +260,8 @@ export default function BenchmarkViewer({ suites }: BenchmarkViewerProps) {
                   onClick={() => switchSuite(i)}
                   className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-3 transition-colors ${
                     i === activeSuiteIdx
-                      ? "bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))]"
-                      : "text-[hsl(var(--foreground-secondary))] hover:bg-[hsl(var(--background-elevated))] hover:text-[hsl(var(--foreground))]"
+                      ? 'bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))]'
+                      : 'text-[hsl(var(--foreground-secondary))] hover:bg-[hsl(var(--background-elevated))] hover:text-[hsl(var(--foreground))]'
                   }`}
                 >
                   <span className="font-medium">{s.label}</span>
@@ -277,7 +319,7 @@ export default function BenchmarkViewer({ suites }: BenchmarkViewerProps) {
               initial="enter"
               animate="center"
               exit="exit"
-              transition={{ duration: 0.2, ease: "easeOut" }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
             >
               <InlineSvg src={slide.src} alt={slide.label} />
             </motion.div>
@@ -294,8 +336,8 @@ export default function BenchmarkViewer({ suites }: BenchmarkViewerProps) {
             aria-label={`Go to ${suite.slides[i].label}`}
             className={`h-2 rounded-full transition-all duration-200 ${
               i === activeSlideIdx
-                ? "w-6 bg-[hsl(var(--tertiary))]"
-                : "w-2 bg-[hsl(var(--foreground-muted)/0.35)] hover:bg-[hsl(var(--foreground-muted)/0.6)]"
+                ? 'w-6 bg-[hsl(var(--tertiary))]'
+                : 'w-2 bg-[hsl(var(--foreground-muted)/0.35)] hover:bg-[hsl(var(--foreground-muted)/0.6)]'
             }`}
           />
         ))}
@@ -303,59 +345,68 @@ export default function BenchmarkViewer({ suites }: BenchmarkViewerProps) {
 
       {/* ── Summary box ── */}
       {slide?.summary && (
-          <div
-            key={`summary-${activeSuiteIdx}-${activeSlideIdx}`}
-        
-            className="mx-5 mb-4 mt-1 rounded-lg border border-[hsl(var(--border)/0.5)] bg-[hsl(var(--background-tertiary)/0.5)] px-4 py-3"
-          >
-            <div className="flex items-start gap-2">
-              <svg
-                className="mt-0.5 shrink-0 text-[hsl(var(--foreground-muted))]"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="16" x2="12" y2="12" />
-                <line x1="12" y1="8" x2="12.01" y2="8" />
-              </svg>
-              <p className="text-sm text-[hsl(var(--foreground-secondary))] leading-relaxed m-0">
-                {slide.summary}
-              </p>
-            </div>
-
-            {slide.code && (
-              <div className="mt-3 rounded-md border border-[hsl(var(--code-border))] bg-[hsl(var(--code-bg))] overflow-hidden">
-                <div className="flex items-center h-8 px-3 border-b border-[hsl(var(--code-border))] bg-[hsl(var(--code-bg)/0.5)]">
-                  <span className="text-[0.6875rem] font-medium text-[hsl(var(--foreground-muted))]">Go</span>
-                </div>
-                <Highlight theme={codeTheme} code={slide.code.trim()} language="go">
-                  {({ tokens, getLineProps, getTokenProps }) => (
-                    <pre
-                      style={{ fontFamily: monoFont }}
-                      className="!m-0 !bg-transparent !py-2.5 !px-3 !border-0 overflow-auto text-[0.75rem] leading-relaxed"
-                    >
-                      {tokens.map((line, i) => (
-                        <div key={i} {...getLineProps({ line })} className="table-row">
-                          <span className="table-cell">
-                            {line.map((token, key) => (
-                              <span key={key} {...getTokenProps({ token })} />
-                            ))}
-                          </span>
-                        </div>
-                      ))}
-                    </pre>
-                  )}
-                </Highlight>
-              </div>
-            )}
+        <div
+          key={`summary-${activeSuiteIdx}-${activeSlideIdx}`}
+          className="mx-5 mb-4 mt-1 rounded-lg border border-[hsl(var(--border)/0.5)] bg-[hsl(var(--background-tertiary)/0.5)] px-4 py-3"
+        >
+          <div className="flex items-start gap-2">
+            <svg
+              className="mt-0.5 shrink-0 text-[hsl(var(--foreground-muted))]"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+            <p className="text-sm text-[hsl(var(--foreground-secondary))] leading-relaxed m-0">
+              {slide.summary}
+            </p>
           </div>
+
+          {slide.code && (
+            <div className="mt-3 rounded-md border border-[hsl(var(--code-border))] bg-[hsl(var(--code-bg))] overflow-hidden">
+              <div className="flex items-center h-8 px-3 border-b border-[hsl(var(--code-border))] bg-[hsl(var(--code-bg)/0.5)]">
+                <span className="text-[0.6875rem] font-medium text-[hsl(var(--foreground-muted))]">
+                  Go
+                </span>
+              </div>
+              <Highlight
+                theme={codeTheme}
+                code={slide.code.trim()}
+                language="go"
+              >
+                {({ tokens, getLineProps, getTokenProps }) => (
+                  <pre
+                    style={{ fontFamily: monoFont }}
+                    className="!m-0 !bg-transparent !py-2.5 !px-3 !border-0 overflow-auto text-[0.75rem] leading-relaxed"
+                  >
+                    {tokens.map((line, i) => (
+                      <div
+                        key={i}
+                        {...getLineProps({ line })}
+                        className="table-row"
+                      >
+                        <span className="table-cell">
+                          {line.map((token, key) => (
+                            <span key={key} {...getTokenProps({ token })} />
+                          ))}
+                        </span>
+                      </div>
+                    ))}
+                  </pre>
+                )}
+              </Highlight>
+            </div>
+          )}
+        </div>
       )}
     </div>
-  );
+  )
 }

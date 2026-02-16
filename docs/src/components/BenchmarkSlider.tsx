@@ -1,78 +1,82 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import useEmblaCarousel from "embla-carousel-react";
+import useEmblaCarousel from 'embla-carousel-react'
+import Image from 'next/image'
+import * as React from 'react'
 
 interface Slide {
-  src: string;
-  label: string;
+  src: string
+  label: string
 }
 
 interface BenchmarkSliderProps {
-  title?: string;
-  slides: Slide[];
+  title?: string
+  slides: Slide[]
 }
 
-export default function BenchmarkSlider({ title, slides }: BenchmarkSliderProps) {
+export default function BenchmarkSlider({
+  title,
+  slides,
+}: BenchmarkSliderProps) {
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: false,
-    align: "center",
-    containScroll: "trimSnaps",
-  });
+    align: 'center',
+    containScroll: 'trimSnaps',
+  })
 
-  const [selectedIndex, setSelectedIndex] = React.useState(0);
-  const [canScrollPrev, setCanScrollPrev] = React.useState(false);
-  const [canScrollNext, setCanScrollNext] = React.useState(false);
+  const [selectedIndex, setSelectedIndex] = React.useState(0)
+  const [canScrollPrev, setCanScrollPrev] = React.useState(false)
+  const [canScrollNext, setCanScrollNext] = React.useState(false)
 
   const onSelect = React.useCallback(() => {
-    if (!emblaApi) return;
-    setSelectedIndex(emblaApi.selectedScrollSnap());
-    setCanScrollPrev(emblaApi.canScrollPrev());
-    setCanScrollNext(emblaApi.canScrollNext());
-  }, [emblaApi]);
+    if (!emblaApi) return
+    setSelectedIndex(emblaApi.selectedScrollSnap())
+    setCanScrollPrev(emblaApi.canScrollPrev())
+    setCanScrollNext(emblaApi.canScrollNext())
+  }, [emblaApi])
 
   React.useEffect(() => {
-    if (!emblaApi) return;
-    onSelect();
-    emblaApi.on("select", onSelect);
-    emblaApi.on("reInit", onSelect);
+    if (!emblaApi) return
+    onSelect()
+    emblaApi.on('select', onSelect)
+    emblaApi.on('reInit', onSelect)
     return () => {
-      emblaApi.off("select", onSelect);
-      emblaApi.off("reInit", onSelect);
-    };
-  }, [emblaApi, onSelect]);
+      emblaApi.off('select', onSelect)
+      emblaApi.off('reInit', onSelect)
+    }
+  }, [emblaApi, onSelect])
 
-  const scrollPrev = React.useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
-  const scrollNext = React.useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
+  const scrollPrev = React.useCallback(() => emblaApi?.scrollPrev(), [emblaApi])
+  const scrollNext = React.useCallback(() => emblaApi?.scrollNext(), [emblaApi])
   const scrollTo = React.useCallback(
     (index: number) => emblaApi?.scrollTo(index),
-    [emblaApi]
-  );
+    [emblaApi],
+  )
 
   // Keyboard navigation
   React.useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (!emblaApi) return;
+      if (!emblaApi) return
       // Only handle if this component or its children are focused
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        emblaApi.scrollPrev();
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        emblaApi.scrollNext();
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        emblaApi.scrollPrev()
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        emblaApi.scrollNext()
       }
     }
 
-    const node = emblaApi?.rootNode();
-    if (!node) return;
+    const node = emblaApi?.rootNode()
+    if (!node) return
 
-    const container = node.closest("[data-benchmark-slider]");
-    if (!container) return;
+    const container = node.closest('[data-benchmark-slider]')
+    if (!container) return
 
-    container.addEventListener("keydown", handleKey as EventListener);
+    container.addEventListener('keydown', handleKey as EventListener)
     return () =>
-      container.removeEventListener("keydown", handleKey as EventListener);
-  }, [emblaApi]);
+      container.removeEventListener('keydown', handleKey as EventListener)
+  }, [emblaApi])
 
   return (
     <div
@@ -106,7 +110,16 @@ export default function BenchmarkSlider({ title, slides }: BenchmarkSliderProps)
           aria-label="Previous benchmark"
           className="absolute left-2 top-1/2 -translate-y-1/2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-[hsl(var(--background-tertiary))] border border-[hsl(var(--border))] text-[hsl(var(--foreground-secondary))] opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 hover:bg-[hsl(var(--background-elevated))] hover:text-[hsl(var(--foreground))]"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
@@ -118,7 +131,16 @@ export default function BenchmarkSlider({ title, slides }: BenchmarkSliderProps)
           aria-label="Next benchmark"
           className="absolute right-2 top-1/2 -translate-y-1/2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-[hsl(var(--background-tertiary))] border border-[hsl(var(--border))] text-[hsl(var(--foreground-secondary))] opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 hover:bg-[hsl(var(--background-elevated))] hover:text-[hsl(var(--foreground))]"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <polyline points="9 18 15 12 9 6" />
           </svg>
         </button>
@@ -127,11 +149,8 @@ export default function BenchmarkSlider({ title, slides }: BenchmarkSliderProps)
         <div ref={emblaRef} className="overflow-hidden px-4">
           <div className="flex">
             {slides.map((slide, i) => (
-              <div
-                key={i}
-                className="flex-[0_0_100%] min-w-0 px-1"
-              >
-                <img
+              <div key={i} className="flex-[0_0_100%] min-w-0 px-1">
+                <Image
                   src={slide.src}
                   alt={slide.label}
                   className="w-full h-auto rounded-lg benchmark-chart"
@@ -152,12 +171,12 @@ export default function BenchmarkSlider({ title, slides }: BenchmarkSliderProps)
             aria-label={`Go to ${slides[i].label}`}
             className={`h-2 rounded-full transition-all duration-200 ${
               i === selectedIndex
-                ? "w-6 bg-[hsl(var(--tertiary))]"
-                : "w-2 bg-[hsl(var(--foreground-muted)/0.35)] hover:bg-[hsl(var(--foreground-muted)/0.6)]"
+                ? 'w-6 bg-[hsl(var(--tertiary))]'
+                : 'w-2 bg-[hsl(var(--foreground-muted)/0.35)] hover:bg-[hsl(var(--foreground-muted)/0.6)]'
             }`}
           />
         ))}
       </div>
     </div>
-  );
+  )
 }

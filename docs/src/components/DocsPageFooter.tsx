@@ -1,23 +1,26 @@
-import Link from "next/link";
-import type { FlatNavPage } from "@/lib/docs-nav";
-
+import Link from 'next/link'
+import type { FlatNavPage } from '@/lib/docs-nav'
 
 interface DocsPageFooterProps {
-  slug: string;
-  prev: FlatNavPage | null;
-  next: FlatNavPage | null;
-  lastModified: Date | null;
+  slug: string
+  prev: FlatNavPage | null
+  next: FlatNavPage | null
+  lastModified: Date | null
 }
 
 function formatDate(date: Date): string {
-  return date.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }) + ", " + date.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return (
+    date.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }) +
+    ', ' +
+    date.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  )
 }
 
 export default function DocsPageFooter({
@@ -26,11 +29,11 @@ export default function DocsPageFooter({
   next,
   lastModified,
 }: DocsPageFooterProps) {
-  const editUrl = `https://github.com/ChefBingbong/viem-go/edit/main/site-next/src/content/docs/${slug}.mdx`;
+  const editUrl = `https://github.com/ChefBingbong/viem-go/edit/main/site-next/src/content/docs/${slug}.mdx`
 
   return (
     <footer className="mt-10 max-w-[80ch]">
-       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm text-foreground-muted mb-6 pb-4 border-b-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm text-foreground-muted mb-6 pb-4 border-b-2">
         <a
           href={editUrl}
           target="_blank"
@@ -54,7 +57,9 @@ export default function DocsPageFooter({
           Suggest changes to this page
         </a>
         {lastModified && (
-          <span className="pl-5 sm:pl-0 text-sm">Last updated: {formatDate(lastModified)}</span>
+          <span className="pl-5 sm:pl-0 text-sm">
+            Last updated: {formatDate(lastModified)}
+          </span>
         )}
       </div>
       {/* Prev / Next navigation */}
@@ -136,9 +141,10 @@ export default function DocsPageFooter({
           </a>
         </div>
         <span className="text-xs text-foreground-muted text-center">
-          &copy; Copyright {new Date().getFullYear()} viem-go. All rights reserved.
+          &copy; Copyright {new Date().getFullYear()} viem-go. All rights
+          reserved.
         </span>
       </div>
     </footer>
-  );
+  )
 }

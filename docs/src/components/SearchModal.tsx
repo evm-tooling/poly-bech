@@ -1,55 +1,49 @@
-"use client";
+'use client'
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from 'next/navigation'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 interface SearchEntry {
-  title: string;
-  description: string;
-  slug: string;
-  section: string;
-  content: string;
+  title: string
+  description: string
+  slug: string
+  section: string
+  content: string
 }
 
 interface SearchResult extends SearchEntry {
-  snippet: string;
+  snippet: string
 }
 
 function fuzzyMatch(text: string, query: string): boolean {
-  const lower = text.toLowerCase();
-  const q = query.toLowerCase();
-  if (lower.includes(q)) return true;
-  const words = q.split(/\s+/).filter(Boolean);
-  return words.every((w) => lower.includes(w));
+  const lower = text.toLowerCase()
+  const q = query.toLowerCase()
+  if (lower.includes(q)) return true
+  const words = q.split(/\s+/).filter(Boolean)
+  return words.every((w) => lower.includes(w))
 }
 
 function extractSnippet(content: string, query: string): string {
-  const lower = content.toLowerCase();
-  const q = query.toLowerCase();
-  const idx = lower.indexOf(q);
-  if (idx === -1) return content.slice(0, 120) + "...";
-  const start = Math.max(0, idx - 40);
-  const end = Math.min(content.length, idx + query.length + 80);
-  let snippet = "";
-  if (start > 0) snippet += "...";
-  snippet += content.slice(start, end);
-  if (end < content.length) snippet += "...";
-  return snippet;
+  const lower = content.toLowerCase()
+  const q = query.toLowerCase()
+  const idx = lower.indexOf(q)
+  if (idx === -1) return content.slice(0, 120) + '...'
+  const start = Math.max(0, idx - 40)
+  const end = Math.min(content.length, idx + query.length + 80)
+  let snippet = ''
+  if (start > 0) snippet += '...'
+  snippet += content.slice(start, end)
+  if (end < content.length) snippet += '...'
+  return snippet
 }
 
 function highlightMatch(text: string, query: string): React.ReactNode[] {
-  if (!query.trim()) return [text];
+  if (!query.trim()) return [text]
   const regex = new RegExp(
-    `(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
-    "gi"
-  );
-  const parts = text.split(regex);
+    `(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`,
+    'gi',
+  )
+  const parts = text.split(regex)
   return parts.map((part, i) =>
     regex.test(part) ? (
       <mark key={i} className="bg-primary/25 text-foreground rounded-sm px-px">
@@ -57,101 +51,97 @@ function highlightMatch(text: string, query: string): React.ReactNode[] {
       </mark>
     ) : (
       <span key={i}>{part}</span>
-    )
-  );
+    ),
+  )
 }
 
-export default function SearchModal({
-  onClose,
-}: {
-  onClose: () => void;
-}) {
-  const router = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  const [query, setQuery] = useState("");
-  const [index, setIndex] = useState<SearchEntry[]>([]);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [loaded, setLoaded] = useState(false);
+export default function SearchModal({ onClose }: { onClose: () => void }) {
+  const router = useRouter()
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  const [query, setQuery] = useState('')
+  const [index, setIndex] = useState<SearchEntry[]>([])
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    if (loaded) return;
-    fetch("/api/search")
+    if (loaded) return
+    fetch('/api/search')
       .then((r) => r.json())
       .then((data: SearchEntry[]) => {
-        setIndex(data);
-        setLoaded(true);
-        setActiveIndex(0);
+        setIndex(data)
+        setLoaded(true)
+        setActiveIndex(0)
       })
-      .catch(console.error);
-  }, [loaded]);
+      .catch(console.error)
+  }, [loaded])
 
   useEffect(() => {
-    requestAnimationFrame(() => inputRef.current?.focus());
-  }, []);
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }, [])
 
   const results: SearchResult[] = useMemo(() => {
-    if (!query.trim()) return [];
+    if (!query.trim()) return []
     return index
       .filter(
         (entry) =>
           fuzzyMatch(entry.title, query) ||
           fuzzyMatch(entry.description, query) ||
-          fuzzyMatch(entry.content, query)
+          fuzzyMatch(entry.content, query),
       )
       .map((entry) => ({
         ...entry,
         snippet: extractSnippet(entry.content, query),
       }))
-      .slice(0, 20);
-  }, [query, index]);
+      .slice(0, 20)
+  }, [query, index])
 
   const grouped = useMemo(() => {
-    const map = new Map<string, SearchResult[]>();
+    const map = new Map<string, SearchResult[]>()
     for (const r of results) {
-      const section = r.section || "Other";
-      if (!map.has(section)) map.set(section, []);
-      map.get(section)!.push(r);
+      const section = r.section || 'Other'
+      if (!map.has(section)) map.set(section, [])
+      map.get(section)!.push(r)
     }
-    return map;
-  }, [results]);
+    return map
+  }, [results])
 
-  const flatResults = results;
+  const flatResults = results
 
   const goTo = useCallback(
     (slug: string) => {
-      onClose();
-      router.push(`/docs/${slug}`);
+      onClose()
+      router.push(`/docs/${slug}`)
     },
-    [onClose, router]
-  );
+    [onClose, router],
+  )
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (flatResults.length === 0) return;
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setActiveIndex((prev) => Math.min(prev + 1, flatResults.length - 1));
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setActiveIndex((prev) => Math.max(prev - 1, 0));
-      } else if (e.key === "Enter") {
-        e.preventDefault();
+      if (flatResults.length === 0) return
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setActiveIndex((prev) => Math.min(prev + 1, flatResults.length - 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setActiveIndex((prev) => Math.max(prev - 1, 0))
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
         if (flatResults[activeIndex]) {
-          goTo(flatResults[activeIndex].slug);
+          goTo(flatResults[activeIndex].slug)
         }
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
       }
     },
-    [flatResults, activeIndex, goTo, onClose]
-  );
+    [flatResults, activeIndex, goTo, onClose],
+  )
 
   useEffect(() => {
-    const el = listRef.current?.querySelector(`[data-idx="${activeIndex}"]`);
-    el?.scrollIntoView({ block: "nearest" });
-  }, [activeIndex]);
+    const el = listRef.current?.querySelector(`[data-idx="${activeIndex}"]`)
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [activeIndex])
 
   return (
     <>
@@ -187,8 +177,8 @@ export default function SearchModal({
               type="text"
               value={query}
               onChange={(e) => {
-                setQuery(e.target.value);
-                setActiveIndex(0);
+                setQuery(e.target.value)
+                setActiveIndex(0)
               }}
               placeholder="Search docs..."
               className="flex-1 bg-transparent border-none outline-none text-foreground text-base py-4 placeholder:text-foreground-muted"
@@ -205,7 +195,7 @@ export default function SearchModal({
             ref={listRef}
             className="flex-1 overflow-y-auto overscroll-contain"
           >
-            {query.trim() === "" ? (
+            {query.trim() === '' ? (
               <div className="px-6 py-12 text-center text-foreground-muted text-sm">
                 Type to search the documentation
               </div>
@@ -230,8 +220,8 @@ export default function SearchModal({
                         </span>
                       </div>
                       {sectionResults.map((result) => {
-                        const idx = flatResults.indexOf(result);
-                        const isActive = idx === activeIndex;
+                        const idx = flatResults.indexOf(result)
+                        const isActive = idx === activeIndex
                         return (
                           <button
                             key={result.slug}
@@ -240,13 +230,15 @@ export default function SearchModal({
                             onMouseEnter={() => setActiveIndex(idx)}
                             className={`w-full text-left px-4 py-2.5 flex items-start gap-3 cursor-pointer transition-colors ${
                               isActive
-                                ? "bg-primary/10"
-                                : "hover:bg-background-tertiary/40"
+                                ? 'bg-primary/10'
+                                : 'hover:bg-background-tertiary/40'
                             }`}
                           >
                             <svg
                               className={`w-5 h-5 mt-0.5 shrink-0 ${
-                                isActive ? "text-primary" : "text-foreground-muted"
+                                isActive
+                                  ? 'text-primary'
+                                  : 'text-foreground-muted'
                               }`}
                               xmlns="http://www.w3.org/2000/svg"
                               fill="none"
@@ -263,7 +255,7 @@ export default function SearchModal({
                             <div className="min-w-0 flex-1">
                               <div
                                 className={`text-sm font-medium truncate ${
-                                  isActive ? "text-primary" : "text-foreground"
+                                  isActive ? 'text-primary' : 'text-foreground'
                                 }`}
                               >
                                 {highlightMatch(result.title, query)}
@@ -294,10 +286,10 @@ export default function SearchModal({
                               </svg>
                             )}
                           </button>
-                        );
+                        )
                       })}
                     </div>
-                  )
+                  ),
                 )}
               </div>
             )}
@@ -330,5 +322,5 @@ export default function SearchModal({
         </div>
       </div>
     </>
-  );
+  )
 }

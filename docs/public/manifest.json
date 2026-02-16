@@ -21,9 +21,6 @@
       "purpose": "maskable"
     }
   ],
-  "categories": [
-    "developer tools",
-    "utilities"
-  ],
+  "categories": ["developer tools", "utilities"],
   "lang": "en-US"
 }

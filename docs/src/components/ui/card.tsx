@@ -1,33 +1,33 @@
-import * as React from "react";
-import { Slot } from "@radix-ui/react-slot";
-import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "@/lib/cn";
+import { Slot } from '@radix-ui/react-slot'
+import { cva, type VariantProps } from 'class-variance-authority'
+import type * as React from 'react'
+import { cn } from '@/lib/cn'
 
-const cardVariants = cva("rounded-xl border", {
+const cardVariants = cva('rounded-xl border', {
   variants: {
     variant: {
-      default: "border-primary/20 bg-secondary/50",
+      default: 'border-primary/20 bg-secondary/50',
       interactive:
-        "border-primary/20 bg-secondary/50 transition-all duration-200 hover:border-primary/40 hover:bg-secondary/70 hover:-translate-y-0.5",
-      surface: "border-card-border bg-card",
+        'border-primary/20 bg-secondary/50 transition-all duration-200 hover:border-primary/40 hover:bg-secondary/70 hover:-translate-y-0.5',
+      surface: 'border-card-border bg-card',
       surfaceInteractive:
-        "border-card-border bg-card transition-all duration-200 hover:border-primary/30 hover:bg-card/80",
+        'border-card-border bg-card transition-all duration-200 hover:border-primary/30 hover:bg-card/80',
     },
     padding: {
-      none: "",
-      md: "p-6",
+      none: '',
+      md: 'p-6',
     },
   },
   defaultVariants: {
-    variant: "default",
-    padding: "md",
+    variant: 'default',
+    padding: 'md',
   },
-});
+})
 
 export interface CardProps
   extends React.HTMLAttributes<HTMLDivElement>,
     VariantProps<typeof cardVariants> {
-  asChild?: boolean;
+  asChild?: boolean
 }
 
 export function Card({
@@ -37,32 +37,25 @@ export function Card({
   asChild = false,
   ...props
 }: CardProps) {
-  const Comp = asChild ? Slot : "div";
+  const Comp = asChild ? Slot : 'div'
   return (
     <Comp
       className={cn(cardVariants({ variant, padding }), className)}
       {...props}
     />
-  );
+  )
 }
 
 export function CardTitle({
   className,
   ...props
 }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return (
-    <h3
-      className={cn("heading-4 mb-1.5", className)}
-      {...props}
-    />
-  );
+  return <h3 className={cn('heading-4 mb-1.5', className)} {...props} />
 }
 
 export function CardDescription({
   className,
   ...props
 }: React.HTMLAttributes<HTMLParagraphElement>) {
-  return (
-    <p className={cn("text-body", className)} {...props} />
-  );
+  return <p className={cn('text-body', className)} {...props} />
 }

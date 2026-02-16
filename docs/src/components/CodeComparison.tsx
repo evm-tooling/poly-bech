@@ -1,14 +1,14 @@
-import { CodeGroup } from "./CodePanel";
+import { CodeGroup } from './CodePanel'
 
 export default function CodeComparison() {
   return (
     <section className="max-w-[70ch] mx-auto my-16">
       <h2 className="heading-2 mb-4">Overview</h2>
       <p className="text-lead mb-6">
-        viem-go brings the developer experience of{" "}
+        viem-go brings the developer experience of{' '}
         <a href="https://viem.sh" className="text-accent hover:underline">
           viem
-        </a>{" "}
+        </a>{' '}
         to the Go ecosystem. If you&apos;re familiar with viem in TypeScript,
         you&apos;ll feel right at home.
       </p>
@@ -16,8 +16,8 @@ export default function CodeComparison() {
       <CodeGroup
         tabs={[
           {
-            title: "viem-go",
-            language: "go",
+            title: 'viem-go',
+            language: 'go',
             code: `// 1. Import modules.
 import (
     "github.com/ChefBingbong/viem-go/client"
@@ -36,8 +36,8 @@ defer c.Close()
 blockNumber, _ := c.GetBlockNumber(context.Background())`,
           },
           {
-            title: "viem",
-            language: "ts",
+            title: 'viem',
+            language: 'ts',
             code: `// 1. Import modules.
 import { createPublicClient, http } from 'viem'
 import { mainnet } from 'viem/chains'
@@ -54,5 +54,5 @@ const blockNumber = await client.getBlockNumber()`,
         ]}
       />
     </section>
-  );
+  )
 }

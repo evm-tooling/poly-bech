@@ -1,78 +1,78 @@
-"use client";
+'use client'
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from 'react'
 
 export default function TerminalTyping() {
-  const [text, setText] = useState("");
-  const [showOutput, setShowOutput] = useState(false);
-  const [outputText, setOutputText] = useState("");
-  const [showNewPrompt, setShowNewPrompt] = useState(false);
-  const [secondCommand, setSecondCommand] = useState("");
-  const [key, setKey] = useState(0);
+  const [text, setText] = useState('')
+  const [showOutput, setShowOutput] = useState(false)
+  const [outputText, setOutputText] = useState('')
+  const [showNewPrompt, setShowNewPrompt] = useState(false)
+  const [secondCommand, setSecondCommand] = useState('')
+  const [key, setKey] = useState(0)
 
-  const command = "github.com/ChefBingbong/viem-go";
+  const command = 'github.com/ChefBingbong/viem-go'
   const fullOutput = `go: downloading github.com/ChefBingbong/viem-go v1.0.0
 go: upgraded go 1.21 => 1.24.0
-go: added github.com/ChefBingbong/viem-go v1.0.0`;
-  const secondCmd = "go run main.go";
+go: added github.com/ChefBingbong/viem-go v1.0.0`
+  const secondCmd = 'go run main.go'
 
   const resetAnimation = useCallback(() => {
-    setText("");
-    setShowOutput(false);
-    setOutputText("");
-    setShowNewPrompt(false);
-    setSecondCommand("");
-    setKey((k) => k + 1);
-  }, []);
+    setText('')
+    setShowOutput(false)
+    setOutputText('')
+    setShowNewPrompt(false)
+    setSecondCommand('')
+    setKey((k) => k + 1)
+  }, [])
 
   useEffect(() => {
-    let i = 0;
-    let outputComplete = false;
+    let i = 0
+    let outputComplete = false
 
     const typeInterval = setInterval(() => {
       if (i < command.length) {
-        setText(command.slice(0, i + 1));
-        i++;
+        setText(command.slice(0, i + 1))
+        i++
       } else {
-        clearInterval(typeInterval);
+        clearInterval(typeInterval)
         setTimeout(() => {
-          setShowOutput(true);
-          let j = 0;
+          setShowOutput(true)
+          let j = 0
           const outputInterval = setInterval(() => {
             if (j < fullOutput.length) {
-              const chunkSize = 10;
-              j = Math.min(j + chunkSize, fullOutput.length);
-              setOutputText(fullOutput.slice(0, j));
+              const chunkSize = 10
+              j = Math.min(j + chunkSize, fullOutput.length)
+              setOutputText(fullOutput.slice(0, j))
             } else {
-              clearInterval(outputInterval);
+              clearInterval(outputInterval)
               if (!outputComplete) {
-                outputComplete = true;
+                outputComplete = true
                 setTimeout(() => {
-                  setShowNewPrompt(true);
+                  setShowNewPrompt(true)
                   setTimeout(() => {
-                    let k = 0;
+                    let k = 0
                     const secondTypeInterval = setInterval(() => {
                       if (k < secondCmd.length) {
-                        setSecondCommand(secondCmd.slice(0, k + 1));
-                        k++;
+                        setSecondCommand(secondCmd.slice(0, k + 1))
+                        k++
                       } else {
-                        clearInterval(secondTypeInterval);
+                        clearInterval(secondTypeInterval)
                         setTimeout(() => {
-                          resetAnimation();
-                        }, 4000);
+                          resetAnimation()
+                        }, 4000)
                       }
-                    }, 50);
-                  }, 500);
-                }, 300);
+                    }, 50)
+                  }, 500)
+                }, 300)
               }
             }
-          }, 5);
-        }, 800);
+          }, 5)
+        }, 800)
       }
-    }, 40);
+    }, 40)
 
-    return () => clearInterval(typeInterval);
-  }, [key, resetAnimation]);
+    return () => clearInterval(typeInterval)
+  }, [key, resetAnimation])
 
   return (
     <div className="font-mono text-[0.9375rem] text-foreground-secondary w-full h-56">
@@ -90,7 +90,7 @@ go: added github.com/ChefBingbong/viem-go v1.0.0`;
       </div>
       {showOutput && (
         <div className="mt-1.5 text-[0.8rem] text-terminal-output leading-normal">
-          {outputText.split("\n").map((line, idx) => (
+          {outputText.split('\n').map((line, idx) => (
             <div key={idx} className="py-px">
               {line}
             </div>
@@ -109,5 +109,5 @@ go: added github.com/ChefBingbong/viem-go v1.0.0`;
         </div>
       )}
     </div>
-  );
+  )
 }

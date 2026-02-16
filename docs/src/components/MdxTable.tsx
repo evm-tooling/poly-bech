@@ -1,6 +1,6 @@
 /**
  * MdxTable — semantic table components for MDX content
- * 
+ *
  * Uses tokens: card-border, border, accent, foreground, foreground-secondary,
  * background-tertiary, background-secondary
  */
@@ -12,21 +12,21 @@ export function Table({ children }: { children?: React.ReactNode }) {
         {children}
       </table>
     </div>
-  );
+  )
 }
 
 export function Thead({ children }: { children?: React.ReactNode }) {
-  return <thead>{children}</thead>;
+  return <thead>{children}</thead>
 }
 
 export function Tbody({ children }: { children?: React.ReactNode }) {
-  return <tbody>{children}</tbody>;
+  return <tbody>{children}</tbody>
 }
 
 export function Tr({ children }: { children?: React.ReactNode }) {
   return (
     <tr className="border-b border-border/30 last:border-b-0">{children}</tr>
-  );
+  )
 }
 
 export function Th({ children }: { children?: React.ReactNode }) {
@@ -34,7 +34,7 @@ export function Th({ children }: { children?: React.ReactNode }) {
     <th className="px-4 py-2.5 text-left text-[var(--fs-fine)] font-semibold text-foreground bg-background-elevated border-b border-border">
       {children}
     </th>
-  );
+  )
 }
 
 export function Td({ children }: { children?: React.ReactNode }) {
@@ -42,5 +42,5 @@ export function Td({ children }: { children?: React.ReactNode }) {
     <td className="px-4 py-2.5 text-left text-[var(--fs-small)] text-foreground-secondary bg-background-secondary/60">
       {children}
     </td>
-  );
+  )
 }

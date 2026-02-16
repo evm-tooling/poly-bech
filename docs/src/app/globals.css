@@ -6,402 +6,505 @@
    All components use semantic tokens only.
    ============================================================ */
 
-   @import "tailwindcss";
+@import "tailwindcss";
 
-   /* ============================================================
+/* ============================================================
       HSL TOKEN DEFINITIONS
       ============================================================ */
-   
-   :root {
-     /* ── Backgrounds (4-tier system) ── */
-     --background:           0 0% 99%;
-     --background-secondary: 250 18% 96%;
-     --background-tertiary:  250 14% 93%;
-     --background-elevated:  0 0% 100%;
-   
-     /* ── Foreground / text ── */
-     --foreground:           240 25% 10%;
-     --foreground-secondary: 240 12% 32%;
-     --foreground-muted:     240 8% 52%;
-   
-     /* ── Brand primary — red ── */
-     --primary:              0 72% 51%;
-     --primary-foreground:   0 0% 100%;
-     --primary-hover:        0 72% 43%;
-   
-     /* ── Secondary — neutral surface ── */
-     --secondary:            250 14% 93%;
-     --secondary-foreground: 240 20% 18%;
-   
-     /* ── Tertiary / pop — light bluish-violet ── */
-     --tertiary:             250 68% 60%;
-     --tertiary-foreground:  0 0% 100%;
-   
-     /* ── Surfaces ── */
-     --card:                 0 0% 100%;
-     --card-foreground:      240 25% 10%;
-     --card-border:          250 12% 88%;
-   
-     --muted:                250 14% 93%;
-     --muted-foreground:     240 8% 48%;
-   
-     --accent:               250 45% 93%;
-     --accent-foreground:    250 68% 48%;
-   
-     /* ── Semantic ── */
-     --destructive:          0 75% 50%;
-     --destructive-foreground: 0 0% 100%;
-     --success:              145 65% 36%;
-     --success-foreground:   0 0% 100%;
-     --warning:              38 90% 48%;
-     --warning-foreground:   38 90% 10%;
-   
-     /* ── Chrome ── */
-     --border:               250 12% 88%;
-     --input:                250 12% 90%;
-     --ring:                 0 72% 51%;
-     --radius:               0.5rem;
-   
-     /* ── Code blocks ── */
-     --code-bg:              250 16% 96%;
-     --code-bg-deep:         250 14% 93%;
-     --code-border:          250 10% 85%;
-     --code-text:            240 20% 16%;
-   
-     /* ── Aside / callout accents ── */
-     --aside-note:           250 68% 60%;
-     --aside-tip:            145 65% 36%;
-     --aside-caution:        38 90% 48%;
-     --aside-danger:         0 75% 50%;
-   
-     /* ── Terminal prompt colors ── */
-     --terminal-user:        250 55% 50%;
-     --terminal-path:        0 72% 48%;
-     --terminal-command:     250 60% 55%;
-     --terminal-output:      145 60% 32%;
-     --terminal-cursor:      0 72% 51%;
-   
-     /* ── Typography scale (used by .docs-prose and utility classes only) ── */
-     --fs-h1:    2.25rem;
-     --fs-h2:    1.75rem;
-     --fs-h3:    1.5rem;
-     --fs-h4:    1.25rem;
-     --fs-body:  0.95rem;
-     --fs-lead:  1.125rem;
-     --fs-subtitle: 1.35rem;
-     --fs-small: 0.875rem;
-     --fs-fine:  0.8125rem;
-     --lh-heading: 1.15;
-     --lh-body: 1.75rem;
-     --tracking-heading: -0.02em;
-   }
-   
-   /* ============================================================
+
+:root {
+  /* ── Backgrounds (4-tier system) ── */
+  --background: 0 0% 99%;
+  --background-secondary: 250 18% 96%;
+  --background-tertiary: 250 14% 93%;
+  --background-elevated: 0 0% 100%;
+
+  /* ── Alt section: dark theme in all modes (Why Poly Bench + One run) ── */
+  --background-tertiary-alt: 250 25% 7%;
+  --foreground-alt: 240 20% 92%;
+  --foreground-secondary-alt: 240 16% 72%;
+  --foreground-muted-alt: 240 10% 48%;
+  --border-alt: 250 16% 20%;
+  --destructive-alt: 0 68% 42%;
+  --success-alt: 145 65% 42%;
+  --tertiary-alt: 250 72% 72%;
+  --code-bg-deep-alt: 250 30% 6%;
+  --terminal-output-alt: 145 70% 55%;
+  --bg-card-alt: 221 39% 11%;
+
+  /* ── Foreground / text ── */
+  --foreground: 240 25% 10%;
+  --foreground-secondary: 240 12% 32%;
+  --foreground-muted: 240 8% 52%;
+
+  /* ── Brand primary — red ── */
+  --primary: 0 72% 51%;
+  --primary-foreground: 0 0% 100%;
+  --primary-hover: 0 72% 43%;
+
+  /* ── Secondary — neutral surface ── */
+  --secondary: 250 14% 93%;
+  --secondary-foreground: 240 20% 18%;
+
+  /* ── Tertiary / pop — light bluish-violet ── */
+  --tertiary: 250 68% 60%;
+  --tertiary-foreground: 0 0% 100%;
+
+  /* ── Surfaces ── */
+  --card: 0 0% 100%;
+  --card-foreground: 240 25% 10%;
+  --card-border: 250 12% 88%;
+
+  --muted: 250 14% 93%;
+  --muted-foreground: 240 8% 48%;
+
+  --accent: 250 45% 93%;
+  --accent-foreground: 250 68% 48%;
+
+  /* ── Semantic ── */
+  --destructive: 0 75% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 145 65% 36%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 90% 48%;
+  --warning-foreground: 38 90% 10%;
+
+  /* ── Chrome ── */
+  --border: 250 12% 88%;
+  --input: 250 12% 90%;
+  --ring: 0 72% 51%;
+  --radius: 0.5rem;
+
+  /* ── Code blocks ── */
+  --code-bg: 250 16% 96%;
+  --code-bg-deep: 250 14% 93%;
+  --code-border: 250 10% 85%;
+  --code-text: 240 20% 16%;
+
+  /* ── Aside / callout accents ── */
+  --aside-note: 250 68% 60%;
+  --aside-tip: 145 65% 36%;
+  --aside-caution: 38 90% 48%;
+  --aside-danger: 0 75% 50%;
+
+  /* ── Terminal prompt colors ── */
+  --terminal-user: 250 55% 50%;
+  --terminal-path: 0 72% 48%;
+  --terminal-command: 250 60% 55%;
+  --terminal-output: 145 60% 32%;
+  --terminal-cursor: 0 72% 51%;
+
+  /* ── Typography scale (used by .docs-prose and utility classes only) ── */
+  --fs-h1: 2.25rem;
+  --fs-h2: 1.75rem;
+  --fs-h3: 1.5rem;
+  --fs-h4: 1.25rem;
+  --fs-body: 0.95rem;
+  --fs-lead: 1.125rem;
+  --fs-subtitle: 1.35rem;
+  --fs-small: 0.875rem;
+  --fs-fine: 0.8125rem;
+  --lh-heading: 1.15;
+  --lh-body: 1.75rem;
+  --tracking-heading: -0.02em;
+}
+
+/* ============================================================
       DARK MODE
       ============================================================ */
-   
-   .dark {
-     --background:           250 25% 7%;
-     --background-secondary: 250 22% 11%;
-     --background-tertiary:  250 18% 15%;
-     --background-elevated:  250 16% 19%;
-   
-     --foreground:           240 20% 92%;
-     --foreground-secondary: 240 16% 72%;
-     --foreground-muted:     240 10% 48%;
-   
-     --primary:              0 78% 58%;
-     --primary-foreground:   0 0% 100%;
-     --primary-hover:        0 78% 50%;
-   
-     --secondary:            250 20% 18%;
-     --secondary-foreground: 240 20% 88%;
-   
-     --tertiary:             250 72% 72%;
-     --tertiary-foreground:  0 0% 100%;
-   
-     --card:                 250 22% 11%;
-     --card-foreground:      240 20% 92%;
-     --card-border:          250 16% 20%;
-   
-     --muted:                250 16% 16%;
-     --muted-foreground:     240 10% 50%;
-   
-     --accent:               250 40% 20%;
-     --accent-foreground:    250 72% 75%;
-   
-     --destructive:          0 68% 42%;
-     --destructive-foreground: 0 0% 100%;
-     --success:              145 65% 42%;
-     --success-foreground:   0 0% 100%;
-     --warning:              38 90% 55%;
-     --warning-foreground:   38 90% 10%;
-   
-     --border:               250 16% 20%;
-     --input:                250 16% 16%;
-     --ring:                 0 78% 58%;
-   
-     --code-bg:              250 28% 9%;
-     --code-bg-deep:         250 30% 6%;
-     --code-border:          250 18% 18%;
-     --code-text:            0 0% 100%;
-   
-     --aside-note:           250 72% 72%;
-     --aside-tip:            145 65% 42%;
-     --aside-caution:        38 90% 55%;
-     --aside-danger:         0 75% 55%;
-   
-     --terminal-user:        250 65% 68%;
-     --terminal-path:        0 78% 65%;
-     --terminal-command:     250 65% 72%;
-     --terminal-output:      145 70% 55%;
-     --terminal-cursor:      0 78% 58%;
-   }
-   
-   /* ── Light Theme (explicit class) ── */
-   .light {
-     --background:           0 0% 99%;
-     --background-secondary: 250 18% 96%;
-     --background-tertiary:  250 14% 93%;
-     --background-elevated:  0 0% 100%;
-   
-     --foreground:           240 25% 10%;
-     --foreground-secondary: 240 12% 32%;
-     --foreground-muted:     240 8% 52%;
-   
-     --primary:              0 72% 51%;
-     --primary-foreground:   0 0% 100%;
-     --primary-hover:        0 72% 43%;
-   
-     --secondary:            250 14% 93%;
-     --secondary-foreground: 240 20% 18%;
-   
-     --tertiary:             250 68% 60%;
-     --tertiary-foreground:  0 0% 100%;
-   
-     --card:                 0 0% 100%;
-     --card-foreground:      240 25% 10%;
-     --card-border:          250 12% 88%;
-   
-     --muted:                250 14% 93%;
-     --muted-foreground:     240 8% 48%;
-   
-     --accent:               250 45% 93%;
-     --accent-foreground:    250 68% 48%;
-   
-     --destructive:          0 75% 50%;
-     --destructive-foreground: 0 0% 100%;
-     --success:              145 65% 36%;
-     --success-foreground:   0 0% 100%;
-     --warning:              38 90% 48%;
-     --warning-foreground:   38 90% 10%;
-   
-     --border:               250 12% 88%;
-     --input:                250 12% 90%;
-     --ring:                 0 72% 51%;
-   
-     --code-bg:              250 16% 96%;
-     --code-bg-deep:         250 14% 93%;
-     --code-border:          250 10% 85%;
-     --code-text:            240 20% 16%;
-   
-     --aside-note:           250 68% 60%;
-     --aside-tip:            145 65% 36%;
-     --aside-caution:        38 90% 48%;
-     --aside-danger:         0 75% 50%;
-   
-     --terminal-user:        250 55% 50%;
-     --terminal-path:        0 72% 48%;
-     --terminal-command:     250 60% 55%;
-     --terminal-output:      145 60% 32%;
-     --terminal-cursor:      0 72% 51%;
-   }
-   
-   html.light {
-     color-scheme: light;
-   }
-   
-   /* ── Light-mode overrides for embedded dark-bg assets ── */
-   .light .benchmark-chart {
-     filter: invert(0.88) hue-rotate(180deg);
-     border-radius: 0.5rem;
-   }
-   
-   .light .benchmark-svg-inline svg text[fill="#FFFFFF"],
-   .light .benchmark-svg-inline svg text[fill="#ffffff"] {
-     fill: hsl(var(--foreground));
-   }
-   .light .benchmark-svg-inline svg text[fill="rgba(255,255,255,0.55)"] {
-     fill: hsl(var(--foreground-muted));
-   }
-   .light .benchmark-svg-inline svg rect[stroke="white"] {
-     stroke: hsl(var(--border));
-   }
-   .light .benchmark-svg-inline svg rect[stroke-opacity="0.23"] {
-     stroke-opacity: 0.5;
-   }
-   
-   /* ── Dark-mode: no filter needed for dark-bg assets ── */
-   .dark .benchmark-chart {
-     filter: none;
-   }
-   
-   /* ── Theme-aware element visibility ── */
-   /* Default (dark theme) */
-   .dark-only  { display: block; }
-   .light-only { display: none; }
-   
-   /* Light theme overrides */
-   .light .dark-only  { display: none; }
-   .light .light-only { display: block; }
-   
-   /* Dark theme explicit (for when .dark class is used) */
-   .dark .dark-only  { display: block; }
-   .dark .light-only { display: none; }
-   
-   /* ============================================================
+
+.dark {
+  --background: 250 25% 7%;
+  --background-secondary: 250 22% 11%;
+  --background-tertiary: 250 18% 15%;
+  --background-elevated: 250 16% 19%;
+
+  /* Alt section: same dark theme (duplicate of .dark for this section) */
+  --background-tertiary-alt: 250 25% 7%;
+  --foreground-alt: 240 20% 92%;
+  --foreground-secondary-alt: 240 16% 72%;
+  --foreground-muted-alt: 240 10% 48%;
+  --border-alt: 250 16% 20%;
+  --destructive-alt: 0 68% 42%;
+  --success-alt: 145 65% 42%;
+  --tertiary-alt: 250 72% 72%;
+  --code-bg-deep-alt: 250 30% 6%;
+  --terminal-output-alt: 145 70% 55%;
+  --bg-card-alt: 221 39% 11%;
+
+  --foreground: 240 20% 92%;
+  --foreground-secondary: 240 16% 72%;
+  --foreground-muted: 240 10% 48%;
+
+  --primary: 0 78% 58%;
+  --primary-foreground: 0 0% 100%;
+  --primary-hover: 0 78% 50%;
+
+  --secondary: 250 20% 18%;
+  --secondary-foreground: 240 20% 88%;
+
+  --tertiary: 250 72% 72%;
+  --tertiary-foreground: 0 0% 100%;
+
+  --card: 250 22% 11%;
+  --card-foreground: 240 20% 92%;
+  --card-border: 250 16% 20%;
+
+  --muted: 250 16% 16%;
+  --muted-foreground: 240 10% 50%;
+
+  --accent: 250 40% 20%;
+  --accent-foreground: 250 72% 75%;
+
+  --destructive: 0 68% 42%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 145 65% 42%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 90% 55%;
+  --warning-foreground: 38 90% 10%;
+
+  --border: 250 16% 20%;
+  --input: 250 16% 16%;
+  --ring: 0 78% 58%;
+
+  --code-bg: 250 28% 9%;
+  --code-bg-deep: 250 30% 6%;
+  --code-border: 250 18% 18%;
+  --code-text: 0 0% 100%;
+
+  --aside-note: 250 72% 72%;
+  --aside-tip: 145 65% 42%;
+  --aside-caution: 38 90% 55%;
+  --aside-danger: 0 75% 55%;
+
+  --terminal-user: 250 65% 68%;
+  --terminal-path: 0 78% 65%;
+  --terminal-command: 250 65% 72%;
+  --terminal-output: 145 70% 55%;
+  --terminal-cursor: 0 78% 58%;
+}
+
+/* ── Light Theme (explicit class) ── */
+.light {
+  --background: 0 0% 99%;
+  --background-secondary: 250 18% 96%;
+  --background-tertiary: 250 14% 93%;
+  --background-elevated: 0 0% 100%;
+
+  /* Alt section: dark theme in light mode (Why Poly Bench + One run) */
+  --background-tertiary-alt: 250 25% 7%;
+  --foreground-alt: 240 20% 92%;
+  --foreground-secondary-alt: 240 16% 72%;
+  --foreground-muted-alt: 240 10% 48%;
+  --border-alt: 250 16% 20%;
+  --destructive-alt: 0 68% 42%;
+  --success-alt: 145 65% 42%;
+  --tertiary-alt: 250 72% 72%;
+  --code-bg-deep-alt: 250 30% 6%;
+  --terminal-output-alt: 145 70% 55%;
+  --bg-card-alt: 221 39% 11%;
+
+  --foreground: 240 25% 10%;
+  --foreground-secondary: 240 12% 32%;
+  --foreground-muted: 240 8% 52%;
+
+  --primary: 0 72% 51%;
+  --primary-foreground: 0 0% 100%;
+  --primary-hover: 0 72% 43%;
+
+  --secondary: 250 14% 93%;
+  --secondary-foreground: 240 20% 18%;
+
+  --tertiary: 250 68% 60%;
+  --tertiary-foreground: 0 0% 100%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 240 25% 10%;
+  --card-border: 250 12% 88%;
+
+  --muted: 250 14% 93%;
+  --muted-foreground: 240 8% 48%;
+
+  --accent: 250 45% 93%;
+  --accent-foreground: 250 68% 48%;
+
+  --destructive: 0 75% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 145 65% 36%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 90% 48%;
+  --warning-foreground: 38 90% 10%;
+
+  --border: 250 12% 88%;
+  --input: 250 12% 90%;
+  --ring: 0 72% 51%;
+
+  --code-bg: 250 16% 96%;
+  --code-bg-deep: 250 14% 93%;
+  --code-border: 250 10% 85%;
+  --code-text: 240 20% 16%;
+
+  --aside-note: 250 68% 60%;
+  --aside-tip: 145 65% 36%;
+  --aside-caution: 38 90% 48%;
+  --aside-danger: 0 75% 50%;
+
+  --terminal-user: 250 55% 50%;
+  --terminal-path: 0 72% 48%;
+  --terminal-command: 250 60% 55%;
+  --terminal-output: 145 60% 32%;
+  --terminal-cursor: 0 72% 51%;
+}
+
+html.light {
+  color-scheme: light;
+}
+
+/* ── Light-mode overrides for embedded dark-bg assets ── */
+.light .benchmark-chart {
+  filter: invert(0.88) hue-rotate(180deg);
+  border-radius: 0.5rem;
+}
+
+.light .benchmark-svg-inline svg text[fill="#FFFFFF"],
+.light .benchmark-svg-inline svg text[fill="#ffffff"] {
+  fill: hsl(var(--foreground));
+}
+.light .benchmark-svg-inline svg text[fill="rgba(255,255,255,0.55)"] {
+  fill: hsl(var(--foreground-muted));
+}
+.light .benchmark-svg-inline svg rect[stroke="white"] {
+  stroke: hsl(var(--border));
+}
+.light .benchmark-svg-inline svg rect[stroke-opacity="0.23"] {
+  stroke-opacity: 0.5;
+}
+
+/* ── Dark-mode: no filter needed for dark-bg assets ── */
+.dark .benchmark-chart {
+  filter: none;
+}
+
+/* ── Theme-aware element visibility ── */
+/* Default (dark theme) */
+.dark-only {
+  display: block;
+}
+.light-only {
+  display: none;
+}
+
+/* Light theme overrides */
+.light .dark-only {
+  display: none;
+}
+.light .light-only {
+  display: block;
+}
+
+/* Dark theme explicit (for when .dark class is used) */
+.dark .dark-only {
+  display: block;
+}
+.dark .light-only {
+  display: none;
+}
+
+/* ============================================================
       TAILWIND v4 THEME — Map tokens → Tailwind classes
       ============================================================ */
-   
-   @theme inline {
-     /* ── Colors ── */
-     --color-background: hsl(var(--background));
-     --color-background-secondary: hsl(var(--background-secondary));
-     --color-background-tertiary: hsl(var(--background-tertiary));
-     --color-background-elevated: hsl(var(--background-elevated));
-   
-     --color-foreground: hsl(var(--foreground));
-     --color-foreground-secondary: hsl(var(--foreground-secondary));
-     --color-foreground-muted: hsl(var(--foreground-muted));
-   
-     --color-primary: hsl(var(--primary));
-     --color-primary-foreground: hsl(var(--primary-foreground));
-     --color-primary-hover: hsl(var(--primary-hover));
-   
-     --color-secondary: hsl(var(--secondary));
-     --color-secondary-foreground: hsl(var(--secondary-foreground));
-   
-     --color-tertiary: hsl(var(--tertiary));
-     --color-tertiary-foreground: hsl(var(--tertiary-foreground));
-   
-     --color-card: hsl(var(--card));
-     --color-card-foreground: hsl(var(--card-foreground));
-     --color-card-border: hsl(var(--card-border));
-   
-     --color-muted: hsl(var(--muted));
-     --color-muted-foreground: hsl(var(--muted-foreground));
-   
-     --color-accent: hsl(var(--accent));
-     --color-accent-foreground: hsl(var(--accent-foreground));
-   
-     --color-destructive: hsl(var(--destructive));
-     --color-destructive-foreground: hsl(var(--destructive-foreground));
-     --color-success: hsl(var(--success));
-     --color-success-foreground: hsl(var(--success-foreground));
-     --color-warning: hsl(var(--warning));
-     --color-warning-foreground: hsl(var(--warning-foreground));
-   
-     --color-border: hsl(var(--border));
-     --color-input: hsl(var(--input));
-     --color-ring: hsl(var(--ring));
-   
-     --color-code-bg: hsl(var(--code-bg));
-     --color-code-border: hsl(var(--code-border));
-     --color-code-bg-deep: hsl(var(--code-bg-deep));
-     --color-code-text: hsl(var(--code-text));
-   
-     --color-aside-note: hsl(var(--aside-note));
-     --color-aside-tip: hsl(var(--aside-tip));
-     --color-aside-caution: hsl(var(--aside-caution));
-     --color-aside-danger: hsl(var(--aside-danger));
-   
-     /* Terminal prompt colors */
-     --color-terminal-user: hsl(var(--terminal-user));
-     --color-terminal-path: hsl(var(--terminal-path));
-     --color-terminal-command: hsl(var(--terminal-command));
-     --color-terminal-output: hsl(var(--terminal-output));
-     --color-terminal-cursor: hsl(var(--terminal-cursor));
-   
-     /* Font families */
-     --font-sans: var(--font-inter);
-     --font-mono: var(--font-jetbrains-mono);
-   
-     /* Border radius */
-     --radius-sm: calc(var(--radius) - 4px);
-     --radius-md: calc(var(--radius) - 2px);
-     --radius-lg: var(--radius);
-   }
-   
-   /* ── Animations ── */
-   @theme {
-     --animate-fade-up: fade-up 0.6s ease-out forwards;
-     --animate-fade-in: fade-in 0.5s ease-out forwards;
-     --animate-slide-in-left: slide-in-left 0.6s ease-out forwards;
-     --animate-slide-in-right: slide-in-right 0.6s ease-out forwards;
-     --animate-glow-pulse: glow-pulse 3s ease-in-out infinite;
-     --animate-float: float 6s ease-in-out infinite;
-     --animate-accordion-down: accordion-down 0.2s ease-out;
-     --animate-accordion-up: accordion-up 0.2s ease-out;
-   
-     @keyframes fade-up {
-       0% { opacity: 0; transform: translateY(30px); }
-       100% { opacity: 1; transform: translateY(0); }
-     }
-     @keyframes fade-in {
-       0% { opacity: 0; }
-       100% { opacity: 1; }
-     }
-     @keyframes slide-in-left {
-       0% { opacity: 0; transform: translateX(-40px); }
-       100% { opacity: 1; transform: translateX(0); }
-     }
-     @keyframes slide-in-right {
-       0% { opacity: 0; transform: translateX(40px); }
-       100% { opacity: 1; transform: translateX(0); }
-     }
-     @keyframes glow-pulse {
-       0%, 100% { opacity: 0.4; }
-       50% { opacity: 1; }
-     }
-     @keyframes float {
-       0%, 100% { transform: translateY(0); }
-       50% { transform: translateY(-10px); }
-     }
-     @keyframes accordion-down {
-       from { height: 0; }
-       to { height: var(--radix-accordion-content-height); }
-     }
-     @keyframes accordion-up {
-       from { height: var(--radix-accordion-content-height); }
-       to { height: 0; }
-     }
-   }
-   
-   /* ============================================================
+
+@theme inline {
+  /* ── Colors ── */
+  --color-background: hsl(var(--background));
+  --color-background-secondary: hsl(var(--background-secondary));
+  --color-background-tertiary: hsl(var(--background-tertiary));
+  --color-background-tertiary-alt: hsl(var(--background-tertiary-alt));
+  --color-background-elevated: hsl(var(--background-elevated));
+
+  --color-foreground: hsl(var(--foreground));
+  --color-foreground-alt: hsl(var(--foreground-alt));
+  --color-foreground-secondary: hsl(var(--foreground-secondary));
+  --color-foreground-secondary-alt: hsl(var(--foreground-secondary-alt));
+  --color-foreground-muted: hsl(var(--foreground-muted));
+  --color-foreground-muted-alt: hsl(var(--foreground-muted-alt));
+  --color-border-alt: hsl(var(--border-alt));
+  --color-destructive-alt: hsl(var(--destructive-alt));
+  --color-success-alt: hsl(var(--success-alt));
+  --color-tertiary-alt: hsl(var(--tertiary-alt));
+  --color-code-bg-deep-alt: hsl(var(--code-bg-deep-alt));
+  --color-terminal-output-alt: hsl(var(--terminal-output-alt));
+  --color-bg-card-alt: hsl(var(--bg-card-alt));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-primary-hover: hsl(var(--primary-hover));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-tertiary: hsl(var(--tertiary));
+  --color-tertiary-foreground: hsl(var(--tertiary-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-card-border: hsl(var(--card-border));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-code-bg: hsl(var(--code-bg));
+  --color-code-border: hsl(var(--code-border));
+  --color-code-bg-deep: hsl(var(--code-bg-deep));
+  --color-code-text: hsl(var(--code-text));
+
+  --color-aside-note: hsl(var(--aside-note));
+  --color-aside-tip: hsl(var(--aside-tip));
+  --color-aside-caution: hsl(var(--aside-caution));
+  --color-aside-danger: hsl(var(--aside-danger));
+
+  /* Terminal prompt colors */
+  --color-terminal-user: hsl(var(--terminal-user));
+  --color-terminal-path: hsl(var(--terminal-path));
+  --color-terminal-command: hsl(var(--terminal-command));
+  --color-terminal-output: hsl(var(--terminal-output));
+  --color-terminal-cursor: hsl(var(--terminal-cursor));
+
+  /* Font families */
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+
+  /* Border radius */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
+
+/* ── Animations ── */
+@theme {
+  --animate-fade-up: fade-up 0.6s ease-out forwards;
+  --animate-fade-in: fade-in 0.5s ease-out forwards;
+  --animate-slide-in-left: slide-in-left 0.6s ease-out forwards;
+  --animate-slide-in-right: slide-in-right 0.6s ease-out forwards;
+  --animate-glow-pulse: glow-pulse 3s ease-in-out infinite;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes fade-up {
+    0% {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes fade-in {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+  @keyframes slide-in-left {
+    0% {
+      opacity: 0;
+      transform: translateX(-40px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  @keyframes slide-in-right {
+    0% {
+      opacity: 0;
+      transform: translateX(40px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  @keyframes glow-pulse {
+    0%,
+    100% {
+      opacity: 0.4;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+}
+
+/* ============================================================
       BASE STYLES
       ============================================================ */
-   
-   html, html.light {
-     color-scheme: light;
-   }
-   
-   html.dark {
-     color-scheme: dark;
-   }
-   
-   body {
-     background: var(--color-background);
-     color: var(--color-foreground);
-     font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
-     -webkit-font-smoothing: antialiased;
-     -moz-osx-font-smoothing: grayscale;
-   }
-   
-   * {
-     border-color: var(--color-border);
-   }
-   
-   /* ── Heading defaults ──
+
+html,
+html.light {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+/* ── Heading defaults ──
       IMPORTANT: Only letter-spacing is set globally.
       Font-size, font-weight, line-height, and color are NOT set here
       so that Tailwind utility classes (text-5xl, font-black, leading-tight,
@@ -410,598 +513,684 @@
       For doc/prose pages, use the .docs-prose class or the heading-1/2/3/4
       utility classes which include full typography styling.
    ── */
-   h1, h2, h3, h4 {
-     letter-spacing: var(--tracking-heading);
-   }
-   
-   /* Paragraph — no global font-size/color/line-height override.
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: var(--tracking-heading);
+}
+
+/* Paragraph — no global font-size/color/line-height override.
       Use .docs-prose or text-body utility for doc pages. */
-   
-   small {
-     color: var(--color-foreground-muted);
-     font-size: var(--fs-fine);
-     line-height: 1.4;
-   }
-   
-   /* ============================================================
+
+small {
+  color: var(--color-foreground-muted);
+  font-size: var(--fs-fine);
+  line-height: 1.4;
+}
+
+/* ============================================================
       TYPOGRAPHY UTILITY CLASSES
       (Use these explicitly when you want the doc-style typography)
       ============================================================ */
-   
-   @utility heading-1 {
-     font-size: var(--fs-h1);
-     font-weight: 750;
-     line-height: var(--lh-heading);
-     letter-spacing: var(--tracking-heading);
-     color: var(--color-foreground);
-   }
-   
-   @utility heading-2 {
-     font-size: var(--fs-h2);
-     font-weight: 700;
-     line-height: var(--lh-heading);
-     letter-spacing: var(--tracking-heading);
-     color: var(--color-foreground);
-   }
-   
-   @utility heading-3 {
-     font-size: var(--fs-h3);
-     font-weight: 650;
-     line-height: var(--lh-heading);
-     letter-spacing: var(--tracking-heading);
-     color: var(--color-foreground);
-   }
-   
-   @utility heading-4 {
-     font-size: var(--fs-h4);
-     font-weight: 650;
-     line-height: var(--lh-heading);
-     color: var(--color-foreground);
-   }
-   
-   @utility text-body {
-     font-size: var(--fs-body);
-     line-height: var(--lh-body);
-     color: var(--color-foreground-secondary);
-   }
-   
-   @utility text-lead {
-     font-size: var(--fs-lead);
-     line-height: 1.7;
-     color: var(--color-foreground-secondary);
-   }
-   
-   @utility text-fine {
-     font-size: var(--fs-fine);
-     line-height: 1.4;
-     color: var(--color-foreground-muted);
-   }
-   
-   /* ============================================================
+
+@utility heading-1 {
+  font-size: var(--fs-h1);
+  font-weight: 750;
+  line-height: var(--lh-heading);
+  letter-spacing: var(--tracking-heading);
+  color: var(--color-foreground);
+}
+
+@utility heading-2 {
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  line-height: var(--lh-heading);
+  letter-spacing: var(--tracking-heading);
+  color: var(--color-foreground);
+}
+
+@utility heading-3 {
+  font-size: var(--fs-h3);
+  font-weight: 650;
+  line-height: var(--lh-heading);
+  letter-spacing: var(--tracking-heading);
+  color: var(--color-foreground);
+}
+
+@utility heading-4 {
+  font-size: var(--fs-h4);
+  font-weight: 650;
+  line-height: var(--lh-heading);
+  color: var(--color-foreground);
+}
+
+@utility text-body {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--color-foreground-secondary);
+}
+
+@utility text-lead {
+  font-size: var(--fs-lead);
+  line-height: 1.7;
+  color: var(--color-foreground-secondary);
+}
+
+@utility text-fine {
+  font-size: var(--fs-fine);
+  line-height: 1.4;
+  color: var(--color-foreground-muted);
+}
+
+/* ============================================================
       SURFACE & GRADIENT UTILITIES
       ============================================================ */
-   
-   @utility text-gradient-primary {
-     background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--tertiary)));
-     -webkit-background-clip: text;
-     -webkit-text-fill-color: transparent;
-     background-clip: text;
-   }
-   
-   @utility hover-glow {
-     transition: box-shadow 0.2s ease;
-   }
-   @utility hover-glow-sm {
-     &:hover {
-       box-shadow: 0 0 12px -3px hsl(var(--primary) / 0.2);
-     }
-   }
-   @utility hover-glow-md {
-     &:hover {
-       box-shadow: 0 0 20px -4px hsl(var(--primary) / 0.25);
-     }
-   }
-   @utility hover-glow-lg {
-     &:hover {
-       box-shadow: 0 0 20px -2px hsl(var(--primary) / 0.3), 0 0 0 1px hsl(var(--primary) / 0.15);
-     }
-   }
-   
-   /* ── Badge presets ── */
-   @utility section-badge {
-     display: inline-block;
-     border-radius: 9999px;
-     border-width: 1px;
-     padding: 0.25rem 1rem;
-     font-size: 0.75rem;
-     font-weight: 600;
-     text-transform: uppercase;
-     letter-spacing: 0.05em;
-   }
-   @utility section-badge-primary {
-     border-color: hsl(var(--primary) / 0.3);
-     background: hsl(var(--primary) / 0.1);
-     color: hsl(var(--primary));
-   }
-   @utility section-badge-tertiary {
-     border-color: hsl(var(--tertiary) / 0.3);
-     background: hsl(var(--tertiary) / 0.1);
-     color: hsl(var(--tertiary));
-   }
-   
-   /* ── Icon container presets ── */
-   @utility icon-box {
-     display: flex;
-     align-items: center;
-     justify-content: center;
-     border-radius: 0.75rem;
-   }
-   @utility icon-box-primary {
-     background: hsl(var(--primary) / 0.1);
-     color: hsl(var(--primary));
-   }
-   @utility icon-box-tertiary {
-     background: hsl(var(--tertiary) / 0.1);
-     color: hsl(var(--tertiary));
-   }
-   
-   /* ── Glow orb presets (decorative background blobs) ── */
-   @utility glow-orb {
-     position: absolute;
-     border-radius: 9999px;
-     pointer-events: none;
-     background: radial-gradient(circle, hsl(var(--primary) / 0.35), transparent 70%);
-   }
-   @utility glow-orb-tertiary {
-     position: absolute;
-     border-radius: 9999px;
-     pointer-events: none;
-     background: radial-gradient(circle, hsl(var(--tertiary) / 0.04), transparent 70%);
-   }
-   @utility glow-orb-ellipse {
-     position: absolute;
-     border-radius: 9999px;
-     pointer-events: none;
-     background: radial-gradient(ellipse, hsl(var(--primary) / 0.5), transparent 70%);
-   }
-   
-   /* ── Section background presets ── */
-   @utility section-bg-dark {
-     background: var(--color-background);
-   }
-   @utility section-bg-dark-light {
-     background: var(--color-background-secondary);
-   }
-   @utility section-bg-default {
-     background: var(--color-background-tertiary);
-   }
-   @utility section-bg-default-light {
-     background: var(--color-background-elevated);
-   }
-   @utility section-bg-gradient {
-     background: linear-gradient(to bottom, hsl(var(--background) / 0.3), transparent);
-   }
-   
-   /* ── Aside / callout presets ── */
-   .aside-note {
-     border-color: hsl(var(--aside-note) / 0.25);
-     background: hsl(var(--aside-note) / 0.1);
-     & .aside-icon { color: hsl(var(--aside-note)); }
-     & .aside-content  { color: hsl(var(--aside-note)); }
-   }
-   .aside-tip {
-     border-color: hsl(var(--aside-tip) / 0.25);
-     background: hsl(var(--aside-tip) / 0.1);
-     & .aside-icon { color: hsl(var(--aside-tip)); }
-     & .aside-content { color: hsl(var(--aside-tip)); }
-   }
-   .aside-caution {
-     border-color: hsl(var(--aside-caution) / 0.25);
-     background: hsl(var(--aside-caution) / 0.1);
-     & .aside-icon { color: hsl(var(--aside-caution)); }
-     & .aside-content { color: hsl(var(--aside-caution)); }
-   }
-   .aside-danger {
-     border-color: hsl(var(--aside-danger) / 0.25);
-     background: hsl(var(--aside-danger) / 0.1);
-     & .aside-icon { color: hsl(var(--aside-danger)); }
-     & .aside-content { color: hsl(var(--aside-danger)); }
-   }
-   
-   /* ── Diff line presets ── */
-   @utility diff-added {
-     background: hsl(var(--success) / 0.1);
-   }
-   @utility diff-removed {
-     background: hsl(var(--destructive) / 0.1);
-   }
-   
-   /* ============================================================
+
+@utility text-gradient-primary {
+  background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--tertiary)));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+@utility hover-glow {
+  transition: box-shadow 0.2s ease;
+}
+@utility hover-glow-sm {
+  &:hover {
+    box-shadow: 0 0 12px -3px hsl(var(--primary) / 0.2);
+  }
+}
+@utility hover-glow-md {
+  &:hover {
+    box-shadow: 0 0 20px -4px hsl(var(--primary) / 0.25);
+  }
+}
+@utility hover-glow-lg {
+  &:hover {
+    box-shadow:
+      0 0 20px -2px hsl(var(--primary) / 0.3),
+      0 0 0 1px hsl(var(--primary) / 0.15);
+  }
+}
+
+/* ── Badge presets ── */
+@utility section-badge {
+  display: inline-block;
+  border-radius: 9999px;
+  border-width: 1px;
+  padding: 0.25rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+@utility section-badge-primary {
+  border-color: hsl(var(--primary) / 0.3);
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+}
+@utility section-badge-tertiary {
+  border-color: hsl(var(--tertiary) / 0.3);
+  background: hsl(var(--tertiary) / 0.1);
+  color: hsl(var(--tertiary));
+}
+
+/* ── Icon container presets ── */
+@utility icon-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+}
+@utility icon-box-primary {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+}
+@utility icon-box-tertiary {
+  background: hsl(var(--tertiary) / 0.1);
+  color: hsl(var(--tertiary));
+}
+
+/* ── Glow orb presets (decorative background blobs) ── */
+@utility glow-orb {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    hsl(var(--primary) / 0.35),
+    transparent 70%
+  );
+}
+@utility glow-orb-tertiary {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    hsl(var(--tertiary) / 0.04),
+    transparent 70%
+  );
+}
+@utility glow-orb-ellipse {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse,
+    hsl(var(--primary) / 0.5),
+    transparent 70%
+  );
+}
+
+/* ── Section background presets ── */
+@utility section-bg-dark {
+  background: var(--color-background);
+}
+@utility section-bg-dark-light {
+  background: var(--color-background-secondary);
+}
+@utility section-bg-default {
+  background: var(--color-background-tertiary);
+}
+@utility section-bg-default-light {
+  background: var(--color-background-elevated);
+}
+@utility section-bg-gradient {
+  background: linear-gradient(
+    to bottom,
+    hsl(var(--background) / 0.3),
+    transparent
+  );
+}
+
+/* ── Aside / callout presets ── */
+.aside-note {
+  border-color: hsl(var(--aside-note) / 0.25);
+  background: hsl(var(--aside-note) / 0.1);
+  & .aside-icon {
+    color: hsl(var(--aside-note));
+  }
+  & .aside-content {
+    color: hsl(var(--aside-note));
+  }
+}
+.aside-tip {
+  border-color: hsl(var(--aside-tip) / 0.25);
+  background: hsl(var(--aside-tip) / 0.1);
+  & .aside-icon {
+    color: hsl(var(--aside-tip));
+  }
+  & .aside-content {
+    color: hsl(var(--aside-tip));
+  }
+}
+.aside-caution {
+  border-color: hsl(var(--aside-caution) / 0.25);
+  background: hsl(var(--aside-caution) / 0.1);
+  & .aside-icon {
+    color: hsl(var(--aside-caution));
+  }
+  & .aside-content {
+    color: hsl(var(--aside-caution));
+  }
+}
+.aside-danger {
+  border-color: hsl(var(--aside-danger) / 0.25);
+  background: hsl(var(--aside-danger) / 0.1);
+  & .aside-icon {
+    color: hsl(var(--aside-danger));
+  }
+  & .aside-content {
+    color: hsl(var(--aside-danger));
+  }
+}
+
+/* ── Diff line presets ── */
+@utility diff-added {
+  background: hsl(var(--success) / 0.1);
+}
+@utility diff-removed {
+  background: hsl(var(--destructive) / 0.1);
+}
+
+/* ============================================================
       SCROLLBAR
       ============================================================ */
-   
-   ::-webkit-scrollbar { width: 6px; height: 6px; }
-   ::-webkit-scrollbar-track { background: transparent; }
-   ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
-   ::-webkit-scrollbar-thumb:hover { background: var(--color-muted-foreground); }
-   * { scrollbar-width: thin; scrollbar-color: var(--color-border) transparent; }
-   
-   .hide-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
-   .hide-scrollbar::-webkit-scrollbar { display: none; }
-   
-   /* ============================================================
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted-foreground);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ============================================================
       EXTRA ANIMATIONS
       ============================================================ */
-   
-   @keyframes cursorBlink {
-     0%, 100% { opacity: 1; }
-     50% { opacity: 0; }
-   }
-   .animate-cursor-blink { animation: cursorBlink 1s step-end infinite; }
-   
-   @keyframes slideIn {
-     from { transform: translateX(-100%); }
-     to { transform: translateX(0); }
-   }
-   .animate-slide-in { animation: slideIn 0.2s ease-out; }
-   
-   /* ============================================================
+
+@keyframes cursorBlink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+.animate-cursor-blink {
+  animation: cursorBlink 1s step-end infinite;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+.animate-slide-in {
+  animation: slideIn 0.2s ease-out;
+}
+
+/* ============================================================
       DOCS PROSE — Base class for MDX content
       
       This scoped class provides full typography styling for doc pages.
       It does NOT affect the landing page or other components.
       ============================================================ */
-   
-   .docs-prose {
-     color: hsl(var(--foreground-secondary));
-     font-size: var(--fs-body);
-     line-height: var(--lh-body);
-     max-width: 85ch;
-   
-     /* ── Headings ── */
-     & h1 {
-       font-size: var(--fs-h1);
-       font-weight: 750;
-       line-height: var(--lh-heading);
-       letter-spacing: var(--tracking-heading);
-       color: hsl(var(--foreground));
-       margin-top: 0;
-       margin-bottom: 1.5rem;
-     }
-   
-     & h2 {
-       font-size: var(--fs-h2);
-       font-weight: 700;
-       line-height: var(--lh-heading);
-       letter-spacing: var(--tracking-heading);
-       color: hsl(var(--foreground));
-       margin-top: 3rem;
-       margin-bottom: 1rem;
-       padding-bottom: 0.5rem;
-       border-bottom: 1px solid hsl(var(--border));
-     }
-   
-     & h3 {
-       font-size: var(--fs-h3);
-       font-weight: 650;
-       line-height: var(--lh-heading);
-       letter-spacing: var(--tracking-heading);
-       color: hsl(var(--foreground));
-       margin-top: 2.25rem;
-       margin-bottom: 0.75rem;
-     }
-   
-     & h4 {
-       font-size: var(--fs-h4);
-       font-weight: 650;
-       line-height: var(--lh-heading);
-       color: hsl(var(--foreground));
-       margin-top: 1.75rem;
-       margin-bottom: 0.5rem;
-     }
-   
-     & h5, & h6 {
-       font-size: var(--fs-body);
-       font-weight: 600;
-       color: hsl(var(--foreground-secondary));
-       margin-top: 1.5rem;
-       margin-bottom: 0.5rem;
-     }
-   
-     /* ── Body text ── */
-     & p {
-       color: hsl(var(--foreground-secondary));
-       font-size: var(--fs-body);
-       line-height: var(--lh-body);
-       margin-top: 0;
-       margin-bottom: 1.25rem;
-     }
-   
-     & strong {
-       color: hsl(var(--foreground));
-       font-weight: 650;
-     }
-   
-     & em {
-       font-style: italic;
-     }
-   
-     & small {
-       font-size: var(--fs-fine);
-       color: hsl(var(--foreground-muted));
-     }
-   
-     /* ── Links ── */
-     & a {
-       color: hsl(var(--primary));
-       text-decoration: underline;
-       text-underline-offset: 2px;
-       text-decoration-color: hsl(var(--primary) / 0.4);
-       transition: color 0.15s ease, text-decoration-color 0.15s ease;
-   
-       &:hover {
-         color: hsl(var(--primary-hover));
-         text-decoration-color: hsl(var(--primary));
-       }
-     }
-   
-     /* ── Heading anchors ── */
-     & a.heading-anchor {
-       color: inherit;
-       text-decoration: none;
-       text-decoration-color: transparent;
-   
-       &:hover {
-         color: inherit;
-         text-decoration: none;
-       }
-   
-       & .heading-text:hover {
-         color: hsl(var(--primary));
-       }
-     }
-   
-     /* ── Lists ── */
-     & ul, & ol {
-       margin-top: 0;
-       margin-bottom: 1.25rem;
-       padding-left: 1.5rem;
-     }
-   
-     & ul { list-style-type: disc; }
-     & ol { list-style-type: decimal; }
-   
-     & li {
-       color: hsl(var(--foreground-secondary));
-       margin-bottom: 0.375rem;
-       line-height: var(--lh-body);
-   
-       &::marker {
-         color: hsl(var(--tertiary));
-       }
-     }
-   
-     & li > ul, & li > ol {
-       margin-top: 0.375rem;
-       margin-bottom: 0;
-     }
-   
-     /* ── Inline code ── */
-     & :not(pre) > code {
-       font-family: var(--font-mono, 'JetBrains Mono', 'Fira Code', monospace);
-       font-size: 0.85em;
-       padding: 0.15em 0.4em;
-       border-radius: 4px;
-       background: hsl(var(--code-bg));
-       border: 1px solid hsl(var(--code-border));
-       color: hsl(var(--code-text));
-     }
-   
-     /* ── Code blocks (pre > code) ── */
-     & pre {
-       font-family: var(--font-mono, 'JetBrains Mono', 'Fira Code', monospace);
-       font-size: var(--fs-small);
-       line-height: 1.6;
-       background: hsl(var(--code-bg));
-       border: 1px solid hsl(var(--code-border));
-       border-radius: 0.5rem;
-       padding: 1rem 1.25rem;
-       margin-top: 0;
-       margin-bottom: 1.5rem;
-       overflow-x: auto;
-   
-       & code {
-         font-size: inherit;
-         padding: 0;
-         border: none;
-         background: none;
-         color: hsl(var(--code-text));
-         border-radius: 0;
-       }
-     }
-   
-     /* ── Blockquotes ── */
-     & blockquote {
-       border-left: 3px solid hsl(var(--tertiary) / 0.5);
-       background: hsl(var(--background-secondary));
-       padding: 0.75rem 1.25rem;
-       margin: 0 0 1.25rem 0;
-       border-radius: 0 0.375rem 0.375rem 0;
-   
-       & p {
-         color: hsl(var(--foreground-secondary));
-         margin-bottom: 0;
-       }
-   
-       & p + p {
-         margin-top: 0.5rem;
-       }
-     }
-   
-     /* ── Horizontal rules ── */
-     & hr {
-       border: none;
-       border-top: 1px solid hsl(var(--border));
-       margin: 2.5rem 0;
-     }
-   
-     /* ── Tables ── */
-     & table {
-       width: 100%;
-       border-collapse: collapse;
-       margin-bottom: 1.5rem;
-       font-size: var(--fs-small);
-     }
-   
-     & thead {
-       background: hsl(var(--background-elevated));
-     }
-   
-     & th {
-       color: hsl(var(--foreground));
-       font-weight: 600;
-       text-align: left;
-       padding: 0.625rem 1rem;
-       border-bottom: 1px solid hsl(var(--border));
-       font-size: var(--fs-fine);
-       text-transform: none;
-       letter-spacing: normal;
-     }
-   
-     & td {
-       color: hsl(var(--foreground-secondary));
-       padding: 0.625rem 1rem;
-       border-bottom: 1px solid hsl(var(--border));
-     }
-   
-     & tbody tr:hover {
-       background: hsl(var(--background-secondary));
-     }
-   
-     /* ── Images ── */
-     & img {
-       max-width: 100%;
-       height: auto;
-       border-radius: 0.5rem;
-       border: 1px solid hsl(var(--border));
-       margin: 1.5rem 0;
-     }
-   
-     /* ── Definition lists ── */
-     & dt {
-       color: hsl(var(--foreground));
-       font-weight: 600;
-       margin-top: 1rem;
-     }
-   
-     & dd {
-       color: hsl(var(--foreground-secondary));
-       margin-left: 1.5rem;
-       margin-bottom: 0.5rem;
-     }
-   
-     /* ── Task lists ── */
-     & ul:has(input[type="checkbox"]) {
-       list-style: none;
-       padding-left: 0;
-     }
-   
-     & input[type="checkbox"] {
-       margin-right: 0.5rem;
-       accent-color: hsl(var(--primary));
-     }
-   
-     /* ── Kbd ── */
-     & kbd {
-       font-family: var(--font-mono, monospace);
-       font-size: 0.8em;
-       padding: 0.1em 0.4em;
-       border-radius: 4px;
-       background: hsl(var(--background-tertiary));
-       border: 1px solid hsl(var(--border));
-       box-shadow: 0 1px 0 hsl(var(--border));
-       color: hsl(var(--foreground));
-     }
-   
-     /* ── Details / Summary ── */
-     & details {
-       margin-bottom: 1.25rem;
-       border: 1px solid hsl(var(--border));
-       border-radius: 0.5rem;
-       overflow: hidden;
-     }
-   
-     & summary {
-       cursor: pointer;
-       padding: 0.75rem 1rem;
-       font-weight: 600;
-       color: hsl(var(--foreground));
-       background: hsl(var(--background-secondary));
-       transition: background 0.15s ease;
-       list-style: none;
-       display: flex;
-       align-items: center;
-       gap: 0.5rem;
-   
-       &::before {
-         content: '▶';
-         font-size: 0.65em;
-         transition: transform 0.2s ease;
-         color: hsl(var(--foreground-muted));
-       }
-   
-       &:hover {
-         background: hsl(var(--background-tertiary));
-       }
-     }
-   
-     & details[open] > summary::before {
-       transform: rotate(90deg);
-     }
-   
-     & details > *:not(summary) {
-       padding: 0 1rem;
-     }
-   
-     & details > *:not(summary):first-of-type {
-       padding-top: 0.75rem;
-     }
-   
-     /* ── Spacing ── */
-     & > *:first-child { margin-top: 0; }
-     & > *:last-child { margin-bottom: 0; }
-   }
-   
-   /* ============================================================
+
+.docs-prose {
+  color: hsl(var(--foreground-secondary));
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  max-width: 85ch;
+
+  /* ── Headings ── */
+  & h1 {
+    font-size: var(--fs-h1);
+    font-weight: 750;
+    line-height: var(--lh-heading);
+    letter-spacing: var(--tracking-heading);
+    color: hsl(var(--foreground));
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+  }
+
+  & h2 {
+    font-size: var(--fs-h2);
+    font-weight: 700;
+    line-height: var(--lh-heading);
+    letter-spacing: var(--tracking-heading);
+    color: hsl(var(--foreground));
+    margin-top: 3rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  & h3 {
+    font-size: var(--fs-h3);
+    font-weight: 650;
+    line-height: var(--lh-heading);
+    letter-spacing: var(--tracking-heading);
+    color: hsl(var(--foreground));
+    margin-top: 2.25rem;
+    margin-bottom: 0.75rem;
+  }
+
+  & h4 {
+    font-size: var(--fs-h4);
+    font-weight: 650;
+    line-height: var(--lh-heading);
+    color: hsl(var(--foreground));
+    margin-top: 1.75rem;
+    margin-bottom: 0.5rem;
+  }
+
+  & h5,
+  & h6 {
+    font-size: var(--fs-body);
+    font-weight: 600;
+    color: hsl(var(--foreground-secondary));
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  /* ── Body text ── */
+  & p {
+    color: hsl(var(--foreground-secondary));
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    margin-top: 0;
+    margin-bottom: 1.25rem;
+  }
+
+  & strong {
+    color: hsl(var(--foreground));
+    font-weight: 650;
+  }
+
+  & em {
+    font-style: italic;
+  }
+
+  & small {
+    font-size: var(--fs-fine);
+    color: hsl(var(--foreground-muted));
+  }
+
+  /* ── Links ── */
+  & a {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-color: hsl(var(--primary) / 0.4);
+    transition:
+      color 0.15s ease,
+      text-decoration-color 0.15s ease;
+
+    &:hover {
+      color: hsl(var(--primary-hover));
+      text-decoration-color: hsl(var(--primary));
+    }
+  }
+
+  /* ── Heading anchors ── */
+  & a.heading-anchor {
+    color: inherit;
+    text-decoration: none;
+    text-decoration-color: transparent;
+
+    &:hover {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    & .heading-text:hover {
+      color: hsl(var(--primary));
+    }
+  }
+
+  /* ── Lists ── */
+  & ul,
+  & ol {
+    margin-top: 0;
+    margin-bottom: 1.25rem;
+    padding-left: 1.5rem;
+  }
+
+  & ul {
+    list-style-type: disc;
+  }
+  & ol {
+    list-style-type: decimal;
+  }
+
+  & li {
+    color: hsl(var(--foreground-secondary));
+    margin-bottom: 0.375rem;
+    line-height: var(--lh-body);
+
+    &::marker {
+      color: hsl(var(--tertiary));
+    }
+  }
+
+  & li > ul,
+  & li > ol {
+    margin-top: 0.375rem;
+    margin-bottom: 0;
+  }
+
+  /* ── Inline code ── */
+  & :not(pre) > code {
+    font-family: var(--font-mono, "JetBrains Mono", "Fira Code", monospace);
+    font-size: 0.85em;
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    background: hsl(var(--code-bg));
+    border: 1px solid hsl(var(--code-border));
+    color: hsl(var(--code-text));
+  }
+
+  /* ── Code blocks (pre > code) ── */
+  & pre {
+    font-family: var(--font-mono, "JetBrains Mono", "Fira Code", monospace);
+    font-size: var(--fs-small);
+    line-height: 1.6;
+    background: hsl(var(--code-bg));
+    border: 1px solid hsl(var(--code-border));
+    border-radius: 0.5rem;
+    padding: 1rem 1.25rem;
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    overflow-x: auto;
+
+    & code {
+      font-size: inherit;
+      padding: 0;
+      border: none;
+      background: none;
+      color: hsl(var(--code-text));
+      border-radius: 0;
+    }
+  }
+
+  /* ── Blockquotes ── */
+  & blockquote {
+    border-left: 3px solid hsl(var(--tertiary) / 0.5);
+    background: hsl(var(--background-secondary));
+    padding: 0.75rem 1.25rem;
+    margin: 0 0 1.25rem 0;
+    border-radius: 0 0.375rem 0.375rem 0;
+
+    & p {
+      color: hsl(var(--foreground-secondary));
+      margin-bottom: 0;
+    }
+
+    & p + p {
+      margin-top: 0.5rem;
+    }
+  }
+
+  /* ── Horizontal rules ── */
+  & hr {
+    border: none;
+    border-top: 1px solid hsl(var(--border));
+    margin: 2.5rem 0;
+  }
+
+  /* ── Tables ── */
+  & table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1.5rem;
+    font-size: var(--fs-small);
+  }
+
+  & thead {
+    background: hsl(var(--background-elevated));
+  }
+
+  & th {
+    color: hsl(var(--foreground));
+    font-weight: 600;
+    text-align: left;
+    padding: 0.625rem 1rem;
+    border-bottom: 1px solid hsl(var(--border));
+    font-size: var(--fs-fine);
+    text-transform: none;
+    letter-spacing: normal;
+  }
+
+  & td {
+    color: hsl(var(--foreground-secondary));
+    padding: 0.625rem 1rem;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  & tbody tr:hover {
+    background: hsl(var(--background-secondary));
+  }
+
+  /* ── Images ── */
+  & img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
+    border: 1px solid hsl(var(--border));
+    margin: 1.5rem 0;
+  }
+
+  /* ── Definition lists ── */
+  & dt {
+    color: hsl(var(--foreground));
+    font-weight: 600;
+    margin-top: 1rem;
+  }
+
+  & dd {
+    color: hsl(var(--foreground-secondary));
+    margin-left: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  /* ── Task lists ── */
+  & ul:has(input[type="checkbox"]) {
+    list-style: none;
+    padding-left: 0;
+  }
+
+  & input[type="checkbox"] {
+    margin-right: 0.5rem;
+    accent-color: hsl(var(--primary));
+  }
+
+  /* ── Kbd ── */
+  & kbd {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.8em;
+    padding: 0.1em 0.4em;
+    border-radius: 4px;
+    background: hsl(var(--background-tertiary));
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 1px 0 hsl(var(--border));
+    color: hsl(var(--foreground));
+  }
+
+  /* ── Details / Summary ── */
+  & details {
+    margin-bottom: 1.25rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    overflow: hidden;
+  }
+
+  & summary {
+    cursor: pointer;
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    background: hsl(var(--background-secondary));
+    transition: background 0.15s ease;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    &::before {
+      content: "▶";
+      font-size: 0.65em;
+      transition: transform 0.2s ease;
+      color: hsl(var(--foreground-muted));
+    }
+
+    &:hover {
+      background: hsl(var(--background-tertiary));
+    }
+  }
+
+  & details[open] > summary::before {
+    transform: rotate(90deg);
+  }
+
+  & details > *:not(summary) {
+    padding: 0 1rem;
+  }
+
+  & details > *:not(summary):first-of-type {
+    padding-top: 0.75rem;
+  }
+
+  /* ── Spacing ── */
+  & > *:first-child {
+    margin-top: 0;
+  }
+  & > *:last-child {
+    margin-bottom: 0;
+  }
+}
+
+/* ============================================================
       DOCS MEDIA — Image container presets
       ============================================================ */
-   
-   .docs-media {
-     margin: 1.5rem 0;
-   }
-   .docs-media img {
-     max-width: 100%;
-     height: auto;
-     border-radius: 0.5rem;
-     border: 1px solid hsl(var(--border));
-   }
-   .docs-media--sm { max-width: 320px; }
-   .docs-media--md { max-width: 640px; }
-   .docs-media--lg { max-width: 960px; }
-   
-   /* ============================================================
+
+.docs-media {
+  margin: 1.5rem 0;
+}
+.docs-media img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  border: 1px solid hsl(var(--border));
+}
+.docs-media--sm {
+  max-width: 320px;
+}
+.docs-media--md {
+  max-width: 640px;
+}
+.docs-media--lg {
+  max-width: 960px;
+}
+
+/* ============================================================
       HEADING ANCHORS — TOC link targets in doc pages
       ============================================================ */
-   
-   .heading-anchor {
-     text-decoration: none;
-     color: inherit;
-   }
-   .heading-anchor:hover {
-     text-decoration: none;
-   }
-   .anchor-icon {
-     font-size: 0.8em;
-     transition: opacity 0.15s ease;
-   }
-   
+
+.heading-anchor {
+  text-decoration: none;
+  color: inherit;
+}
+.heading-anchor:hover {
+  text-decoration: none;
+}
+.anchor-icon {
+  font-size: 0.8em;
+  transition: opacity 0.15s ease;
+}
