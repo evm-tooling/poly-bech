@@ -78,7 +78,7 @@ A suite groups related benchmarks with shared configuration and setup code.
 | `sink` | boolean | Prevent dead code elimination | false |
 
 <Aside type="tip">
-<span>Use <code>mode: "auto"</code> for most benchmarks. It automatically calibrates iteration counts to reach <code>targetTime</code>, ensuring stable measurements regardless of operation speed.</span>
+<span>Use <code>`mode: "auto"</code> for most benchmarks. It automatically calibrates iteration counts to reach <code>targetTime</code>, ensuring stable measurements regardless of operation speed.</span>
 </Aside>
 
 
@@ -170,7 +170,7 @@ Imports are language-specific:
 />
 
 <Aside type="note">
-<span>Rust imports use <code>import { ... }</code> syntax where the contents are raw Rust <code>use</code> statements. This allows any valid Rust import syntax.</span>
+<span>Rust imports use <code>`import { ... }`</code> `syntax where the contents are raw Rust <code>use</code> statements. This allows any valid Rust import syntax.</span>
 </Aside>
 
 
@@ -487,7 +487,7 @@ use std::constants  // Mathematical constants`
   ]}
 />
 
-See the [Standard Library](/docs/clients/wallet/) reference for module details.
+See the [Standard Library](/docs/core/standard-library) reference for module details.
 
 
 ### Directives
@@ -672,7 +672,7 @@ suite cryptoBenchmarks {
 
 ### Further Reading
 
-- [Standard Library](/docs/clients/wallet/) — Module reference for `std::anvil`, `std::charting`, `std::constants`
-- [Examples](/docs/examples/) — Real-world benchmark patterns
-- [CLI Reference](/docs/clients/transports/http/) — Command-line options
-- [Architecture](/docs/clients/intro/) — How the DSL compiles to native code
+- [Standard Library](/docs/core/standard-library) — Module reference for `std::anvil`, `std::charting`, `std::constants`
+- [Examples](/docs/examples) — Real-world benchmark patterns
+- [CLI Reference](/docs/tools/cli) — Command-line options
+- [Architecture](/docs/core/architecture) — How the DSL compiles to native code

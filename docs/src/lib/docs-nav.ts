@@ -49,7 +49,7 @@ export const docsNav: NavItem[] = [
         items: [
           { label: 'Why poly-bench', slug: 'introduction' },
           { label: 'Getting Started', slug: 'getting-started' },
-          { label: 'Reporting', slug: 'performance' },
+          { label: 'Reporting', slug: 'reporting' },
           { label: 'Examples', slug: 'examples' },
         ],
       },
@@ -61,16 +61,16 @@ export const docsNav: NavItem[] = [
       {
         label: 'Core',
         items: [
-          { label: 'Architecture', slug: 'clients/intro' },
-          { label: 'DSL Reference', slug: 'clients/public' },
-          { label: 'Standard Library', slug: 'clients/wallet' },
+          { label: 'Architecture', slug: 'core/architecture' },
+          { label: 'DSL Reference', slug: 'core/dsl-reference' },
+          { label: 'Standard Library', slug: 'core/standard-library' },
         ],
       },
       {
         label: 'Tools',
         items: [
-          { label: 'CLI', slug: 'clients/transports/http' },
-          { label: 'LSP / Editor', slug: 'clients/transports/websocket' },
+          { label: 'CLI', slug: 'tools/cli' },
+          { label: 'LSP / Editor', slug: 'tools/lsp' },
         ],
       },
     ],
