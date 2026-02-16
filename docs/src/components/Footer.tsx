@@ -1,7 +1,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
-import lockupHDark from '@/assets/logo-lockup-horizontal-dark-trans.png'
-import lockupHLight from '@/assets/logo-lockup-horizontal-light-trans.png'
+import lockupHDark from '../assets/logo-lockup-horizontal-dark-trans.png'
+import lockupHLight from '../assets/logo-lockup-horizontal-light-trans.png'
 
 export default function Footer() {
   return (
