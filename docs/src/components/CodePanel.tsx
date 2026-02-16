@@ -129,7 +129,7 @@ export function CodeGroup({ tabs: tabsInput, title }: CodeGroupProps) {
   const [active, setActive] = React.useState(false)
   const codeTheme = useCodeTheme()
 
-  const tabs = tabsInput.map((tab) => ({
+  const tabs = (tabsInput ?? []).map((tab) => ({
     title:
       tab.title || languageNames[tab.language || ''] || tab.language || 'Code',
     language: tab.language || 'typescript',

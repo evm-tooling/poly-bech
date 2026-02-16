@@ -43,10 +43,15 @@ function Arrow() {
   )
 }
 
-export default function FlowDiagram({ nodes, branches }: FlowDiagramProps) {
+export default function FlowDiagram({
+  nodes = [],
+  branches,
+}: FlowDiagramProps) {
+  const safeNodes = nodes ?? []
+  const safeBranches = branches ?? []
   return (
     <div className="my-6 flex flex-col items-center">
-      {nodes.map((node, i) => (
+      {safeNodes.map((node, i) => (
         <div
           key={i}
           className="flex flex-col items-center w-full max-w-[480px]"
@@ -80,13 +85,13 @@ export default function FlowDiagram({ nodes, branches }: FlowDiagramProps) {
         </div>
       ))}
 
-      {branches && branches.length > 0 && (
+      {safeBranches.length > 0 && (
         <>
           <div className="flex flex-col items-center py-1">
             <div className="w-px h-4 bg-gradient-to-b from-primary/50 to-primary/20" />
           </div>
           <div className="flex gap-4 w-full max-w-[480px]">
-            {branches.map((branch, i) => (
+            {safeBranches.map((branch, i) => (
               <div key={i} className="flex-1 flex flex-col items-center">
                 <div className="text-[10px] uppercase tracking-wider text-foreground-muted font-semibold mb-1.5">
                   {branch.condition}

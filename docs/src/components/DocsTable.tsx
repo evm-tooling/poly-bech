@@ -10,12 +10,17 @@ interface DocsTableProps {
   rows: (string | React.ReactNode)[][]
 }
 
-export default function DocsTable({ headers, rows }: DocsTableProps) {
+export default function DocsTable({
+  headers = [],
+  rows = [],
+}: DocsTableProps) {
+  const safeHeaders = headers ?? []
+  const safeRows = rows ?? []
   return (
     <div className="my-6 overflow-hidden rounded-lg border border-border">
       {/* Header row */}
       <div className="flex bg-background-elevated px-4 py-2.5 border-b border-border">
-        {headers.map((h, i) => (
+        {safeHeaders.map((h, i) => (
           <span
             key={i}
             className="flex-1 text-[var(--fs-fine)] font-semibold uppercase tracking-wider text-foreground"
@@ -26,12 +31,12 @@ export default function DocsTable({ headers, rows }: DocsTableProps) {
       </div>
 
       {/* Data rows */}
-      {rows.map((row, ri) => (
+      {safeRows.map((row, ri) => (
         <div
           key={ri}
           className="flex px-4 py-2.5 border-b border-border/30 last:border-b-0 hover:bg-background-secondary/60 transition-colors"
         >
-          {row.map((cell, ci) => (
+          {(Array.isArray(row) ? row : []).map((cell, ci) => (
             <span
               key={ci}
               className={`flex-1 text-[var(--fs-small)] ${
