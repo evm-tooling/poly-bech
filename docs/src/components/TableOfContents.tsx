@@ -4,15 +4,16 @@ import { useEffect, useRef, useState } from 'react'
 import type { TocEntry } from '@/lib/mdx'
 
 export default function TableOfContents({
-  headings,
+  headings = [],
 }: {
-  headings: TocEntry[]
+  headings?: TocEntry[]
 }) {
   const [activeId, setActiveId] = useState<string>('')
   const observerRef = useRef<IntersectionObserver | null>(null)
+  const safeHeadings = headings ?? []
 
   useEffect(() => {
-    const elements = headings
+    const elements = safeHeadings
       .map((h) => document.getElementById(h.id))
       .filter(Boolean) as HTMLElement[]
 
@@ -40,7 +41,7 @@ export default function TableOfContents({
     }
 
     return () => observerRef.current?.disconnect()
-  }, [headings])
+  }, [safeHeadings])
 
   useEffect(() => {
     const scrollContainer = document.querySelector('main') || window
@@ -52,7 +53,7 @@ export default function TableOfContents({
           : window.scrollY
       const offset = scrollTop + 120
       let current = ''
-      for (const h of headings) {
+      for (const h of safeHeadings) {
         const el = document.getElementById(h.id)
         if (el && el.offsetTop <= offset) {
           current = h.id
@@ -63,9 +64,9 @@ export default function TableOfContents({
     scrollContainer.addEventListener('scroll', onScroll, { passive: true })
     onScroll()
     return () => scrollContainer.removeEventListener('scroll', onScroll)
-  }, [headings])
+  }, [safeHeadings])
 
-  if (headings.length === 0) return null
+  if (safeHeadings.length === 0) return null
 
   return (
     <aside className="hidden xl:block w-[280px] shrink-0 sticky top-0 self-start h-[calc(100vh)]">
@@ -74,7 +75,7 @@ export default function TableOfContents({
           On this page
         </p>
         <nav className="flex flex-col gap-0">
-          {headings.map((heading) => {
+          {safeHeadings.map((heading) => {
             const isActive = activeId === heading.id
             return (
               <a

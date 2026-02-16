@@ -156,6 +156,7 @@ const summaryVariants = {
 // ============================================================================
 
 export default function BenchmarkViewer({ suites }: BenchmarkViewerProps) {
+  const safeSuites = suites ?? []
   const [activeSuiteIdx, setActiveSuiteIdx] = React.useState(0)
   const [activeSlideIdx, setActiveSlideIdx] = React.useState(0)
   const [direction, setDirection] = React.useState(0) // +1 = right, -1 = left
@@ -163,7 +164,8 @@ export default function BenchmarkViewer({ suites }: BenchmarkViewerProps) {
   const codeTheme = useCodeTheme()
   const dropdownRef = React.useRef<HTMLDivElement>(null)
 
-  const suite = suites[activeSuiteIdx]
+  const suite = safeSuites[activeSuiteIdx]
+  if (!suite?.slides?.length) return null
   const slide = suite.slides[activeSlideIdx]
   const canPrev = activeSlideIdx > 0
   const canNext = activeSlideIdx < suite.slides.length - 1
@@ -254,7 +256,7 @@ export default function BenchmarkViewer({ suites }: BenchmarkViewerProps) {
 
           {dropdownOpen && (
             <div className="absolute left-0 top-full mt-1 z-20 min-w-[220px] rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background-tertiary))] shadow-xl shadow-black/30 py-1">
-              {suites.map((s, i) => (
+              {safeSuites.map((s, i) => (
                 <button
                   key={s.id}
                   onClick={() => switchSuite(i)}

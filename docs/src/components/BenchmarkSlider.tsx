@@ -16,8 +16,10 @@ interface BenchmarkSliderProps {
 
 export default function BenchmarkSlider({
   title,
-  slides,
+  slides = [],
 }: BenchmarkSliderProps) {
+  const safeSlides = slides ?? []
+  if (safeSlides.length === 0) return null
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: false,
     align: 'center',
@@ -93,11 +95,11 @@ export default function BenchmarkSlider({
             </span>
           )}
           <span className="text-xs text-[hsl(var(--foreground-muted))]">
-            {selectedIndex + 1} / {slides.length}
+            {selectedIndex + 1} / {safeSlides.length}
           </span>
         </div>
         <span className="text-sm font-medium text-[hsl(var(--tertiary))]">
-          {slides[selectedIndex]?.label}
+          {safeSlides[selectedIndex]?.label}
         </span>
       </div>
 
@@ -148,7 +150,7 @@ export default function BenchmarkSlider({
         {/* Embla viewport */}
         <div ref={emblaRef} className="overflow-hidden px-4">
           <div className="flex">
-            {slides.map((slide, i) => (
+            {safeSlides.map((slide, i) => (
               <div key={i} className="flex-[0_0_100%] min-w-0 px-1">
                 <Image
                   src={slide.src}
@@ -164,11 +166,11 @@ export default function BenchmarkSlider({
 
       {/* Dot indicators */}
       <div className="flex items-center justify-center gap-1.5 py-3">
-        {slides.map((_, i) => (
+        {safeSlides.map((_, i) => (
           <button
             key={i}
             onClick={() => scrollTo(i)}
-            aria-label={`Go to ${slides[i].label}`}
+            aria-label={`Go to ${safeSlides[i].label}`}
             className={`h-2 rounded-full transition-all duration-200 ${
               i === selectedIndex
                 ? 'w-6 bg-[hsl(var(--tertiary))]'
