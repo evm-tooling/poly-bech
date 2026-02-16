@@ -10,10 +10,7 @@ interface DocsTableProps {
   rows: (string | React.ReactNode)[][]
 }
 
-export default function DocsTable({
-  headers = [],
-  rows = [],
-}: DocsTableProps) {
+export default function DocsTable({ headers = [], rows = [] }: DocsTableProps) {
   const safeHeaders = headers ?? []
   const safeRows = rows ?? []
   return (
