@@ -1,59 +1,107 @@
-"use client";
+'use client'
 
-import { useRef, useState, useEffect } from "react";
-import Link from "next/link";
-import CopyButton from "./CopyButton";
-import TerminalTyping from "./TerminalTyping";
-import GitHubStats from "./GitHubStats";
-import Image from "next/image";
-import { Button } from "@/components/ui/button";
-import RotatingText from "./RotatingText";
-import { motion, useReducedMotion, useInView } from "framer-motion";
-import { Code2, Layers, Shield, Cpu, Zap, GitBranch, Lock, Database } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { motion, useInView, useReducedMotion } from 'framer-motion'
+import {
+  Code2,
+  Cpu,
+  Database,
+  GitBranch,
+  Layers,
+  Lock,
+  Shield,
+  Zap,
+} from 'lucide-react'
+import Image from 'next/image'
+import Link from 'next/link'
+import { useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import CopyButton from './CopyButton'
+import GitHubStats from './GitHubStats'
+import RotatingText from './RotatingText'
+import TerminalTyping from './TerminalTyping'
 
 const features = [
-  { icon: Layers, title: "Familiar API", desc: "Same Client/Transport and Actions patterns as viem for TypeScript developers" },
-  { icon: Code2, title: "Idiomatic Go", desc: "Built with Go conventions: explicit errors, context, and interfaces" },
-  { icon: Shield, title: "Type Safe", desc: "Go's static typing for contract ABIs, transactions, and RPC calls" },
-  { icon: Cpu, title: "go-ethereum", desc: "Built on proven go-ethereum cryptographic primitives" },
-  { icon: Zap, title: "High Performance", desc: "Leverage Go's concurrency model for parallel RPC operations" },
-  { icon: GitBranch, title: "Composable", desc: "Modular architecture lets you import only what you need" },
-  { icon: Lock, title: "Battle Tested", desc: "Comprehensive test suite running against Anvil" },
-  { icon: Database, title: "ABI Utilities", desc: "Encoding, decoding, and inspection utilities for ABIs" },
-];
+  {
+    icon: Layers,
+    title: 'Familiar API',
+    desc: 'Same Client/Transport and Actions patterns as viem for TypeScript developers',
+  },
+  {
+    icon: Code2,
+    title: 'Idiomatic Go',
+    desc: 'Built with Go conventions: explicit errors, context, and interfaces',
+  },
+  {
+    icon: Shield,
+    title: 'Type Safe',
+    desc: "Go's static typing for contract ABIs, transactions, and RPC calls",
+  },
+  {
+    icon: Cpu,
+    title: 'go-ethereum',
+    desc: 'Built on proven go-ethereum cryptographic primitives',
+  },
+  {
+    icon: Zap,
+    title: 'High Performance',
+    desc: "Leverage Go's concurrency model for parallel RPC operations",
+  },
+  {
+    icon: GitBranch,
+    title: 'Composable',
+    desc: 'Modular architecture lets you import only what you need',
+  },
+  {
+    icon: Lock,
+    title: 'Battle Tested',
+    desc: 'Comprehensive test suite running against Anvil',
+  },
+  {
+    icon: Database,
+    title: 'ABI Utilities',
+    desc: 'Encoding, decoding, and inspection utilities for ABIs',
+  },
+]
 
-const doubled = [...features, ...features];
+const doubled = [...features, ...features]
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { duration: 0.5, ease: [0.25, 0.4, 0.25, 1] as [number, number, number, number], delay: i * 0.12 },
+    transition: {
+      duration: 0.5,
+      ease: [0.25, 0.4, 0.25, 1] as [number, number, number, number],
+      delay: i * 0.12,
+    },
   }),
-};
+}
 
 // Hook to detect mobile screen size
 function useIsMobile(breakpoint = 768) {
-  const [isMobile, setIsMobile] = useState(false);
-  
+  const [isMobile, setIsMobile] = useState(false)
+
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < breakpoint);
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
-  }, [breakpoint]);
-  
-  return isMobile;
+    const checkMobile = () => setIsMobile(window.innerWidth < breakpoint)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [breakpoint])
+
+  return isMobile
 }
 
 export default function Hero() {
-  const shouldReduceMotion = useReducedMotion();
-  const isMobile = useIsMobile();
-  const disableAnimations = shouldReduceMotion || isMobile;
-  const marqueeRef = useRef(null);
-  const isMarqueeInView = useInView(marqueeRef, { once: false, margin: "100px" });
+  const shouldReduceMotion = useReducedMotion()
+  const isMobile = useIsMobile()
+  const disableAnimations = shouldReduceMotion || isMobile
+  const marqueeRef = useRef(null)
+  const isMarqueeInView = useInView(marqueeRef, {
+    once: false,
+    margin: '100px',
+  })
 
   return (
     <section className="relative pt-26">
@@ -63,9 +111,9 @@ export default function Hero() {
         style={{
           backgroundImage: "url('/svg/hero-bg.svg')",
           maskImage:
-            "linear-gradient(to bottom, black 0%, black 20%, transparent 65%)",
+            'linear-gradient(to bottom, black 0%, black 20%, transparent 65%)',
           WebkitMaskImage:
-            "linear-gradient(to bottom, black 0%, black 20%, transparent 65%)",
+            'linear-gradient(to bottom, black 0%, black 20%, transparent 65%)',
         }}
       />
 
@@ -74,8 +122,8 @@ export default function Hero() {
         <div className="max-w-[420px] flex flex-col gap-6">
           <motion.div
             variants={disableAnimations ? undefined : fadeUp}
-            initial={disableAnimations ? false : "hidden"}
-            animate={disableAnimations ? false : "visible"}
+            initial={disableAnimations ? false : 'hidden'}
+            animate={disableAnimations ? false : 'visible'}
             custom={0}
           >
             <Image
@@ -101,19 +149,22 @@ export default function Hero() {
           <motion.p
             className="text-lead text-base sm:text-lg"
             variants={disableAnimations ? undefined : fadeUp}
-            initial={disableAnimations ? false : "hidden"}
-            animate={disableAnimations ? false : "visible"}
+            initial={disableAnimations ? false : 'hidden'}
+            animate={disableAnimations ? false : 'visible'}
             custom={2}
           >
-            Build reliable blockchain apps & libraries with{" "}
-            <strong className="text-foreground font-semibold">idiomatic Go</strong>,{" "}
-            <strong className="text-foreground font-semibold">type-safe</strong>, and{" "}
-            <strong className="text-foreground font-semibold">composable</strong> modules that
-            interface with Ethereum — inspired by{" "}
-            <a
-              href="https://viem.sh"
-              className="text-primary hover:underline"
-            >
+            Build reliable blockchain apps & libraries with{' '}
+            <strong className="text-foreground font-semibold">
+              idiomatic Go
+            </strong>
+            ,{' '}
+            <strong className="text-foreground font-semibold">type-safe</strong>
+            , and{' '}
+            <strong className="text-foreground font-semibold">
+              composable
+            </strong>{' '}
+            modules that interface with Ethereum — inspired by{' '}
+            <a href="https://viem.sh" className="text-primary hover:underline">
               viem
             </a>
           </motion.p>
@@ -121,8 +172,8 @@ export default function Hero() {
           <motion.div
             className="flex gap-2 flex-wrap max-lg:justify-center"
             variants={disableAnimations ? undefined : fadeUp}
-            initial={disableAnimations ? false : "hidden"}
-            animate={disableAnimations ? false : "visible"}
+            initial={disableAnimations ? false : 'hidden'}
+            animate={disableAnimations ? false : 'visible'}
             custom={3}
           >
             <Button asChild size="lg">
@@ -156,7 +207,10 @@ export default function Hero() {
             <div className="flex justify-between items-center bg-code-bg/30 border-b border-primary/15 pr-2">
               <div
                 className="flex items-center gap-2 px-4 py-2.5 text-[0.875rem] font-medium text-foreground bg-secondary/40 border-b-2 border-primary"
-                style={{ fontFamily: "'SF Mono', Menlo, Monaco, 'Courier New', monospace" }}
+                style={{
+                  fontFamily:
+                    "'SF Mono', Menlo, Monaco, 'Courier New', monospace",
+                }}
               >
                 <svg
                   className="w-[18px] h-[18px] text-[#00ADD8]"
@@ -171,7 +225,10 @@ export default function Hero() {
             </div>
             <div
               className="flex-1 flex items-start py-2 px-5 text-[1rem]"
-              style={{ fontFamily: "'SF Mono', Menlo, Monaco, 'Courier New', monospace" }}
+              style={{
+                fontFamily:
+                  "'SF Mono', Menlo, Monaco, 'Courier New', monospace",
+              }}
             >
               <TerminalTyping />
             </div>
@@ -181,15 +238,22 @@ export default function Hero() {
       </div>
 
       {/* Features marquee */}
-      <div
-        ref={marqueeRef}
-        className="relative overflow-hidden pb-10"
-      >
+      <div ref={marqueeRef} className="relative overflow-hidden pb-10">
         <div className="relative flex overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_5%,black_95%,transparent)]">
           <motion.div
             className="flex shrink-0 gap-4 sm:gap-5"
-            animate={disableAnimations || !isMarqueeInView ? {} : { x: ["0%", "-50%"] }}
-            transition={disableAnimations ? {} : { duration: 45, repeat: Infinity, ease: "linear" }}
+            animate={
+              disableAnimations || !isMarqueeInView ? {} : { x: ['0%', '-50%'] }
+            }
+            transition={
+              disableAnimations
+                ? {}
+                : {
+                    duration: 45,
+                    repeat: Number.POSITIVE_INFINITY,
+                    ease: 'linear',
+                  }
+            }
           >
             {doubled.map((f, i) => (
               <Card
@@ -200,13 +264,17 @@ export default function Hero() {
                 <div className="mb-3 sm:mb-4 icon-box icon-box-primary h-9 w-9 sm:h-10 sm:w-10 rounded-lg">
                   <f.icon className="h-4 w-4 sm:h-5 sm:w-5" />
                 </div>
-                <h4 className="mb-1.5 sm:mb-2 text-sm sm:text-base text-foreground">{f.title}</h4>
-                <p className="text-xs sm:text-sm text-foreground-secondary">{f.desc}</p>
+                <h4 className="mb-1.5 sm:mb-2 text-sm sm:text-base text-foreground">
+                  {f.title}
+                </h4>
+                <p className="text-xs sm:text-sm text-foreground-secondary">
+                  {f.desc}
+                </p>
               </Card>
             ))}
           </motion.div>
         </div>
       </div>
     </section>
-  );
+  )
 }

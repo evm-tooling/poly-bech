@@ -1,44 +1,44 @@
-"use client";
+'use client'
 
-import { useEffect, useState } from "react";
+import { useEffect, useState } from 'react'
 
 interface RepoData {
-  stars: string;
-  license: string;
+  stars: string
+  license: string
 }
 
 export default function GitHubStats() {
   const [data, setData] = useState<RepoData>({
-    stars: "...",
-    license: "...",
-  });
-  const [coverage] = useState("95%");
+    stars: '...',
+    license: '...',
+  })
+  const [coverage] = useState('95%')
 
   useEffect(() => {
     async function fetchGitHubData() {
       try {
         const response = await fetch(
-          "https://api.github.com/repos/ChefBingbong/viem-go"
-        );
+          'https://api.github.com/repos/ChefBingbong/viem-go',
+        )
         if (response.ok) {
-          const repo = await response.json();
-          const starsCount = repo.stargazers_count || 0;
-          let starsFormatted: string;
+          const repo = await response.json()
+          const starsCount = repo.stargazers_count || 0
+          let starsFormatted: string
           if (starsCount >= 1000) {
-            starsFormatted = (starsCount / 1000).toFixed(1) + "k";
+            starsFormatted = (starsCount / 1000).toFixed(1) + 'k'
           } else {
-            starsFormatted = starsCount.toString();
+            starsFormatted = starsCount.toString()
           }
-          const license = repo.license?.spdx_id || "MIT";
-          setData({ stars: starsFormatted, license });
+          const license = repo.license?.spdx_id || 'MIT'
+          setData({ stars: starsFormatted, license })
         }
       } catch (error) {
-        console.error("Failed to fetch GitHub data:", error);
-        setData({ stars: "0", license: "MIT" });
+        console.error('Failed to fetch GitHub data:', error)
+        setData({ stars: '0', license: 'MIT' })
       }
     }
-    fetchGitHubData();
-  }, []);
+    fetchGitHubData()
+  }, [])
 
   return (
     <div className="flex justify-center items-center gap-1.5 shrink-0 mt-auto text-center">
@@ -82,5 +82,5 @@ export default function GitHubStats() {
         </span>
       </a>
     </div>
-  );
+  )
 }

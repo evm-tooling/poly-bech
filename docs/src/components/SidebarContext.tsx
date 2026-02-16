@@ -1,20 +1,20 @@
-"use client";
+'use client'
 
+import { usePathname } from 'next/navigation'
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
   useState,
-} from "react";
-import { usePathname } from "next/navigation";
+} from 'react'
 
 interface SidebarContextValue {
-  open: boolean;
-  toggle: () => void;
-  close: () => void;
+  open: boolean
+  toggle: () => void
+  close: () => void
   /** true when wrapped in SidebarProvider (docs pages) */
-  hasSidebar: boolean;
+  hasSidebar: boolean
 }
 
 const SidebarContext = createContext<SidebarContextValue>({
@@ -22,39 +22,39 @@ const SidebarContext = createContext<SidebarContextValue>({
   toggle: () => {},
   close: () => {},
   hasSidebar: false,
-});
+})
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const pathname = usePathname()
+  const [open, setOpen] = useState(false)
 
-  const toggle = useCallback(() => setOpen((prev) => !prev), []);
-  const close = useCallback(() => setOpen(false), []);
+  const toggle = useCallback(() => setOpen((prev) => !prev), [])
+  const close = useCallback(() => setOpen(false), [])
 
   /* Close mobile sidebar on navigation */
   useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
+    setOpen(false)
+  }, [pathname])
 
   /* Lock body scroll when sidebar overlay is open */
   useEffect(() => {
     if (open) {
-      document.body.style.overflow = "hidden";
+      document.body.style.overflow = 'hidden'
     } else {
-      document.body.style.overflow = "";
+      document.body.style.overflow = ''
     }
     return () => {
-      document.body.style.overflow = "";
-    };
-  }, [open]);
+      document.body.style.overflow = ''
+    }
+  }, [open])
 
   return (
     <SidebarContext.Provider value={{ open, toggle, close, hasSidebar: true }}>
       {children}
     </SidebarContext.Provider>
-  );
+  )
 }
 
 export function useSidebar() {
-  return useContext(SidebarContext);
+  return useContext(SidebarContext)
 }

@@ -1,13 +1,13 @@
 /**
  * DocsTable — feature/status table for documentation pages
- * 
+ *
  * Uses tokens: background-elevated, background-secondary, border,
  * foreground, foreground-secondary, primary
  */
 
 interface DocsTableProps {
-  headers: string[];
-  rows: (string | React.ReactNode)[][];
+  headers: string[]
+  rows: (string | React.ReactNode)[][]
 }
 
 export default function DocsTable({ headers, rows }: DocsTableProps) {
@@ -36,8 +36,8 @@ export default function DocsTable({ headers, rows }: DocsTableProps) {
               key={ci}
               className={`flex-1 text-[var(--fs-small)] ${
                 ci === 0
-                  ? "font-medium text-foreground"
-                  : "text-foreground-secondary"
+                  ? 'font-medium text-foreground'
+                  : 'text-foreground-secondary'
               }`}
             >
               {cell}
@@ -46,5 +46,5 @@ export default function DocsTable({ headers, rows }: DocsTableProps) {
         </div>
       ))}
     </div>
-  );
+  )
 }

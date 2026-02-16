@@ -1,46 +1,82 @@
 'use client'
-import { motion, useMotionValue, useTransform, animate } from "framer-motion";
-import { useEffect, useRef } from "react";
-import AnimatedSection from "./AnimatedSection";
-import { MessageSquare, Bug, BookOpen, Heart, Star, GitFork, ArrowRight } from "lucide-react";
+import { animate, motion, useMotionValue, useTransform } from 'framer-motion'
+import {
+  ArrowRight,
+  BookOpen,
+  Bug,
+  GitFork,
+  Heart,
+  MessageSquare,
+  Star,
+} from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import AnimatedSection from './AnimatedSection'
 
 /* ── Animated counter ── */
-const Counter = ({ target, label, suffix = "" }: { target: number; label: string; suffix?: string }) => {
-  const count = useMotionValue(0);
-  const rounded = useTransform(count, (v) => Math.floor(v));
-  const ref = useRef<HTMLSpanElement>(null);
+const Counter = ({
+  target,
+  label,
+  suffix = '',
+}: {
+  target: number
+  label: string
+  suffix?: string
+}) => {
+  const count = useMotionValue(0)
+  const rounded = useTransform(count, (v) => Math.floor(v))
+  const ref = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
-    const unsubscribe = rounded.on("change", (v) => {
-      if (ref.current) ref.current.textContent = `${v}${suffix}`;
-    });
-    return unsubscribe;
-  }, [rounded, suffix]);
+    const unsubscribe = rounded.on('change', (v) => {
+      if (ref.current) ref.current.textContent = `${v}${suffix}`
+    })
+    return unsubscribe
+  }, [rounded, suffix])
 
   return (
     <AnimatedSection>
       <motion.div
         className="text-center"
         onViewportEnter={() => {
-          animate(count, target, { duration: 2, ease: "easeOut" });
+          animate(count, target, { duration: 2, ease: 'easeOut' })
         }}
         viewport={{ once: true }}
       >
-        <span ref={ref} className="text-3xl sm:text-4xl font-black text-primary md:text-5xl">
+        <span
+          ref={ref}
+          className="text-3xl sm:text-4xl font-black text-primary md:text-5xl"
+        >
           0{suffix}
         </span>
-        <p className="mt-2 text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-foreground-muted">{label}</p>
+        <p className="mt-2 text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-foreground-muted">
+          {label}
+        </p>
       </motion.div>
     </AnimatedSection>
-  );
-};
+  )
+}
 
 /* ── Community links ── */
 const communityLinks = [
-  { icon: MessageSquare, title: "Discussions", desc: "Ask questions and share ideas", href: "#" },
-  { icon: Bug, title: "Issues", desc: "Report bugs or request features", href: "#" },
-  { icon: BookOpen, title: "viem Docs", desc: "Original viem documentation", href: "#" },
-];
+  {
+    icon: MessageSquare,
+    title: 'Discussions',
+    desc: 'Ask questions and share ideas',
+    href: '#',
+  },
+  {
+    icon: Bug,
+    title: 'Issues',
+    desc: 'Report bugs or request features',
+    href: '#',
+  },
+  {
+    icon: BookOpen,
+    title: 'viem Docs',
+    desc: 'Original viem documentation',
+    href: '#',
+  },
+]
 
 const CommunitySection = () => (
   <section className="relative pb-24 pt-6 overflow-hidden">
@@ -123,15 +159,22 @@ const CommunitySection = () => (
             <div className="relative bg-background-tertiary/30 p-10 md:p-12 flex flex-col justify-center gap-6 border-t md:border-t-0 md:border-l border-border">
               <div className="absolute -right-20 -top-20 h-60 w-60 rounded-full border border-primary/10" />
               {[
-                { icon: Star, label: "Stars on GitHub", value: "2" },
-                { icon: GitFork, label: "Forks", value: "0" },
-                { icon: Heart, label: "Sponsors", value: "0" },
+                { icon: Star, label: 'Stars on GitHub', value: '2' },
+                { icon: GitFork, label: 'Forks', value: '0' },
+                { icon: Heart, label: 'Sponsors', value: '0' },
               ].map((stat) => (
-                <div key={stat.label} className="relative flex items-center gap-4">
+                <div
+                  key={stat.label}
+                  className="relative flex items-center gap-4"
+                >
                   <stat.icon className="h-5 w-5 text-primary/60" />
                   <div>
-                    <span className="text-lg font-bold text-foreground">{stat.value}</span>
-                    <span className="ml-2 text-sm text-foreground-muted">{stat.label}</span>
+                    <span className="text-lg font-bold text-foreground">
+                      {stat.value}
+                    </span>
+                    <span className="ml-2 text-sm text-foreground-muted">
+                      {stat.label}
+                    </span>
                   </div>
                 </div>
               ))}
@@ -141,6 +184,6 @@ const CommunitySection = () => (
       </AnimatedSection>
     </div>
   </section>
-);
+)
 
-export default CommunitySection;
+export default CommunitySection

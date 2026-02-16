@@ -1,40 +1,40 @@
-"use client";
+'use client'
 
-import { useCallback, useEffect, useState } from "react";
-import SearchModal from "./SearchModal";
-import { Button } from "@/components/ui/button";
+import { useCallback, useEffect, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import SearchModal from './SearchModal'
 
 export default function SearchTrigger({ compact }: { compact?: boolean }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false)
   const isMac =
-    typeof navigator !== "undefined" &&
-    navigator.platform.toUpperCase().includes("MAC");
+    typeof navigator !== 'undefined' &&
+    navigator.platform.toUpperCase().includes('MAC')
 
   /* Global Cmd+K / Ctrl+K listener */
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setOpen((prev) => !prev);
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setOpen((prev) => !prev)
       }
     }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   /* Lock body scroll when modal is open */
   useEffect(() => {
     if (open) {
-      document.body.style.overflow = "hidden";
+      document.body.style.overflow = 'hidden'
     } else {
-      document.body.style.overflow = "";
+      document.body.style.overflow = ''
     }
     return () => {
-      document.body.style.overflow = "";
-    };
-  }, [open]);
+      document.body.style.overflow = ''
+    }
+  }, [open])
 
-  const handleClose = useCallback(() => setOpen(false), []);
+  const handleClose = useCallback(() => setOpen(false), [])
 
   if (compact) {
     return (
@@ -64,7 +64,7 @@ export default function SearchTrigger({ compact }: { compact?: boolean }) {
         </Button>
         {open ? <SearchModal onClose={handleClose} /> : null}
       </>
-    );
+    )
   }
 
   return (
@@ -89,10 +89,10 @@ export default function SearchTrigger({ compact }: { compact?: boolean }) {
         </svg>
         <span className="flex-1 text-left">Search...</span>
         <kbd className="hidden sm:inline-flex items-center gap-0.5 text-[11px] text-foreground-muted bg-background/60 border border-border rounded px-1.5 py-0.5 font-mono leading-none">
-          {isMac ? "⌘" : "Ctrl"}K
+          {isMac ? '⌘' : 'Ctrl'}K
         </kbd>
       </button>
       {open ? <SearchModal onClose={handleClose} /> : null}
     </>
-  );
+  )
 }

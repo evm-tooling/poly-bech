@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import { Button } from '@/components/ui/button'
 
 export default function SupportSection() {
   return (
@@ -62,5 +62,5 @@ export default function SupportSection() {
         </Button>
       </div>
     </section>
-  );
+  )
 }
