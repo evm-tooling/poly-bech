@@ -1,0 +1,250 @@
+use std::charting
+
+suite concatN {
+    description: "O(n^2) naive string concatenation s += 'x'"
+    warmup: 50
+    compare: true
+    baseline: "go"
+    mode: "auto"
+    targetTime: 500ms
+    cvThreshold: 50
+    count: 3
+
+    setup go {
+        import (
+        "encoding/binary"
+        )
+
+        init {
+
+
+
+
+
+
+
+
+
+
+        }
+
+        helpers {
+            func concatGo(data []byte) []byte {
+                n := binary.LittleEndian.Uint32(data[0:4])
+                s := ""
+                for i := uint32(0); i < n; i++ {
+                    s += "x"
+                }
+                return []byte(s)
+            }
+        }
+    }
+
+    setup ts {
+        init {
+
+
+
+
+
+
+
+
+
+
+        }
+
+        helpers {
+            function concatTs(data: Uint8Array): Uint8Array {
+                const n = new DataView(data.buffer, data.byteOffset, 4).getUint32(0, true)
+                let s = ''
+                for (let i = 0; i < n; i++) s += 'x'
+                return new TextEncoder().encode(s)
+            }
+        }
+    }
+
+    setup rust {
+        init {
+
+
+
+
+
+
+
+
+
+
+        }
+
+        helpers {
+            fn concat_rust(data: &[u8]) -> Vec<u8> {
+                let n = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
+                let mut s = String::new();
+                for _ in 0..n {
+                    s.push('x');
+                }
+                s.into_bytes()
+            }
+        }
+    }
+
+    fixture n100 {
+        hex: @file("fixtures/concat/n_100.hex")
+    }
+
+    fixture n200 {
+        hex: @file("fixtures/concat/n_200.hex")
+    }
+
+    fixture n300 {
+        hex: @file("fixtures/concat/n_300.hex")
+    }
+
+    fixture n400 {
+        hex: @file("fixtures/concat/n_400.hex")
+    }
+
+    fixture n500 {
+        hex: @file("fixtures/concat/n_500.hex")
+    }
+
+    fixture n600 {
+        hex: @file("fixtures/concat/n_600.hex")
+    }
+
+    fixture n700 {
+        hex: @file("fixtures/concat/n_700.hex")
+    }
+
+    fixture n800 {
+        hex: @file("fixtures/concat/n_800.hex")
+    }
+
+    fixture n900 {
+        hex: @file("fixtures/concat/n_900.hex")
+    }
+
+    fixture n1000 {
+        hex: @file("fixtures/concat/n_1000.hex")
+    }
+
+    bench size100 {
+        go: concatGo(n100)
+        ts: concatTs(n100)
+        rust: concat_rust(&n100)
+    }
+
+    bench size200 {
+        go: concatGo(n200)
+        ts: concatTs(n200)
+        rust: concat_rust(&n200)
+    }
+
+    bench size300 {
+        go: concatGo(n300)
+        ts: concatTs(n300)
+        rust: concat_rust(&n300)
+    }
+
+    bench size400 {
+        go: concatGo(n400)
+        ts: concatTs(n400)
+        rust: concat_rust(&n400)
+    }
+
+    bench size500 {
+        go: concatGo(n500)
+        ts: concatTs(n500)
+        rust: concat_rust(&n500)
+    }
+
+    bench size600 {
+        go: concatGo(n600)
+        ts: concatTs(n600)
+        rust: concat_rust(&n600)
+    }
+
+    bench size700 {
+        go: concatGo(n700)
+        ts: concatTs(n700)
+        rust: concat_rust(&n700)
+    }
+
+    bench size800 {
+        go: concatGo(n800)
+        ts: concatTs(n800)
+        rust: concat_rust(&n800)
+    }
+
+    bench size900 {
+        go: concatGo(n900)
+        ts: concatTs(n900)
+        rust: concat_rust(&n900)
+    }
+
+    bench size1000 {
+        go: concatGo(n1000)
+        ts: concatTs(n1000)
+        rust: concat_rust(&n1000)
+    }
+
+    after {
+        charting.drawLineChart(
+            title: "String Concatenation - O(n²)",
+            description: "Naive string concat s += 'x' - quadratic complexity",
+            output: "concat-line.svg",
+            xlabel: "String Length (n)",
+            ylabel: "Time (ns/op)",
+         height: 460,
+     width: 615,
+            axisThickness: 1.5,
+            showGrid: true,
+            gridOpacity: 0.2,
+            titleFontSize: 18,
+            subtitleFontSize: 12,
+            axisLabelFontSize: 12,
+            tickLabelFontSize: 10,
+            legendPosition: "top-left",
+            showErrorBars: true,
+            errorBarOpacity: 0.4,
+            errorBarThickness: 1.5,
+            showRegression: true,
+            regressionStyle: "dotted",
+            showRegressionLabel: true,
+            timeUnit: "auto",
+            roundTicks: true  
+        )
+
+        charting.drawBarChart(
+            title: "String Concatenation Comparison",
+            description: "Vertical grouped bars showing quadratic growth",
+            output: "concat-bar.svg",
+            xlabel: "Input Size",
+            ylabel: "Time (ns/op)",
+     height: 460,
+     width: 720,
+            axisThickness: 1.5,
+            showGrid: true,
+            gridOpacity: 0.15,
+            titleFontSize: 18,
+            subtitleFontSize: 12,
+            axisLabelFontSize: 12,
+            tickLabelFontSize: 10,
+            legendPosition: "bottom-left",
+            showErrorBars: true,
+            errorBarOpacity: 0.4,
+            errorBarThickness: 1.5,
+            barWidth: 10,
+            barGroupGap: 12,
+            barWithinGroupGap: 1,
+            timeUnit: "auto",
+            roundTicks: true,
+             showRegression: true,
+            regressionStyle: "dotted",
+            showRegressionLabel: true,
+        )
+    }
+
+}

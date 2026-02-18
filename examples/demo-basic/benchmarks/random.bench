@@ -1,0 +1,284 @@
+use std::charting
+
+suite randomN {
+    description: "Random number generation and statistical operations - produces Gaussian distribution"
+    warmup: 50
+    compare: true
+    baseline: "go"
+    mode: "auto"
+    targetTime: 500ms
+    cvThreshold: 5
+    count: 1
+    memory: true
+
+    setup go {
+        import (
+        "encoding/binary"
+        "math"
+        )
+
+        init {
+
+
+
+
+        }
+
+        helpers {
+            func randomStatsGo(data []byte) float64 {
+                n := len(data) / 4
+                arr := make([]float64, n)
+                sum := 0.0
+                
+                // Convert bytes to floats and calculate sum
+                for i := 0; i < n; i++ {
+                    val := int32(binary.BigEndian.Uint32(data[i*4 : (i+1)*4]))
+                    arr[i] = float64(val)
+                    sum += arr[i]
+                }
+                
+                // Calculate mean
+                mean := sum / float64(n)
+                
+                // Calculate variance (which produces Gaussian-like distribution)
+                variance := 0.0
+                for i := 0; i < n; i++ {
+                    diff := arr[i] - mean
+                    variance += diff * diff
+                }
+                variance /= float64(n)
+                
+                // Return standard deviation (square root of variance)
+                return math.Sqrt(variance)
+            }
+        }
+    }
+
+    setup ts {
+        init {
+
+
+
+
+        }
+
+        helpers {
+            function randomStatsTs(data: Uint8Array): number {
+                const n = data.length / 4
+                const arr = []
+                let sum = 0
+                
+                // Convert bytes to numbers and calculate sum
+                for (let i = 0; i < n; i++) {
+                    const val = (data[i*4]<<24) | (data[i*4+1]<<16) | (data[i*4+2]<<8) | data[i*4+3]
+                    const signedVal = val | (val & 0x80000000 ? 0xFFFFFFFF00000000 : 0)
+                    arr.push(signedVal)
+                    sum += signedVal
+                }
+                
+                // Calculate mean
+                const mean = sum / n
+                
+                // Calculate variance
+                let variance = 0
+                for (let i = 0; i < n; i++) {
+                    const diff = arr[i] - mean
+                    variance += diff * diff
+                }
+                variance /= n
+                
+                // Return standard deviation
+                return Math.sqrt(variance)
+            }
+        }
+    }
+
+    setup rust {
+        init {
+
+
+
+
+        }
+
+        helpers {
+            fn random_stats_rust(data: &[u8]) -> f64 {
+                let n = data.len() / 4;
+                let mut arr: Vec<f64> = Vec::with_capacity(n);
+                let mut sum = 0.0;
+                
+                // Convert bytes to floats and calculate sum
+                for i in 0..n {
+                    let j = i * 4;
+                    let val = i32::from_be_bytes([data[j], data[j+1], data[j+2], data[j+3]]) as f64;
+                    arr.push(val);
+                    sum += val;
+                }
+                
+                // Calculate mean
+                let mean = sum / n as f64;
+                
+                // Calculate variance
+                let variance: f64 = arr.iter()
+                    .map(|&x| {
+                        let diff = x - mean;
+                        diff * diff
+                    })
+                    .sum::<f64>() / n as f64;
+                
+                // Return standard deviation
+                variance.sqrt()
+            }
+        }
+    }
+
+    fixture r100 {
+        hex: @file("fixtures/random/random_100.hex")
+    }
+
+    fixture r200 {
+        hex: @file("fixtures/random/random_200.hex")
+    }
+
+    fixture r300 {
+        hex: @file("fixtures/random/random_300.hex")
+    }
+
+    fixture r400 {
+        hex: @file("fixtures/random/random_400.hex")
+    }
+
+    fixture r500 {
+        hex: @file("fixtures/random/random_500.hex")
+    }
+
+    fixture r600 {
+        hex: @file("fixtures/random/random_600.hex")
+    }
+
+    fixture r700 {
+        hex: @file("fixtures/random/random_700.hex")
+    }
+
+    fixture r800 {
+        hex: @file("fixtures/random/random_800.hex")
+    }
+
+    fixture r900 {
+        hex: @file("fixtures/random/random_900.hex")
+    }
+
+    fixture r1000 {
+        hex: @file("fixtures/random/random_1000.hex")
+    }
+
+    bench n100 {
+        go: randomStatsGo(r100)
+        ts: randomStatsTs(r100)
+        rust: random_stats_rust(&r100)
+    }
+
+    bench n200 {
+        go: randomStatsGo(r200)
+        ts: randomStatsTs(r200)
+        rust: random_stats_rust(&r200)
+    }
+
+    bench n300 {
+        go: randomStatsGo(r300)
+        ts: randomStatsTs(r300)
+        rust: random_stats_rust(&r300)
+    }
+
+    bench n400 {
+        go: randomStatsGo(r400)
+        ts: randomStatsTs(r400)
+        rust: random_stats_rust(&r400)
+    }
+
+    bench n500 {
+        go: randomStatsGo(r500)
+        ts: randomStatsTs(r500)
+        rust: random_stats_rust(&r500)
+    }
+
+    bench n600 {
+        go: randomStatsGo(r600)
+        ts: randomStatsTs(r600)
+        rust: random_stats_rust(&r600)
+    }
+
+    bench n700 {
+        go: randomStatsGo(r700)
+        ts: randomStatsTs(r700)
+        rust: random_stats_rust(&r700)
+    }
+
+    bench n800 {
+        go: randomStatsGo(r800)
+        ts: randomStatsTs(r800)
+        rust: random_stats_rust(&r800)
+    }
+
+    bench n900 {
+        go: randomStatsGo(r900)
+        ts: randomStatsTs(r900)
+        rust: random_stats_rust(&r900)
+    }
+
+    bench n1000 {
+        go: randomStatsGo(r1000)
+        ts: randomStatsTs(r1000)
+        rust: random_stats_rust(&r1000)
+    }
+
+    after {
+        charting.drawLineChart(
+            title: "Random Statistics - O(n)",
+            description: "Sum/mean/variance calculation - linear complexity",
+            output: "random-line.svg",
+            xlabel: "Array Size (n elements)",
+            ylabel: "Time (ns/op)",
+            axisThickness: 1.5,
+            showGrid: true,
+            gridOpacity: 0.2,
+            titleFontSize: 18,
+            subtitleFontSize: 12,
+            axisLabelFontSize: 12,
+            tickLabelFontSize: 10,
+            legendPosition: "top-left",
+            showErrorBars: true,
+            errorBarOpacity: 0.4,
+            errorBarThickness: 1.5,
+            showRegression: true,
+            regressionStyle: "solid",
+            showRegressionLabel: true,
+            timeUnit: "auto",
+            precision: 2
+        )
+
+        charting.drawBarChart(
+            title: "Random Statistics Comparison",
+            description: "Vertical grouped bars - linear growth pattern",
+            output: "random-bar.svg",
+            xlabel: "Array Size",
+            ylabel: "Time (ns/op)",
+            axisThickness: 1.5,
+            showGrid: true,
+            gridOpacity: 0.15,
+            titleFontSize: 18,
+            subtitleFontSize: 12,
+            axisLabelFontSize: 12,
+            tickLabelFontSize: 10,
+            legendPosition: "top-right",
+            showErrorBars: true,
+            errorBarOpacity: 0.5,
+            errorBarThickness: 1.5,
+            barGroupGap: 25,
+            barWithinGroupGap: 3,
+            timeUnit: "auto",
+            precision: 2
+        )
+    }
+
+}

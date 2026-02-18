@@ -5,6 +5,7 @@
 pub mod bar_chart;
 pub mod line_chart;
 pub mod pie_chart;
+pub mod regression;
 
 use poly_bench_dsl::Lang;
 use poly_bench_executor::comparison::BenchmarkResult;
@@ -14,9 +15,9 @@ use poly_bench_runtime::measurement::ComparisonWinner;
 // Default chart dimensions
 pub const DEFAULT_WIDTH: i32 = 880;
 pub const DEFAULT_MARGIN_TOP: i32 = 60;
-pub const DEFAULT_MARGIN_BOTTOM: i32 = 40;
-pub const DEFAULT_MARGIN_LEFT: i32 = 200;
-pub const DEFAULT_MARGIN_RIGHT: i32 = 100;
+pub const DEFAULT_MARGIN_BOTTOM: i32 = 50;
+pub const DEFAULT_MARGIN_LEFT: i32 = 70;
+pub const DEFAULT_MARGIN_RIGHT: i32 = 30;
 
 // Default colors
 pub const GO_COLOR: &str = "#00ADD8";
@@ -233,9 +234,34 @@ pub fn filter_benchmarks<'a>(
     filtered
 }
 
+/// Extract numeric value from a benchmark name for natural sorting
+/// e.g., "n100" -> 100, "size1000" -> 1000, "bench_42_test" -> 42
+pub fn extract_numeric_value(name: &str) -> Option<i64> {
+    // Find all contiguous digit sequences and return the first one
+    let mut num_str = String::new();
+    let mut found_digit = false;
+
+    for ch in name.chars() {
+        if ch.is_ascii_digit() {
+            num_str.push(ch);
+            found_digit = true;
+        } else if found_digit {
+            // Stop at first non-digit after finding digits
+            break;
+        }
+    }
+
+    if num_str.is_empty() {
+        None
+    } else {
+        num_str.parse().ok()
+    }
+}
+
 /// Sort benchmarks based on directive parameters
 pub fn sort_benchmarks(benchmarks: &mut [&BenchmarkResult], directive: &ChartDirectiveIR) {
-    let sort_by = directive.sort_by.as_deref().unwrap_or("name");
+    // Default to "natural" sorting which handles numeric values in names correctly
+    let sort_by = directive.sort_by.as_deref().unwrap_or("natural");
     let sort_desc = directive.sort_order.as_deref().unwrap_or("asc") == "desc";
 
     benchmarks.sort_by(|a, b| {
@@ -291,7 +317,22 @@ pub fn sort_benchmarks(benchmarks: &mut [&BenchmarkResult], directive: &ChartDir
                     .unwrap_or(0.0);
                 ops_a.partial_cmp(&ops_b).unwrap_or(std::cmp::Ordering::Equal)
             }
-            "name" | _ => a.name.cmp(&b.name),
+            "name" => a.name.cmp(&b.name),
+            // "natural" is the default - sorts by numeric value in name, then alphabetically
+            "natural" | _ => {
+                let num_a = extract_numeric_value(&a.name);
+                let num_b = extract_numeric_value(&b.name);
+
+                match (num_a, num_b) {
+                    // Both have numeric values - sort by number
+                    (Some(na), Some(nb)) => na.cmp(&nb),
+                    // Only one has numeric - numeric comes first
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    // Neither has numeric - fall back to alphabetical
+                    (None, None) => a.name.cmp(&b.name),
+                }
+            }
         };
 
         if sort_desc {
