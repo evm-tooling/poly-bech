@@ -417,6 +417,77 @@ pub struct ChartDirective {
     pub precision: Option<u32>,
     /// Time unit: "auto", "ns", "us", "ms", "s"
     pub time_unit: Option<String>,
+
+    // === NEW PARAMETERS ===
+
+    // Dimensions
+    /// Chart height in pixels
+    pub height: Option<i32>,
+
+    // Axis styling
+    /// Stroke width for x/y axes (default: 1.0)
+    pub axis_thickness: Option<f32>,
+    /// Minimum x-axis value
+    pub x_axis_min: Option<f64>,
+    /// Maximum x-axis value
+    pub x_axis_max: Option<f64>,
+    /// Minimum y-axis value
+    pub y_axis_min: Option<f64>,
+    /// Maximum y-axis value
+    pub y_axis_max: Option<f64>,
+
+    // Grid
+    /// Toggle grid lines (default: true)
+    pub show_grid: Option<bool>,
+    /// Grid line opacity 0.0-1.0 (default: 0.15)
+    pub grid_opacity: Option<f32>,
+
+    // Typography
+    /// Title font size (default: 16)
+    pub title_font_size: Option<i32>,
+    /// Subtitle font size (default: 11)
+    pub subtitle_font_size: Option<i32>,
+    /// X/Y axis title font size (default: 11)
+    pub axis_label_font_size: Option<i32>,
+    /// Tick mark label font size (default: 10)
+    pub tick_label_font_size: Option<i32>,
+
+    // Legend
+    /// Legend position: "top-left", "top-right", "bottom-left", "bottom-right", "hidden"
+    pub legend_position: Option<String>,
+
+    // Error bars
+    /// Toggle error bars (default: false)
+    pub show_error_bars: Option<bool>,
+    /// Error bar opacity (default: 0.3)
+    pub error_bar_opacity: Option<f32>,
+    /// Error bar stroke width (default: 1.0)
+    pub error_bar_thickness: Option<f32>,
+
+    // Regression
+    /// Toggle regression line (default: false)
+    pub show_regression: Option<bool>,
+    /// Regression line style: "solid", "dashed", "dotted" (default: "dashed")
+    pub regression_style: Option<String>,
+    /// Show detected model label e.g. "O(n log n)" (default: true)
+    pub show_regression_label: Option<bool>,
+
+    // Bar chart specific
+    /// Gap between benchmark groups (default: 20)
+    pub bar_group_gap: Option<i32>,
+    /// Gap between bars within a group (default: 2)
+    pub bar_within_group_gap: Option<i32>,
+    /// Width of individual bars (default: 20)
+    pub bar_width: Option<i32>,
+
+    // Tick label formatting
+    /// Round tick labels to whole numbers when appropriate (default: false)
+    pub round_ticks: Option<bool>,
+
+    // Y-axis scale
+    /// Y-axis scale type for handling data spanning orders of magnitude.
+    /// Options: "linear" (default), "log" (logarithmic - powers of 10)
+    pub y_scale: Option<String>,
 }
 
 impl ChartDirective {
@@ -455,6 +526,40 @@ impl ChartDirective {
             // Data display - defaults
             precision: None,
             time_unit: None,
+            // Dimensions
+            height: None,
+            // Axis styling
+            axis_thickness: None,
+            x_axis_min: None,
+            x_axis_max: None,
+            y_axis_min: None,
+            y_axis_max: None,
+            // Grid
+            show_grid: None,
+            grid_opacity: None,
+            // Typography
+            title_font_size: None,
+            subtitle_font_size: None,
+            axis_label_font_size: None,
+            tick_label_font_size: None,
+            // Legend
+            legend_position: None,
+            // Error bars
+            show_error_bars: None,
+            error_bar_opacity: None,
+            error_bar_thickness: None,
+            // Regression
+            show_regression: None,
+            regression_style: None,
+            show_regression_label: None,
+            // Bar chart specific
+            bar_group_gap: None,
+            bar_within_group_gap: None,
+            bar_width: None,
+            // Tick label formatting
+            round_ticks: None,
+            // Y-axis scale
+            y_scale: None,
         }
     }
 

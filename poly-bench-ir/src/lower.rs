@@ -293,6 +293,50 @@ fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -
     ir.precision = directive.precision;
     ir.time_unit = directive.time_unit.clone();
 
+    // Dimensions
+    ir.height = directive.height;
+
+    // Axis styling
+    ir.axis_thickness = directive.axis_thickness;
+    ir.x_axis_min = directive.x_axis_min;
+    ir.x_axis_max = directive.x_axis_max;
+    ir.y_axis_min = directive.y_axis_min;
+    ir.y_axis_max = directive.y_axis_max;
+
+    // Grid
+    ir.show_grid = directive.show_grid;
+    ir.grid_opacity = directive.grid_opacity;
+
+    // Typography
+    ir.title_font_size = directive.title_font_size;
+    ir.subtitle_font_size = directive.subtitle_font_size;
+    ir.axis_label_font_size = directive.axis_label_font_size;
+    ir.tick_label_font_size = directive.tick_label_font_size;
+
+    // Legend
+    ir.legend_position = directive.legend_position.clone();
+
+    // Error bars
+    ir.show_error_bars = directive.show_error_bars;
+    ir.error_bar_opacity = directive.error_bar_opacity;
+    ir.error_bar_thickness = directive.error_bar_thickness;
+
+    // Regression
+    ir.show_regression = directive.show_regression;
+    ir.regression_style = directive.regression_style.clone();
+    ir.show_regression_label = directive.show_regression_label;
+
+    // Bar chart specific
+    ir.bar_group_gap = directive.bar_group_gap;
+    ir.bar_within_group_gap = directive.bar_within_group_gap;
+    ir.bar_width = directive.bar_width;
+
+    // Tick label formatting
+    ir.round_ticks = directive.round_ticks;
+
+    // Y-axis scale
+    ir.y_scale = directive.y_scale.clone();
+
     ir
 }
 

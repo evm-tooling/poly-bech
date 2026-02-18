@@ -1,6 +1,6 @@
-//! Bar chart generator - horizontal bar chart with Go vs TS vs Rust comparison
-//! Each benchmark is displayed as a row with horizontal bars for each language
-//! Uses smart scaling to prevent extreme values from making other bars invisible
+//! Bar chart generator - vertical grouped bar chart with Go vs TS vs Rust comparison
+//! Each benchmark group is displayed as vertical bars side-by-side for each language
+//! All benchmarks in a suite are shown on one chart
 
 use miette::Result;
 use poly_bench_dsl::Lang;
@@ -8,25 +8,20 @@ use poly_bench_executor::BenchmarkResults;
 use poly_bench_ir::ChartDirectiveIR;
 
 use super::{
-    calculate_geo_mean, count_wins, escape_xml, filter_benchmarks, format_duration_with_unit,
-    format_ops_per_sec, sort_benchmarks, svg_header, svg_title, BORDER_COLOR,
-    DEFAULT_MARGIN_BOTTOM, DEFAULT_MARGIN_TOP, GO_COLOR, RUST_COLOR, TEXT_COLOR, TEXT_MUTED,
+    escape_xml, extract_numeric_value, filter_benchmarks, format_duration_with_unit,
+    regression::{select_best_model, ModelType},
+    sort_benchmarks, svg_header, DEFAULT_MARGIN_TOP, GO_COLOR, RUST_COLOR, TEXT_COLOR, TEXT_MUTED,
     TEXT_SECONDARY, TS_COLOR,
 };
 
-// Layout constants for horizontal bar chart
-const BAR_HEIGHT: i32 = 18; // Height of each bar
-const BAR_GAP: i32 = 3; // Gap between bars within a benchmark
-const ROW_HEIGHT: i32 = 95; // Total height per benchmark row (Go + TS + Rust bars + spacing)
-const LABEL_WIDTH: i32 = 180; // Width reserved for benchmark name labels
-const VALUE_LABEL_WIDTH: i32 = 120; // Width reserved for value labels on right
-const STATS_BOX_HEIGHT: i32 = 80;
-const LEGEND_HEIGHT: i32 = 40;
-const MIN_CHART_WIDTH: i32 = 600; // Minimum width for the chart area
-
-// Scaling constants to prevent tiny bars
-const MIN_BAR_WIDTH_RATIO: f64 = 0.05; // Minimum bar width as ratio of max (5%)
-const LOG_SCALE_THRESHOLD: f64 = 100.0; // Use log scaling if max/min ratio exceeds this
+// Layout constants for vertical bar chart
+const DEFAULT_BAR_WIDTH: i32 = 20; // Width of each bar
+const DEFAULT_BAR_GROUP_GAP: i32 = 20; // Gap between benchmark groups
+const DEFAULT_BAR_WITHIN_GAP: i32 = 2; // Gap between bars within a group
+const DEFAULT_CHART_HEIGHT: i32 = 450; // Default chart height
+const MARGIN_LEFT: i32 = 80; // Left margin for Y-axis labels
+const MARGIN_RIGHT: i32 = 40; // Right margin
+const MARGIN_BOTTOM: i32 = 70; // Bottom margin for X-axis labels
 
 /// Suite configuration for display
 pub struct SuiteConfig {
@@ -36,12 +31,12 @@ pub struct SuiteConfig {
     pub order: Option<String>,
 }
 
-/// Generate a horizontal bar chart SVG with each benchmark as a row
-/// Uses smart scaling to prevent extreme values from making other bars invisible
+/// Generate a vertical grouped bar chart SVG
+/// Each benchmark is a group with bars for Go, TS, Rust side-by-side
 pub fn generate(
     results: &BenchmarkResults,
     directive: &ChartDirectiveIR,
-    suite_config: Option<&SuiteConfig>,
+    _suite_config: Option<&SuiteConfig>,
 ) -> Result<String> {
     let mut svg = String::new();
 
@@ -68,488 +63,793 @@ pub fn generate(
     }
 
     // Extract directive parameters with defaults
-    let bar_height = directive.bar_height.unwrap_or(BAR_HEIGHT);
-    let bar_gap = directive.bar_gap.unwrap_or(BAR_GAP);
     let time_unit = directive.time_unit.as_deref();
     let precision = directive.precision;
-    let compact = directive.compact;
+    let bar_group_gap = directive.bar_group_gap.unwrap_or(DEFAULT_BAR_GROUP_GAP);
+    let bar_within_gap = directive.bar_within_group_gap.unwrap_or(DEFAULT_BAR_WITHIN_GAP);
+    let round_ticks = directive.round_ticks.unwrap_or(false);
 
-    // Calculate dynamic dimensions based on number of benchmarks
+    // Typography settings
+    let title_font_size = directive.title_font_size.unwrap_or(16);
+    let subtitle_font_size = directive.subtitle_font_size.unwrap_or(11);
+    let axis_label_font_size = directive.axis_label_font_size.unwrap_or(11);
+    let tick_label_font_size = directive.tick_label_font_size.unwrap_or(10);
+
+    // Grid settings
+    let show_grid = directive.show_grid.unwrap_or(true);
+    let grid_opacity = directive.grid_opacity.unwrap_or(0.15);
+
+    // Axis settings
+    let axis_thickness = directive.axis_thickness.unwrap_or(1.5);
+
+    // Error bar settings
+    let show_error_bars = directive.show_error_bars.unwrap_or(false);
+    let error_bar_opacity = directive.error_bar_opacity.unwrap_or(0.6);
+    let error_bar_thickness = directive.error_bar_thickness.unwrap_or(1.5);
+
+    // Regression settings
+    let show_regression = directive.show_regression.unwrap_or(false);
+    let regression_style = directive.regression_style.as_deref().unwrap_or("dashed");
+    let show_regression_label = directive.show_regression_label.unwrap_or(true);
+
+    // Determine which languages have data
+    let has_go = filtered.iter().any(|b| b.measurements.contains_key(&Lang::Go));
+    let has_ts = filtered.iter().any(|b| b.measurements.contains_key(&Lang::TypeScript));
+    let has_rust = filtered.iter().any(|b| b.measurements.contains_key(&Lang::Rust));
+
+    let num_langs = [has_go, has_ts, has_rust].iter().filter(|&&x| x).count() as i32;
     let num_benchmarks = filtered.len() as i32;
 
-    // Calculate width
-    let margin_x = 20;
-    let stats_box_needed =
-        (directive.show_stats || directive.show_distribution || directive.show_geo_mean) &&
-            !compact;
-    let width = directive.width.unwrap_or(MIN_CHART_WIDTH + margin_x * 2).max(MIN_CHART_WIDTH);
-    let bar_area_width = width - LABEL_WIDTH - VALUE_LABEL_WIDTH - margin_x * 2;
+    // Calculate dimensions
+    let bar_width = directive.bar_width.unwrap_or(DEFAULT_BAR_WIDTH);
+    let group_width = num_langs * bar_width + (num_langs - 1).max(0) * bar_within_gap;
+    let total_groups_width =
+        num_benchmarks * group_width + (num_benchmarks - 1).max(0) * bar_group_gap;
 
-    // Calculate summary stats for legend
-    let (go_wins, ts_wins, rust_wins, ties) = count_wins(&filtered);
-    let geo_mean = calculate_geo_mean(&filtered);
+    // Chart dimensions - calculate minimum width needed to fit all bars
+    let min_chart_width = total_groups_width + MARGIN_LEFT + MARGIN_RIGHT + 60; // Add padding for bars
 
-    // Height calculation
-    let legend_space = LEGEND_HEIGHT;
-    let stats_box_space = if stats_box_needed { STATS_BOX_HEIGHT } else { 0 };
-    let config_space =
-        if directive.show_config && suite_config.is_some() && !compact { 24 } else { 0 };
-    let chart_area_height = num_benchmarks * ROW_HEIGHT;
-    let height = DEFAULT_MARGIN_TOP +
-        chart_area_height +
-        legend_space +
-        stats_box_space +
-        config_space +
-        DEFAULT_MARGIN_BOTTOM;
+    // Use the larger of: user-specified width OR minimum width needed to fit bars
+    let chart_width = directive
+        .width
+        .map(|w| w.max(min_chart_width)) // If user specified width, ensure it's at least min
+        .unwrap_or(min_chart_width.max(600)); // Otherwise use min or 600, whichever is larger
 
-    // Collect all values for smart scaling (Go, TS, and Rust)
+    let chart_height = directive.height.unwrap_or(DEFAULT_CHART_HEIGHT);
+    let plot_height = chart_height - DEFAULT_MARGIN_TOP - MARGIN_BOTTOM - 30;
+    let plot_width = chart_width - MARGIN_LEFT - MARGIN_RIGHT;
+
+    // Collect all values for Y scale
     let all_values: Vec<f64> = filtered
         .iter()
         .flat_map(|b| {
             let mut values = Vec::new();
             if let Some(m) = b.measurements.get(&Lang::Go) {
-                values.push(m.median_across_runs.unwrap_or(m.nanos_per_op));
+                values.push(m.nanos_per_op);
+                // Include CI upper bound if error bars are enabled
+                if show_error_bars {
+                    if let Some(ci_upper) = m.ci_95_upper {
+                        values.push(ci_upper);
+                    }
+                }
             }
             if let Some(m) = b.measurements.get(&Lang::TypeScript) {
-                values.push(m.median_across_runs.unwrap_or(m.nanos_per_op));
+                values.push(m.nanos_per_op);
+                if show_error_bars {
+                    if let Some(ci_upper) = m.ci_95_upper {
+                        values.push(ci_upper);
+                    }
+                }
             }
             if let Some(m) = b.measurements.get(&Lang::Rust) {
-                values.push(m.median_across_runs.unwrap_or(m.nanos_per_op));
+                values.push(m.nanos_per_op);
+                if show_error_bars {
+                    if let Some(ci_upper) = m.ci_95_upper {
+                        values.push(ci_upper);
+                    }
+                }
             }
             values
         })
         .collect();
 
-    let max_value = all_values.iter().cloned().fold(1.0, f64::max);
-    let min_value = all_values.iter().cloned().fold(f64::MAX, f64::min).max(0.001);
-    let value_ratio = max_value / min_value;
+    // Determine Y-axis scale type
+    let use_log_scale = directive.y_scale.as_deref() == Some("log");
 
-    // Determine scaling mode: use log scale if ratio is extreme
-    let use_log_scale = value_ratio > LOG_SCALE_THRESHOLD;
+    // Calculate min/max values
+    let raw_max = all_values.iter().cloned().fold(1.0, f64::max);
+    let raw_min = all_values.iter().cloned().fold(raw_max, f64::min).max(1.0); // Clamp to 1.0 for log scale safety
 
-    // Build subtitle
-    let scale_note = if use_log_scale { " (log scale)" } else { "" };
-    let subtitle = directive.description.clone().unwrap_or_else(|| {
-        let winner_text = match results.summary.winner {
-            Some(Lang::Go) => {
-                format!("Go is {:.1}x faster overall", results.summary.geo_mean_speedup)
-            }
-            Some(Lang::TypeScript) => format!(
-                "TypeScript is {:.1}x faster overall",
-                1.0 / results.summary.geo_mean_speedup
-            ),
-            _ => "Similar performance".to_string(),
-        };
-        format!("{}{}", winner_text, scale_note)
-    });
-
-    let title = directive.title.clone().unwrap_or_else(|| "Benchmark Results".to_string());
-
-    // SVG header
-    svg.push_str(&svg_header(width, height));
-
-    // Title
-    svg.push_str(&svg_title(width, &title, Some(&subtitle)));
-
-    // Draw horizontal bar chart rows
-    let start_y = DEFAULT_MARGIN_TOP + 20;
-
-    // Helper to calculate bar width
-    let calc_bar_width = |value: f64| -> f64 {
-        if use_log_scale {
-            let log_max = max_value.ln();
-            let log_min = min_value.ln();
-            let log_range = log_max - log_min;
-            let log_val = value.max(min_value).ln();
-            let ratio = (log_val - log_min) / log_range;
-            (ratio * bar_area_width as f64).max(bar_area_width as f64 * MIN_BAR_WIDTH_RATIO)
-        } else {
-            let ratio = value / max_value;
-            (ratio * bar_area_width as f64).max(bar_area_width as f64 * MIN_BAR_WIDTH_RATIO)
-        }
+    let max_value = directive.y_axis_max.unwrap_or(raw_max * 1.15);
+    let min_value = if use_log_scale {
+        // For log scale, use the minimum positive value (or 1.0)
+        directive.y_axis_min.unwrap_or(raw_min * 0.5).max(1.0)
+    } else {
+        directive.y_axis_min.unwrap_or(0.0)
     };
 
-    for (i, bench) in filtered.iter().enumerate() {
-        // Get measurements for each language
-        let go_m = bench.measurements.get(&Lang::Go);
-        let ts_m = bench.measurements.get(&Lang::TypeScript);
-        let rust_m = bench.measurements.get(&Lang::Rust);
+    // For linear scale, use value_range; for log scale, use log_range
+    let value_range = (max_value - min_value).max(1.0);
+    let log_min = min_value.max(1.0).log10();
+    let log_max = max_value.log10();
+    let log_range = (log_max - log_min).max(0.001);
 
-        // Need at least one measurement to show
-        if go_m.is_none() && ts_m.is_none() && rust_m.is_none() {
-            continue;
-        }
+    // Build title and subtitle
+    let title = directive.title.clone().unwrap_or_else(|| "Benchmark Results".to_string());
+    let subtitle = directive.description.clone();
 
-        let row_y = start_y + (i as i32 * ROW_HEIGHT);
+    // SVG header
+    svg.push_str(&svg_header(chart_width, chart_height));
 
-        // Determine winner across all languages
-        let mut times: Vec<(&str, f64, &str)> = vec![]; // (name, nanos, color)
-        if let Some(m) = go_m {
-            times.push(("Go", m.median_across_runs.unwrap_or(m.nanos_per_op), GO_COLOR));
-        }
-        if let Some(m) = ts_m {
-            times.push(("TS", m.median_across_runs.unwrap_or(m.nanos_per_op), TS_COLOR));
-        }
-        if let Some(m) = rust_m {
-            times.push(("Rust", m.median_across_runs.unwrap_or(m.nanos_per_op), RUST_COLOR));
-        }
+    // Title
+    svg.push_str(&svg_title_custom(
+        chart_width,
+        &title,
+        subtitle.as_deref(),
+        title_font_size,
+        subtitle_font_size,
+    ));
 
-        times.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-        let winner_name = if times.len() >= 2 && times[1].1 / times[0].1 >= 1.05 {
-            Some(times[0].0)
-        } else {
-            None
-        };
+    // Chart group - translate to plot area
+    let plot_x = MARGIN_LEFT;
+    let plot_y = DEFAULT_MARGIN_TOP + 30;
+    svg.push_str(&format!("<g transform=\"translate({},{})\">\n", plot_x, plot_y));
 
-        // Draw row group
-        svg.push_str(&format!("<g transform=\"translate({},{})\">\n", margin_x, row_y));
+    // Draw grid lines and Y-axis ticks
+    if use_log_scale {
+        // Log scale: draw grid lines at powers of 10
+        let tick_values = compute_log_ticks(min_value, max_value);
 
-        // Benchmark name label (left side)
-        let name_display = if bench.name.len() > 20 {
-            format!("{}...", &bench.name[..17])
-        } else {
-            bench.name.clone()
-        };
-        svg.push_str(&format!(
-            "  <text x=\"{}\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"11\" font-weight=\"500\" fill=\"{}\">{}</text>\n",
-            LABEL_WIDTH - 10, bar_height + bar_gap / 2, TEXT_COLOR, escape_xml(&name_display)
-        ));
+        for &tick_value in &tick_values {
+            let y = plot_height -
+                ((tick_value.log10() - log_min) / log_range * plot_height as f64) as i32;
 
-        // Winner indicator (speedup) below name
-        if let Some(winner) = winner_name {
-            if times.len() >= 2 {
-                let speedup = times[1].1 / times[0].1;
-                let winner_color = times[0].2;
+            // Grid line
+            if show_grid {
                 svg.push_str(&format!(
-                    "  <text x=\"{}\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"600\" fill=\"{}\">{} {:.1}x faster</text>\n",
-                    LABEL_WIDTH - 10, bar_height * 2 + bar_gap + 4, winner_color, winner, speedup
+                    "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\" stroke-width=\"1\" opacity=\"{}\"/>\n",
+                    y, plot_width, y, grid_opacity
+                ));
+            }
+
+            // Tick mark
+            svg.push_str(&format!(
+                "  <line x1=\"-5\" y1=\"{}\" x2=\"0\" y2=\"{}\" stroke=\"#4B5563\" stroke-width=\"{}\"/>\n",
+                y, y, axis_thickness
+            ));
+
+            // Label
+            let label = if round_ticks {
+                format_duration_rounded(tick_value, time_unit)
+            } else {
+                format_duration_with_unit(tick_value, time_unit, precision)
+            };
+            svg.push_str(&format!(
+                "  <text x=\"-10\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+                y + 4, tick_label_font_size, TEXT_MUTED, label
+            ));
+        }
+    } else {
+        // Linear scale: draw grid lines at regular intervals
+        if show_grid {
+            let num_grid_lines = 5;
+            for i in 0..=num_grid_lines {
+                let y =
+                    plot_height - (i as f64 / num_grid_lines as f64 * plot_height as f64) as i32;
+                svg.push_str(&format!(
+                    "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\" stroke-width=\"1\" opacity=\"{}\"/>\n",
+                    y, plot_width, y, grid_opacity
                 ));
             }
         }
 
-        let mut current_bar_y = 0;
+        // Draw Y-axis with tick marks and labels
+        let num_y_ticks = 5;
+        for i in 0..=num_y_ticks {
+            let y = plot_height - (i as f64 / num_y_ticks as f64 * plot_height as f64) as i32;
+            let value = min_value + (value_range * i as f64 / num_y_ticks as f64);
+
+            // Tick mark
+            svg.push_str(&format!(
+                "  <line x1=\"-5\" y1=\"{}\" x2=\"0\" y2=\"{}\" stroke=\"#4B5563\" stroke-width=\"{}\"/>\n",
+                y, y, axis_thickness
+            ));
+
+            // Label - optionally round to whole numbers
+            let label = if round_ticks {
+                format_duration_rounded(value, time_unit)
+            } else {
+                format_duration_with_unit(value, time_unit, precision)
+            };
+            svg.push_str(&format!(
+                "  <text x=\"-10\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+                y + 4, tick_label_font_size, TEXT_MUTED, label
+            ));
+        }
+    }
+
+    // Draw axes
+    svg.push_str(&format!(
+        "  <line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"{}\" stroke=\"#4B5563\" stroke-width=\"{}\"/>\n",
+        plot_height, axis_thickness
+    ));
+    svg.push_str(&format!(
+        "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#4B5563\" stroke-width=\"{}\"/>\n",
+        plot_height, plot_width, plot_height, axis_thickness
+    ));
+
+    // Calculate bar positions - center groups in plot area
+    let start_x = (plot_width - total_groups_width) / 2;
+
+    // Collect data for regression lines
+    let mut go_data: Vec<(f64, f64)> = Vec::new();
+    let mut ts_data: Vec<(f64, f64)> = Vec::new();
+    let mut rust_data: Vec<(f64, f64)> = Vec::new();
+
+    // Draw bars for each benchmark
+    for (i, bench) in filtered.iter().enumerate() {
+        let group_x = start_x + i as i32 * (group_width + bar_group_gap);
+        let mut bar_offset = 0;
+
+        // Extract numeric x value for regression
+        let x_val = extract_numeric_value(&bench.name).unwrap_or(i as i64) as f64;
 
         // Go bar
-        if let Some(m) = go_m {
-            let value = m.median_across_runs.unwrap_or(m.nanos_per_op);
-            let bar_width = calc_bar_width(value);
-            let is_winner = winner_name == Some("Go");
-
-            svg.push_str(&format!(
-                "  <rect x=\"{}\" y=\"{}\" width=\"{:.1}\" height=\"{}\" fill=\"url(#goGrad)\" rx=\"3\"/>\n",
-                LABEL_WIDTH, current_bar_y, bar_width, bar_height
-            ));
-            svg.push_str(&format!(
-                "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"500\" fill=\"white\">Go</text>\n",
-                LABEL_WIDTH + 6, current_bar_y + bar_height - 5
-            ));
-
-            // Value label
-            let label =
-                if let (Some(median), Some(ci_upper)) = (m.median_across_runs, m.ci_95_upper) {
-                    format!(
-                        "{} ±{}",
-                        format_duration_with_unit(median, time_unit, precision),
-                        format_duration_with_unit(ci_upper - median, time_unit, precision)
-                    )
+        if has_go {
+            if let Some(m) = bench.measurements.get(&Lang::Go) {
+                let value = m.nanos_per_op;
+                let bar_height = if use_log_scale {
+                    ((value.max(1.0).log10() - log_min) / log_range * plot_height as f64).max(1.0)
+                        as i32
                 } else {
-                    format_duration_with_unit(value, time_unit, precision)
+                    ((value - min_value) / value_range * plot_height as f64).max(1.0) as i32
                 };
-            svg.push_str(&format!(
-                "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"{}\" fill=\"{}\">{}</text>\n",
-                LABEL_WIDTH + bar_area_width + 8, current_bar_y + bar_height - 5,
-                if is_winner { "600" } else { "400" },
-                if is_winner { "#0E7490" } else { TEXT_MUTED },
-                escape_xml(&label)
-            ));
+                let bar_y = plot_height - bar_height;
+                let bar_x = group_x + bar_offset;
 
-            current_bar_y += bar_height + bar_gap;
+                svg.push_str(&format!(
+                    "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"#00ADD8\" rx=\"2\">\n",
+                    bar_x, bar_y, bar_width, bar_height
+                ));
+                let time_str = format_duration_with_unit(value, time_unit, precision);
+                svg.push_str(&format!("    <title>Go: {}</title>\n  </rect>\n", time_str));
+
+                // Draw error bar if enabled and CI data available
+                if show_error_bars {
+                    if let (Some(ci_lower), Some(ci_upper)) = (m.ci_95_lower, m.ci_95_upper) {
+                        draw_error_bar_scaled(
+                            &mut svg,
+                            bar_x + bar_width / 2,
+                            plot_height,
+                            ci_lower,
+                            ci_upper,
+                            min_value,
+                            value_range,
+                            log_min,
+                            log_range,
+                            use_log_scale,
+                            "#006080", // Darker Go color for error bars
+                            error_bar_opacity,
+                            error_bar_thickness,
+                        );
+                    }
+                }
+
+                go_data.push((x_val, value));
+            }
+            bar_offset += bar_width + bar_within_gap;
         }
 
         // TypeScript bar
-        if let Some(m) = ts_m {
-            let value = m.median_across_runs.unwrap_or(m.nanos_per_op);
-            let bar_width = calc_bar_width(value);
-            let is_winner = winner_name == Some("TS");
-
-            svg.push_str(&format!(
-                "  <rect x=\"{}\" y=\"{}\" width=\"{:.1}\" height=\"{}\" fill=\"url(#tsGrad)\" rx=\"3\"/>\n",
-                LABEL_WIDTH, current_bar_y, bar_width, bar_height
-            ));
-            svg.push_str(&format!(
-                "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"500\" fill=\"white\">TS</text>\n",
-                LABEL_WIDTH + 6, current_bar_y + bar_height - 5
-            ));
-
-            // Value label
-            let label =
-                if let (Some(median), Some(ci_upper)) = (m.median_across_runs, m.ci_95_upper) {
-                    format!(
-                        "{} ±{}",
-                        format_duration_with_unit(median, time_unit, precision),
-                        format_duration_with_unit(ci_upper - median, time_unit, precision)
-                    )
+        if has_ts {
+            if let Some(m) = bench.measurements.get(&Lang::TypeScript) {
+                let value = m.nanos_per_op;
+                let bar_height = if use_log_scale {
+                    ((value.max(1.0).log10() - log_min) / log_range * plot_height as f64).max(1.0)
+                        as i32
                 } else {
-                    format_duration_with_unit(value, time_unit, precision)
+                    ((value - min_value) / value_range * plot_height as f64).max(1.0) as i32
                 };
-            svg.push_str(&format!(
-                "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"{}\" fill=\"{}\">{}</text>\n",
-                LABEL_WIDTH + bar_area_width + 8, current_bar_y + bar_height - 5,
-                if is_winner { "600" } else { "400" },
-                if is_winner { "#1E40AF" } else { TEXT_MUTED },
-                escape_xml(&label)
-            ));
+                let bar_y = plot_height - bar_height;
+                let bar_x = group_x + bar_offset;
 
-            current_bar_y += bar_height + bar_gap;
+                svg.push_str(&format!(
+                    "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"#3178C6\" rx=\"2\">\n",
+                    bar_x, bar_y, bar_width, bar_height
+                ));
+                let time_str = format_duration_with_unit(value, time_unit, precision);
+                svg.push_str(&format!("    <title>TypeScript: {}</title>\n  </rect>\n", time_str));
+
+                if show_error_bars {
+                    if let (Some(ci_lower), Some(ci_upper)) = (m.ci_95_lower, m.ci_95_upper) {
+                        draw_error_bar_scaled(
+                            &mut svg,
+                            bar_x + bar_width / 2,
+                            plot_height,
+                            ci_lower,
+                            ci_upper,
+                            min_value,
+                            value_range,
+                            log_min,
+                            log_range,
+                            use_log_scale,
+                            "#1a4a80", // Darker TS color
+                            error_bar_opacity,
+                            error_bar_thickness,
+                        );
+                    }
+                }
+
+                ts_data.push((x_val, value));
+            }
+            bar_offset += bar_width + bar_within_gap;
         }
 
         // Rust bar
-        if let Some(m) = rust_m {
-            let value = m.median_across_runs.unwrap_or(m.nanos_per_op);
-            let bar_width = calc_bar_width(value);
-            let is_winner = winner_name == Some("Rust");
-
-            svg.push_str(&format!(
-                "  <rect x=\"{}\" y=\"{}\" width=\"{:.1}\" height=\"{}\" fill=\"url(#rustGrad)\" rx=\"3\"/>\n",
-                LABEL_WIDTH, current_bar_y, bar_width, bar_height
-            ));
-            svg.push_str(&format!(
-                "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"500\" fill=\"white\">Rust</text>\n",
-                LABEL_WIDTH + 6, current_bar_y + bar_height - 5
-            ));
-
-            // Value label
-            let label =
-                if let (Some(median), Some(ci_upper)) = (m.median_across_runs, m.ci_95_upper) {
-                    format!(
-                        "{} ±{}",
-                        format_duration_with_unit(median, time_unit, precision),
-                        format_duration_with_unit(ci_upper - median, time_unit, precision)
-                    )
+        if has_rust {
+            if let Some(m) = bench.measurements.get(&Lang::Rust) {
+                let value = m.nanos_per_op;
+                let bar_height = if use_log_scale {
+                    ((value.max(1.0).log10() - log_min) / log_range * plot_height as f64).max(1.0)
+                        as i32
                 } else {
-                    format_duration_with_unit(value, time_unit, precision)
+                    ((value - min_value) / value_range * plot_height as f64).max(1.0) as i32
                 };
-            svg.push_str(&format!(
-                "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" font-weight=\"{}\" fill=\"{}\">{}</text>\n",
-                LABEL_WIDTH + bar_area_width + 8, current_bar_y + bar_height - 5,
-                if is_winner { "600" } else { "400" },
-                if is_winner { "#B7410E" } else { TEXT_MUTED },
-                escape_xml(&label)
-            ));
-        }
+                let bar_y = plot_height - bar_height;
+                let bar_x = group_x + bar_offset;
 
-        // Separator line between benchmarks
-        if i < filtered.len() - 1 {
-            svg.push_str(&format!(
-                "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"0.5\" opacity=\"0.3\"/>\n",
-                ROW_HEIGHT - 5, width - margin_x * 2, ROW_HEIGHT - 5, BORDER_COLOR
-            ));
-        }
-
-        svg.push_str("</g>\n");
-    }
-
-    // Legend
-    let legend_y = start_y + chart_area_height + 20;
-    svg.push_str(&format!("<g transform=\"translate({},{})\">\n", width / 2, legend_y));
-
-    // Go indicator
-    let go_legend_label =
-        if directive.show_win_counts { format!("Go ({} wins)", go_wins) } else { "Go".to_string() };
-    svg.push_str(&format!(
-        "  <rect x=\"-200\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
-         <text x=\"-182\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
-        GO_COLOR, TEXT_COLOR, escape_xml(&go_legend_label)
-    ));
-
-    // TS indicator
-    let ts_legend_label =
-        if directive.show_win_counts { format!("TS ({} wins)", ts_wins) } else { "TS".to_string() };
-    svg.push_str(&format!(
-        "  <rect x=\"-60\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
-         <text x=\"-42\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
-        TS_COLOR, TEXT_COLOR, escape_xml(&ts_legend_label)
-    ));
-
-    // Rust indicator
-    let rust_legend_label = if directive.show_win_counts {
-        format!("Rust ({} wins)", rust_wins)
-    } else {
-        "Rust".to_string()
-    };
-    svg.push_str(&format!(
-        "  <rect x=\"60\" width=\"14\" height=\"14\" fill=\"{}\" rx=\"3\"/>\
-         <text x=\"78\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
-        RUST_COLOR, TEXT_COLOR, escape_xml(&rust_legend_label)
-    ));
-
-    // Ties indicator
-    if ties > 0 && directive.show_win_counts {
-        svg.push_str(&format!(
-            "  <text x=\"160\" y=\"11\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">Ties: {}</text>\n",
-            TEXT_MUTED, ties
-        ));
-    }
-
-    // Log scale indicator
-    if use_log_scale {
-        svg.push_str(&format!(
-            "  <text x=\"220\" y=\"11\" font-family=\"sans-serif\" font-size=\"10\" font-style=\"italic\" fill=\"{}\">(logarithmic scale)</text>\n",
-            TEXT_MUTED
-        ));
-    }
-
-    svg.push_str("</g>\n");
-
-    // Stats box below legend
-    if stats_box_needed {
-        let box_y = legend_y + LEGEND_HEIGHT;
-        let box_margin = 40;
-        let box_width = width - box_margin * 2;
-        let box_x = box_margin;
-
-        // Box background with border
-        svg.push_str(&format!(
-            "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"#F9FAFB\" stroke=\"{}\" rx=\"6\"/>\n",
-            box_x, box_y, box_width, STATS_BOX_HEIGHT - 10, BORDER_COLOR
-        ));
-
-        // Stats content
-        let stats_x = box_x + 12;
-        let mut stats_y = box_y + 18;
-
-        // Header row
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"10\" font-weight=\"600\" fill=\"{}\">SUMMARY STATISTICS</text>\n",
-            stats_x, stats_y, TEXT_COLOR
-        ));
-        stats_y += 16;
-
-        // Geo mean
-        if directive.show_geo_mean {
-            let geo_label = if geo_mean >= 1.0 {
-                format!("Go is {:.2}x faster on average (geometric mean)", geo_mean)
-            } else {
-                format!("TypeScript is {:.2}x faster on average (geometric mean)", 1.0 / geo_mean)
-            };
-            svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"10\" fill=\"{}\">• {}</text>\n",
-                stats_x, stats_y, TEXT_SECONDARY, escape_xml(&geo_label)
-            ));
-            stats_y += 14;
-        }
-
-        // Distribution stats (aggregate)
-        if directive.show_distribution {
-            let go_p50_avg: f64 = filtered
-                .iter()
-                .filter_map(|b| b.comparison.as_ref())
-                .filter_map(|c| c.first.p50_nanos)
-                .map(|n| n as f64)
-                .sum::<f64>() /
-                filtered.len().max(1) as f64;
-            let go_p99_avg: f64 = filtered
-                .iter()
-                .filter_map(|b| b.comparison.as_ref())
-                .filter_map(|c| c.first.p99_nanos)
-                .map(|n| n as f64)
-                .sum::<f64>() /
-                filtered.len().max(1) as f64;
-            let ts_p50_avg: f64 = filtered
-                .iter()
-                .filter_map(|b| b.comparison.as_ref())
-                .filter_map(|c| c.second.p50_nanos)
-                .map(|n| n as f64)
-                .sum::<f64>() /
-                filtered.len().max(1) as f64;
-            let ts_p99_avg: f64 = filtered
-                .iter()
-                .filter_map(|b| b.comparison.as_ref())
-                .filter_map(|c| c.second.p99_nanos)
-                .map(|n| n as f64)
-                .sum::<f64>() /
-                filtered.len().max(1) as f64;
-
-            if go_p50_avg > 0.0 || ts_p50_avg > 0.0 {
-                let dist_str = format!(
-                    "Avg p50: Go {} / TS {}  |  Avg p99: Go {} / TS {}",
-                    format_duration_with_unit(go_p50_avg, time_unit, precision),
-                    format_duration_with_unit(ts_p50_avg, time_unit, precision),
-                    format_duration_with_unit(go_p99_avg, time_unit, precision),
-                    format_duration_with_unit(ts_p99_avg, time_unit, precision)
-                );
                 svg.push_str(&format!(
-                    "<text x=\"{}\" y=\"{}\" font-family=\"monospace\" font-size=\"9\" fill=\"{}\">• {}</text>\n",
-                    stats_x, stats_y, TEXT_MUTED, escape_xml(&dist_str)
+                    "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"#DEA584\" rx=\"2\">\n",
+                    bar_x, bar_y, bar_width, bar_height
                 ));
-                stats_y += 14;
+                let time_str = format_duration_with_unit(value, time_unit, precision);
+                svg.push_str(&format!("    <title>Rust: {}</title>\n  </rect>\n", time_str));
+
+                if show_error_bars {
+                    if let (Some(ci_lower), Some(ci_upper)) = (m.ci_95_lower, m.ci_95_upper) {
+                        draw_error_bar_scaled(
+                            &mut svg,
+                            bar_x + bar_width / 2,
+                            plot_height,
+                            ci_lower,
+                            ci_upper,
+                            min_value,
+                            value_range,
+                            log_min,
+                            log_range,
+                            use_log_scale,
+                            "#8B4513", // Darker Rust color
+                            error_bar_opacity,
+                            error_bar_thickness,
+                        );
+                    }
+                }
+
+                rust_data.push((x_val, value));
             }
         }
 
-        // Ops/sec summary
-        if directive.show_stats {
-            let total_go_ops: f64 = filtered
-                .iter()
-                .filter_map(|b| b.comparison.as_ref())
-                .map(|c| c.first.ops_per_sec)
-                .sum();
-            let total_ts_ops: f64 = filtered
-                .iter()
-                .filter_map(|b| b.comparison.as_ref())
-                .map(|c| c.second.ops_per_sec)
-                .sum();
-            let avg_go_ops = total_go_ops / filtered.len().max(1) as f64;
-            let avg_ts_ops = total_ts_ops / filtered.len().max(1) as f64;
+        // X-axis label (benchmark name) - positioned below bars
+        let label_x = group_x + group_width / 2;
+        let name_display = &bench.name;
+        svg.push_str(&format!(
+            "  <text x=\"{}\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"{}\" fill=\"{}\" transform=\"rotate(-45,{},{})\">{}</text>\n",
+            label_x, plot_height + 15, tick_label_font_size, TEXT_MUTED, label_x, plot_height + 15, escape_xml(name_display)
+        ));
+    }
 
-            let ops_str = format!(
-                "Avg ops/sec: Go {} / TS {}  |  Total benchmarks: {}",
-                format_ops_per_sec(avg_go_ops),
-                format_ops_per_sec(avg_ts_ops),
-                filtered.len()
+    // Draw regression lines if enabled
+    if show_regression && num_benchmarks >= 2 {
+        let dash_array = match regression_style {
+            "solid" => "",
+            "dotted" => "2,2",
+            _ => "6,4", // dashed default
+        };
+
+        // Draw regression for each language
+        if go_data.len() >= 2 {
+            draw_regression_line_bar(
+                &mut svg,
+                &go_data,
+                &filtered,
+                start_x,
+                group_width,
+                bar_group_gap,
+                plot_height,
+                min_value,
+                value_range,
+                GO_COLOR,
+                dash_array,
+                show_regression_label,
+                "Go",
+                plot_width,
             );
-            svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" font-family=\"monospace\" font-size=\"9\" fill=\"{}\">• {}</text>\n",
-                stats_x, stats_y, TEXT_MUTED, escape_xml(&ops_str)
-            ));
+        }
+
+        if ts_data.len() >= 2 {
+            draw_regression_line_bar(
+                &mut svg,
+                &ts_data,
+                &filtered,
+                start_x,
+                group_width,
+                bar_group_gap,
+                plot_height,
+                min_value,
+                value_range,
+                TS_COLOR,
+                dash_array,
+                show_regression_label,
+                "TS",
+                plot_width,
+            );
+        }
+
+        if rust_data.len() >= 2 {
+            draw_regression_line_bar(
+                &mut svg,
+                &rust_data,
+                &filtered,
+                start_x,
+                group_width,
+                bar_group_gap,
+                plot_height,
+                min_value,
+                value_range,
+                RUST_COLOR,
+                dash_array,
+                show_regression_label,
+                "Rust",
+                plot_width,
+            );
         }
     }
 
-    // Config footer
-    if directive.show_config && suite_config.is_some() && !compact {
-        let config = suite_config.unwrap();
-        let mut config_parts = Vec::new();
+    // Y-axis label
+    let y_label = directive.y_label.clone().unwrap_or_else(|| "Time (ns/op)".to_string());
+    svg.push_str(&format!(
+        "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"{}\" fill=\"{}\" transform=\"rotate(-90,{},{})\">{}</text>\n",
+        -55, plot_height / 2, axis_label_font_size, TEXT_SECONDARY, -55, plot_height / 2, escape_xml(&y_label)
+    ));
 
-        if let Some(iter) = config.iterations {
-            config_parts.push(format!("{} iterations", iter));
+    // X-axis label
+    let x_label = directive.x_label.clone().unwrap_or_else(|| "Benchmark".to_string());
+    svg.push_str(&format!(
+        "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+        plot_width / 2, plot_height + 55, axis_label_font_size, TEXT_SECONDARY, escape_xml(&x_label)
+    ));
+
+    svg.push_str("</g>\n");
+
+    // Legend
+    let legend_position = directive.legend_position.as_deref().unwrap_or("top-left");
+    if legend_position != "hidden" {
+        let mut legend_items: Vec<(&str, &str)> = Vec::new();
+        if has_go {
+            legend_items.push((GO_COLOR, "Go"));
         }
-        if let Some(warm) = config.warmup {
-            config_parts.push(format!("{} warmup", warm));
+        if has_ts {
+            legend_items.push((TS_COLOR, "TypeScript"));
         }
-        if let Some(to) = config.timeout_ms {
-            let timeout_str = if to >= 1000 {
-                format!("{}s timeout", to / 1000)
-            } else {
-                format!("{}ms timeout", to)
-            };
-            config_parts.push(timeout_str);
-        }
-        if let Some(ref ord) = config.order {
-            config_parts.push(ord.clone());
+        if has_rust {
+            legend_items.push((RUST_COLOR, "Rust"));
         }
 
-        if !config_parts.is_empty() {
-            let config_str = config_parts.join("  |  ");
-            let config_y = height - 12;
-            svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" fill=\"{}\">{}</text>\n",
-                width / 2, config_y, TEXT_MUTED, escape_xml(&config_str)
-            ));
-        }
+        let legend_svg = render_legend_positioned(
+            plot_width,
+            plot_height,
+            plot_x,
+            plot_y,
+            legend_position,
+            &legend_items,
+        );
+        svg.push_str(&legend_svg);
     }
 
     svg.push_str("</svg>");
 
     Ok(svg)
+}
+
+/// Draw regression line for bar chart
+fn draw_regression_line_bar(
+    svg: &mut String,
+    data: &[(f64, f64)],
+    filtered: &[&poly_bench_executor::comparison::BenchmarkResult],
+    start_x: i32,
+    group_width: i32,
+    bar_group_gap: i32,
+    plot_height: i32,
+    min_value: f64,
+    value_range: f64,
+    color: &str,
+    dash_array: &str,
+    show_label: bool,
+    lang_name: &str,
+    plot_width: i32,
+) {
+    if data.len() < 2 {
+        return;
+    }
+
+    // Fit regression model
+    let model = match select_best_model(data) {
+        Some(m) => m,
+        None => return,
+    };
+
+    // Generate points along the regression curve at each bar position
+    let mut path_points = Vec::new();
+
+    for (i, _bench) in filtered.iter().enumerate() {
+        let x_screen = start_x + i as i32 * (group_width + bar_group_gap) + group_width / 2;
+        let x_val = extract_numeric_value(&filtered[i].name).unwrap_or(i as i64) as f64;
+        let y_pred = model.predict(x_val);
+        let y_screen =
+            plot_height - ((y_pred - min_value) / value_range * plot_height as f64) as i32;
+        let y_screen = y_screen.max(0).min(plot_height);
+        path_points.push((x_screen, y_screen));
+    }
+
+    if path_points.is_empty() {
+        return;
+    }
+
+    // Build path
+    let mut path = format!("M{},{}", path_points[0].0, path_points[0].1);
+    for (x, y) in path_points.iter().skip(1) {
+        path.push_str(&format!(" L{},{}", x, y));
+    }
+
+    // Draw the regression line
+    let dash_attr = if dash_array.is_empty() {
+        String::new()
+    } else {
+        format!(" stroke-dasharray=\"{}\"", dash_array)
+    };
+
+    svg.push_str(&format!(
+        "  <path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"2\"{} opacity=\"0.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n",
+        path, color, dash_attr
+    ));
+
+    // Add complexity label inside chart area
+    if show_label {
+        let complexity = model_type_to_complexity(&model.model_type);
+        let last_point = path_points.last().unwrap();
+
+        // Position label to the left of the last point, inside the chart
+        let label_x = (last_point.0 - 10).min(plot_width - 60);
+        let label_y = (last_point.1 - 8).max(15);
+
+        svg.push_str(&format!(
+            "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" fill=\"{}\" opacity=\"0.85\" font-style=\"italic\">({} {})</text>\n",
+            label_x, label_y, color, lang_name, complexity
+        ));
+    }
+}
+
+/// Convert model type to complexity notation
+fn model_type_to_complexity(model_type: &ModelType) -> &'static str {
+    match model_type {
+        ModelType::Constant => "O(1)",
+        ModelType::Logarithmic => "O(log n)",
+        ModelType::Linear => "O(n)",
+        ModelType::Linearithmic => "O(n log n)",
+        ModelType::Quadratic => "O(n²)",
+        ModelType::Mixed => "O(n²)",
+        ModelType::Cubic => "O(n³)",
+        ModelType::PowerLaw => "O(nᵏ)",
+    }
+}
+
+/// Compute tick values for logarithmic scale.
+/// Returns powers of 10 that fall within the given range.
+fn compute_log_ticks(min_value: f64, max_value: f64) -> Vec<f64> {
+    let mut ticks = Vec::new();
+
+    // Find the power of 10 range
+    let min_power = (min_value.max(1.0).log10().floor()) as i32;
+    let max_power = (max_value.log10().ceil()) as i32;
+
+    // Add ticks at powers of 10
+    for power in min_power..=max_power {
+        let tick = 10_f64.powi(power);
+        if tick >= min_value * 0.9 && tick <= max_value * 1.1 {
+            ticks.push(tick);
+        }
+    }
+
+    // If we have too few ticks, add intermediate values (2x, 5x)
+    if ticks.len() < 3 {
+        let mut extra_ticks = Vec::new();
+        for power in (min_power - 1)..=max_power {
+            for multiplier in &[2.0, 5.0] {
+                let tick = 10_f64.powi(power) * multiplier;
+                if tick >= min_value * 0.9 && tick <= max_value * 1.1 {
+                    extra_ticks.push(tick);
+                }
+            }
+        }
+        ticks.extend(extra_ticks);
+        ticks.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        ticks.dedup();
+    }
+
+    ticks
+}
+
+/// Draw an error bar with support for both linear and log scale
+#[allow(clippy::too_many_arguments)]
+fn draw_error_bar_scaled(
+    svg: &mut String,
+    x: i32,
+    plot_height: i32,
+    ci_lower: f64,
+    ci_upper: f64,
+    min_value: f64,
+    value_range: f64,
+    log_min: f64,
+    log_range: f64,
+    use_log_scale: bool,
+    color: &str,
+    opacity: f32,
+    thickness: f32,
+) {
+    let (y_lower, y_upper) = if use_log_scale {
+        let y_lower = plot_height -
+            ((ci_lower.max(1.0).log10() - log_min) / log_range * plot_height as f64) as i32;
+        let y_upper = plot_height -
+            ((ci_upper.max(1.0).log10() - log_min) / log_range * plot_height as f64) as i32;
+        (y_lower, y_upper)
+    } else {
+        let y_lower =
+            plot_height - ((ci_lower - min_value) / value_range * plot_height as f64) as i32;
+        let y_upper =
+            plot_height - ((ci_upper - min_value) / value_range * plot_height as f64) as i32;
+        (y_lower, y_upper)
+    };
+
+    // Clamp to plot area
+    let y_lower = y_lower.min(plot_height).max(0);
+    let y_upper = y_upper.min(plot_height).max(0);
+
+    let cap_width = 5;
+
+    // Vertical line
+    svg.push_str(&format!(
+        "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"{}\" opacity=\"{}\"/>\n",
+        x, y_lower, x, y_upper, color, thickness, opacity
+    ));
+
+    // Top cap
+    svg.push_str(&format!(
+        "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"{}\" opacity=\"{}\"/>\n",
+        x - cap_width, y_upper, x + cap_width, y_upper, color, thickness, opacity
+    ));
+
+    // Bottom cap
+    svg.push_str(&format!(
+        "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"{}\" opacity=\"{}\"/>\n",
+        x - cap_width, y_lower, x + cap_width, y_lower, color, thickness, opacity
+    ));
+}
+
+/// Format duration with rounding to whole numbers
+fn format_duration_rounded(nanos: f64, time_unit: Option<&str>) -> String {
+    let (value, unit) = match time_unit {
+        Some("ns") => (nanos, "ns"),
+        Some("us") | Some("µs") => (nanos / 1_000.0, "µs"),
+        Some("ms") => (nanos / 1_000_000.0, "ms"),
+        Some("s") => (nanos / 1_000_000_000.0, "s"),
+        _ => {
+            // Auto-select unit
+            if nanos >= 1_000_000_000.0 {
+                (nanos / 1_000_000_000.0, "s")
+            } else if nanos >= 1_000_000.0 {
+                (nanos / 1_000_000.0, "ms")
+            } else if nanos >= 1_000.0 {
+                (nanos / 1_000.0, "µs")
+            } else {
+                (nanos, "ns")
+            }
+        }
+    };
+
+    // Round to whole number
+    format!("{}{}", value.round() as i64, unit)
+}
+
+/// Custom title rendering with configurable font sizes
+fn svg_title_custom(
+    width: i32,
+    title: &str,
+    subtitle: Option<&str>,
+    title_size: i32,
+    subtitle_size: i32,
+) -> String {
+    let mut svg = format!(
+        "<text x=\"{}\" y=\"30\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"{}\" font-weight=\"700\" fill=\"{}\">{}</text>\n",
+        width / 2,
+        title_size,
+        TEXT_COLOR,
+        escape_xml(title)
+    );
+
+    if let Some(sub) = subtitle {
+        svg.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+            width / 2,
+            30 + title_size,
+            subtitle_size,
+            TEXT_SECONDARY,
+            escape_xml(sub)
+        ));
+    }
+
+    svg
+}
+
+/// Render a legend at the specified position inside the chart area
+fn render_legend_positioned(
+    chart_width: i32,
+    chart_height: i32,
+    margin_left: i32,
+    margin_top: i32,
+    position: &str,
+    items: &[(&str, &str)],
+) -> String {
+    if items.is_empty() {
+        return String::new();
+    }
+
+    let padding = 8;
+    let item_height = 18;
+    let box_height = items.len() as i32 * item_height + padding * 2;
+    let box_width = 100;
+
+    // Calculate position based on legend_position
+    let (box_x, box_y) = match position {
+        "top-left" => (margin_left + padding + 5, margin_top + padding),
+        "top-right" => (margin_left + chart_width - box_width - padding, margin_top + padding),
+        "bottom-left" => {
+            (margin_left + padding + 5, margin_top + chart_height - box_height - padding - 20)
+        }
+        "bottom-right" => (
+            margin_left + chart_width - box_width - padding,
+            margin_top + chart_height - box_height - padding - 20,
+        ),
+        _ => (margin_left + padding + 5, margin_top + padding), // default to top-left
+    };
+
+    let mut svg = String::new();
+
+    // Legend background box
+    svg.push_str(&format!(
+        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"white\" stroke=\"#E5E7EB\" stroke-width=\"1\" rx=\"4\" opacity=\"0.95\"/>\n",
+        box_x, box_y, box_width, box_height
+    ));
+
+    // Legend items
+    for (i, (color, label)) in items.iter().enumerate() {
+        let item_y = box_y + padding + (i as i32 * item_height);
+
+        // Color square
+        svg.push_str(&format!(
+            "<rect x=\"{}\" y=\"{}\" width=\"12\" height=\"12\" fill=\"{}\" rx=\"2\"/>\n",
+            box_x + padding,
+            item_y,
+            color
+        ));
+
+        // Label text
+        svg.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"10\" fill=\"{}\">{}</text>\n",
+            box_x + padding + 18, item_y + 10, TEXT_COLOR, escape_xml(label)
+        ));
+    }
+
+    svg
 }
 
 /// Generate a bar chart using the legacy signature (backwards compatibility)

@@ -511,6 +511,9 @@ impl Parser {
                 "sortBy" => directive.sort_by = Some(self.expect_string()?),
                 "sortOrder" => directive.sort_order = Some(self.expect_string()?),
                 "timeUnit" => directive.time_unit = Some(self.expect_string()?),
+                // New string parameters
+                "legendPosition" => directive.legend_position = Some(self.expect_string()?),
+                "regressionStyle" => directive.regression_style = Some(self.expect_string()?),
 
                 // Boolean parameters
                 "showStats" => directive.show_stats = self.expect_bool()?,
@@ -521,6 +524,15 @@ impl Parser {
                 "showMemory" => directive.show_memory = self.expect_bool()?,
                 "showTotalTime" => directive.show_total_time = self.expect_bool()?,
                 "compact" => directive.compact = self.expect_bool()?,
+                // New boolean parameters
+                "showGrid" => directive.show_grid = Some(self.expect_bool()?),
+                "showErrorBars" => directive.show_error_bars = Some(self.expect_bool()?),
+                "showRegression" => directive.show_regression = Some(self.expect_bool()?),
+                "showRegressionLabel" => {
+                    directive.show_regression_label = Some(self.expect_bool()?)
+                }
+                "roundTicks" => directive.round_ticks = Some(self.expect_bool()?),
+                "yScale" => directive.y_scale = Some(self.expect_string()?),
 
                 // Integer parameters
                 "limit" => directive.limit = Some(self.expect_number()? as u32),
@@ -529,9 +541,39 @@ impl Parser {
                 "barGap" => directive.bar_gap = Some(self.expect_number()? as i32),
                 "marginLeft" => directive.margin_left = Some(self.expect_number()? as i32),
                 "precision" => directive.precision = Some(self.expect_number()? as u32),
+                // New integer parameters
+                "height" => directive.height = Some(self.expect_number()? as i32),
+                "titleFontSize" => directive.title_font_size = Some(self.expect_number()? as i32),
+                "subtitleFontSize" => {
+                    directive.subtitle_font_size = Some(self.expect_number()? as i32)
+                }
+                "axisLabelFontSize" => {
+                    directive.axis_label_font_size = Some(self.expect_number()? as i32)
+                }
+                "tickLabelFontSize" => {
+                    directive.tick_label_font_size = Some(self.expect_number()? as i32)
+                }
+                "barGroupGap" => directive.bar_group_gap = Some(self.expect_number()? as i32),
+                "barWithinGroupGap" => {
+                    directive.bar_within_group_gap = Some(self.expect_number()? as i32)
+                }
+                "barWidth" => directive.bar_width = Some(self.expect_number()? as i32),
 
                 // Float parameters
                 "minSpeedup" => directive.min_speedup = Some(self.expect_float()?),
+                // New float parameters
+                "axisThickness" => directive.axis_thickness = Some(self.expect_float()? as f32),
+                "xAxisMin" => directive.x_axis_min = Some(self.expect_float()?),
+                "xAxisMax" => directive.x_axis_max = Some(self.expect_float()?),
+                "yAxisMin" => directive.y_axis_min = Some(self.expect_float()?),
+                "yAxisMax" => directive.y_axis_max = Some(self.expect_float()?),
+                "gridOpacity" => directive.grid_opacity = Some(self.expect_float()? as f32),
+                "errorBarOpacity" => {
+                    directive.error_bar_opacity = Some(self.expect_float()? as f32)
+                }
+                "errorBarThickness" => {
+                    directive.error_bar_thickness = Some(self.expect_float()? as f32)
+                }
 
                 // Array parameters
                 "includeBenchmarks" => directive.include_benchmarks = self.expect_string_array()?,
