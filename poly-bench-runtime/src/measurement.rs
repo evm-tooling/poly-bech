@@ -51,6 +51,8 @@ pub struct Measurement {
     pub ci_95_lower: Option<f64>,
     /// 95% CI upper bound (nanos)
     pub ci_95_upper: Option<f64>,
+    /// Standard deviation of sample times (nanos)
+    pub std_dev_nanos: Option<f64>,
 }
 
 /// Default CV threshold percentage (5%) - results with CV above this are considered unstable
@@ -106,7 +108,7 @@ impl Measurement {
         let p995_nanos = percentile_f(samples_for_stats, 99.5);
 
         // Calculate standard deviation and CV
-        let (rme_percent, cv_percent, is_stable) = if samples_for_stats.len() > 1 {
+        let (rme_percent, cv_percent, is_stable, std_dev_nanos) = if samples_for_stats.len() > 1 {
             let mean = nanos_per_op;
             let variance: f64 =
                 samples_for_stats.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>() /
@@ -123,9 +125,9 @@ impl Measurement {
             // Stability check: CV below threshold
             let stable = cv <= cv_threshold;
 
-            (Some(rme), Some(cv), Some(stable))
+            (Some(rme), Some(cv), Some(stable), Some(std_dev))
         } else {
-            (None, None, None)
+            (None, None, None, None)
         };
 
         let sample_count = raw_samples.len() as u64;
@@ -154,6 +156,7 @@ impl Measurement {
             median_across_runs: None,
             ci_95_lower: None,
             ci_95_upper: None,
+            std_dev_nanos,
         }
     }
 
@@ -186,6 +189,7 @@ impl Measurement {
             median_across_runs: None,
             ci_95_lower: None,
             ci_95_upper: None,
+            std_dev_nanos: None,
         }
     }
 
@@ -327,6 +331,7 @@ impl Measurement {
             median_across_runs: Some(median),
             ci_95_lower: Some(ci_lower),
             ci_95_upper: Some(ci_upper),
+            std_dev_nanos: Some(std_dev),
         }
     }
 }

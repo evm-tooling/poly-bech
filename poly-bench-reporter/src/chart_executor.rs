@@ -9,7 +9,7 @@ use poly_bench_executor::BenchmarkResults;
 use poly_bench_ir::ChartDirectiveIR;
 use std::path::Path;
 
-use crate::charts::{bar_chart, line_chart, pie_chart};
+use crate::charts::{bar_chart, line_chart, pie_chart, scaling_chart, speedup_chart, table};
 
 /// Information about a generated chart
 #[derive(Debug, Clone)]
@@ -56,6 +56,9 @@ fn execute_single_directive(
         ChartType::BarChart => generate_bar_chart(directive, &filtered_results)?,
         ChartType::PieChart => generate_pie_chart(directive, &filtered_results)?,
         ChartType::LineChart => generate_line_chart(directive, &filtered_results)?,
+        ChartType::SpeedupChart => generate_speedup_chart(directive, &filtered_results)?,
+        ChartType::ScalingChart => generate_scaling_chart(directive, &filtered_results)?,
+        ChartType::Table => generate_table(directive, &filtered_results)?,
     };
 
     // Ensure output directory exists
@@ -96,6 +99,30 @@ fn generate_pie_chart(directive: &ChartDirectiveIR, results: &BenchmarkResults) 
 /// Generate a line chart SVG
 fn generate_line_chart(directive: &ChartDirectiveIR, results: &BenchmarkResults) -> Result<String> {
     line_chart::generate(results, directive)
+}
+
+/// Generate a speedup chart SVG
+fn generate_speedup_chart(
+    directive: &ChartDirectiveIR,
+    results: &BenchmarkResults,
+) -> Result<String> {
+    let benchmarks: Vec<_> = results.suites.iter().flat_map(|s| s.benchmarks.iter()).collect();
+    Ok(speedup_chart::generate(benchmarks, directive))
+}
+
+/// Generate a scaling chart SVG
+fn generate_scaling_chart(
+    directive: &ChartDirectiveIR,
+    results: &BenchmarkResults,
+) -> Result<String> {
+    let benchmarks: Vec<_> = results.suites.iter().flat_map(|s| s.benchmarks.iter()).collect();
+    Ok(scaling_chart::generate(benchmarks, directive))
+}
+
+/// Generate a data table SVG
+fn generate_table(directive: &ChartDirectiveIR, results: &BenchmarkResults) -> Result<String> {
+    let benchmarks: Vec<_> = results.suites.iter().flat_map(|s| s.benchmarks.iter()).collect();
+    Ok(table::generate(benchmarks, directive))
 }
 
 #[cfg(test)]

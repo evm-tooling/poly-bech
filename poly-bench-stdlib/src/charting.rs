@@ -136,6 +136,50 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             **Example:**\n\
             ```\nafter {\n    charting.drawLineChart(\n        title: \"Speedup Comparison\",\n        sortBy: \"name\"\n    )\n}\n```",
     },
+    StdlibSymbol {
+        name: "drawSpeedupChart",
+        kind: StdlibSymbolKind::Function,
+        description: "Draw a speedup chart showing relative performance vs baseline",
+        documentation: "**charting.drawSpeedupChart** `(...params)`\n\n\
+            Generate a speedup chart showing relative performance compared to a baseline language.\n\n\
+            Shows horizontal bars indicating how much faster/slower each language is vs the baseline.\n\n\
+            **Basic Parameters:**\n\
+            - `title` - Chart title (default: \"Speedup vs Baseline\")\n\
+            - `baseline` - Baseline language: \"go\", \"ts\", or \"rust\" (default: \"go\")\n\
+            - `output` - Output filename (default: \"speedup-chart.svg\")\n\n\
+            **Filtering & Sorting:** Same as drawBarChart\n\n\
+            **Example:**\n\
+            ```\nafter {\n    charting.drawSpeedupChart(\n        title: \"TypeScript vs Go Speedup\",\n        baseline: \"go\"\n    )\n}\n```",
+    },
+    StdlibSymbol {
+        name: "drawScalingChart",
+        kind: StdlibSymbolKind::Function,
+        description: "Draw a scaling efficiency chart with ideal line overlay",
+        documentation: "**charting.drawScalingChart** `(...params)`\n\n\
+            Generate a scaling efficiency chart showing how performance scales with input size.\n\n\
+            Extracts numeric values from benchmark names (e.g., n100, size1000) for the X-axis.\n\
+            Shows efficiency relative to O(n) scaling - values > 1 indicate worse than linear.\n\n\
+            **Basic Parameters:**\n\
+            - `title` - Chart title (default: \"Scaling Efficiency\")\n\
+            - `output` - Output filename (default: \"scaling-chart.svg\")\n\n\
+            **Filtering & Sorting:** Same as drawBarChart\n\n\
+            **Example:**\n\
+            ```\nafter {\n    charting.drawScalingChart(\n        title: \"Algorithm Scaling Analysis\"\n    )\n}\n```",
+    },
+    StdlibSymbol {
+        name: "drawTable",
+        kind: StdlibSymbolKind::Function,
+        description: "Draw an SVG data table with conditional formatting",
+        documentation: "**charting.drawTable** `(...params)`\n\n\
+            Generate an SVG table showing benchmark results with conditional formatting.\n\n\
+            Displays benchmark name, timing for each language, and winner with color highlighting.\n\n\
+            **Basic Parameters:**\n\
+            - `title` - Table title (default: \"Benchmark Results\")\n\
+            - `output` - Output filename (default: \"table.svg\")\n\n\
+            **Filtering & Sorting:** Same as drawBarChart\n\n\
+            **Example:**\n\
+            ```\nafter {\n    charting.drawTable(\n        title: \"Detailed Results\",\n        sortBy: \"name\"\n    )\n}\n```",
+    },
 ];
 
 /// Get all symbols exported by the charting module
@@ -150,12 +194,15 @@ mod tests {
     #[test]
     fn test_charting_symbols() {
         let symbols = get_symbols();
-        assert_eq!(symbols.len(), 3);
+        assert_eq!(symbols.len(), 6);
 
         let names: Vec<_> = symbols.iter().map(|s| s.name).collect();
         assert!(names.contains(&"drawBarChart"));
         assert!(names.contains(&"drawPieChart"));
         assert!(names.contains(&"drawLineChart"));
+        assert!(names.contains(&"drawSpeedupChart"));
+        assert!(names.contains(&"drawScalingChart"));
+        assert!(names.contains(&"drawTable"));
     }
 
     #[test]

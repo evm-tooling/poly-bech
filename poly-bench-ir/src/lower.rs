@@ -325,6 +325,11 @@ fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -
     ir.show_regression = directive.show_regression;
     ir.regression_style = directive.regression_style.clone();
     ir.show_regression_label = directive.show_regression_label;
+    ir.show_r_squared = directive.show_r_squared;
+    ir.regression_model = directive.regression_model.clone();
+    ir.show_equation = directive.show_equation;
+    ir.show_regression_band = directive.show_regression_band;
+    ir.regression_band_opacity = directive.regression_band_opacity;
 
     // Bar chart specific
     ir.bar_group_gap = directive.bar_group_gap;
@@ -336,6 +341,25 @@ fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -
 
     // Y-axis scale
     ir.y_scale = directive.y_scale.clone();
+    ir.baseline_benchmark = directive.baseline_benchmark.clone();
+    ir.symlog_threshold = directive.symlog_threshold;
+
+    // Grid enhancements
+    ir.show_minor_grid = directive.show_minor_grid;
+    ir.minor_grid_opacity = directive.minor_grid_opacity;
+    ir.show_vertical_grid = directive.show_vertical_grid;
+
+    // Error bars enhancements
+    ir.ci_level = directive.ci_level;
+    ir.show_std_dev_band = directive.show_std_dev_band;
+
+    // Dual Y-axis
+    ir.y2_metric = directive.y2_metric.clone();
+    ir.y2_label = directive.y2_label.clone();
+    ir.y2_scale = directive.y2_scale.clone();
+
+    // Broken axis
+    ir.show_axis_break = directive.show_axis_break;
 
     ir
 }

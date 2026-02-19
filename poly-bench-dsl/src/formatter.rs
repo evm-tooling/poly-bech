@@ -828,6 +828,9 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
             ChartType::BarChart => "drawBarChart",
             ChartType::PieChart => "drawPieChart",
             ChartType::LineChart => "drawLineChart",
+            ChartType::SpeedupChart => "drawSpeedupChart",
+            ChartType::ScalingChart => "drawScalingChart",
+            ChartType::Table => "drawTable",
         };
 
         // Collect all the parameters to output

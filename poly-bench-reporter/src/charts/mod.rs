@@ -6,6 +6,9 @@ pub mod bar_chart;
 pub mod line_chart;
 pub mod pie_chart;
 pub mod regression;
+pub mod scaling_chart;
+pub mod speedup_chart;
+pub mod table;
 
 use poly_bench_dsl::Lang;
 use poly_bench_executor::comparison::BenchmarkResult;
@@ -60,6 +63,58 @@ pub fn lang_color(lang: Lang) -> &'static str {
         Lang::Rust => RUST_COLOR,
         _ => TIE_COLOR,
     }
+}
+
+/// Get t-distribution multiplier for confidence interval calculation
+/// Uses approximate values for large sample sizes (n > 30)
+pub fn ci_multiplier(level: u32) -> f64 {
+    match level {
+        90 => 1.645,
+        95 => 1.96,
+        99 => 2.576,
+        _ => 1.96, // Default to 95%
+    }
+}
+
+/// Compute confidence interval bounds from raw samples at a given level
+/// Returns (lower, upper) bounds in the same units as the samples
+pub fn compute_ci_bounds(
+    mean: f64,
+    raw_samples: Option<&Vec<u64>>,
+    ci_level: u32,
+    fallback_lower: Option<f64>,
+    fallback_upper: Option<f64>,
+) -> (Option<f64>, Option<f64>) {
+    // If we have raw samples, compute CI at the requested level
+    if let Some(samples) = raw_samples {
+        if samples.len() >= 2 {
+            let n = samples.len() as f64;
+            let sample_mean: f64 = samples.iter().map(|&s| s as f64).sum::<f64>() / n;
+            let variance: f64 =
+                samples.iter().map(|&s| (s as f64 - sample_mean).powi(2)).sum::<f64>() / (n - 1.0);
+            let std_dev = variance.sqrt();
+            let std_error = std_dev / n.sqrt();
+            let multiplier = ci_multiplier(ci_level);
+            let margin = multiplier * std_error;
+
+            return (Some(mean - margin), Some(mean + margin));
+        }
+    }
+
+    // Fall back to pre-computed 95% CI if available and level is 95
+    if ci_level == 95 {
+        return (fallback_lower, fallback_upper);
+    }
+
+    // For other levels without raw samples, scale the 95% CI
+    if let (Some(lower), Some(upper)) = (fallback_lower, fallback_upper) {
+        let half_width_95 = (upper - lower) / 2.0;
+        let ratio = ci_multiplier(ci_level) / ci_multiplier(95);
+        let new_half_width = half_width_95 * ratio;
+        return (Some(mean - new_half_width), Some(mean + new_half_width));
+    }
+
+    (None, None)
 }
 
 /// Format duration for display
@@ -478,4 +533,184 @@ pub fn count_wins(benchmarks: &[&BenchmarkResult]) -> (usize, usize, usize, usiz
     }
 
     (go_wins, ts_wins, rust_wins, ties)
+}
+
+/// Symmetric logarithmic transformation
+/// Values near zero (within threshold) are treated linearly, larger values are log-scaled
+/// This allows handling data that includes zero or negative values while still compressing large
+/// ranges
+pub fn symlog(value: f64, threshold: f64) -> f64 {
+    if value.abs() < threshold {
+        value
+    } else {
+        value.signum() * threshold * (1.0 + (value.abs() / threshold).ln())
+    }
+}
+
+/// Inverse of symlog transformation
+pub fn symlog_inv(value: f64, threshold: f64) -> f64 {
+    if value.abs() < threshold {
+        value
+    } else {
+        value.signum() * threshold * ((value.abs() / threshold - 1.0).exp())
+    }
+}
+
+/// Calculate a good symlog threshold based on data
+/// Uses the smallest non-zero value or 1% of the range
+pub fn auto_symlog_threshold(values: &[f64]) -> f64 {
+    let min_positive = values.iter().filter(|&&v| v > 0.0).cloned().fold(f64::MAX, f64::min);
+
+    if min_positive == f64::MAX {
+        1.0 // Default if no positive values
+    } else {
+        min_positive * 0.1 // 10% of smallest positive value
+    }
+}
+
+/// Generate tick values for symlog scale
+pub fn symlog_ticks(min_val: f64, max_val: f64, threshold: f64) -> Vec<f64> {
+    let mut ticks = Vec::new();
+
+    // Always include 0 if in range
+    if min_val <= 0.0 && max_val >= 0.0 {
+        ticks.push(0.0);
+    }
+
+    // Add positive log ticks
+    if max_val > threshold {
+        let mut tick = threshold;
+        while tick <= max_val {
+            ticks.push(tick);
+            tick *= 10.0;
+        }
+    }
+
+    // Add negative log ticks if needed
+    if min_val < -threshold {
+        let mut tick = -threshold;
+        while tick >= min_val {
+            ticks.push(tick);
+            tick *= 10.0;
+        }
+    }
+
+    ticks.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    ticks
+}
+
+/// Convert values to percentages relative to a baseline
+/// Returns a vector of (original_value, percentage) pairs
+pub fn to_percentage(values: &[f64], baseline: f64) -> Vec<(f64, f64)> {
+    if baseline == 0.0 {
+        return values.iter().map(|&v| (v, 100.0)).collect();
+    }
+    values.iter().map(|&v| (v, (v / baseline) * 100.0)).collect()
+}
+
+/// Format a percentage value for display
+pub fn format_percentage(value: f64) -> String {
+    if value >= 1000.0 {
+        format!("{:.0}%", value)
+    } else if value >= 100.0 {
+        format!("{:.1}%", value)
+    } else {
+        format!("{:.2}%", value)
+    }
+}
+
+/// Detect if data has outliers that would benefit from a broken axis
+/// Returns Some((break_start, break_end)) if a break is recommended
+pub fn detect_axis_break(values: &[f64]) -> Option<(f64, f64)> {
+    if values.len() < 3 {
+        return None;
+    }
+
+    let mut sorted = values.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Calculate IQR
+    let q1_idx = sorted.len() / 4;
+    let q3_idx = 3 * sorted.len() / 4;
+    let q1 = sorted[q1_idx];
+    let q3 = sorted[q3_idx];
+    let iqr = q3 - q1;
+
+    // Check for outliers (values > Q3 + 1.5*IQR)
+    let upper_fence = q3 + 1.5 * iqr;
+    let outliers: Vec<f64> = sorted.iter().filter(|&&v| v > upper_fence).cloned().collect();
+
+    if outliers.is_empty() {
+        return None;
+    }
+
+    // Suggest break between normal data and outliers
+    let max_normal = sorted.iter().filter(|&&v| v <= upper_fence).cloned().fold(0.0_f64, f64::max);
+    let min_outlier = *outliers.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+
+    // Only suggest break if gap is significant (> 50% of normal range)
+    let normal_range = max_normal - sorted[0];
+    let gap = min_outlier - max_normal;
+
+    if gap > normal_range * 0.5 {
+        Some((max_normal * 1.1, min_outlier * 0.9))
+    } else {
+        None
+    }
+}
+
+/// Draw axis break indicator (diagonal lines)
+pub fn draw_axis_break(svg: &mut String, x: i32, y: i32, width: i32, color: &str) {
+    let break_height = 8;
+    let wave_width = width.min(20);
+
+    svg.push_str(&format!(
+        "  <path d=\"M{} {} l{} {} l{} {} l{} {}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\"/>\n",
+        x, y - break_height / 2,
+        wave_width / 4, break_height / 2,
+        wave_width / 2, -break_height,
+        wave_width / 4, break_height / 2,
+        color
+    ));
+}
+
+/// Draw annotations on a chart
+/// x_scale and y_scale are functions that convert data coordinates to pixel coordinates
+pub fn draw_annotations(
+    svg: &mut String,
+    annotations: &[poly_bench_ir::ChartAnnotation],
+    x_scale: impl Fn(f64) -> i32,
+    y_scale: impl Fn(f64) -> i32,
+    plot_width: i32,
+    plot_height: i32,
+    plot_x: i32,
+    plot_y: i32,
+) {
+    for ann in annotations {
+        let x = x_scale(ann.x);
+        let y = y_scale(ann.y);
+
+        let anchor = ann.anchor.as_deref().unwrap_or("middle");
+        let font_size = ann.font_size.unwrap_or(11);
+        let color = ann.color.as_deref().unwrap_or(TEXT_COLOR);
+
+        // Draw arrow if requested
+        if ann.arrow.unwrap_or(false) {
+            let text_offset = 20;
+            let text_y = y - text_offset;
+            svg.push_str(&format!(
+                "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\" marker-end=\"url(#arrowhead)\"/>\n",
+                x, text_y + 5, x, y - 3, color
+            ));
+            svg.push_str(&format!(
+                "  <text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-family=\"sans-serif\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+                x, text_y, anchor, font_size, color, escape_xml(&ann.text)
+            ));
+        } else {
+            svg.push_str(&format!(
+                "  <text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-family=\"sans-serif\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+                x, y, anchor, font_size, color, escape_xml(&ann.text)
+            ));
+        }
+    }
 }

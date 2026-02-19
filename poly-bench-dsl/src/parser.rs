@@ -490,6 +490,7 @@ impl Parser {
                 TokenKind::Description => "description".to_string(),
                 TokenKind::Order => "order".to_string(),
                 TokenKind::Timeout => "timeout".to_string(),
+                TokenKind::Baseline => "baseline".to_string(),
                 _ => {
                     return Err(self.make_error(ParseError::ExpectedIdentifier {
                         span: param_token.span.clone(),
@@ -533,6 +534,32 @@ impl Parser {
                 }
                 "roundTicks" => directive.round_ticks = Some(self.expect_bool()?),
                 "yScale" => directive.y_scale = Some(self.expect_string()?),
+                // R² and equation display
+                "showRSquared" => directive.show_r_squared = Some(self.expect_bool()?),
+                "showEquation" => directive.show_equation = Some(self.expect_bool()?),
+                // Grid options
+                "showMinorGrid" => directive.show_minor_grid = Some(self.expect_bool()?),
+                "showVerticalGrid" => directive.show_vertical_grid = Some(self.expect_bool()?),
+                // Standard deviation band
+                "showStdDevBand" => directive.show_std_dev_band = Some(self.expect_bool()?),
+                // Regression band
+                "showRegressionBand" => directive.show_regression_band = Some(self.expect_bool()?),
+                // Broken axis
+                "showAxisBreak" => directive.show_axis_break = Some(self.expect_bool()?),
+                // Regression model override
+                "regressionModel" => directive.regression_model = Some(self.expect_string()?),
+                // Baseline for percentage/speedup
+                "baseline" | "baselineBenchmark" => {
+                    directive.baseline_benchmark = Some(self.expect_string()?)
+                }
+                // Secondary Y-axis
+                "y2Metric" => directive.y2_metric = Some(self.expect_string()?),
+                "y2Label" => directive.y2_label = Some(self.expect_string()?),
+                "y2Scale" => directive.y2_scale = Some(self.expect_string()?),
+                // Legend position
+                "legendPosition" => directive.legend_position = Some(self.expect_string()?),
+                // Regression style
+                "regressionStyle" => directive.regression_style = Some(self.expect_string()?),
 
                 // Integer parameters
                 "limit" => directive.limit = Some(self.expect_number()? as u32),
@@ -574,6 +601,18 @@ impl Parser {
                 "errorBarThickness" => {
                     directive.error_bar_thickness = Some(self.expect_float()? as f32)
                 }
+                // Minor grid opacity
+                "minorGridOpacity" => {
+                    directive.minor_grid_opacity = Some(self.expect_float()? as f32)
+                }
+                // Regression band opacity
+                "regressionBandOpacity" => {
+                    directive.regression_band_opacity = Some(self.expect_float()? as f32)
+                }
+                // Symlog threshold
+                "symlogThreshold" => directive.symlog_threshold = Some(self.expect_float()?),
+                // CI level (90, 95, 99)
+                "ciLevel" => directive.ci_level = Some(self.expect_number()? as u32),
 
                 // Array parameters
                 "includeBenchmarks" => directive.include_benchmarks = self.expect_string_array()?,
