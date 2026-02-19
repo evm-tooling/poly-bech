@@ -251,7 +251,9 @@ suite bubbleN {
             showRegressionLabel: true,
             timeUnit: "auto",
             roundTicks: true ,
-            yScale: "log"
+            showRSquared: true,
+showRegressionBand: true,
+showStdDevBand: true
 
         )
 
@@ -282,7 +284,10 @@ suite bubbleN {
              showRegression: true,
             regressionStyle: "dotted",
             showRegressionLabel: true,
-            yScale: "log",
+                                showRSquared: true,
+showRegressionBand: true,
+showStdDevBand: true
+
 
         )
     }

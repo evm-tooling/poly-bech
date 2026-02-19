@@ -4,6 +4,25 @@ use poly_bench_dsl::{BenchMode, ChartType, ExecutionOrder, Lang};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
+/// A text annotation to place on a chart
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChartAnnotation {
+    /// X coordinate (in data units, or percentage if prefixed with %)
+    pub x: f64,
+    /// Y coordinate (in data units, or percentage if prefixed with %)
+    pub y: f64,
+    /// Text to display
+    pub text: String,
+    /// Text anchor: "start", "middle", "end"
+    pub anchor: Option<String>,
+    /// Whether to draw an arrow from text to point
+    pub arrow: Option<bool>,
+    /// Font size in pixels
+    pub font_size: Option<u32>,
+    /// Text color
+    pub color: Option<String>,
+}
+
 /// Configuration for spawning an Anvil instance (from globalSetup)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnvilConfigIR {
@@ -493,6 +512,12 @@ pub struct ChartDirectiveIR {
     pub show_grid: Option<bool>,
     /// Grid line opacity 0.0-1.0 (default: 0.15)
     pub grid_opacity: Option<f32>,
+    /// Show minor grid lines between major ticks (default: false)
+    pub show_minor_grid: Option<bool>,
+    /// Minor grid line opacity (default: 0.08)
+    pub minor_grid_opacity: Option<f32>,
+    /// Show vertical grid lines (default: false)
+    pub show_vertical_grid: Option<bool>,
 
     // Typography
     /// Title font size (default: 16)
@@ -515,6 +540,10 @@ pub struct ChartDirectiveIR {
     pub error_bar_opacity: Option<f32>,
     /// Error bar stroke width (default: 1.0)
     pub error_bar_thickness: Option<f32>,
+    /// Confidence interval level: 90, 95, or 99 (default: 95)
+    pub ci_level: Option<u32>,
+    /// Show standard deviation band on line charts (default: false)
+    pub show_std_dev_band: Option<bool>,
 
     // Regression
     /// Toggle regression line (default: false)
@@ -523,6 +552,17 @@ pub struct ChartDirectiveIR {
     pub regression_style: Option<String>,
     /// Show detected model label e.g. "O(n log n)" (default: true)
     pub show_regression_label: Option<bool>,
+    /// Show R² (coefficient of determination) value (default: false)
+    pub show_r_squared: Option<bool>,
+    /// User-specified regression model: "auto", "constant", "log", "linear", "nlogn", "quadratic",
+    /// "cubic"
+    pub regression_model: Option<String>,
+    /// Show regression equation with coefficients (default: false)
+    pub show_equation: Option<bool>,
+    /// Show confidence band around regression line (default: false)
+    pub show_regression_band: Option<bool>,
+    /// Opacity of regression confidence band (default: 0.15)
+    pub regression_band_opacity: Option<f32>,
 
     // Bar chart specific
     /// Gap between benchmark groups (default: 20)
@@ -538,8 +578,32 @@ pub struct ChartDirectiveIR {
 
     // Y-axis scale
     /// Y-axis scale type for handling data spanning orders of magnitude.
-    /// Options: "linear" (default), "log" (logarithmic - powers of 10)
+    /// Options: "linear" (default), "log" (logarithmic - powers of 10), "symlog" (symmetric log),
+    /// "percent" (relative to baseline)
     pub y_scale: Option<String>,
+    /// Baseline benchmark name for percentage scale (the benchmark that equals 100%)
+    pub baseline_benchmark: Option<String>,
+    /// Threshold for symlog scale - values below this are treated linearly (default:
+    /// auto-calculated)
+    pub symlog_threshold: Option<f64>,
+
+    // Dual Y-axis
+    /// Secondary Y-axis metric: "memory", "ops", "time"
+    pub y2_metric: Option<String>,
+    /// Secondary Y-axis label
+    pub y2_label: Option<String>,
+    /// Secondary Y-axis scale: "linear", "log"
+    pub y2_scale: Option<String>,
+
+    // Broken axis
+    /// Whether to show axis break for outliers (default: false)
+    pub show_axis_break: Option<bool>,
+    /// Manual axis break range (start, end) - values in this range are compressed
+    pub axis_break_range: Option<(f64, f64)>,
+
+    // Annotations
+    /// Text annotations to place on the chart
+    pub annotations: Vec<ChartAnnotation>,
 }
 
 impl ChartDirectiveIR {
@@ -589,6 +653,9 @@ impl ChartDirectiveIR {
             // Grid
             show_grid: None,
             grid_opacity: None,
+            show_minor_grid: None,
+            minor_grid_opacity: None,
+            show_vertical_grid: None,
             // Typography
             title_font_size: None,
             subtitle_font_size: None,
@@ -600,10 +667,17 @@ impl ChartDirectiveIR {
             show_error_bars: None,
             error_bar_opacity: None,
             error_bar_thickness: None,
+            ci_level: None,
+            show_std_dev_band: None,
             // Regression
             show_regression: None,
             regression_style: None,
             show_regression_label: None,
+            show_r_squared: None,
+            regression_model: None,
+            show_equation: None,
+            show_regression_band: None,
+            regression_band_opacity: None,
             // Bar chart specific
             bar_group_gap: None,
             bar_within_group_gap: None,
@@ -612,6 +686,17 @@ impl ChartDirectiveIR {
             round_ticks: None,
             // Y-axis scale
             y_scale: None,
+            baseline_benchmark: None,
+            symlog_threshold: None,
+            // Dual Y-axis
+            y2_metric: None,
+            y2_label: None,
+            y2_scale: None,
+            // Broken axis
+            show_axis_break: None,
+            axis_break_range: None,
+            // Annotations
+            annotations: Vec::new(),
         }
     }
 
@@ -621,6 +706,9 @@ impl ChartDirectiveIR {
             ChartType::BarChart => "Benchmark Results".to_string(),
             ChartType::PieChart => "Time Distribution".to_string(),
             ChartType::LineChart => "Performance Trend".to_string(),
+            ChartType::SpeedupChart => "Speedup vs Baseline".to_string(),
+            ChartType::ScalingChart => "Scaling Efficiency".to_string(),
+            ChartType::Table => "Benchmark Results".to_string(),
         })
     }
 
@@ -630,6 +718,9 @@ impl ChartDirectiveIR {
             ChartType::BarChart => "Time".to_string(),
             ChartType::PieChart => "".to_string(),
             ChartType::LineChart => "Benchmark".to_string(),
+            ChartType::SpeedupChart => "Speedup".to_string(),
+            ChartType::ScalingChart => "Input Size".to_string(),
+            ChartType::Table => "".to_string(),
         })
     }
 
@@ -639,6 +730,9 @@ impl ChartDirectiveIR {
             ChartType::BarChart => "Benchmark".to_string(),
             ChartType::PieChart => "".to_string(),
             ChartType::LineChart => "Time".to_string(),
+            ChartType::SpeedupChart => "Benchmark".to_string(),
+            ChartType::ScalingChart => "Efficiency".to_string(),
+            ChartType::Table => "".to_string(),
         })
     }
 }

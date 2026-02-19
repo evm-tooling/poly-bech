@@ -8,8 +8,9 @@ use poly_bench_executor::BenchmarkResults;
 use poly_bench_ir::ChartDirectiveIR;
 
 use super::{
-    escape_xml, extract_numeric_value, filter_benchmarks, format_duration_with_unit,
-    regression::{select_best_model, ModelType},
+    compute_ci_bounds, escape_xml, extract_numeric_value, filter_benchmarks,
+    format_duration_with_unit,
+    regression::{select_model, ModelType},
     sort_benchmarks, svg_header, DEFAULT_MARGIN_TOP, GO_COLOR, RUST_COLOR, TEXT_COLOR, TEXT_MUTED,
     TEXT_SECONDARY, TS_COLOR,
 };
@@ -78,6 +79,9 @@ pub fn generate(
     // Grid settings
     let show_grid = directive.show_grid.unwrap_or(true);
     let grid_opacity = directive.grid_opacity.unwrap_or(0.15);
+    let show_minor_grid = directive.show_minor_grid.unwrap_or(false);
+    let minor_grid_opacity = directive.minor_grid_opacity.unwrap_or(0.08);
+    let show_vertical_grid = directive.show_vertical_grid.unwrap_or(false);
 
     // Axis settings
     let axis_thickness = directive.axis_thickness.unwrap_or(1.5);
@@ -86,11 +90,13 @@ pub fn generate(
     let show_error_bars = directive.show_error_bars.unwrap_or(false);
     let error_bar_opacity = directive.error_bar_opacity.unwrap_or(0.6);
     let error_bar_thickness = directive.error_bar_thickness.unwrap_or(1.5);
+    let ci_level = directive.ci_level.unwrap_or(95);
 
     // Regression settings
     let show_regression = directive.show_regression.unwrap_or(false);
     let regression_style = directive.regression_style.as_deref().unwrap_or("dashed");
     let show_regression_label = directive.show_regression_label.unwrap_or(true);
+    let show_r_squared = directive.show_r_squared.unwrap_or(false);
 
     // Determine which languages have data
     let has_go = filtered.iter().any(|b| b.measurements.contains_key(&Lang::Go));
@@ -200,6 +206,27 @@ pub fn generate(
         // Log scale: draw grid lines at powers of 10
         let tick_values = compute_log_ticks(min_value, max_value);
 
+        // Draw minor grid lines first (so major lines draw on top)
+        if show_minor_grid && tick_values.len() >= 2 {
+            for window in tick_values.windows(2) {
+                let lower = window[0];
+                let upper = window[1];
+                // Draw minor lines at 2, 3, 4, 5, 6, 7, 8, 9 times the lower power of 10
+                for mult in 2..=9 {
+                    let minor_value = lower * mult as f64;
+                    if minor_value > upper {
+                        break;
+                    }
+                    let y = plot_height -
+                        ((minor_value.log10() - log_min) / log_range * plot_height as f64) as i32;
+                    svg.push_str(&format!(
+                        "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\" stroke-width=\"0.5\" opacity=\"{}\"/>\n",
+                        y, plot_width, y, minor_grid_opacity
+                    ));
+                }
+            }
+        }
+
         for &tick_value in &tick_values {
             let y = plot_height -
                 ((tick_value.log10() - log_min) / log_range * plot_height as f64) as i32;
@@ -231,8 +258,26 @@ pub fn generate(
         }
     } else {
         // Linear scale: draw grid lines at regular intervals
+        let num_grid_lines = 5;
+
+        // Draw minor grid lines first (between major lines)
+        if show_minor_grid {
+            let num_minor_per_major = 4; // 4 minor lines between each major line
+            let total_minor = num_grid_lines * num_minor_per_major;
+            for i in 0..=total_minor {
+                if i % num_minor_per_major == 0 {
+                    continue; // Skip positions where major lines will be
+                }
+                let y = plot_height - (i as f64 / total_minor as f64 * plot_height as f64) as i32;
+                svg.push_str(&format!(
+                    "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\" stroke-width=\"0.5\" opacity=\"{}\"/>\n",
+                    y, plot_width, y, minor_grid_opacity
+                ));
+            }
+        }
+
+        // Draw major grid lines
         if show_grid {
-            let num_grid_lines = 5;
             for i in 0..=num_grid_lines {
                 let y =
                     plot_height - (i as f64 / num_grid_lines as f64 * plot_height as f64) as i32;
@@ -268,6 +313,20 @@ pub fn generate(
         }
     }
 
+    // Calculate bar positions - center groups in plot area
+    let start_x = (plot_width - total_groups_width) / 2;
+
+    // Draw vertical grid lines at each benchmark position
+    if show_vertical_grid {
+        for i in 0..num_benchmarks {
+            let x = start_x + i as i32 * (group_width + bar_group_gap) + group_width / 2;
+            svg.push_str(&format!(
+                "  <line x1=\"{}\" y1=\"0\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\" stroke-width=\"0.5\" opacity=\"{}\"/>\n",
+                x, x, plot_height, grid_opacity
+            ));
+        }
+    }
+
     // Draw axes
     svg.push_str(&format!(
         "  <line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"{}\" stroke=\"#4B5563\" stroke-width=\"{}\"/>\n",
@@ -277,9 +336,6 @@ pub fn generate(
         "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#4B5563\" stroke-width=\"{}\"/>\n",
         plot_height, plot_width, plot_height, axis_thickness
     ));
-
-    // Calculate bar positions - center groups in plot area
-    let start_x = (plot_width - total_groups_width) / 2;
 
     // Collect data for regression lines
     let mut go_data: Vec<(f64, f64)> = Vec::new();
@@ -314,15 +370,22 @@ pub fn generate(
                 let time_str = format_duration_with_unit(value, time_unit, precision);
                 svg.push_str(&format!("    <title>Go: {}</title>\n  </rect>\n", time_str));
 
-                // Draw error bar if enabled and CI data available
+                // Draw error bar if enabled
                 if show_error_bars {
-                    if let (Some(ci_lower), Some(ci_upper)) = (m.ci_95_lower, m.ci_95_upper) {
+                    let (ci_lower, ci_upper) = compute_ci_bounds(
+                        value,
+                        m.raw_samples.as_ref(),
+                        ci_level,
+                        m.ci_95_lower,
+                        m.ci_95_upper,
+                    );
+                    if let (Some(lower), Some(upper)) = (ci_lower, ci_upper) {
                         draw_error_bar_scaled(
                             &mut svg,
                             bar_x + bar_width / 2,
                             plot_height,
-                            ci_lower,
-                            ci_upper,
+                            lower,
+                            upper,
                             min_value,
                             value_range,
                             log_min,
@@ -361,13 +424,20 @@ pub fn generate(
                 svg.push_str(&format!("    <title>TypeScript: {}</title>\n  </rect>\n", time_str));
 
                 if show_error_bars {
-                    if let (Some(ci_lower), Some(ci_upper)) = (m.ci_95_lower, m.ci_95_upper) {
+                    let (ci_lower, ci_upper) = compute_ci_bounds(
+                        value,
+                        m.raw_samples.as_ref(),
+                        ci_level,
+                        m.ci_95_lower,
+                        m.ci_95_upper,
+                    );
+                    if let (Some(lower), Some(upper)) = (ci_lower, ci_upper) {
                         draw_error_bar_scaled(
                             &mut svg,
                             bar_x + bar_width / 2,
                             plot_height,
-                            ci_lower,
-                            ci_upper,
+                            lower,
+                            upper,
                             min_value,
                             value_range,
                             log_min,
@@ -406,13 +476,20 @@ pub fn generate(
                 svg.push_str(&format!("    <title>Rust: {}</title>\n  </rect>\n", time_str));
 
                 if show_error_bars {
-                    if let (Some(ci_lower), Some(ci_upper)) = (m.ci_95_lower, m.ci_95_upper) {
+                    let (ci_lower, ci_upper) = compute_ci_bounds(
+                        value,
+                        m.raw_samples.as_ref(),
+                        ci_level,
+                        m.ci_95_lower,
+                        m.ci_95_upper,
+                    );
+                    if let (Some(lower), Some(upper)) = (ci_lower, ci_upper) {
                         draw_error_bar_scaled(
                             &mut svg,
                             bar_x + bar_width / 2,
                             plot_height,
-                            ci_lower,
-                            ci_upper,
+                            lower,
+                            upper,
                             min_value,
                             value_range,
                             log_min,
@@ -445,6 +522,8 @@ pub fn generate(
             "dotted" => "2,2",
             _ => "6,4", // dashed default
         };
+        let regression_model = directive.regression_model.as_deref();
+        let show_equation = directive.show_equation.unwrap_or(false);
 
         // Draw regression for each language
         if go_data.len() >= 2 {
@@ -461,6 +540,9 @@ pub fn generate(
                 GO_COLOR,
                 dash_array,
                 show_regression_label,
+                show_r_squared,
+                show_equation,
+                regression_model,
                 "Go",
                 plot_width,
             );
@@ -480,6 +562,9 @@ pub fn generate(
                 TS_COLOR,
                 dash_array,
                 show_regression_label,
+                show_r_squared,
+                show_equation,
+                regression_model,
                 "TS",
                 plot_width,
             );
@@ -499,6 +584,9 @@ pub fn generate(
                 RUST_COLOR,
                 dash_array,
                 show_regression_label,
+                show_r_squared,
+                show_equation,
+                regression_model,
                 "Rust",
                 plot_width,
             );
@@ -552,6 +640,7 @@ pub fn generate(
 }
 
 /// Draw regression line for bar chart
+#[allow(clippy::too_many_arguments)]
 fn draw_regression_line_bar(
     svg: &mut String,
     data: &[(f64, f64)],
@@ -565,6 +654,9 @@ fn draw_regression_line_bar(
     color: &str,
     dash_array: &str,
     show_label: bool,
+    show_r_squared: bool,
+    show_equation: bool,
+    regression_model: Option<&str>,
     lang_name: &str,
     plot_width: i32,
 ) {
@@ -572,8 +664,8 @@ fn draw_regression_line_bar(
         return;
     }
 
-    // Fit regression model
-    let model = match select_best_model(data) {
+    // Fit regression model (user-specified or auto)
+    let model = match select_model(data, regression_model) {
         Some(m) => m,
         None => return,
     };
@@ -614,18 +706,37 @@ fn draw_regression_line_bar(
     ));
 
     // Add complexity label inside chart area
-    if show_label {
-        let complexity = model_type_to_complexity(&model.model_type);
+    if show_label || show_r_squared || show_equation {
         let last_point = path_points.last().unwrap();
 
         // Position label to the left of the last point, inside the chart
-        let label_x = (last_point.0 - 10).min(plot_width - 60);
+        let label_x = (last_point.0 - 10).min(plot_width - 120);
         let label_y = (last_point.1 - 8).max(15);
 
+        // Build label text
+        let mut label_parts = Vec::new();
+        label_parts.push(lang_name.to_string());
+        if show_label {
+            label_parts.push(model_type_to_complexity(&model.model_type).to_string());
+        }
+        if show_r_squared {
+            label_parts.push(format!("R²={:.2}", model.r_squared));
+        }
+        let label_text = format!("({})", label_parts.join(" "));
+
         svg.push_str(&format!(
-            "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" fill=\"{}\" opacity=\"0.85\" font-style=\"italic\">({} {})</text>\n",
-            label_x, label_y, color, lang_name, complexity
+            "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" fill=\"{}\" opacity=\"0.85\" font-style=\"italic\">{}</text>\n",
+            label_x, label_y, color, label_text
         ));
+
+        // Show equation on a second line if enabled
+        if show_equation {
+            let equation = model.format_equation();
+            svg.push_str(&format!(
+                "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"8\" fill=\"{}\" opacity=\"0.75\" font-style=\"italic\">{}</text>\n",
+                label_x, label_y + 12, color, equation
+            ));
+        }
     }
 }
 

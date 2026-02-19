@@ -313,6 +313,12 @@ pub enum ChartType {
     PieChart,
     /// Line chart for trend visualization
     LineChart,
+    /// Speedup chart showing relative performance vs baseline
+    SpeedupChart,
+    /// Scaling efficiency chart with ideal line overlay
+    ScalingChart,
+    /// Data table rendered as SVG
+    Table,
 }
 
 impl ChartType {
@@ -321,6 +327,9 @@ impl ChartType {
             "drawBarChart" => Some(ChartType::BarChart),
             "drawPieChart" => Some(ChartType::PieChart),
             "drawLineChart" => Some(ChartType::LineChart),
+            "drawSpeedupChart" => Some(ChartType::SpeedupChart),
+            "drawScalingChart" => Some(ChartType::ScalingChart),
+            "drawTable" => Some(ChartType::Table),
             _ => None,
         }
     }
@@ -330,6 +339,9 @@ impl ChartType {
             ChartType::BarChart => "bar",
             ChartType::PieChart => "pie",
             ChartType::LineChart => "line",
+            ChartType::SpeedupChart => "speedup",
+            ChartType::ScalingChart => "scaling",
+            ChartType::Table => "table",
         }
     }
 
@@ -338,6 +350,9 @@ impl ChartType {
             ChartType::BarChart => "bar-chart.svg",
             ChartType::PieChart => "pie-chart.svg",
             ChartType::LineChart => "line-chart.svg",
+            ChartType::SpeedupChart => "speedup-chart.svg",
+            ChartType::ScalingChart => "scaling-chart.svg",
+            ChartType::Table => "table.svg",
         }
     }
 }
@@ -471,6 +486,17 @@ pub struct ChartDirective {
     pub regression_style: Option<String>,
     /// Show detected model label e.g. "O(n log n)" (default: true)
     pub show_regression_label: Option<bool>,
+    /// Show R² (coefficient of determination) value (default: false)
+    pub show_r_squared: Option<bool>,
+    /// User-specified regression model: "auto", "constant", "log", "linear", "nlogn", "quadratic",
+    /// "cubic"
+    pub regression_model: Option<String>,
+    /// Show regression equation with coefficients (default: false)
+    pub show_equation: Option<bool>,
+    /// Show confidence band around regression line (default: false)
+    pub show_regression_band: Option<bool>,
+    /// Opacity of regression confidence band (default: 0.15)
+    pub regression_band_opacity: Option<f32>,
 
     // Bar chart specific
     /// Gap between benchmark groups (default: 20)
@@ -486,8 +512,38 @@ pub struct ChartDirective {
 
     // Y-axis scale
     /// Y-axis scale type for handling data spanning orders of magnitude.
-    /// Options: "linear" (default), "log" (logarithmic - powers of 10)
+    /// Options: "linear" (default), "log" (logarithmic - powers of 10), "symlog", "percent"
     pub y_scale: Option<String>,
+    /// Baseline benchmark name for percentage scale (the benchmark that equals 100%)
+    pub baseline_benchmark: Option<String>,
+    /// Threshold for symlog scale - values below this are treated linearly
+    pub symlog_threshold: Option<f64>,
+
+    // Grid enhancements
+    /// Show minor grid lines between major ticks (default: false)
+    pub show_minor_grid: Option<bool>,
+    /// Minor grid line opacity (default: 0.08)
+    pub minor_grid_opacity: Option<f32>,
+    /// Show vertical grid lines (default: false)
+    pub show_vertical_grid: Option<bool>,
+
+    // Error bars enhancements
+    /// Confidence interval level: 90, 95, or 99 (default: 95)
+    pub ci_level: Option<u32>,
+    /// Show standard deviation band on line charts (default: false)
+    pub show_std_dev_band: Option<bool>,
+
+    // Dual Y-axis
+    /// Secondary Y-axis metric: "memory", "ops", "time"
+    pub y2_metric: Option<String>,
+    /// Secondary Y-axis label
+    pub y2_label: Option<String>,
+    /// Secondary Y-axis scale: "linear", "log"
+    pub y2_scale: Option<String>,
+
+    // Broken axis
+    /// Whether to show axis break for outliers (default: false)
+    pub show_axis_break: Option<bool>,
 }
 
 impl ChartDirective {
@@ -552,6 +608,11 @@ impl ChartDirective {
             show_regression: None,
             regression_style: None,
             show_regression_label: None,
+            show_r_squared: None,
+            regression_model: None,
+            show_equation: None,
+            show_regression_band: None,
+            regression_band_opacity: None,
             // Bar chart specific
             bar_group_gap: None,
             bar_within_group_gap: None,
@@ -560,6 +621,21 @@ impl ChartDirective {
             round_ticks: None,
             // Y-axis scale
             y_scale: None,
+            baseline_benchmark: None,
+            symlog_threshold: None,
+            // Grid enhancements
+            show_minor_grid: None,
+            minor_grid_opacity: None,
+            show_vertical_grid: None,
+            // Error bars enhancements
+            ci_level: None,
+            show_std_dev_band: None,
+            // Dual Y-axis
+            y2_metric: None,
+            y2_label: None,
+            y2_scale: None,
+            // Broken axis
+            show_axis_break: None,
         }
     }
 

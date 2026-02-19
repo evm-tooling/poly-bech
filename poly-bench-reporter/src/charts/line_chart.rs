@@ -6,8 +6,9 @@ use poly_bench_executor::BenchmarkResults;
 use poly_bench_ir::ChartDirectiveIR;
 
 use super::{
-    escape_xml, filter_benchmarks, format_duration_with_unit, format_ops_per_sec,
-    regression::{select_best_model, ModelType},
+    compute_ci_bounds, escape_xml, filter_benchmarks, format_duration_with_unit,
+    format_ops_per_sec,
+    regression::{select_model, ModelType},
     sort_benchmarks, svg_header, svg_title, DEFAULT_MARGIN_BOTTOM, DEFAULT_MARGIN_LEFT,
     DEFAULT_MARGIN_RIGHT, DEFAULT_MARGIN_TOP, DEFAULT_WIDTH, GO_COLOR, RUST_COLOR, TEXT_MUTED,
     TEXT_SECONDARY, TS_COLOR,
@@ -34,38 +35,71 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
     let error_bar_opacity = directive.error_bar_opacity.unwrap_or(0.4);
     let error_bar_thickness = directive.error_bar_thickness.unwrap_or(1.5);
 
+    // Grid settings
+    let show_grid = directive.show_grid.unwrap_or(true);
+    let grid_opacity = directive.grid_opacity.unwrap_or(0.15);
+    let show_minor_grid = directive.show_minor_grid.unwrap_or(false);
+    let minor_grid_opacity = directive.minor_grid_opacity.unwrap_or(0.08);
+    let show_vertical_grid = directive.show_vertical_grid.unwrap_or(false);
+    let ci_level = directive.ci_level.unwrap_or(95);
+
     // Collect benchmark data points from filtered results
-    // (name, nanos, ops, ci_lower, ci_upper)
-    let mut go_points: Vec<(String, f64, f64, Option<f64>, Option<f64>)> = Vec::new();
-    let mut ts_points: Vec<(String, f64, f64, Option<f64>, Option<f64>)> = Vec::new();
-    let mut rust_points: Vec<(String, f64, f64, Option<f64>, Option<f64>)> = Vec::new();
+    // (name, nanos, ops, ci_lower, ci_upper, std_dev)
+    let mut go_points: Vec<(String, f64, f64, Option<f64>, Option<f64>, Option<f64>)> = Vec::new();
+    let mut ts_points: Vec<(String, f64, f64, Option<f64>, Option<f64>, Option<f64>)> = Vec::new();
+    let mut rust_points: Vec<(String, f64, f64, Option<f64>, Option<f64>, Option<f64>)> =
+        Vec::new();
 
     for bench in &filtered {
         if let Some(m) = bench.measurements.get(&Lang::Go) {
+            let (ci_lower, ci_upper) = compute_ci_bounds(
+                m.nanos_per_op,
+                m.raw_samples.as_ref(),
+                ci_level,
+                m.ci_95_lower,
+                m.ci_95_upper,
+            );
             go_points.push((
                 bench.name.clone(),
                 m.nanos_per_op,
                 m.ops_per_sec,
-                m.ci_95_lower,
-                m.ci_95_upper,
+                ci_lower,
+                ci_upper,
+                m.std_dev_nanos,
             ));
         }
         if let Some(m) = bench.measurements.get(&Lang::TypeScript) {
+            let (ci_lower, ci_upper) = compute_ci_bounds(
+                m.nanos_per_op,
+                m.raw_samples.as_ref(),
+                ci_level,
+                m.ci_95_lower,
+                m.ci_95_upper,
+            );
             ts_points.push((
                 bench.name.clone(),
                 m.nanos_per_op,
                 m.ops_per_sec,
-                m.ci_95_lower,
-                m.ci_95_upper,
+                ci_lower,
+                ci_upper,
+                m.std_dev_nanos,
             ));
         }
         if let Some(m) = bench.measurements.get(&Lang::Rust) {
+            let (ci_lower, ci_upper) = compute_ci_bounds(
+                m.nanos_per_op,
+                m.raw_samples.as_ref(),
+                ci_level,
+                m.ci_95_lower,
+                m.ci_95_upper,
+            );
             rust_points.push((
                 bench.name.clone(),
                 m.nanos_per_op,
                 m.ops_per_sec,
-                m.ci_95_lower,
-                m.ci_95_upper,
+                ci_lower,
+                ci_upper,
+                m.std_dev_nanos,
             ));
         }
     }
@@ -82,7 +116,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
     // Collect all Y values for scaling (including CI bounds if error bars enabled)
     let all_values: Vec<f64> = go_points
         .iter()
-        .flat_map(|(_, v, _, ci_lower, ci_upper)| {
+        .flat_map(|(_, v, _, ci_lower, ci_upper, _)| {
             let mut vals = vec![*v];
             if let Some(lower) = ci_lower {
                 vals.push(*lower);
@@ -92,7 +126,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
             }
             vals
         })
-        .chain(ts_points.iter().flat_map(|(_, v, _, ci_lower, ci_upper)| {
+        .chain(ts_points.iter().flat_map(|(_, v, _, ci_lower, ci_upper, _)| {
             let mut vals = vec![*v];
             if let Some(lower) = ci_lower {
                 vals.push(*lower);
@@ -102,7 +136,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
             }
             vals
         }))
-        .chain(rust_points.iter().flat_map(|(_, v, _, ci_lower, ci_upper)| {
+        .chain(rust_points.iter().flat_map(|(_, v, _, ci_lower, ci_upper, _)| {
             let mut vals = vec![*v];
             if let Some(lower) = ci_lower {
                 vals.push(*lower);
@@ -163,14 +197,37 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         // Log scale: draw grid lines at powers of 10
         let tick_values = compute_log_ticks(min_value, max_value);
 
+        // Draw minor grid lines first (so major lines draw on top)
+        if show_minor_grid && tick_values.len() >= 2 {
+            for window in tick_values.windows(2) {
+                let lower = window[0];
+                let upper = window[1];
+                for mult in 2..=9 {
+                    let minor_value = lower * mult as f64;
+                    if minor_value > upper {
+                        break;
+                    }
+                    let y = chart_height -
+                        ((minor_value.log10() - log_min) / log_range * chart_height as f64)
+                            as i32;
+                    svg.push_str(&format!(
+                        "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\" stroke-width=\"0.5\" opacity=\"{}\"/>\n",
+                        y, chart_width, y, minor_grid_opacity
+                    ));
+                }
+            }
+        }
+
         for &tick_value in &tick_values {
             let y = chart_height -
                 ((tick_value.log10() - log_min) / log_range * chart_height as f64) as i32;
 
-            svg.push_str(&format!(
-                "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\"/>\n",
-                y, chart_width, y
-            ));
+            if show_grid {
+                svg.push_str(&format!(
+                    "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\" opacity=\"{}\"/>\n",
+                    y, chart_width, y, grid_opacity
+                ));
+            }
             svg.push_str(&format!(
                 "  <text x=\"-10\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"10\" fill=\"{}\">{}</text>\n",
                 y + 4, TEXT_MUTED, format_duration_with_unit(tick_value, time_unit, precision)
@@ -179,17 +236,47 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
     } else {
         // Linear scale
         let num_y_lines = 5;
+
+        // Draw minor grid lines first
+        if show_minor_grid {
+            let num_minor_per_major = 4;
+            let total_minor = num_y_lines * num_minor_per_major;
+            for i in 0..=total_minor {
+                if i % num_minor_per_major == 0 {
+                    continue;
+                }
+                let y = chart_height - (i as f64 / total_minor as f64 * chart_height as f64) as i32;
+                svg.push_str(&format!(
+                    "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\" stroke-width=\"0.5\" opacity=\"{}\"/>\n",
+                    y, chart_width, y, minor_grid_opacity
+                ));
+            }
+        }
+
         for i in 0..=num_y_lines {
             let y = chart_height - (i as f64 / num_y_lines as f64 * chart_height as f64) as i32;
             let value = min_value + (value_range * i as f64 / num_y_lines as f64);
 
-            svg.push_str(&format!(
-                "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\"/>\n",
-                y, chart_width, y
-            ));
+            if show_grid {
+                svg.push_str(&format!(
+                    "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\" opacity=\"{}\"/>\n",
+                    y, chart_width, y, grid_opacity
+                ));
+            }
             svg.push_str(&format!(
                 "  <text x=\"-10\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"10\" fill=\"{}\">{}</text>\n",
                 y + 4, TEXT_MUTED, format_duration_with_unit(value, time_unit, precision)
+            ));
+        }
+    }
+
+    // Draw vertical grid lines
+    if show_vertical_grid && num_points > 1 {
+        for i in 0..num_points {
+            let x = (i as f64 / (num_points - 1) as f64 * chart_width as f64) as i32;
+            svg.push_str(&format!(
+                "  <line x1=\"{}\" y1=\"0\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\" stroke-width=\"0.5\" opacity=\"{}\"/>\n",
+                x, x, chart_height, grid_opacity
             ));
         }
     }
@@ -218,12 +305,15 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         chart_height
     ));
 
-    // Helper function to draw a line series with optional error bars
+    // Helper function to draw a line series with optional error bars and std dev band
     #[allow(clippy::too_many_arguments)]
     fn draw_series(
         svg: &mut String,
-        points: &[(String, f64, f64, Option<f64>, Option<f64>)], /* (name, nanos, ops, ci_lower,
-                                                                  * ci_upper) */
+        points: &[(String, f64, f64, Option<f64>, Option<f64>, Option<f64>)], /* (name, nanos,
+                                                                               * ops,
+                                                                               * ci_lower,
+                                                                               * ci_upper,
+                                                                               * std_dev) */
         bench_names: &[String],
         chart_width: i32,
         chart_height: i32,
@@ -239,6 +329,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         show_error_bars: bool,
         error_bar_opacity: f32,
         error_bar_thickness: f32,
+        show_std_dev_band: bool,
     ) {
         if points.is_empty() {
             return;
@@ -265,12 +356,49 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
             }
         };
 
+        // Draw std dev band first (behind everything)
+        if show_std_dev_band {
+            let mut upper_path = String::new();
+            let mut lower_path = String::new();
+            let mut first = true;
+
+            for (i, name) in bench_names.iter().enumerate() {
+                if let Some((_, value, _, _, _, std_dev)) =
+                    points.iter().find(|(n, _, _, _, _, _)| n == name)
+                {
+                    if let Some(sd) = std_dev {
+                        let x = calc_x(i);
+                        let y_upper = calc_y((*value + sd).max(0.0));
+                        let y_lower = calc_y((*value - sd).max(0.0));
+
+                        if first {
+                            upper_path.push_str(&format!("M{},{}", x, y_upper));
+                            lower_path = format!("L{},{}", x, y_lower);
+                            first = false;
+                        } else {
+                            upper_path.push_str(&format!(" L{},{}", x, y_upper));
+                            lower_path = format!(" L{},{}{}", x, y_lower, lower_path);
+                        }
+                    }
+                }
+            }
+
+            if !upper_path.is_empty() {
+                let band_path = format!("{}{} Z", upper_path, lower_path);
+                svg.push_str(&format!(
+                    "  <path d=\"{}\" fill=\"{}\" opacity=\"0.15\"/>\n",
+                    band_path, color
+                ));
+            }
+        }
+
         // Build path
         let mut path_data = String::new();
         let mut first = true;
 
         for (i, name) in bench_names.iter().enumerate() {
-            if let Some((_, value, _, _, _)) = points.iter().find(|(n, _, _, _, _)| n == name) {
+            if let Some((_, value, _, _, _, _)) = points.iter().find(|(n, _, _, _, _, _)| n == name)
+            {
                 let x = calc_x(i);
                 let y = calc_y(*value);
 
@@ -292,8 +420,8 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         // Draw error bars first (behind points)
         if show_error_bars {
             for (i, name) in bench_names.iter().enumerate() {
-                if let Some((_, _, _, ci_lower, ci_upper)) =
-                    points.iter().find(|(n, _, _, _, _)| n == name)
+                if let Some((_, _, _, ci_lower, ci_upper, _)) =
+                    points.iter().find(|(n, _, _, _, _, _)| n == name)
                 {
                     if let (Some(lower), Some(upper)) = (ci_lower, ci_upper) {
                         let x = calc_x(i);
@@ -330,7 +458,9 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
 
         // Draw points with optional stats tooltips (on top of error bars)
         for (i, name) in bench_names.iter().enumerate() {
-            if let Some((_, value, ops, _, _)) = points.iter().find(|(n, _, _, _, _)| n == name) {
+            if let Some((_, value, ops, _, _, _)) =
+                points.iter().find(|(n, _, _, _, _, _)| n == name)
+            {
                 let x = calc_x(i);
                 let y = calc_y(*value);
 
@@ -352,6 +482,8 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         }
     }
 
+    let show_std_dev_band = directive.show_std_dev_band.unwrap_or(false);
+
     // Draw Go line
     draw_series(
         &mut svg,
@@ -371,6 +503,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         show_error_bars,
         error_bar_opacity,
         error_bar_thickness,
+        show_std_dev_band,
     );
 
     // Draw TS line
@@ -392,6 +525,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         show_error_bars,
         error_bar_opacity,
         error_bar_thickness,
+        show_std_dev_band,
     );
 
     // Draw Rust line
@@ -413,12 +547,16 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         show_error_bars,
         error_bar_opacity,
         error_bar_thickness,
+        show_std_dev_band,
     );
 
     // Draw regression lines if enabled
     if directive.show_regression.unwrap_or(false) {
         let regression_style = directive.regression_style.as_deref().unwrap_or("dashed");
         let show_label = directive.show_regression_label.unwrap_or(true);
+        let show_r_squared = directive.show_r_squared.unwrap_or(false);
+        let regression_model = directive.regression_model.as_deref();
+        let show_equation = directive.show_equation.unwrap_or(false);
 
         // Helper to extract numeric x values from benchmark names
         // Tries to parse numbers from names like "n100", "n200", "size_1000", etc.
@@ -432,7 +570,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         if !go_points.is_empty() {
             let regression_points: Vec<(f64, f64)> = go_points
                 .iter()
-                .filter_map(|(name, nanos, _, _, _)| extract_x_value(name).map(|x| (x, *nanos)))
+                .filter_map(|(name, nanos, _, _, _, _)| extract_x_value(name).map(|x| (x, *nanos)))
                 .collect();
 
             if regression_points.len() >= 2 {
@@ -450,6 +588,9 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
                     GO_COLOR,
                     regression_style,
                     show_label,
+                    show_r_squared,
+                    show_equation,
+                    regression_model,
                     "Go",
                 );
             }
@@ -459,7 +600,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         if !ts_points.is_empty() {
             let regression_points: Vec<(f64, f64)> = ts_points
                 .iter()
-                .filter_map(|(name, nanos, _, _, _)| extract_x_value(name).map(|x| (x, *nanos)))
+                .filter_map(|(name, nanos, _, _, _, _)| extract_x_value(name).map(|x| (x, *nanos)))
                 .collect();
 
             if regression_points.len() >= 2 {
@@ -477,6 +618,9 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
                     TS_COLOR,
                     regression_style,
                     show_label,
+                    show_r_squared,
+                    show_equation,
+                    regression_model,
                     "TS",
                 );
             }
@@ -486,7 +630,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         if !rust_points.is_empty() {
             let regression_points: Vec<(f64, f64)> = rust_points
                 .iter()
-                .filter_map(|(name, nanos, _, _, _)| extract_x_value(name).map(|x| (x, *nanos)))
+                .filter_map(|(name, nanos, _, _, _, _)| extract_x_value(name).map(|x| (x, *nanos)))
                 .collect();
 
             if regression_points.len() >= 2 {
@@ -504,6 +648,9 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
                     RUST_COLOR,
                     regression_style,
                     show_label,
+                    show_r_squared,
+                    show_equation,
+                    regression_model,
                     "Rust",
                 );
             }
@@ -676,14 +823,17 @@ fn draw_regression_line(
     color: &str,
     style: &str,
     show_label: bool,
+    show_r_squared: bool,
+    show_equation: bool,
+    regression_model: Option<&str>,
     lang_name: &str,
 ) {
     // Sort points by x value for regression
     let mut sorted_points = regression_points.to_vec();
     sorted_points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
-    // Select best model using BIC
-    if let Some(model) = select_best_model(&sorted_points) {
+    // Select model (user-specified or auto)
+    if let Some(model) = select_model(&sorted_points, regression_model) {
         let num_points = bench_names.len();
 
         // Helper to calculate X position
@@ -753,9 +903,7 @@ fn draw_regression_line(
         ));
 
         // Add complexity label if enabled - position inside chart area
-        if show_label {
-            let complexity = model_type_to_complexity(&model.model_type);
-
+        if show_label || show_r_squared || show_equation {
             // Position label at the end of the line, but keep inside chart
             if let Some(last_name) = bench_names.last() {
                 if let Some(x_val) = extract_x_value(last_name) {
@@ -763,9 +911,18 @@ fn draw_regression_line(
                     let chart_x = calc_x(bench_names.len() - 1);
                     let chart_y = calc_y(predicted_y);
 
+                    // Build label text
+                    let mut label_parts = Vec::new();
+                    label_parts.push(lang_name.to_string());
+                    if show_label {
+                        label_parts.push(model_type_to_complexity(&model.model_type).to_string());
+                    }
+                    if show_r_squared {
+                        label_parts.push(format!("R²={:.2}", model.r_squared));
+                    }
+                    let label_text = label_parts.join(" ");
+
                     // Position label to the left of the last point, inside the chart
-                    // Estimate label width (~8px per char) and keep inside chart bounds
-                    let label_text = format!("{} {}", lang_name, complexity);
                     let label_width = (label_text.len() as i32) * 6;
                     let label_x = (chart_x - label_width - 5).max(5);
                     let label_y = (chart_y - 5).max(12).min(chart_height - 5);
@@ -774,6 +931,15 @@ fn draw_regression_line(
                         "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" fill=\"{}\" opacity=\"0.85\" font-style=\"italic\">{}</text>\n",
                         label_x, label_y, color, label_text
                     ));
+
+                    // Show equation on a second line if enabled
+                    if show_equation {
+                        let equation = model.format_equation();
+                        svg.push_str(&format!(
+                            "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"8\" fill=\"{}\" opacity=\"0.75\" font-style=\"italic\">{}</text>\n",
+                            label_x, label_y + 12, color, equation
+                        ));
+                    }
                 }
             }
         }

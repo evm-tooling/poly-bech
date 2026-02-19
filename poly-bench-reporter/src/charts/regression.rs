@@ -52,6 +52,21 @@ impl ModelType {
             ModelType::PowerLaw => 3,
         }
     }
+
+    /// Parse model type from string
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "constant" | "o1" => Some(ModelType::Constant),
+            "log" | "logarithmic" | "ologn" => Some(ModelType::Logarithmic),
+            "linear" | "on" => Some(ModelType::Linear),
+            "nlogn" | "linearithmic" | "onlogn" => Some(ModelType::Linearithmic),
+            "quadratic" | "on2" => Some(ModelType::Quadratic),
+            "mixed" => Some(ModelType::Mixed),
+            "cubic" | "on3" => Some(ModelType::Cubic),
+            "power" | "powerlaw" => Some(ModelType::PowerLaw),
+            _ => None,
+        }
+    }
 }
 
 /// A fitted regression model with its coefficients
@@ -60,6 +75,9 @@ pub struct SelectedModel {
     pub model_type: ModelType,
     pub coefficients: Vec<f64>,
     pub bic: f64,
+    /// Coefficient of determination (R²) - measures how well the model fits the data
+    /// Values range from 0 to 1, where 1 indicates a perfect fit
+    pub r_squared: f64,
 }
 
 impl SelectedModel {
@@ -112,6 +130,118 @@ impl SelectedModel {
             }
         }
     }
+
+    /// Format the regression equation with actual coefficients
+    pub fn format_equation(&self) -> String {
+        let format_coeff = |c: f64| -> String {
+            if c.abs() >= 1000.0 {
+                format!("{:.0}", c)
+            } else if c.abs() >= 10.0 {
+                format!("{:.1}", c)
+            } else if c.abs() >= 1.0 {
+                format!("{:.2}", c)
+            } else {
+                format!("{:.3}", c)
+            }
+        };
+
+        match self.model_type {
+            ModelType::Constant => {
+                format!("y = {}", format_coeff(self.coefficients[0]))
+            }
+            ModelType::Logarithmic => {
+                let a = self.coefficients[0];
+                let b = self.coefficients[1];
+                if a.abs() < 0.001 {
+                    format!("y = {}·ln(x)", format_coeff(b))
+                } else {
+                    format!("y = {} + {}·ln(x)", format_coeff(a), format_coeff(b))
+                }
+            }
+            ModelType::Linear => {
+                let a = self.coefficients[0];
+                let b = self.coefficients[1];
+                if a.abs() < 0.001 {
+                    format!("y = {}·x", format_coeff(b))
+                } else {
+                    format!("y = {} + {}·x", format_coeff(a), format_coeff(b))
+                }
+            }
+            ModelType::Linearithmic => {
+                let a = self.coefficients[0];
+                let b = self.coefficients[1];
+                if a.abs() < 0.001 {
+                    format!("y = {}·x·ln(x)", format_coeff(b))
+                } else {
+                    format!("y = {} + {}·x·ln(x)", format_coeff(a), format_coeff(b))
+                }
+            }
+            ModelType::Quadratic => {
+                let a = self.coefficients[0];
+                let b = self.coefficients[1];
+                if a.abs() < 0.001 {
+                    format!("y = {}·x²", format_coeff(b))
+                } else {
+                    format!("y = {} + {}·x²", format_coeff(a), format_coeff(b))
+                }
+            }
+            ModelType::Mixed => {
+                let a = self.coefficients[0];
+                let b = self.coefficients[1];
+                let c = self.coefficients[2];
+                format!("y = {} + {}·x + {}·x²", format_coeff(a), format_coeff(b), format_coeff(c))
+            }
+            ModelType::Cubic => {
+                let a = self.coefficients[0];
+                let b = self.coefficients[1];
+                let c = self.coefficients[2];
+                let d = self.coefficients[3];
+                format!(
+                    "y = {} + {}·x + {}·x² + {}·x³",
+                    format_coeff(a),
+                    format_coeff(b),
+                    format_coeff(c),
+                    format_coeff(d)
+                )
+            }
+            ModelType::PowerLaw => {
+                let a = self.coefficients[0];
+                let c = self.coefficients[1];
+                let b = self.coefficients[2];
+                format!("y = {} + {}·x^{}", format_coeff(a), format_coeff(c), format_coeff(b))
+            }
+        }
+    }
+
+    /// Calculate prediction interval bounds at a given x
+    /// Returns (lower_bound, upper_bound) for approximately 95% confidence
+    /// Uses a simplified approach based on standard error of the regression
+    pub fn predict_with_interval(&self, x: f64, points: &[(f64, f64)]) -> (f64, f64, f64) {
+        let prediction = self.predict(x);
+
+        if points.len() < 3 {
+            return (prediction, prediction, prediction);
+        }
+
+        let n = points.len() as f64;
+
+        // Calculate standard error of estimate
+        let ss_res: f64 = points.iter().map(|&(px, py)| (py - self.predict(px)).powi(2)).sum();
+        let se = (ss_res / (n - 2.0)).sqrt();
+
+        // Calculate mean of x values
+        let mean_x = points.iter().map(|&(px, _)| px).sum::<f64>() / n;
+
+        // Calculate sum of squared deviations of x
+        let ss_x: f64 = points.iter().map(|&(px, _)| (px - mean_x).powi(2)).sum();
+
+        // Prediction interval width factor
+        // Simplified: uses t-value of ~2 for 95% CI
+        let t_value = 1.96;
+        let interval_width = t_value * se * (1.0 + 1.0 / n + (x - mean_x).powi(2) / ss_x).sqrt();
+
+        (prediction, prediction - interval_width, prediction + interval_width)
+    }
 }
 
 /// Calculate BIC (Bayesian Information Criterion)
@@ -122,6 +252,30 @@ fn calculate_bic(n: usize, sse: f64, k: usize) -> f64 {
     let n_f = n as f64;
     let k_f = k as f64;
     n_f * (sse / n_f).ln() + k_f * n_f.ln()
+}
+
+/// Calculate R² (coefficient of determination)
+/// R² = 1 - (SS_res / SS_tot)
+/// where SS_res is the sum of squared residuals and SS_tot is the total sum of squares
+fn calculate_r_squared<F>(points: &[(f64, f64)], predict: F) -> f64
+where
+    F: Fn(f64) -> f64,
+{
+    if points.is_empty() {
+        return 0.0;
+    }
+
+    let mean_y = points.iter().map(|&(_, y)| y).sum::<f64>() / points.len() as f64;
+
+    let ss_tot: f64 = points.iter().map(|&(_, y)| (y - mean_y).powi(2)).sum();
+
+    if ss_tot == 0.0 {
+        return 1.0; // Perfect fit if all y values are the same
+    }
+
+    let ss_res: f64 = points.iter().map(|&(x, y)| (y - predict(x)).powi(2)).sum();
+
+    (1.0 - (ss_res / ss_tot)).max(0.0) // Clamp to 0 minimum
 }
 
 /// Calculate sum of squared errors for a model
@@ -557,8 +711,12 @@ pub fn select_best_model(points: &[(f64, f64)]) -> Option<SelectedModel> {
 
         if let Some(coeffs) = coeffs_opt {
             // Create temporary model to check predictions
-            let temp_model =
-                SelectedModel { model_type: *model_type, coefficients: coeffs.clone(), bic: 0.0 };
+            let temp_model = SelectedModel {
+                model_type: *model_type,
+                coefficients: coeffs.clone(),
+                bic: 0.0,
+                r_squared: 0.0,
+            };
 
             // Safety check: predictions should be reasonable
             let y_min = points.iter().map(|&(_, y)| y).fold(f64::INFINITY, f64::min);
@@ -582,12 +740,18 @@ pub fn select_best_model(points: &[(f64, f64)]) -> Option<SelectedModel> {
                 continue;
             }
 
-            // Calculate SSE and BIC
+            // Calculate SSE, BIC, and R²
             let sse = calculate_sse(points, |x| temp_model.predict(x));
             let k = model_type.param_count();
             let bic = calculate_bic(n, sse, k);
+            let r_squared = calculate_r_squared(points, |x| temp_model.predict(x));
 
-            candidates.push(SelectedModel { model_type: *model_type, coefficients: coeffs, bic });
+            candidates.push(SelectedModel {
+                model_type: *model_type,
+                coefficients: coeffs,
+                bic,
+                r_squared,
+            });
         }
     }
 
@@ -615,6 +779,57 @@ pub fn select_best_model(points: &[(f64, f64)]) -> Option<SelectedModel> {
     }
 
     Some(candidates[0].clone())
+}
+
+/// Fit a specific model type to the given data points
+///
+/// Returns None if the model cannot be fit (insufficient points or invalid data)
+pub fn fit_specific_model(model_type: ModelType, points: &[(f64, f64)]) -> Option<SelectedModel> {
+    if points.len() < model_type.min_points() {
+        return None;
+    }
+
+    let coeffs_opt = match model_type {
+        ModelType::Constant => fit_constant(points),
+        ModelType::Logarithmic => fit_logarithmic(points),
+        ModelType::Linear => fit_linear(points),
+        ModelType::Linearithmic => fit_linearithmic(points),
+        ModelType::Quadratic => fit_quadratic(points),
+        ModelType::Mixed => fit_mixed(points),
+        ModelType::Cubic => fit_cubic(points),
+        ModelType::PowerLaw => fit_power_law(points),
+    };
+
+    let coeffs = coeffs_opt?;
+
+    let temp_model =
+        SelectedModel { model_type, coefficients: coeffs.clone(), bic: 0.0, r_squared: 0.0 };
+
+    let n = points.len();
+    let sse = calculate_sse(points, |x| temp_model.predict(x));
+    let k = model_type.param_count();
+    let bic = calculate_bic(n, sse, k);
+    let r_squared = calculate_r_squared(points, |x| temp_model.predict(x));
+
+    Some(SelectedModel { model_type, coefficients: coeffs, bic, r_squared })
+}
+
+/// Select model based on user preference or auto-select
+///
+/// If `model_name` is "auto" or None, uses BIC-based auto-selection.
+/// Otherwise, tries to fit the specified model type.
+pub fn select_model(points: &[(f64, f64)], model_name: Option<&str>) -> Option<SelectedModel> {
+    match model_name {
+        None | Some("auto") => select_best_model(points),
+        Some(name) => {
+            if let Some(model_type) = ModelType::from_str(name) {
+                fit_specific_model(model_type, points)
+            } else {
+                // Invalid model name, fall back to auto
+                select_best_model(points)
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -654,8 +869,25 @@ mod tests {
 
     #[test]
     fn test_predict() {
-        let model =
-            SelectedModel { model_type: ModelType::Linear, coefficients: vec![0.0, 2.0], bic: 0.0 };
+        let model = SelectedModel {
+            model_type: ModelType::Linear,
+            coefficients: vec![0.0, 2.0],
+            bic: 0.0,
+            r_squared: 1.0,
+        };
         assert!((model.predict(5.0) - 10.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_r_squared() {
+        // Perfect linear fit should have R² close to 1.0
+        // Note: BIC-based model selection may pick a simpler model, so we allow some tolerance
+        let points = vec![(1.0, 2.0), (2.0, 4.0), (3.0, 6.0), (4.0, 8.0), (5.0, 10.0)];
+        let model = select_best_model(&points).unwrap();
+        assert!(
+            model.r_squared > 0.98,
+            "R² should be close to 1.0 for linear data, got {}",
+            model.r_squared
+        );
     }
 }
