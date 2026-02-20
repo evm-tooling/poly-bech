@@ -753,6 +753,8 @@ pub struct Fixture {
     pub hex_file: Option<String>,
     /// Per-language implementations (alternative to hex)
     pub implementations: HashMap<Lang, CodeBlock>,
+    /// Order of language implementations as defined in source
+    pub impl_order: Vec<Lang>,
 
     // Phase 5: Enhanced fixture system
     /// Shape annotation for documentation (JSON-like descriptor)
@@ -770,6 +772,7 @@ impl Fixture {
             hex_data: None,
             hex_file: None,
             implementations: HashMap::new(),
+            impl_order: Vec::new(),
             shape: None,
             params: Vec::new(),
         }
@@ -841,6 +844,8 @@ pub struct Benchmark {
 
     /// Per-language implementations
     pub implementations: HashMap<Lang, CodeBlock>,
+    /// Order of language implementations as defined in source
+    pub impl_order: Vec<Lang>,
 }
 
 impl Benchmark {
@@ -870,6 +875,7 @@ impl Benchmark {
             each: HashMap::new(),
             hook_style: HookStyle::default(),
             implementations: HashMap::new(),
+            impl_order: Vec::new(),
         }
     }
 

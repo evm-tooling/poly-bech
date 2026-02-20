@@ -683,8 +683,8 @@ fn format_fixture(out: &mut String, fixture: &Fixture, indent_level: usize) {
         }
     }
 
-    let lang_order = [Lang::Go, Lang::TypeScript, Lang::Rust, Lang::Python];
-    for lang in &lang_order {
+    // Use original definition order for implementations
+    for lang in &fixture.impl_order {
         if let Some(code) = fixture.implementations.get(lang) {
             write!(out, "{}{}: ", inner, lang.as_str()).unwrap();
             format_code_block_inline_with_indent(out, code, &inner);
@@ -803,8 +803,8 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
         }
     }
 
-    // Language implementations
-    for lang in &lang_order {
+    // Language implementations (preserve original order)
+    for lang in &bench.impl_order {
         if let Some(code) = bench.implementations.get(lang) {
             write!(out, "{}{}: ", inner, lang.as_str()).unwrap();
             format_code_block_inline_with_indent(out, code, &inner);

@@ -15,6 +15,7 @@
 pub mod diagnostics;
 pub mod document;
 pub mod embedded;
+pub mod embedded_diagnostics;
 pub mod formatter;
 pub mod gopls_client;
 pub mod hover;

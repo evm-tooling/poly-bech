@@ -296,8 +296,9 @@ fn format_fixture(fixture: &PartialFixture, config: &FormatterConfig, depth: usi
         }
     }
 
-    // Implementations
-    for (lang, impl_node) in &fixture.implementations {
+    // Implementations (preserve original order)
+    for lang in &fixture.impl_order {
+        let Some(impl_node) = fixture.implementations.get(lang) else { continue };
         if let Node::Valid(code) = impl_node {
             formatted.push_str(&inner_indent);
             if code.code.contains('\n') {
@@ -351,8 +352,9 @@ fn format_benchmark(
     format_hooks(&benchmark.after, "after", config, depth + 1, &mut formatted);
     format_hooks(&benchmark.each, "each", config, depth + 1, &mut formatted);
 
-    // Implementations
-    for (lang, impl_node) in &benchmark.implementations {
+    // Implementations (preserve original order)
+    for lang in &benchmark.impl_order {
+        let Some(impl_node) = benchmark.implementations.get(lang) else { continue };
         if let Node::Valid(code) = impl_node {
             formatted.push_str(&inner_indent);
             if code.code.contains('\n') {

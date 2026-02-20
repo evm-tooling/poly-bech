@@ -939,6 +939,9 @@ impl Parser {
                 let lang = self.expect_lang()?;
                 self.expect(TokenKind::Colon)?;
                 let code = self.parse_inline_or_block_code()?;
+                if !fixture.implementations.contains_key(&lang) {
+                    fixture.impl_order.push(lang);
+                }
                 fixture.implementations.insert(lang, code);
             }
             TokenKind::Identifier(s) => {
@@ -947,6 +950,9 @@ impl Parser {
                     self.advance();
                     self.expect(TokenKind::Colon)?;
                     let code = self.parse_inline_or_block_code()?;
+                    if !fixture.implementations.contains_key(&lang) {
+                        fixture.impl_order.push(lang);
+                    }
                     fixture.implementations.insert(lang, code);
                 } else {
                     return Err(self.make_error(ParseError::InvalidProperty {
@@ -1163,6 +1169,9 @@ impl Parser {
                 let lang = self.expect_lang()?;
                 self.expect(TokenKind::Colon)?;
                 let code = self.parse_inline_or_block_code()?;
+                if !benchmark.implementations.contains_key(&lang) {
+                    benchmark.impl_order.push(lang);
+                }
                 benchmark.implementations.insert(lang, code);
             }
             TokenKind::Identifier(s) => {
@@ -1171,6 +1180,9 @@ impl Parser {
                     self.advance();
                     self.expect(TokenKind::Colon)?;
                     let code = self.parse_inline_or_block_code()?;
+                    if !benchmark.implementations.contains_key(&lang) {
+                        benchmark.impl_order.push(lang);
+                    }
                     benchmark.implementations.insert(lang, code);
                 } else {
                     return Err(self.make_error(ParseError::InvalidProperty {

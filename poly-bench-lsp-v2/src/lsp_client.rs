@@ -458,6 +458,34 @@ impl<C: LspConfig> LspClient<C> {
         parse_hover_response(&result)
     }
 
+    /// Request diagnostics for a document
+    /// Uses textDocument/diagnostic (LSP 3.17+) with fallback behavior
+    pub fn request_diagnostics(&self, uri: &str) -> Result<Vec<LspDiagnostic>, String> {
+        if !self.initialized.load(Ordering::SeqCst) {
+            self.initialize()?;
+        }
+
+        // Try textDocument/diagnostic first (LSP 3.17+)
+        let result = self.send_request_with_timeout(
+            "textDocument/diagnostic",
+            json!({
+                "textDocument": {
+                    "uri": uri
+                }
+            }),
+            10000, // Longer timeout for diagnostics
+        );
+
+        match result {
+            Ok(value) => parse_diagnostic_response(&value),
+            Err(_) => {
+                // Server might not support textDocument/diagnostic
+                // Return empty - diagnostics will come via publishDiagnostics notification
+                Ok(vec![])
+            }
+        }
+    }
+
     /// Check if server is available
     pub fn is_available(&self) -> bool {
         self.available.load(Ordering::SeqCst)
@@ -549,4 +577,94 @@ pub fn parse_hover_response(value: &Value) -> Result<Option<Hover>, String> {
     });
 
     Ok(Some(Hover { contents: hover_contents, range }))
+}
+
+/// A diagnostic from an LSP server
+#[derive(Debug, Clone)]
+pub struct LspDiagnostic {
+    /// Start line (0-indexed)
+    pub start_line: u32,
+    /// Start character (0-indexed)
+    pub start_character: u32,
+    /// End line (0-indexed)
+    pub end_line: u32,
+    /// End character (0-indexed)
+    pub end_character: u32,
+    /// Diagnostic message
+    pub message: String,
+    /// Severity (1=Error, 2=Warning, 3=Info, 4=Hint)
+    pub severity: u32,
+    /// Diagnostic code (optional)
+    pub code: Option<String>,
+}
+
+/// Parse a diagnostic response from an LSP server
+pub fn parse_diagnostic_response(value: &Value) -> Result<Vec<LspDiagnostic>, String> {
+    let mut diagnostics = Vec::new();
+
+    // Handle DocumentDiagnosticReport format
+    let items = if let Some(items) = value.get("items").and_then(|i| i.as_array()) {
+        items.clone()
+    } else if let Some(items) = value.get("relatedDocuments") {
+        // Full document diagnostic report
+        if let Some(obj) = items.as_object() {
+            let mut all_items = Vec::new();
+            for (_uri, doc_report) in obj {
+                if let Some(doc_items) = doc_report.get("items").and_then(|i| i.as_array()) {
+                    all_items.extend(doc_items.clone());
+                }
+            }
+            all_items
+        } else {
+            return Ok(diagnostics);
+        }
+    } else if let Some(arr) = value.as_array() {
+        // Direct array of diagnostics
+        arr.clone()
+    } else {
+        return Ok(diagnostics);
+    };
+
+    for item in items {
+        if let Some(diag) = parse_single_diagnostic(&item) {
+            diagnostics.push(diag);
+        }
+    }
+
+    Ok(diagnostics)
+}
+
+/// Parse a single diagnostic object
+fn parse_single_diagnostic(value: &Value) -> Option<LspDiagnostic> {
+    let range = value.get("range")?;
+    let start = range.get("start")?;
+    let end = range.get("end")?;
+
+    let start_line = start.get("line")?.as_u64()? as u32;
+    let start_character = start.get("character")?.as_u64()? as u32;
+    let end_line = end.get("line")?.as_u64()? as u32;
+    let end_character = end.get("character")?.as_u64()? as u32;
+
+    let message = value.get("message")?.as_str()?.to_string();
+    let severity = value.get("severity").and_then(|s| s.as_u64()).unwrap_or(1) as u32;
+
+    let code = value.get("code").and_then(|c| {
+        if let Some(s) = c.as_str() {
+            Some(s.to_string())
+        } else if let Some(n) = c.as_i64() {
+            Some(n.to_string())
+        } else {
+            None
+        }
+    });
+
+    Some(LspDiagnostic {
+        start_line,
+        start_character,
+        end_line,
+        end_character,
+        message,
+        severity,
+        code,
+    })
 }

@@ -14,8 +14,8 @@ suite sortN {
 
     setup go {
         import (
-        "encoding/binary"
-        "sort"
+            "encoding/binary"
+            "sort"
         )
 
         helpers {
@@ -116,39 +116,39 @@ suite sortN {
     }
 
     bench n100 {
-        go: sortGo(s100)
         ts: sortTs(s100)
+        go: sortGo(s100)
         rust: sort_rust(&s100)
     }
 
     bench n200 {
         go: sortGo(s200)
-        ts: sortTs(s200)
         rust: sort_rust(&s200)
+        ts: sortTs(s200)
     }
 
     bench n300 {
-        go: sortGo(s300)
         ts: sortTs(s300)
+        go: sortGo(s300)
         rust: sort_rust(&s300)
     }
 
     bench n400 {
-        go: sortGo(s400)
         ts: sortTs(s400)
+        go: sortGo(s400)
         rust: sort_rust(&s400)
     }
 
     bench n500 {
-        go: sortGo(s500)
         ts: sortTs(s500)
+        go: sortGo(s500)
         rust: sort_rust(&s500)
     }
 
     bench n600 {
+        rust: sort_rust(&s600)
         go: sortGo(s600)
         ts: sortTs(s600)
-        rust: sort_rust(&s600)
     }
 
     bench n700 {
@@ -158,41 +158,40 @@ suite sortN {
     }
 
     bench n800 {
+        rust: sort_rust(&s800)
         go: sortGo(s800)
         ts: sortTs(s800)
-        rust: sort_rust(&s800)
     }
 
     bench n900 {
+        rust: sort_rust(&s900)
         go: sortGo(s900)
         ts: sortTs(s900)
-        rust: sort_rust(&s900)
     }
 
     bench n1000 {
-        go: sortGo(s1000)
         ts: sortTs(s1000)
         rust: sort_rust(&s1000)
+        go: sortGo(s1000)
     }
 
     after {
         charting.drawLineChart(
-            title: "Sort Performance - O(n log n) [All Options]",
-            description: "Stdlib sort comparison across Go, TypeScript, and Rust",
-            xlabel: "Array Size (n elements)",
             ylabel: "Time (ns/op)",
-            output: "sort-line-all-options.svg"
+            xlabel: "Array Size (n elements)",
+            output: "sort-line-all-options.svg",
+            description: "Stdlib sort comparison across Go, TypeScript, and Rust",
+            title: "Sort Performance - O(n log n) [All Options]",
         )
-
         charting.drawBarChart(
             title: "Sort Performance Comparison [All Options]",
-            description: "Vertical grouped bars - Go vs TypeScript vs Rust",
             xlabel: "Benchmark",
+            description: "Vertical grouped bars - Go vs TypeScript vs Rust",
+            showTotalTime: true,
+            showMemory: true,
             ylabel: "Time (ns/op)",
             output: "sort-bar-all-options.svg",
-            showMemory: true,
-            showTotalTime: true
         )
     }
-
 }
+

@@ -324,6 +324,7 @@ pub struct PartialFixture {
     pub hex: Option<HexData>,
     pub shape: Option<CodeBlock>,
     pub implementations: HashMap<Lang, Node<CodeBlock>>,
+    pub impl_order: Vec<Lang>,
 }
 
 impl PartialFixture {
@@ -336,6 +337,7 @@ impl PartialFixture {
             hex: None,
             shape: None,
             implementations: HashMap::new(),
+            impl_order: Vec::new(),
         }
     }
 }
@@ -368,6 +370,7 @@ pub struct PartialBenchmark {
     pub after: HashMap<Lang, Node<CodeBlock>>,
     pub each: HashMap<Lang, Node<CodeBlock>>,
     pub implementations: HashMap<Lang, Node<CodeBlock>>,
+    pub impl_order: Vec<Lang>,
 }
 
 impl PartialBenchmark {
@@ -383,6 +386,7 @@ impl PartialBenchmark {
             after: HashMap::new(),
             each: HashMap::new(),
             implementations: HashMap::new(),
+            impl_order: Vec::new(),
         }
     }
 }

@@ -406,6 +406,9 @@ fn convert_fixture_body(node: TsNode, source: &str, fixture: &mut PartialFixture
             }
             "language_implementation" => {
                 if let Some((lang, code)) = convert_language_implementation(child, source) {
+                    if !fixture.implementations.contains_key(&lang) {
+                        fixture.impl_order.push(lang);
+                    }
                     fixture.implementations.insert(lang, code);
                 }
             }
@@ -487,6 +490,9 @@ fn convert_benchmark_body(node: TsNode, source: &str, benchmark: &mut PartialBen
             }
             "language_implementation" => {
                 if let Some((lang, code)) = convert_language_implementation(child, source) {
+                    if !benchmark.implementations.contains_key(&lang) {
+                        benchmark.impl_order.push(lang);
+                    }
                     benchmark.implementations.insert(lang, code);
                 }
             }
