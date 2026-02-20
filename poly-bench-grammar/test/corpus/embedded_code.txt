@@ -1,0 +1,183 @@
+================================================================================
+Go code with nested braces
+================================================================================
+
+suite test {
+    setup go {
+        helpers {
+            func helper() {
+                if true {
+                    for i := 0; i < 10; i++ {
+                        fmt.Println(i)
+                    }
+                }
+            }
+        }
+    }
+
+    bench foo {
+        go: helper()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (setup_block
+        language: (language_tag)
+        (setup_body
+          (helpers_section
+            (code_block
+              (embedded_code)))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+TypeScript code with template literals
+================================================================================
+
+suite test {
+    setup ts {
+        helpers {
+            function format(name: string): string {
+                return `Hello, ${name}!`
+            }
+        }
+    }
+
+    bench foo {
+        ts: format("world")
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (setup_block
+        language: (language_tag)
+        (setup_body
+          (helpers_section
+            (code_block
+              (embedded_code)))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Rust code with lifetimes and generics
+================================================================================
+
+suite test {
+    setup rust {
+        helpers {
+            fn process<'a, T: Clone>(data: &'a [T]) -> Vec<T> {
+                data.iter().cloned().collect()
+            }
+        }
+    }
+
+    bench foo {
+        rust: process(&data)
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (setup_block
+        language: (language_tag)
+        (setup_body
+          (helpers_section
+            (code_block
+              (ERROR
+                (embedded_code))
+              (embedded_code)))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Code with string containing braces
+================================================================================
+
+suite test {
+    setup go {
+        helpers {
+            func test() string {
+                return "{nested} braces in \"string\""
+            }
+        }
+    }
+
+    bench foo {
+        go: test()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (setup_block
+        language: (language_tag)
+        (setup_body
+          (helpers_section
+            (code_block
+              (embedded_code)))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Multi-line benchmark implementation
+================================================================================
+
+suite test {
+    bench complex {
+        go: {
+            result := compute()
+            if result > 0 {
+                return result
+            }
+            return 0
+        }
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (code_block
+              (embedded_code))))))))

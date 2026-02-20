@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["poly-bench-*"]
+members = ["poly-bench-*", "poly-bench-grammar", "poly-bench-syntax", "poly-bench-lsp-v2"]
 
 [workspace.package]
 version = "0.0.23"
@@ -19,6 +19,9 @@ poly-bench-runtime = { path = "poly-bench-runtime" }
 poly-bench-executor = { path = "poly-bench-executor" }
 poly-bench-reporter = { path = "poly-bench-reporter" }
 poly-bench-lsp = { path = "poly-bench-lsp" }
+poly-bench-lsp-v2 = { path = "poly-bench-lsp-v2" }
+poly-bench-syntax = { path = "poly-bench-syntax" }
+tree-sitter-polybench = { path = "poly-bench-grammar" }
 
 # Shared dependencies
 miette = { version = "7", features = ["fancy"] }
@@ -69,6 +72,7 @@ poly-bench-runtime.workspace = true
 poly-bench-executor.workspace = true
 poly-bench-reporter.workspace = true
 poly-bench-lsp.workspace = true
+poly-bench-lsp-v2.workspace = true
 
 # CLI
 clap.workspace = true

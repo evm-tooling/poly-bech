@@ -1,0 +1,239 @@
+================================================================================
+Simple suite
+================================================================================
+
+suite test {
+    description: "A test suite"
+    iterations: 100
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (property
+        name: (property_name)
+        value: (string
+          (string_content)))
+      (property
+        name: (property_name)
+        value: (number)))))
+
+================================================================================
+Suite with benchmark
+================================================================================
+
+suite example {
+    bench myBench {
+        go: doSomething()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Use statement
+================================================================================
+
+use std::charting
+
+suite test {
+    bench foo {
+        go: test()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (use_statement
+    module: (identifier))
+  (suite
+    name: (identifier)
+    (suite_body
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Multiple use statements
+================================================================================
+
+use std::charting
+use std::anvil
+use std::constants
+
+suite test {
+    bench foo {
+        go: test()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (use_statement
+    module: (identifier))
+  (use_statement
+    module: (identifier))
+  (use_statement
+    module: (identifier))
+  (suite
+    name: (identifier)
+    (suite_body
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Suite with all properties
+================================================================================
+
+suite fullExample {
+    description: "Full example"
+    iterations: 1000
+    warmup: 100
+    timeout: 30s
+    order: sequential
+    compare: true
+    baseline: "go"
+    mode: "auto"
+    targetTime: 5000ms
+    minIterations: 10
+    maxIterations: 10000
+    sink: true
+    outlierDetection: false
+    cvThreshold: 5.0
+    count: 3
+    memory: true
+    concurrency: 4
+
+    bench test {
+        go: run()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (property
+        name: (property_name)
+        value: (string
+          (string_content)))
+      (property
+        name: (property_name)
+        value: (number))
+      (property
+        name: (property_name)
+        value: (number))
+      (property
+        name: (property_name)
+        value: (duration
+          (number)
+          (duration_unit)))
+      (property
+        name: (property_name)
+        value: (identifier))
+      (property
+        name: (property_name)
+        value: (boolean))
+      (property
+        name: (property_name)
+        value: (string
+          (string_content)))
+      (property
+        name: (property_name)
+        value: (string
+          (string_content)))
+      (property
+        name: (property_name)
+        value: (duration
+          (number)
+          (duration_unit)))
+      (property
+        name: (property_name)
+        value: (number))
+      (property
+        name: (property_name)
+        value: (number))
+      (property
+        name: (property_name)
+        value: (boolean))
+      (property
+        name: (property_name)
+        value: (boolean))
+      (property
+        name: (property_name)
+        value: (float))
+      (property
+        name: (property_name)
+        value: (number))
+      (property
+        name: (property_name)
+        value: (boolean))
+      (property
+        name: (property_name)
+        value: (number))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Comments
+================================================================================
+
+# This is a comment
+suite test {
+    # Another comment
+    description: "test"
+    
+    bench foo {
+        # Comment in benchmark
+        go: test()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (comment)
+  (suite
+    name: (identifier)
+    (suite_body
+      (comment)
+      (property
+        name: (property_name)
+        value: (string
+          (string_content)))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (comment)
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))

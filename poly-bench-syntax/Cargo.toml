@@ -1,0 +1,15 @@
+[package]
+name = "poly-bench-syntax"
+version.workspace = true
+edition.workspace = true
+description = "Error-tolerant parsing layer for poly-bench DSL using Tree-sitter"
+license = "MIT"
+
+[dependencies]
+tree-sitter = "0.22"
+tree-sitter-polybench = { path = "../poly-bench-grammar" }
+thiserror = "1.0"
+miette = { version = "7", features = ["fancy"] }
+
+[dev-dependencies]
+pretty_assertions = "1.4"

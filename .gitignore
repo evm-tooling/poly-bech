@@ -16,6 +16,11 @@ Thumbs.db
 *.so
 *.dylib
 *.dll
+*.wasm
+
+# VSCode extension build artifacts
+extensions/vscode/out/
+extensions/vscode/tree-sitter/*.wasm
 
 # Test outputs
 /results/

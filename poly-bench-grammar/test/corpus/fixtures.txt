@@ -1,0 +1,193 @@
+================================================================================
+Simple fixture with hex
+================================================================================
+
+suite test {
+    fixture data {
+        hex: "deadbeef"
+    }
+
+    bench foo {
+        go: process(data)
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (fixture
+        name: (identifier)
+        (fixture_body
+          (hex_property
+            (string
+              (string_content)))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Fixture with file reference
+================================================================================
+
+suite test {
+    fixture data {
+        hex: @file("fixtures/data.hex")
+    }
+
+    bench foo {
+        go: process(data)
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (fixture
+        name: (identifier)
+        (fixture_body
+          (hex_property
+            (file_ref
+              (string
+                (string_content))))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Fixture with description
+================================================================================
+
+suite test {
+    fixture data {
+        description: "Test data fixture"
+        hex: "cafebabe"
+    }
+
+    bench foo {
+        go: process(data)
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (fixture
+        name: (identifier)
+        (fixture_body
+          (property
+            name: (property_name)
+            value: (string
+              (string_content)))
+          (hex_property
+            (string
+              (string_content)))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Parameterized fixture
+================================================================================
+
+suite test {
+    fixture data(size: int, seed: int) {
+        go: generateData(size, seed)
+    }
+
+    bench foo {
+        go: process(data)
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (fixture
+        name: (identifier)
+        (fixture_params
+          (fixture_param
+            name: (identifier)
+            type: (identifier))
+          (fixture_param
+            name: (identifier)
+            type: (identifier)))
+        (fixture_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Fixture with multiple language implementations
+================================================================================
+
+suite test {
+    fixture data {
+        go: makeData()
+        ts: makeData()
+        rust: make_data()
+    }
+
+    bench foo {
+        go: process(data)
+        ts: process(data)
+        rust: process(&data)
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (fixture
+        name: (identifier)
+        (fixture_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code))
+          (language_implementation
+            language: (language_tag)
+            (inline_code))
+          (language_implementation
+            language: (language_tag)
+            (inline_code))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code))
+          (language_implementation
+            language: (language_tag)
+            (inline_code))
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))

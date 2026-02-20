@@ -1,0 +1,39 @@
+//! Poly-bench LSP Server v2
+//!
+//! This is a rewritten LSP server that provides robust language features
+//! using Tree-sitter for error-tolerant parsing.
+//!
+//! # Key Improvements over v1
+//!
+//! - **Error-tolerant parsing**: Always produces a syntax tree, even with errors
+//! - **Incremental parsing**: Fast re-parsing on edits
+//! - **Full semantic token coverage**: All syntax elements are highlighted
+//! - **Incremental formatting**: Small edits instead of whole-document replacement
+//! - **Better diagnostics**: Syntax errors from Tree-sitter + semantic validation
+
+pub mod diagnostics;
+pub mod document;
+pub mod formatter;
+pub mod semantic_tokens;
+pub mod server;
+
+pub use server::PolyBenchLanguageServer;
+
+use tower_lsp::{LspService, Server};
+
+/// Run the LSP server on stdin/stdout
+pub async fn run_server() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("poly_bench_lsp_v2=info".parse().unwrap()),
+        )
+        .with_writer(std::io::stderr)
+        .init();
+
+    let stdin = tokio::io::stdin();
+    let stdout = tokio::io::stdout();
+
+    let (service, socket) = LspService::new(|client| PolyBenchLanguageServer::new(client));
+    Server::new(stdin, stdout, socket).serve(service).await;
+}

@@ -1,0 +1,209 @@
+================================================================================
+Go setup with import
+================================================================================
+
+suite test {
+    setup go {
+        import (
+            "fmt"
+        )
+    }
+
+    bench foo {
+        go: fmt.Println("test")
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (setup_block
+        language: (language_tag)
+        (setup_body
+          (import_section
+            (paren_code_block
+              (embedded_code)))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Go setup with all sections
+================================================================================
+
+suite test {
+    setup go {
+        import (
+            "fmt"
+            "testing"
+        )
+
+        declare {
+            var globalState int
+        }
+
+        init {
+            globalState = 42
+        }
+
+        helpers {
+            func helper() int {
+                return globalState
+            }
+        }
+    }
+
+    bench foo {
+        go: helper()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (setup_block
+        language: (language_tag)
+        (setup_body
+          (import_section
+            (paren_code_block
+              (embedded_code)))
+          (declare_section
+            (code_block
+              (embedded_code)))
+          (init_section
+            (code_block
+              (embedded_code)))
+          (helpers_section
+            (code_block
+              (embedded_code)))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+TypeScript setup
+================================================================================
+
+suite test {
+    setup ts {
+        import {
+            import { keccak256 } from 'viem'
+        }
+
+        helpers {
+            function hash(data: Uint8Array): Uint8Array {
+                return keccak256(data)
+            }
+        }
+    }
+
+    bench foo {
+        ts: hash(data)
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (setup_block
+        language: (language_tag)
+        (setup_body
+          (import_section
+            (code_block
+              (embedded_code)))
+          (helpers_section
+            (code_block
+              (embedded_code)))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Async init
+================================================================================
+
+suite test {
+    setup ts {
+        async init {
+            await initialize()
+        }
+    }
+
+    bench foo {
+        ts: run()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (setup_block
+        language: (language_tag)
+        (setup_body
+          (init_section
+            (code_block
+              (embedded_code)))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Rust setup
+================================================================================
+
+suite test {
+    setup rust {
+        helpers {
+            fn helper(data: &[u8]) -> Vec<u8> {
+                data.to_vec()
+            }
+        }
+    }
+
+    bench foo {
+        rust: helper(&data)
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (setup_block
+        language: (language_tag)
+        (setup_body
+          (helpers_section
+            (code_block
+              (embedded_code)))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))

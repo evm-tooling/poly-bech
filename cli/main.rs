@@ -177,6 +177,14 @@ enum Commands {
         #[arg(long, hide = true)]
         stdio: bool,
     },
+
+    /// Start the new LSP v2 server (experimental, with Tree-sitter parsing)
+    #[command(name = "lsp-v2")]
+    LspV2 {
+        /// Accepted for editor compatibility; stdio is always used
+        #[arg(long, hide = true)]
+        stdio: bool,
+    },
 }
 
 #[tokio::main]
@@ -200,6 +208,11 @@ async fn main() -> Result<()> {
     // LSP mode: no welcome or other stdout; use stdio for LSP protocol
     if let Commands::Lsp { .. } = &command {
         return cmd_lsp().await;
+    }
+
+    // LSP v2 mode: new Tree-sitter based server
+    if let Commands::LspV2 { .. } = &command {
+        return cmd_lsp_v2().await;
     }
 
     // First run: show welcome once, then proceed with the command
@@ -242,6 +255,10 @@ async fn main() -> Result<()> {
             // Handled above; unreachable here
             unreachable!()
         }
+        Commands::LspV2 { .. } => {
+            // Handled above; unreachable here
+            unreachable!()
+        }
     }
 
     Ok(())
@@ -252,6 +269,11 @@ async fn cmd_lsp() -> Result<()> {
     let stdout = tokio::io::stdout();
     let (service, socket) = LspService::new(poly_bench_lsp::Backend::new);
     Server::new(stdin, stdout, socket).serve(service).await;
+    Ok(())
+}
+
+async fn cmd_lsp_v2() -> Result<()> {
+    poly_bench_lsp_v2::run_server().await;
     Ok(())
 }
 

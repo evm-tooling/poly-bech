@@ -14,64 +14,76 @@ suite sortN {
 
     setup go {
         import (
-        "encoding/binary"
-        "sort"
+            "encoding/binary"
+            "sort"
         )
 
         helpers {
+
+
             func sortGo(data []byte) []byte {
-                n := len(data) / 4
-                arr := make([]int32, n)
-                for i := 0; i < n; i++ {
-                    arr[i] = int32(binary.BigEndian.Uint32(data[i*4 : (i+1)*4]))
-                }
-                sort.Slice(arr, func(i, j int) bool { return arr[i] < arr[j] })
-                out := make([]byte, len(data))
-                for i := 0; i < n; i++ {
-                    binary.BigEndian.PutUint32(out[i*4:(i+1)*4], uint32(arr[i]))
-                }
-                return out
+            n := len(data) / 4
+            arr := make([]int32, n)
+            for i := 0; i < n; i++ {
+            arr[i] = int32(binary.BigEndian.Uint32(data[i*4 : (i+1)*4]))
             }
+            sort.Slice(arr, func(i, j int) bool { return arr[i] < arr[j] })
+            out := make([]byte, len(data))
+            for i := 0; i < n; i++ {
+            binary.BigEndian.PutUint32(out[i*4:(i+1)*4], uint32(arr[i]))
+            }
+            return out
+            }
+
+
         }
     }
 
     setup ts {
         helpers {
+
+
             function sortTs(data: Uint8Array): Uint8Array {
-                const n = data.length / 4
-                const arr = []
-                for (let i = 0; i < n; i++) {
-                    arr.push(data[i*4]<<24 | data[i*4+1]<<16 | data[i*4+2]<<8 | data[i*4+3])
-                }
-                arr.sort((a,b) => a - b)
-                const out = new Uint8Array(data.length)
-                for (let i = 0; i < n; i++) {
-                    const v = arr[i] >>> 0
-                    out[i*4] = (v>>24)&0xff
-                    out[i*4+1] = (v>>16)&0xff
-                    out[i*4+2] = (v>>8)&0xff
-                    out[i*4+3] = v&0xff
-                }
-                return out
+            const n = data.length / 4
+            const arr = []
+            for (let i = 0; i < n; i++) {
+            arr.push(data[i*4]<<24 | data[i*4+1]<<16 | data[i*4+2]<<8 | data[i*4+3])
             }
+            arr.sort((a,b) => a - b)
+            const out = new Uint8Array(data.length)
+            for (let i = 0; i < n; i++) {
+            const v = arr[i] >>> 0
+            out[i*4] = (v>>24)&0xff
+            out[i*4+1] = (v>>16)&0xff
+            out[i*4+2] = (v>>8)&0xff
+            out[i*4+3] = v&0xff
+            }
+            return out
+            }
+
+
         }
     }
 
     setup rust {
         helpers {
+
+
             fn sort_rust(data: &[u8]) -> Vec<u8> {
-                let n = data.len() / 4;
-                let mut arr: Vec<i32> = (0..n).map(|i| {
-                    let j = i * 4;
-                    i32::from_be_bytes([data[j], data[j+1], data[j+2], data[j+3]])
-                }).collect();
-                arr.sort_unstable();
-                let mut out = vec![0u8; data.len()];
-                for (i, &v) in arr.iter().enumerate() {
-                    out[i*4..(i+1)*4].copy_from_slice(&v.to_be_bytes());
-                }
-                out
+            let n = data.len() / 4;
+            let mut arr: Vec<i32> = (0..n).map(|i| {
+            let j = i * 4;
+            i32::from_be_bytes([data[j], data[j+1], data[j+2], data[j+3]])
+            }).collect();
+            arr.sort_unstable();
+            let mut out = vec![0u8; data.len()];
+            for (i, &v) in arr.iter().enumerate() {
+            out[i*4..(i+1)*4].copy_from_slice(&v.to_be_bytes());
             }
+            out
+            }
+
+
         }
     }
 
@@ -122,15 +134,15 @@ suite sortN {
     }
 
     bench n200 {
-        go: sortGo(s200)
-        ts: sortTs(s200)
         rust: sort_rust(&s200)
+        ts: sortTs(s200)
+        go: sortGo(s200)
     }
 
     bench n300 {
+        rust: sort_rust(&s300)
         go: sortGo(s300)
         ts: sortTs(s300)
-        rust: sort_rust(&s300)
     }
 
     bench n400 {
@@ -141,14 +153,14 @@ suite sortN {
 
     bench n500 {
         go: sortGo(s500)
-        ts: sortTs(s500)
         rust: sort_rust(&s500)
+        ts: sortTs(s500)
     }
 
     bench n600 {
         go: sortGo(s600)
-        ts: sortTs(s600)
         rust: sort_rust(&s600)
+        ts: sortTs(s600)
     }
 
     bench n700 {
@@ -158,41 +170,40 @@ suite sortN {
     }
 
     bench n800 {
-        go: sortGo(s800)
         ts: sortTs(s800)
+        go: sortGo(s800)
         rust: sort_rust(&s800)
     }
 
     bench n900 {
-        go: sortGo(s900)
-        ts: sortTs(s900)
         rust: sort_rust(&s900)
+        ts: sortTs(s900)
+        go: sortGo(s900)
     }
 
     bench n1000 {
-        go: sortGo(s1000)
         ts: sortTs(s1000)
+        go: sortGo(s1000)
         rust: sort_rust(&s1000)
     }
 
     after {
         charting.drawLineChart(
-            title: "Sort Performance - O(n log n) [All Options]",
             description: "Stdlib sort comparison across Go, TypeScript, and Rust",
-            xlabel: "Array Size (n elements)",
             ylabel: "Time (ns/op)",
-            output: "sort-line-all-options.svg"
+            xlabel: "Array Size (n elements)",
+            title: "Sort Performance - O(n log n) [All Options]",
+            output: "sort-line-all-options.svg",
         )
-
         charting.drawBarChart(
+            showMemory: true,
             title: "Sort Performance Comparison [All Options]",
             description: "Vertical grouped bars - Go vs TypeScript vs Rust",
-            xlabel: "Benchmark",
             ylabel: "Time (ns/op)",
+            xlabel: "Benchmark",
             output: "sort-bar-all-options.svg",
-            showMemory: true,
-            showTotalTime: true
+            showTotalTime: true,
         )
     }
-
 }
+

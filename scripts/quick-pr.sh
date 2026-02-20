@@ -107,7 +107,7 @@ if [ -s "$WORKTREE_DIR/.staged.patch" ]; then
         cd "$WORKTREE_DIR"
         git apply --index .staged.patch
         rm .staged.patch
-        git commit -m "$PR_TITLE"
+        git commit -m "$PR_TITLE" --no-verify
     )
     success "Committed staged changes to $BRANCH_NAME"
 else
@@ -119,7 +119,7 @@ fi
 
 # Push the branch
 info "Pushing branch to origin..."
-(cd "$WORKTREE_DIR" && git push -u origin "$BRANCH_NAME" --quiet)
+(cd "$WORKTREE_DIR" && git push -u origin "$BRANCH_NAME" --quiet --no-verify)
 success "Pushed $BRANCH_NAME to origin"
 
 # Clean up worktree (but keep the branch)

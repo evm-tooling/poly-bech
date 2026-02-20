@@ -1,0 +1,107 @@
+================================================================================
+Global setup with anvil
+================================================================================
+
+use std::anvil
+
+globalSetup {
+    anvil.spawnAnvil()
+}
+
+suite test {
+    bench foo {
+        go: run()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (use_statement
+    module: (identifier))
+  (global_setup
+    (global_setup_body
+      (global_setup_statement
+        (anvil_call))))
+  (suite
+    name: (identifier)
+    (suite_body
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Global setup with fork URL
+================================================================================
+
+use std::anvil
+
+globalSetup {
+    anvil.spawnAnvil(fork: "https://eth-mainnet.example.com")
+}
+
+suite test {
+    bench foo {
+        go: run()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (use_statement
+    module: (identifier))
+  (global_setup
+    (global_setup_body
+      (global_setup_statement
+        (anvil_call
+          (anvil_args
+            (string
+              (string_content)))))))
+  (suite
+    name: (identifier)
+    (suite_body
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Suite-level global setup
+================================================================================
+
+use std::anvil
+
+suite test {
+    globalSetup {
+        anvil.spawnAnvil()
+    }
+
+    bench foo {
+        go: run()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (use_statement
+    module: (identifier))
+  (suite
+    name: (identifier)
+    (suite_body
+      (global_setup
+        (global_setup_body
+          (global_setup_statement
+            (anvil_call))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
