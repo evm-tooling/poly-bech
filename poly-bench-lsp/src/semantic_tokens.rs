@@ -40,91 +40,79 @@ pub static LEGEND: Lazy<SemanticTokensLegend> = Lazy::new(|| SemanticTokensLegen
     token_modifiers: TOKEN_MODIFIERS.clone(),
 });
 
+/// Intermediate token with absolute position for sorting
+#[derive(Debug, Clone)]
+struct AbsoluteToken {
+    line: u32,
+    character: u32,
+    length: u32,
+    token_type: u32,
+    token_modifiers_bitset: u32,
+}
+
 /// Get semantic tokens for a document
 pub fn get_semantic_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
-    let mut tokens = Vec::new();
-    let mut prev_line = 0u32;
-    let mut prev_char = 0u32;
+    let mut absolute_tokens: Vec<AbsoluteToken> = Vec::new();
 
     // If we have a parsed AST, use it for semantic tokens
     if let Some(ref ast) = doc.ast {
         // Handle use std::module statements
         for use_std in &ast.use_stds {
             // 'use' keyword
-            add_token(
-                doc,
-                &mut tokens,
-                &mut prev_line,
-                &mut prev_char,
-                &use_std.use_span,
-                0, // KEYWORD
-                0,
-            );
+            collect_token(doc, &mut absolute_tokens, &use_std.use_span, 0, 0);
             // 'std' identifier
-            add_token(
-                doc,
-                &mut tokens,
-                &mut prev_line,
-                &mut prev_char,
-                &use_std.std_span,
-                8, // NAMESPACE
-                0,
-            );
+            collect_token(doc, &mut absolute_tokens, &use_std.std_span, 8, 0);
             // module name
-            add_token(
-                doc,
-                &mut tokens,
-                &mut prev_line,
-                &mut prev_char,
-                &use_std.module_span,
-                8, // NAMESPACE
-                0,
-            );
+            collect_token(doc, &mut absolute_tokens, &use_std.module_span, 8, 0);
         }
 
         for suite in &ast.suites {
             // Suite keyword and name
-            add_keyword_tokens(doc, &mut tokens, &mut prev_line, &mut prev_char, &suite.span);
+            collect_token(doc, &mut absolute_tokens, &suite.span, 0, 0);
 
             // Setup blocks
-            for (lang, setup) in &suite.setups {
-                add_token(
-                    doc,
-                    &mut tokens,
-                    &mut prev_line,
-                    &mut prev_char,
-                    &setup.span,
-                    1, // TYPE for language
-                    0,
-                );
+            for setup in suite.setups.values() {
+                collect_token(doc, &mut absolute_tokens, &setup.span, 1, 0);
             }
 
             // Fixtures
             for fixture in &suite.fixtures {
-                add_token(
-                    doc,
-                    &mut tokens,
-                    &mut prev_line,
-                    &mut prev_char,
-                    &fixture.span,
-                    2, // FUNCTION for fixture name
-                    1, // DEFINITION modifier
-                );
+                collect_token(doc, &mut absolute_tokens, &fixture.span, 2, 1);
             }
 
             // Benchmarks
             for benchmark in &suite.benchmarks {
-                add_token(
-                    doc,
-                    &mut tokens,
-                    &mut prev_line,
-                    &mut prev_char,
-                    &benchmark.span,
-                    2, // FUNCTION for benchmark name
-                    1, // DEFINITION modifier
-                );
+                collect_token(doc, &mut absolute_tokens, &benchmark.span, 2, 1);
             }
         }
+    }
+
+    // Sort tokens by position (line, then character)
+    absolute_tokens.sort_by(|a, b| a.line.cmp(&b.line).then_with(|| a.character.cmp(&b.character)));
+
+    // Convert to delta-encoded tokens
+    let mut tokens = Vec::with_capacity(absolute_tokens.len());
+    let mut prev_line = 0u32;
+    let mut prev_char = 0u32;
+
+    for abs_token in absolute_tokens {
+        let delta_line = abs_token.line.saturating_sub(prev_line);
+        let delta_start = if delta_line == 0 {
+            abs_token.character.saturating_sub(prev_char)
+        } else {
+            abs_token.character
+        };
+
+        tokens.push(SemanticToken {
+            delta_line,
+            delta_start,
+            length: abs_token.length,
+            token_type: abs_token.token_type,
+            token_modifiers_bitset: abs_token.token_modifiers_bitset,
+        });
+
+        prev_line = abs_token.line;
+        prev_char = abs_token.character;
     }
 
     // Fall back to simple lexical tokenization if needed
@@ -133,6 +121,30 @@ pub fn get_semantic_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
     }
 
     tokens
+}
+
+/// Collect a token with absolute position for later sorting
+fn collect_token(
+    doc: &ParsedDocument,
+    tokens: &mut Vec<AbsoluteToken>,
+    span: &poly_bench_dsl::Span,
+    token_type: u32,
+    modifiers: u32,
+) {
+    if span.end < span.start {
+        return;
+    }
+
+    let pos = doc.offset_to_position(span.start);
+    let length = (span.end - span.start) as u32;
+
+    tokens.push(AbsoluteToken {
+        line: pos.line,
+        character: pos.character,
+        length,
+        token_type,
+        token_modifiers_bitset: modifiers,
+    });
 }
 
 /// Add tokens based on lexical analysis (for when AST is not available)
@@ -373,54 +385,4 @@ fn emit_word_token(
         *prev_line = line;
         *prev_char = char_pos;
     }
-}
-
-fn add_keyword_tokens(
-    doc: &ParsedDocument,
-    tokens: &mut Vec<SemanticToken>,
-    prev_line: &mut u32,
-    prev_char: &mut u32,
-    span: &poly_bench_dsl::Span,
-) {
-    add_token(doc, tokens, prev_line, prev_char, span, 0, 0);
-}
-
-fn add_token(
-    doc: &ParsedDocument,
-    tokens: &mut Vec<SemanticToken>,
-    prev_line: &mut u32,
-    prev_char: &mut u32,
-    span: &poly_bench_dsl::Span,
-    token_type: u32,
-    modifiers: u32,
-) {
-    // Validate span bounds to prevent overflow
-    if span.end < span.start {
-        return;
-    }
-
-    let pos = doc.offset_to_position(span.start);
-    let length = (span.end - span.start) as u32;
-
-    // Skip out-of-order tokens to prevent underflow
-    // Tokens must be in document order for LSP semantic tokens protocol
-    if pos.line < *prev_line || (pos.line == *prev_line && pos.character < *prev_char) {
-        return;
-    }
-
-    // Use saturating_sub as a safety net even though we've validated above
-    let delta_line = pos.line.saturating_sub(*prev_line);
-    let delta_start =
-        if delta_line == 0 { pos.character.saturating_sub(*prev_char) } else { pos.character };
-
-    tokens.push(SemanticToken {
-        delta_line,
-        delta_start,
-        length,
-        token_type,
-        token_modifiers_bitset: modifiers,
-    });
-
-    *prev_line = pos.line;
-    *prev_char = pos.character;
 }

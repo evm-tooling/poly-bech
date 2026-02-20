@@ -538,10 +538,13 @@ fn write_code_block(out: &mut String, keyword: &str, block: &CodeBlock, inner: &
     // Use trim_lines to preserve internal indentation structure
     let code = trim_code_block(&block.code);
     let content_indent = format!("{}{}", inner, INDENT); // One more level for content inside block
+
+    // Check if the trimmed code is empty (whitespace-only blocks should be single-line)
     if code.is_empty() {
-        writeln!(out, "{}{} {{", inner, keyword).unwrap();
-        writeln!(out, "{}}}", inner).unwrap();
-    } else if block.is_multiline || code.contains('\n') {
+        // Empty blocks should be single-line: `init {}`
+        writeln!(out, "{}{} {{}}", inner, keyword).unwrap();
+    } else if code.contains('\n') {
+        // Multi-line code block
         writeln!(out, "{}{} {{", inner, keyword).unwrap();
         let preserved = preserve_embedded_code(&code, &content_indent);
         for line in &preserved {
@@ -553,7 +556,8 @@ fn write_code_block(out: &mut String, keyword: &str, block: &CodeBlock, inner: &
         }
         writeln!(out, "{}}}", inner).unwrap();
     } else {
-        writeln!(out, "{}{} {}", inner, keyword, code.trim()).unwrap();
+        // Single-line code - keep on same line with braces
+        writeln!(out, "{}{} {{ {} }}", inner, keyword, code.trim()).unwrap();
     }
 }
 
@@ -931,6 +935,144 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
         }
         if let Some(ref time_unit) = directive.time_unit {
             params.push(format!("{}timeUnit: \"{}\"", inner2, escape_string(time_unit)));
+        }
+
+        // === NEW PARAMETERS ===
+
+        // Dimensions
+        if let Some(height) = directive.height {
+            params.push(format!("{}height: {}", inner2, height));
+        }
+
+        // Axis styling
+        if let Some(axis_thickness) = directive.axis_thickness {
+            params.push(format!("{}axisThickness: {}", inner2, axis_thickness));
+        }
+        if let Some(y_axis_min) = directive.y_axis_min {
+            params.push(format!("{}yAxisMin: {}", inner2, y_axis_min));
+        }
+        if let Some(y_axis_max) = directive.y_axis_max {
+            params.push(format!("{}yAxisMax: {}", inner2, y_axis_max));
+        }
+        if let Some(ref y_scale) = directive.y_scale {
+            params.push(format!("{}yScale: \"{}\"", inner2, escape_string(y_scale)));
+        }
+        if let Some(ref baseline_benchmark) = directive.baseline_benchmark {
+            params.push(format!(
+                "{}baselineBenchmark: \"{}\"",
+                inner2,
+                escape_string(baseline_benchmark)
+            ));
+        }
+        if let Some(symlog_threshold) = directive.symlog_threshold {
+            params.push(format!("{}symlogThreshold: {}", inner2, symlog_threshold));
+        }
+
+        // Grid
+        if let Some(show_grid) = directive.show_grid {
+            params.push(format!("{}showGrid: {}", inner2, show_grid));
+        }
+        if let Some(grid_opacity) = directive.grid_opacity {
+            params.push(format!("{}gridOpacity: {}", inner2, grid_opacity));
+        }
+        if let Some(show_minor_grid) = directive.show_minor_grid {
+            params.push(format!("{}showMinorGrid: {}", inner2, show_minor_grid));
+        }
+        if let Some(minor_grid_opacity) = directive.minor_grid_opacity {
+            params.push(format!("{}minorGridOpacity: {}", inner2, minor_grid_opacity));
+        }
+        if let Some(show_vertical_grid) = directive.show_vertical_grid {
+            params.push(format!("{}showVerticalGrid: {}", inner2, show_vertical_grid));
+        }
+
+        // Typography
+        if let Some(title_font_size) = directive.title_font_size {
+            params.push(format!("{}titleFontSize: {}", inner2, title_font_size));
+        }
+        if let Some(subtitle_font_size) = directive.subtitle_font_size {
+            params.push(format!("{}subtitleFontSize: {}", inner2, subtitle_font_size));
+        }
+        if let Some(axis_label_font_size) = directive.axis_label_font_size {
+            params.push(format!("{}axisLabelFontSize: {}", inner2, axis_label_font_size));
+        }
+        if let Some(tick_label_font_size) = directive.tick_label_font_size {
+            params.push(format!("{}tickLabelFontSize: {}", inner2, tick_label_font_size));
+        }
+
+        // Legend
+        if let Some(ref legend_position) = directive.legend_position {
+            params.push(format!(
+                "{}legendPosition: \"{}\"",
+                inner2,
+                escape_string(legend_position)
+            ));
+        }
+
+        // Error bars
+        if let Some(show_error_bars) = directive.show_error_bars {
+            params.push(format!("{}showErrorBars: {}", inner2, show_error_bars));
+        }
+        if let Some(error_bar_opacity) = directive.error_bar_opacity {
+            params.push(format!("{}errorBarOpacity: {}", inner2, error_bar_opacity));
+        }
+        if let Some(error_bar_thickness) = directive.error_bar_thickness {
+            params.push(format!("{}errorBarThickness: {}", inner2, error_bar_thickness));
+        }
+        if let Some(ci_level) = directive.ci_level {
+            params.push(format!("{}ciLevel: {}", inner2, ci_level));
+        }
+        if let Some(show_std_dev_band) = directive.show_std_dev_band {
+            params.push(format!("{}showStdDevBand: {}", inner2, show_std_dev_band));
+        }
+
+        // Regression
+        if let Some(show_regression) = directive.show_regression {
+            params.push(format!("{}showRegression: {}", inner2, show_regression));
+        }
+        if let Some(ref regression_style) = directive.regression_style {
+            params.push(format!(
+                "{}regressionStyle: \"{}\"",
+                inner2,
+                escape_string(regression_style)
+            ));
+        }
+        if let Some(ref regression_model) = directive.regression_model {
+            params.push(format!(
+                "{}regressionModel: \"{}\"",
+                inner2,
+                escape_string(regression_model)
+            ));
+        }
+        if let Some(show_regression_label) = directive.show_regression_label {
+            params.push(format!("{}showRegressionLabel: {}", inner2, show_regression_label));
+        }
+        if let Some(show_r_squared) = directive.show_r_squared {
+            params.push(format!("{}showRSquared: {}", inner2, show_r_squared));
+        }
+        if let Some(show_equation) = directive.show_equation {
+            params.push(format!("{}showEquation: {}", inner2, show_equation));
+        }
+        if let Some(show_regression_band) = directive.show_regression_band {
+            params.push(format!("{}showRegressionBand: {}", inner2, show_regression_band));
+        }
+        if let Some(regression_band_opacity) = directive.regression_band_opacity {
+            params.push(format!("{}regressionBandOpacity: {}", inner2, regression_band_opacity));
+        }
+
+        // Bar chart specific
+        if let Some(bar_group_gap) = directive.bar_group_gap {
+            params.push(format!("{}barGroupGap: {}", inner2, bar_group_gap));
+        }
+        if let Some(bar_within_group_gap) = directive.bar_within_group_gap {
+            params.push(format!("{}barWithinGroupGap: {}", inner2, bar_within_group_gap));
+        }
+        if let Some(bar_width) = directive.bar_width {
+            params.push(format!("{}barWidth: {}", inner2, bar_width));
+        }
+
+        // Tick formatting
+        if let Some(round_ticks) = directive.round_ticks {
+            params.push(format!("{}roundTicks: {}", inner2, round_ticks));
         }
 
         // Output the directive

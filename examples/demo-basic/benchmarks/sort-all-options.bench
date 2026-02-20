@@ -7,9 +7,9 @@ suite sortN {
     baseline: "go"
     mode: "auto"
     targetTime: 3000ms
+    outlierDetection: false
     cvThreshold: 5
     count: 3
-    outlierDetection: false
     memory: true
 
     setup go {
@@ -17,13 +17,6 @@ suite sortN {
         "encoding/binary"
         "sort"
         )
-
-        init {
-
-
-
-
-        }
 
         helpers {
             func sortGo(data []byte) []byte {
@@ -43,13 +36,6 @@ suite sortN {
     }
 
     setup ts {
-        init {
-
-
-
-
-        }
-
         helpers {
             function sortTs(data: Uint8Array): Uint8Array {
                 const n = data.length / 4
@@ -72,13 +58,6 @@ suite sortN {
     }
 
     setup rust {
-        init {
-
-
-
-
-        }
-
         helpers {
             fn sort_rust(data: &[u8]) -> Vec<u8> {
                 let n = data.len() / 4;
@@ -200,66 +179,19 @@ suite sortN {
         charting.drawLineChart(
             title: "Sort Performance - O(n log n) [All Options]",
             description: "Stdlib sort comparison across Go, TypeScript, and Rust",
-            output: "sort-line-all-options.svg",
             xlabel: "Array Size (n elements)",
             ylabel: "Time (ns/op)",
-
-            showGrid: true,
-            showMinorGrid: true,
-            showVerticalGrid: true,
-
-            legendPosition: "top-left",
-
-            showErrorBars: true,
-            errorBarOpacity: 0.4,
-            errorBarThickness: 1.5,
-            ciLevel: 95,
-            showStdDevBand: true,
-
-            showRegression: true,
-            regressionStyle: "dashed",
-            regressionModel: "auto",
-            showRegressionLabel: true,
-            showRSquared: true,
-            showEquation: true,
-            showRegressionBand: true,
+            output: "sort-line-all-options.svg"
         )
 
         charting.drawBarChart(
             title: "Sort Performance Comparison [All Options]",
             description: "Vertical grouped bars - Go vs TypeScript vs Rust",
-            output: "sort-bar-all-options.svg",
             xlabel: "Benchmark",
             ylabel: "Time (ns/op)",
-
-            showStats: true,
-            showConfig: true,
-            showWinCounts: true,
-            showGeoMean: true,
-            showDistribution: true,
+            output: "sort-bar-all-options.svg",
             showMemory: true,
-            showTotalTime: true,
-            compact: false,
-
-            showGrid: true,
-            showMinorGrid: true,
-            showVerticalGrid: true,
-
-            legendPosition: "top-left",
-
-            showErrorBars: true,
-            errorBarOpacity: 0.6,
-            errorBarThickness: 1.5,
-            ciLevel: 95,
-
-            showRegression: true,
-            regressionStyle: "dashed",
-            regressionModel: "auto",
-            showRegressionLabel: true,
-            showRSquared: true,
-            showEquation: true,
-            showRegressionBand: true,
-
+            showTotalTime: true
         )
     }
 

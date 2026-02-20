@@ -261,6 +261,8 @@ pub struct SetupContext {
     pub helpers: Option<String>,
     /// Standard library code to inject (from `use std::module` statements)
     pub stdlib_code: Option<String>,
+    /// Fixture variable names (for injecting stub declarations in benchmark blocks)
+    pub fixture_vars: Vec<String>,
 }
 
 /// Result from embedded checking including debug info
@@ -349,6 +351,20 @@ pub fn check_embedded_blocks(
             }
 
             result.debug_messages.push(format!("Stdlib imports: {:?}", stdlib_imports));
+        }
+
+        // Extract fixture names from all suites for injection into benchmark blocks
+        let fixture_names: Vec<String> = ast
+            .suites
+            .iter()
+            .flat_map(|suite| suite.fixtures.iter().map(|f| f.name.clone()))
+            .collect();
+
+        if !fixture_names.is_empty() {
+            go_context.fixture_vars = fixture_names.clone();
+            ts_context.fixture_vars = fixture_names.clone();
+            rust_context.fixture_vars = fixture_names;
+            result.debug_messages.push(format!("Fixture vars: {:?}", go_context.fixture_vars));
         }
     }
 

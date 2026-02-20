@@ -150,8 +150,17 @@ export function activate(context: ExtensionContext): void {
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: 'file', language: 'polybench' }],
     synchronize: {
-      // Watch for changes to .bench files
-      fileEvents: workspace.createFileSystemWatcher('**/*.bench'),
+      // Watch for changes to .bench files and project configuration files
+      // This helps the LSP detect when modules are installed/removed
+      fileEvents: [
+        workspace.createFileSystemWatcher('**/*.bench'),
+        workspace.createFileSystemWatcher('**/package.json'),
+        workspace.createFileSystemWatcher('**/Cargo.toml'),
+        workspace.createFileSystemWatcher('**/go.mod'),
+        workspace.createFileSystemWatcher('**/node_modules/.package-lock.json'),
+        workspace.createFileSystemWatcher('**/Cargo.lock'),
+        workspace.createFileSystemWatcher('**/go.sum'),
+      ],
     },
     outputChannel,
     outputChannelName: 'Poly-Bench LSP',

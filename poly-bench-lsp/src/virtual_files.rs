@@ -661,6 +661,14 @@ impl VirtualFileManager {
     pub fn get(&self, bench_uri: &str) -> Option<VirtualGoFile> {
         self.files.get(bench_uri).map(|r| r.clone())
     }
+
+    /// Clear all caches to force re-detection of modules
+    pub fn clear_caches(&self) {
+        for entry in self.files.iter() {
+            let _ = std::fs::remove_file(entry.value().path());
+        }
+        self.files.clear();
+    }
 }
 
 impl Default for VirtualFileManager {
@@ -725,6 +733,15 @@ impl VirtualTsFileManager {
         if let Some((_, vf)) = self.files.remove(bench_uri) {
             let _ = std::fs::remove_file(vf.path());
         }
+    }
+
+    /// Clear all caches to force re-detection of modules
+    pub fn clear_caches(&self) {
+        for entry in self.files.iter() {
+            let _ = std::fs::remove_file(entry.value().path());
+        }
+        self.files.clear();
+        self.initialized_roots.clear();
     }
 }
 
@@ -798,6 +815,15 @@ impl VirtualRustFileManager {
 
     pub fn get(&self, bench_uri: &str) -> Option<VirtualRustFile> {
         self.files.get(bench_uri).map(|r| r.clone())
+    }
+
+    /// Clear all caches to force re-detection of modules
+    pub fn clear_caches(&self) {
+        for entry in self.files.iter() {
+            let _ = std::fs::remove_file(entry.value().path());
+        }
+        self.files.clear();
+        self.initialized_roots.clear();
     }
 }
 

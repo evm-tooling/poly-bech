@@ -26,7 +26,8 @@ use super::{
 };
 
 /// Cache TTL for embedded language hover results (in milliseconds)
-const HOVER_CACHE_TTL_MS: u64 = 500;
+/// Increased from 500ms to 3000ms (3 seconds) to reduce re-computation overhead
+const HOVER_CACHE_TTL_MS: u64 = 3000;
 
 /// Cache key for hover requests
 #[derive(Clone, PartialEq, Eq, Hash)]

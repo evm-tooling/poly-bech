@@ -33,7 +33,8 @@ use super::{
 };
 
 /// Debounce delay for document changes (in milliseconds)
-const DEBOUNCE_DELAY_MS: u64 = 300;
+/// Reduced from 300ms to 100ms for faster feedback while still preventing excessive re-parsing
+const DEBOUNCE_DELAY_MS: u64 = 100;
 
 /// Pending document change (tracks only the change ID for debouncing)
 struct PendingChange {
@@ -350,6 +351,55 @@ impl LanguageServer for Backend {
         self.virtual_file_manager.remove(uri.as_str());
         self.virtual_ts_file_manager.remove(uri.as_str());
         self.virtual_rust_file_manager.remove(uri.as_str());
+    }
+
+    async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
+        // Invalidate caches when project configuration files change
+        // This helps detect newly installed modules
+        for change in &params.changes {
+            let path = change.uri.path();
+            let filename = Path::new(path).file_name().and_then(|s| s.to_str()).unwrap_or("");
+
+            match filename {
+                "package.json" | ".package-lock.json" | "package-lock.json" => {
+                    // TypeScript/Node.js project changed - clear TS virtual file caches
+                    self.virtual_ts_file_manager.clear_caches();
+                    self.client
+                        .log_message(
+                            MessageType::INFO,
+                            format!("Detected {} change, cleared TypeScript caches", filename),
+                        )
+                        .await;
+                }
+                "Cargo.toml" | "Cargo.lock" => {
+                    // Rust project changed - clear Rust virtual file caches
+                    self.virtual_rust_file_manager.clear_caches();
+                    self.client
+                        .log_message(
+                            MessageType::INFO,
+                            format!("Detected {} change, cleared Rust caches", filename),
+                        )
+                        .await;
+                }
+                "go.mod" | "go.sum" => {
+                    // Go project changed - clear Go virtual file caches
+                    self.virtual_file_manager.clear_caches();
+                    self.client
+                        .log_message(
+                            MessageType::INFO,
+                            format!("Detected {} change, cleared Go caches", filename),
+                        )
+                        .await;
+                }
+                _ => {}
+            }
+        }
+
+        // Re-run diagnostics for all open documents to pick up new modules
+        for entry in self.documents.iter() {
+            let uri = entry.key().clone();
+            self.on_save_full_diagnostics(uri).await;
+        }
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
