@@ -285,9 +285,6 @@ fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -
 
     // Layout
     ir.width = directive.width;
-    ir.bar_height = directive.bar_height;
-    ir.bar_gap = directive.bar_gap;
-    ir.margin_left = directive.margin_left;
 
     // Data display
     ir.precision = directive.precision;
@@ -298,8 +295,6 @@ fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -
 
     // Axis styling
     ir.axis_thickness = directive.axis_thickness;
-    ir.x_axis_min = directive.x_axis_min;
-    ir.x_axis_max = directive.x_axis_max;
     ir.y_axis_min = directive.y_axis_min;
     ir.y_axis_max = directive.y_axis_max;
 
@@ -352,14 +347,6 @@ fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -
     // Error bars enhancements
     ir.ci_level = directive.ci_level;
     ir.show_std_dev_band = directive.show_std_dev_band;
-
-    // Dual Y-axis
-    ir.y2_metric = directive.y2_metric.clone();
-    ir.y2_label = directive.y2_label.clone();
-    ir.y2_scale = directive.y2_scale.clone();
-
-    // Broken axis
-    ir.show_axis_break = directive.show_axis_break;
 
     ir
 }

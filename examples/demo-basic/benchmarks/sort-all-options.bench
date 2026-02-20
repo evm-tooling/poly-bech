@@ -204,15 +204,6 @@ suite sortN {
             xlabel: "Array Size (n elements)",
             ylabel: "Time (ns/op)",
 
-           showStats: true,
-            showConfig: true,
-            showWinCounts: true,
-            showGeoMean: true,
-            showDistribution: true,
-            showMemory: true,
-            showTotalTime: true,
-            compact: false,
-
             showGrid: true,
             showMinorGrid: true,
             showVerticalGrid: true,
