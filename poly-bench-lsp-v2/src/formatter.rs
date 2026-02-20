@@ -6,7 +6,7 @@
 
 use crate::document::Document;
 use poly_bench_syntax::{
-    Node, PartialBenchmark, PartialFixture, PartialSuite, Property, PropertyValue, Span,
+    Node, PartialBenchmark, PartialFixture, PartialSuite, Property, PropertyValue, UseStd,
 };
 use tower_lsp::lsp_types::{Position, Range, TextEdit};
 
@@ -33,16 +33,64 @@ pub fn format_document(doc: &Document) -> Vec<TextEdit> {
 
 /// Format a document with custom configuration
 pub fn format_document_with_config(doc: &Document, config: &FormatterConfig) -> Vec<TextEdit> {
-    let mut edits = Vec::new();
     let source = doc.source_text();
 
-    // Format each top-level construct independently
+    // Build the complete formatted file
+    let mut formatted = String::new();
+
+    // Format use statements first
+    for use_std in &doc.partial_ast.use_stds {
+        if let Node::Valid(u) = use_std {
+            formatted.push_str(&format_use_statement(u));
+        }
+    }
+
+    // Add blank line after use statements if there are any and there's more content
+    if !doc.partial_ast.use_stds.is_empty() &&
+        (doc.partial_ast.global_setup.is_some() || !doc.partial_ast.suites.is_empty())
+    {
+        formatted.push('\n');
+    }
+
+    // Format global setup if present
+    if let Some(Node::Valid(global_setup)) = &doc.partial_ast.global_setup {
+        formatted.push_str("globalSetup {\n");
+        for stmt in &global_setup.statements {
+            if let Node::Valid(s) = stmt {
+                match s {
+                    poly_bench_syntax::GlobalSetupStatement::AnvilSpawn { fork_url, .. } => {
+                        formatted.push_str(&make_indent(config, 1));
+                        if let Some(url) = fork_url {
+                            formatted.push_str(&format!("anvil.spawnAnvil(fork: \"{}\")\n", url));
+                        } else {
+                            formatted.push_str("anvil.spawnAnvil()\n");
+                        }
+                    }
+                    poly_bench_syntax::GlobalSetupStatement::FunctionCall {
+                        name, args, ..
+                    } => {
+                        formatted.push_str(&make_indent(config, 1));
+                        formatted.push_str(name);
+                        formatted.push('(');
+                        let args_str: Vec<String> = args
+                            .iter()
+                            .map(|(k, v)| format!("{}: {}", k, format_value(v)))
+                            .collect();
+                        formatted.push_str(&args_str.join(", "));
+                        formatted.push_str(")\n");
+                    }
+                }
+            }
+        }
+        formatted.push_str("}\n\n");
+    }
+
+    // Format each suite
     for suite in &doc.partial_ast.suites {
         match suite {
             Node::Valid(s) => {
-                if let Some(edit) = format_suite(s, &source, config, doc) {
-                    edits.push(edit);
-                }
+                formatted.push_str(&format_suite_content(s, config));
+                formatted.push('\n');
             }
             Node::Error { .. } | Node::Missing { .. } => {
                 // Skip error nodes - don't break user's incomplete code
@@ -50,17 +98,35 @@ pub fn format_document_with_config(doc: &Document, config: &FormatterConfig) -> 
         }
     }
 
-    edits
+    // Trim trailing whitespace but keep one final newline
+    let formatted = formatted.trim_end().to_string() + "\n";
+
+    // Check if formatting changed anything
+    if formatted.trim() == source.trim() {
+        return vec![];
+    }
+
+    // Return a single edit that replaces the entire document
+    let end_line = source.lines().count().saturating_sub(1);
+    let end_char = source.lines().last().map(|l| l.len()).unwrap_or(0);
+
+    vec![TextEdit {
+        range: Range {
+            start: Position { line: 0, character: 0 },
+            end: Position { line: end_line as u32, character: end_char as u32 },
+        },
+        new_text: formatted,
+    }]
 }
 
-fn format_suite(
-    suite: &PartialSuite,
-    source: &str,
-    config: &FormatterConfig,
-    doc: &Document,
-) -> Option<TextEdit> {
+/// Format a use statement
+fn format_use_statement(use_std: &UseStd) -> String {
+    format!("use std::{}\n", use_std.module)
+}
+
+/// Format a suite and return its content as a string
+fn format_suite_content(suite: &PartialSuite, config: &FormatterConfig) -> String {
     let mut formatted = String::new();
-    let indent = make_indent(config, 0);
     let inner_indent = make_indent(config, 1);
 
     // Suite header
@@ -184,15 +250,9 @@ fn format_suite(
     }
 
     // Close suite
-    formatted.push_str("}\n");
+    formatted.push_str("}");
 
-    // Check if formatting changed anything
-    let original = get_source_range(source, &suite.span);
-    if formatted.trim() == original.trim() {
-        return None;
-    }
-
-    Some(TextEdit { range: doc.span_to_range(&suite.span), new_text: formatted })
+    formatted
 }
 
 fn format_fixture(fixture: &PartialFixture, config: &FormatterConfig, depth: usize) -> String {
@@ -389,12 +449,6 @@ fn make_indent(config: &FormatterConfig, depth: usize) -> String {
     } else {
         " ".repeat(config.indent_size * depth)
     }
-}
-
-fn get_source_range<'a>(source: &'a str, span: &Span) -> &'a str {
-    let start = span.start.min(source.len());
-    let end = span.end.min(source.len());
-    &source[start..end]
 }
 
 #[cfg(test)]
