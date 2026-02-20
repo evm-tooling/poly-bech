@@ -26,33 +26,29 @@
 //!
 //! ## Available Functions
 //!
-//! - `drawBarChart` - Horizontal bar chart comparing benchmark times
-//! - `drawPieChart` - Pie chart showing relative time distribution
+//! - `drawBarChart` - Vertical grouped bar chart comparing benchmark times
 //! - `drawLineChart` - Line chart for trend visualization
+//! - `drawPieChart` - Pie chart showing relative time distribution
+//! - `drawSpeedupChart` - Speedup chart showing relative performance vs baseline
+//! - `drawScalingChart` - Scaling efficiency chart
+//! - `drawTable` - SVG data table with conditional formatting
 //!
-//! ## Common Parameters
-//!
-//! All chart functions support these parameter categories:
+//! ## Common Parameters (all charts)
 //!
 //! ### Basic
-//! - `title`, `description`, `xlabel`, `ylabel`, `output`
-//!
-//! ### Display Toggles
-//! - `showStats`, `showConfig`, `showWinCounts`, `showGeoMean`
-//! - `showDistribution`, `showMemory`, `showTotalTime`, `compact`
+//! - `title`, `description`, `output`, `width`, `height`
 //!
 //! ### Filtering
 //! - `minSpeedup`, `filterWinner`, `includeBenchmarks`, `excludeBenchmarks`, `limit`
 //!
 //! ### Sorting
-//! - `sortBy`: "speedup", "name", "time", "ops"
+//! - `sortBy`: "speedup", "name", "time", "ops", "natural"
 //! - `sortOrder`: "asc", "desc"
-//!
-//! ### Layout
-//! - `width`, `barHeight`, `barGap`, `marginLeft`
 //!
 //! ### Data Display
 //! - `precision`, `timeUnit`
+//!
+//! Note: Each chart type has specific parameters. See individual function docs for details.
 
 use crate::{StdlibSymbol, StdlibSymbolKind};
 
@@ -94,8 +90,7 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             **Bar Layout:**\n\
             - `barWidth` - Width of individual bars in pixels (default: 20)\n\
             - `barGroupGap` - Gap between benchmark groups in pixels (default: 20)\n\
-            - `barWithinGroupGap` - Gap between bars within a group (default: 2)\n\
-            - `marginLeft` - Left margin for labels in pixels (default: 80)\n\n\
+            - `barWithinGroupGap` - Gap between bars within a group (default: 2)\n\n\
             **Axis Styling:**\n\
             - `axisThickness` - Stroke width for axes (default: 1.5)\n\
             - `yAxisMin` - Minimum Y-axis value\n\
@@ -127,7 +122,9 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             - `regressionModel` - \"auto\", \"constant\", \"log\", \"linear\", \"nlogn\", \"quadratic\", \"cubic\"\n\
             - `showRegressionLabel` - Show complexity label e.g. \"O(n log n)\" (default: true)\n\
             - `showRSquared` - Show R² value (default: false)\n\
-            - `showEquation` - Show regression equation (default: false)\n\n\
+            - `showEquation` - Show regression equation (default: false)\n\
+            - `showRegressionBand` - Show confidence band around regression (default: false)\n\
+            - `regressionBandOpacity` - Regression band opacity (default: 0.15)\n\n\
             **Tick Formatting:**\n\
             - `roundTicks` - Round tick labels to whole numbers (default: false)\n\n\
             **Data Display:**\n\
@@ -190,7 +187,6 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             - `width` - Chart width in pixels (default: 620)\n\
             - `height` - Chart height in pixels (default: 445)\n\n\
             **Display Toggles:**\n\
-            - `showStats` - Show timing tooltips on hover (default: true)\n\
             - `compact` - Minimal mode (default: false)\n\n\
             **Filtering:**\n\
             - `minSpeedup` - Only include benchmarks with speedup >= N\n\
@@ -231,7 +227,11 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             - `regressionModel` - \"auto\", \"constant\", \"log\", \"linear\", \"nlogn\", \"quadratic\", \"cubic\"\n\
             - `showRegressionLabel` - Show complexity label e.g. \"O(n log n)\" (default: true)\n\
             - `showRSquared` - Show R² value (default: false)\n\
-            - `showEquation` - Show regression equation (default: false)\n\n\
+            - `showEquation` - Show regression equation (default: false)\n\
+            - `showRegressionBand` - Show confidence band around regression (default: false)\n\
+            - `regressionBandOpacity` - Regression band opacity (default: 0.15)\n\n\
+            **Tick Formatting:**\n\
+            - `roundTicks` - Round tick labels to whole numbers (default: false)\n\n\
             **Data Display:**\n\
             - `precision` - Decimal places for Y-axis\n\
             - `timeUnit` - Time unit for Y-axis labels\n\n\
@@ -318,6 +318,8 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             - `tickLabelFontSize` - Tick label font size (default: 10)\n\n\
             **Legend:**\n\
             - `legendPosition` - \"top-left\", \"top-right\", \"bottom-left\", \"bottom-right\", \"hidden\"\n\n\
+            **Tick Formatting:**\n\
+            - `roundTicks` - Round tick labels to whole numbers (default: false)\n\n\
             **Data Display:**\n\
             - `precision` - Decimal places (default: 2)\n\
             - `timeUnit` - \"auto\", \"ns\", \"us\", \"ms\", \"s\"\n\n\
@@ -340,6 +342,9 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             - `height` - Table height in pixels\n\n\
             **Display Toggles:**\n\
             - `showStats` - Show ops/sec column (default: true)\n\
+            - `showConfig` - Show iterations/warmup/timeout in footer\n\
+            - `showWinCounts` - Show win counts in legend\n\
+            - `showGeoMean` - Show geometric mean speedup\n\
             - `compact` - Minimal mode (default: false)\n\n\
             **Filtering:**\n\
             - `minSpeedup` - Only include benchmarks with speedup >= N\n\

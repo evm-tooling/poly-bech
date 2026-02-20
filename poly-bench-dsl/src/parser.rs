@@ -4,6 +4,7 @@
 
 use crate::{
     ast::{HookStyle, *},
+    chart_params::validate_param,
     error::{NamedSource, ParseError},
     lexer::Lexer,
     tokens::{Token, TokenKind},
@@ -500,6 +501,14 @@ impl Parser {
 
             self.expect(TokenKind::Colon)?;
 
+            // Validate parameter is valid for this chart type
+            if let Err(validation_err) = validate_param(chart_type, &param_name) {
+                return Err(self.make_error(ParseError::InvalidProperty {
+                    name: validation_err.message(),
+                    span: param_token.span.clone(),
+                }));
+            }
+
             // Parse value based on expected type for each parameter
             match param_name.as_str() {
                 // String parameters
@@ -512,9 +521,13 @@ impl Parser {
                 "sortBy" => directive.sort_by = Some(self.expect_string()?),
                 "sortOrder" => directive.sort_order = Some(self.expect_string()?),
                 "timeUnit" => directive.time_unit = Some(self.expect_string()?),
-                // New string parameters
                 "legendPosition" => directive.legend_position = Some(self.expect_string()?),
                 "regressionStyle" => directive.regression_style = Some(self.expect_string()?),
+                "yScale" => directive.y_scale = Some(self.expect_string()?),
+                "regressionModel" => directive.regression_model = Some(self.expect_string()?),
+                "baseline" | "baselineBenchmark" => {
+                    directive.baseline_benchmark = Some(self.expect_string()?)
+                }
 
                 // Boolean parameters
                 "showStats" => directive.show_stats = self.expect_bool()?,
@@ -525,7 +538,6 @@ impl Parser {
                 "showMemory" => directive.show_memory = self.expect_bool()?,
                 "showTotalTime" => directive.show_total_time = self.expect_bool()?,
                 "compact" => directive.compact = self.expect_bool()?,
-                // New boolean parameters
                 "showGrid" => directive.show_grid = Some(self.expect_bool()?),
                 "showErrorBars" => directive.show_error_bars = Some(self.expect_bool()?),
                 "showRegression" => directive.show_regression = Some(self.expect_bool()?),
@@ -533,42 +545,17 @@ impl Parser {
                     directive.show_regression_label = Some(self.expect_bool()?)
                 }
                 "roundTicks" => directive.round_ticks = Some(self.expect_bool()?),
-                "yScale" => directive.y_scale = Some(self.expect_string()?),
-                // R² and equation display
                 "showRSquared" => directive.show_r_squared = Some(self.expect_bool()?),
                 "showEquation" => directive.show_equation = Some(self.expect_bool()?),
-                // Grid options
                 "showMinorGrid" => directive.show_minor_grid = Some(self.expect_bool()?),
                 "showVerticalGrid" => directive.show_vertical_grid = Some(self.expect_bool()?),
-                // Standard deviation band
                 "showStdDevBand" => directive.show_std_dev_band = Some(self.expect_bool()?),
-                // Regression band
                 "showRegressionBand" => directive.show_regression_band = Some(self.expect_bool()?),
-                // Broken axis
-                "showAxisBreak" => directive.show_axis_break = Some(self.expect_bool()?),
-                // Regression model override
-                "regressionModel" => directive.regression_model = Some(self.expect_string()?),
-                // Baseline for percentage/speedup
-                "baseline" | "baselineBenchmark" => {
-                    directive.baseline_benchmark = Some(self.expect_string()?)
-                }
-                // Secondary Y-axis
-                "y2Metric" => directive.y2_metric = Some(self.expect_string()?),
-                "y2Label" => directive.y2_label = Some(self.expect_string()?),
-                "y2Scale" => directive.y2_scale = Some(self.expect_string()?),
-                // Legend position
-                "legendPosition" => directive.legend_position = Some(self.expect_string()?),
-                // Regression style
-                "regressionStyle" => directive.regression_style = Some(self.expect_string()?),
 
                 // Integer parameters
                 "limit" => directive.limit = Some(self.expect_number()? as u32),
                 "width" => directive.width = Some(self.expect_number()? as i32),
-                "barHeight" => directive.bar_height = Some(self.expect_number()? as i32),
-                "barGap" => directive.bar_gap = Some(self.expect_number()? as i32),
-                "marginLeft" => directive.margin_left = Some(self.expect_number()? as i32),
                 "precision" => directive.precision = Some(self.expect_number()? as u32),
-                // New integer parameters
                 "height" => directive.height = Some(self.expect_number()? as i32),
                 "titleFontSize" => directive.title_font_size = Some(self.expect_number()? as i32),
                 "subtitleFontSize" => {
@@ -585,13 +572,11 @@ impl Parser {
                     directive.bar_within_group_gap = Some(self.expect_number()? as i32)
                 }
                 "barWidth" => directive.bar_width = Some(self.expect_number()? as i32),
+                "ciLevel" => directive.ci_level = Some(self.expect_number()? as u32),
 
                 // Float parameters
                 "minSpeedup" => directive.min_speedup = Some(self.expect_float()?),
-                // New float parameters
                 "axisThickness" => directive.axis_thickness = Some(self.expect_float()? as f32),
-                "xAxisMin" => directive.x_axis_min = Some(self.expect_float()?),
-                "xAxisMax" => directive.x_axis_max = Some(self.expect_float()?),
                 "yAxisMin" => directive.y_axis_min = Some(self.expect_float()?),
                 "yAxisMax" => directive.y_axis_max = Some(self.expect_float()?),
                 "gridOpacity" => directive.grid_opacity = Some(self.expect_float()? as f32),
@@ -601,18 +586,13 @@ impl Parser {
                 "errorBarThickness" => {
                     directive.error_bar_thickness = Some(self.expect_float()? as f32)
                 }
-                // Minor grid opacity
                 "minorGridOpacity" => {
                     directive.minor_grid_opacity = Some(self.expect_float()? as f32)
                 }
-                // Regression band opacity
                 "regressionBandOpacity" => {
                     directive.regression_band_opacity = Some(self.expect_float()? as f32)
                 }
-                // Symlog threshold
                 "symlogThreshold" => directive.symlog_threshold = Some(self.expect_float()?),
-                // CI level (90, 95, 99)
-                "ciLevel" => directive.ci_level = Some(self.expect_number()? as u32),
 
                 // Array parameters
                 "includeBenchmarks" => directive.include_benchmarks = self.expect_string_array()?,

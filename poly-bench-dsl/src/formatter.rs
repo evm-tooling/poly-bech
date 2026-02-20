@@ -924,15 +924,6 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
         if let Some(width) = directive.width {
             params.push(format!("{}width: {}", inner2, width));
         }
-        if let Some(bar_height) = directive.bar_height {
-            params.push(format!("{}barHeight: {}", inner2, bar_height));
-        }
-        if let Some(bar_gap) = directive.bar_gap {
-            params.push(format!("{}barGap: {}", inner2, bar_gap));
-        }
-        if let Some(margin_left) = directive.margin_left {
-            params.push(format!("{}marginLeft: {}", inner2, margin_left));
-        }
 
         // Data display
         if let Some(precision) = directive.precision {

@@ -420,12 +420,6 @@ pub struct ChartDirective {
     // Layout
     /// Chart width in pixels
     pub width: Option<i32>,
-    /// Height of each bar in pixels
-    pub bar_height: Option<i32>,
-    /// Gap between bars in pixels
-    pub bar_gap: Option<i32>,
-    /// Left margin for labels in pixels
-    pub margin_left: Option<i32>,
 
     // Data display
     /// Decimal places for numbers (default: 2)
@@ -442,10 +436,6 @@ pub struct ChartDirective {
     // Axis styling
     /// Stroke width for x/y axes (default: 1.0)
     pub axis_thickness: Option<f32>,
-    /// Minimum x-axis value
-    pub x_axis_min: Option<f64>,
-    /// Maximum x-axis value
-    pub x_axis_max: Option<f64>,
     /// Minimum y-axis value
     pub y_axis_min: Option<f64>,
     /// Maximum y-axis value
@@ -532,18 +522,6 @@ pub struct ChartDirective {
     pub ci_level: Option<u32>,
     /// Show standard deviation band on line charts (default: false)
     pub show_std_dev_band: Option<bool>,
-
-    // Dual Y-axis
-    /// Secondary Y-axis metric: "memory", "ops", "time"
-    pub y2_metric: Option<String>,
-    /// Secondary Y-axis label
-    pub y2_label: Option<String>,
-    /// Secondary Y-axis scale: "linear", "log"
-    pub y2_scale: Option<String>,
-
-    // Broken axis
-    /// Whether to show axis break for outliers (default: false)
-    pub show_axis_break: Option<bool>,
 }
 
 impl ChartDirective {
@@ -576,9 +554,6 @@ impl ChartDirective {
             sort_order: None,
             // Layout - defaults (None means use chart defaults)
             width: None,
-            bar_height: None,
-            bar_gap: None,
-            margin_left: None,
             // Data display - defaults
             precision: None,
             time_unit: None,
@@ -586,8 +561,6 @@ impl ChartDirective {
             height: None,
             // Axis styling
             axis_thickness: None,
-            x_axis_min: None,
-            x_axis_max: None,
             y_axis_min: None,
             y_axis_max: None,
             // Grid
@@ -630,12 +603,6 @@ impl ChartDirective {
             // Error bars enhancements
             ci_level: None,
             show_std_dev_band: None,
-            // Dual Y-axis
-            y2_metric: None,
-            y2_label: None,
-            y2_scale: None,
-            // Broken axis
-            show_axis_break: None,
         }
     }
 

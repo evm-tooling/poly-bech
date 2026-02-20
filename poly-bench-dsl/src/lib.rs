@@ -3,6 +3,7 @@
 //! This crate provides the lexer, parser, and AST types for the poly-bench DSL.
 
 mod ast;
+pub mod chart_params;
 mod error;
 mod formatter;
 mod lexer;
