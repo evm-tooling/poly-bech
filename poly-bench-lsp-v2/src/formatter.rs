@@ -146,8 +146,9 @@ fn format_suite_content(suite: &PartialSuite, config: &FormatterConfig) -> Strin
         formatted.push('\n');
     }
 
-    // Setup blocks
-    for (lang, setup) in &suite.setups {
+    // Setup blocks - iterate in original order
+    for lang in &suite.setup_order {
+        let Some(setup) = suite.setups.get(lang) else { continue };
         if let Node::Valid(s) = setup {
             formatted.push_str(&inner_indent);
             formatted.push_str(&format!("setup {} {{\n", lang.as_str()));
@@ -431,16 +432,50 @@ fn format_value(value: &PropertyValue) -> String {
 }
 
 fn format_code_block(code: &str, config: &FormatterConfig, depth: usize, output: &mut String) {
-    let indent = make_indent(config, depth);
-    for line in code.lines() {
+    let base_indent = make_indent(config, depth);
+    let lines: Vec<&str> = code.lines().collect();
+
+    // Find first and last non-empty lines to trim leading/trailing blank lines
+    let first_non_empty = lines.iter().position(|l| !l.trim().is_empty()).unwrap_or(0);
+    let last_non_empty =
+        lines.iter().rposition(|l| !l.trim().is_empty()).unwrap_or(lines.len().saturating_sub(1));
+
+    let content_lines = &lines[first_non_empty..=last_non_empty];
+
+    // Find the minimum indentation (in spaces) among non-empty lines
+    // This is the "base" indent we'll strip from all lines
+    let min_indent = content_lines
+        .iter()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| count_leading_spaces(l))
+        .min()
+        .unwrap_or(0);
+
+    for line in content_lines {
         if line.trim().is_empty() {
             output.push('\n');
         } else {
-            output.push_str(&indent);
-            output.push_str(line.trim());
+            output.push_str(&base_indent);
+            // Strip the common base indentation, preserve relative indentation
+            let leading = count_leading_spaces(line);
+            let relative_indent = leading.saturating_sub(min_indent);
+            output.push_str(&" ".repeat(relative_indent));
+            output.push_str(line.trim_start());
             output.push('\n');
         }
     }
+}
+
+fn count_leading_spaces(line: &str) -> usize {
+    let mut count = 0;
+    for ch in line.chars() {
+        match ch {
+            ' ' => count += 1,
+            '\t' => count += 4, // Treat tabs as 4 spaces
+            _ => break,
+        }
+    }
+    count
 }
 
 fn make_indent(config: &FormatterConfig, depth: usize) -> String {
