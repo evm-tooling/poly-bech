@@ -3,11 +3,17 @@
 //! This module implements the Language Server Protocol handlers
 //! using tower-lsp.
 
+use std::path::Path;
+
 use crate::{
     diagnostics::compute_diagnostics,
     document::Document,
+    embedded::EmbeddedConfig,
     formatter::format_document,
+    hover::get_hover,
+    hover_cache::invalidate_document_cache,
     semantic_tokens::{get_semantic_tokens, LEGEND},
+    virtual_files::VirtualFileManagers,
 };
 
 use dashmap::DashMap;
@@ -20,12 +26,24 @@ pub struct PolyBenchLanguageServer {
     client: Client,
     /// Open documents
     documents: DashMap<Url, Document>,
+    /// Embedded language configuration (detected from workspace)
+    embedded_config: parking_lot::RwLock<EmbeddedConfig>,
+    /// Virtual file managers for embedded language support
+    virtual_file_managers: VirtualFileManagers,
+    /// Workspace root path
+    workspace_root: parking_lot::RwLock<Option<String>>,
 }
 
 impl PolyBenchLanguageServer {
     /// Create a new language server
     pub fn new(client: Client) -> Self {
-        Self { client, documents: DashMap::new() }
+        Self {
+            client,
+            documents: DashMap::new(),
+            embedded_config: parking_lot::RwLock::new(EmbeddedConfig::default()),
+            virtual_file_managers: VirtualFileManagers::new(),
+            workspace_root: parking_lot::RwLock::new(None),
+        }
     }
 
     /// Publish diagnostics for a document
@@ -35,12 +53,78 @@ impl PolyBenchLanguageServer {
             self.client.publish_diagnostics(uri.clone(), diagnostics, Some(doc.version)).await;
         }
     }
+
+    /// Detect embedded language configuration from workspace
+    fn detect_embedded_config(&self, workspace_root: &str) {
+        let mut config = EmbeddedConfig::default();
+
+        // Detect Go module root
+        if let Some(go_mod_root) = find_go_mod_root(workspace_root) {
+            info!("Detected Go module at: {}", go_mod_root);
+            config.go_mod_root = Some(go_mod_root);
+        }
+
+        // Detect TypeScript module root
+        if let Some(ts_module_root) = find_ts_module_root(workspace_root) {
+            info!("Detected TypeScript module at: {}", ts_module_root);
+            config.ts_module_root = Some(ts_module_root);
+        }
+
+        // Detect Rust project root
+        if let Some(rust_project_root) = find_rust_project_root(workspace_root) {
+            info!("Detected Rust project at: {}", rust_project_root);
+            config.rust_project_root = Some(rust_project_root);
+        }
+
+        *self.embedded_config.write() = config;
+    }
+
+    /// Update embedded config when a document is opened (detect from document path)
+    ///
+    /// Always re-detects from the document path since different documents might be
+    /// in different poly-bench projects with different runtime environments.
+    fn update_config_for_document(&self, uri: &Url) {
+        if let Ok(path) = uri.to_file_path() {
+            if let Some(parent) = path.parent() {
+                let parent_str = parent.to_string_lossy();
+
+                let mut config = self.embedded_config.write();
+
+                // Always re-detect from document path - different documents may have
+                // different runtime environments (e.g., in a monorepo with multiple
+                // poly-bench projects)
+                if let Some(go_mod_root) = find_go_mod_root(&parent_str) {
+                    info!("Detected Go module at: {}", go_mod_root);
+                    config.go_mod_root = Some(go_mod_root);
+                }
+
+                if let Some(ts_module_root) = find_ts_module_root(&parent_str) {
+                    info!("Detected TypeScript module at: {}", ts_module_root);
+                    config.ts_module_root = Some(ts_module_root);
+                }
+
+                if let Some(rust_project_root) = find_rust_project_root(&parent_str) {
+                    info!("Detected Rust project at: {}", rust_project_root);
+                    config.rust_project_root = Some(rust_project_root);
+                }
+            }
+        }
+    }
 }
 
 #[tower_lsp::async_trait]
 impl LanguageServer for PolyBenchLanguageServer {
-    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         info!("Initializing poly-bench LSP v2");
+
+        // Store workspace root and detect embedded config
+        if let Some(root_uri) = params.root_uri {
+            if let Ok(path) = root_uri.to_file_path() {
+                let root_str = path.to_string_lossy().to_string();
+                *self.workspace_root.write() = Some(root_str.clone());
+                self.detect_embedded_config(&root_str);
+            }
+        }
 
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
@@ -90,6 +174,7 @@ impl LanguageServer for PolyBenchLanguageServer {
 
     async fn shutdown(&self) -> Result<()> {
         info!("Shutting down poly-bench LSP v2");
+        self.virtual_file_managers.clear_all_caches();
         Ok(())
     }
 
@@ -99,6 +184,9 @@ impl LanguageServer for PolyBenchLanguageServer {
         let version = params.text_document.version;
 
         debug!("Document opened: {}", uri);
+
+        // Update embedded config if needed
+        self.update_config_for_document(&uri);
 
         let doc = Document::new(uri.clone(), text, version);
         self.documents.insert(uri.clone(), doc);
@@ -111,6 +199,9 @@ impl LanguageServer for PolyBenchLanguageServer {
         let version = params.text_document.version;
 
         debug!("Document changed: {} (v{})", uri, version);
+
+        // Invalidate hover cache for this document
+        invalidate_document_cache(&uri);
 
         if let Some(mut doc) = self.documents.get_mut(&uri) {
             for change in params.content_changes {
@@ -131,6 +222,10 @@ impl LanguageServer for PolyBenchLanguageServer {
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri;
         debug!("Document closed: {}", uri);
+
+        // Clean up virtual files and cache
+        self.virtual_file_managers.remove_all(uri.as_str());
+        invalidate_document_cache(&uri);
 
         self.documents.remove(&uri);
 
@@ -167,55 +262,12 @@ impl LanguageServer for PolyBenchLanguageServer {
         let position = params.text_document_position_params.position;
 
         if let Some(doc) = self.documents.get(&uri) {
-            let source = doc.source_text();
-            let point =
-                tree_sitter::Point::new(position.line as usize, position.character as usize);
-
-            if let Some(node) = doc.tree.root_node().descendant_for_point_range(point, point) {
-                let kind = node.kind();
-                let text = node.utf8_text(source.as_bytes()).unwrap_or("");
-
-                let content = match kind {
-                    "suite" => {
-                        let name = node
-                            .child_by_field_name("name")
-                            .and_then(|n| n.utf8_text(source.as_bytes()).ok())
-                            .unwrap_or("<unnamed>");
-                        format!("**Suite**: `{}`", name)
-                    }
-                    "benchmark" => {
-                        let name = node
-                            .child_by_field_name("name")
-                            .and_then(|n| n.utf8_text(source.as_bytes()).ok())
-                            .unwrap_or("<unnamed>");
-                        format!("**Benchmark**: `{}`", name)
-                    }
-                    "fixture" => {
-                        let name = node
-                            .child_by_field_name("name")
-                            .and_then(|n| n.utf8_text(source.as_bytes()).ok())
-                            .unwrap_or("<unnamed>");
-                        format!("**Fixture**: `{}`", name)
-                    }
-                    "property_name" => get_property_documentation(text),
-                    "chart_function_name" => get_chart_function_documentation(text),
-                    "language_tag" => {
-                        format!("**Language**: `{}`\n\nEmbedded {} code block", text, text)
-                    }
-                    _ => return Ok(None),
-                };
-
-                return Ok(Some(Hover {
-                    contents: HoverContents::Markup(MarkupContent {
-                        kind: MarkupKind::Markdown,
-                        value: content,
-                    }),
-                    range: None,
-                }));
-            }
+            let config = self.embedded_config.read().clone();
+            let hover = get_hover(&doc, position, &config, &uri, &self.virtual_file_managers);
+            Ok(hover)
+        } else {
+            Ok(None)
         }
-
-        Ok(None)
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
@@ -265,61 +317,106 @@ impl LanguageServer for PolyBenchLanguageServer {
     }
 }
 
-fn get_property_documentation(name: &str) -> String {
-    match name {
-        "description" => {
-            "**description**: `string`\n\nA human-readable description of the suite or benchmark."
-                .to_string()
+/// Find the Go module root (directory containing go.mod)
+///
+/// First walks up to find a `.polybench/runtime-env/go/` directory (preferred for poly-bench
+/// projects), then falls back to finding a regular `go.mod` file.
+fn find_go_mod_root(start_path: &str) -> Option<String> {
+    // First pass: look for .polybench/runtime-env/go/ (poly-bench project)
+    let mut current = Path::new(start_path);
+    loop {
+        let polybench_go = current.join(".polybench/runtime-env/go");
+        if polybench_go.join("go.mod").exists() {
+            return Some(polybench_go.to_string_lossy().to_string());
         }
-        "iterations" => {
-            "**iterations**: `number`\n\nNumber of benchmark iterations to run.".to_string()
+
+        match current.parent() {
+            Some(parent) => current = parent,
+            None => break,
         }
-        "warmup" => {
-            "**warmup**: `number`\n\nNumber of warmup iterations before measurement.".to_string()
+    }
+
+    // Second pass: fall back to regular go.mod lookup
+    let mut current = Path::new(start_path);
+    loop {
+        if current.join("go.mod").exists() {
+            return Some(current.to_string_lossy().to_string());
         }
-        "timeout" => {
-            "**timeout**: `duration`\n\nMaximum time allowed for the benchmark (e.g., `30s`, `5000ms`)."
-                .to_string()
+
+        match current.parent() {
+            Some(parent) => current = parent,
+            None => return None,
         }
-        "order" => {
-            "**order**: `sequential | random`\n\nOrder in which benchmarks are executed."
-                .to_string()
-        }
-        "compare" => {
-            "**compare**: `boolean`\n\nWhether to compare results across languages.".to_string()
-        }
-        "baseline" => {
-            "**baseline**: `string`\n\nLanguage to use as the baseline for comparison.".to_string()
-        }
-        "mode" => {
-            "**mode**: `auto | fixed | adaptive`\n\nBenchmark execution mode.".to_string()
-        }
-        "targetTime" => {
-            "**targetTime**: `duration`\n\nTarget time for adaptive mode.".to_string()
-        }
-        "sink" => {
-            "**sink**: `boolean`\n\nWhether to sink (consume) the result to prevent optimization."
-                .to_string()
-        }
-        _ => format!("**{}**", name),
     }
 }
 
-fn get_chart_function_documentation(name: &str) -> String {
-    match name {
-        "drawBarChart" => {
-            "**drawBarChart**\n\nDraw a bar chart comparing benchmark results.".to_string()
+/// Find the TypeScript module root (directory containing package.json or node_modules)
+///
+/// First walks up to find a `.polybench/runtime-env/ts/` directory (preferred for poly-bench
+/// projects), then falls back to finding a regular `package.json` or `node_modules`.
+fn find_ts_module_root(start_path: &str) -> Option<String> {
+    // First pass: look for .polybench/runtime-env/ts/ (poly-bench project)
+    let mut current = Path::new(start_path);
+    loop {
+        let polybench_ts = current.join(".polybench/runtime-env/ts");
+        if polybench_ts.join("package.json").exists() || polybench_ts.join("node_modules").exists()
+        {
+            return Some(polybench_ts.to_string_lossy().to_string());
         }
-        "drawLineChart" => {
-            "**drawLineChart**\n\nDraw a line chart showing performance over time or input size."
-                .to_string()
+
+        match current.parent() {
+            Some(parent) => current = parent,
+            None => break,
         }
-        "drawSpeedupChart" => {
-            "**drawSpeedupChart**\n\nDraw a chart showing relative speedup compared to baseline."
-                .to_string()
+    }
+
+    // Second pass: fall back to regular package.json/node_modules lookup
+    let mut current = Path::new(start_path);
+    loop {
+        let package_json = current.join("package.json");
+        let node_modules = current.join("node_modules");
+
+        if package_json.exists() || node_modules.exists() {
+            return Some(current.to_string_lossy().to_string());
         }
-        "drawTable" => "**drawTable**\n\nGenerate a table of benchmark results.".to_string(),
-        _ => format!("**{}**", name),
+
+        match current.parent() {
+            Some(parent) => current = parent,
+            None => return None,
+        }
+    }
+}
+
+/// Find the Rust project root (directory containing Cargo.toml)
+///
+/// First walks up to find a `.polybench/runtime-env/rust/` directory (preferred for poly-bench
+/// projects), then falls back to finding a regular `Cargo.toml` file.
+fn find_rust_project_root(start_path: &str) -> Option<String> {
+    // First pass: look for .polybench/runtime-env/rust/ (poly-bench project)
+    let mut current = Path::new(start_path);
+    loop {
+        let polybench_rust = current.join(".polybench/runtime-env/rust");
+        if polybench_rust.join("Cargo.toml").exists() {
+            return Some(polybench_rust.to_string_lossy().to_string());
+        }
+
+        match current.parent() {
+            Some(parent) => current = parent,
+            None => break,
+        }
+    }
+
+    // Second pass: fall back to regular Cargo.toml lookup
+    let mut current = Path::new(start_path);
+    loop {
+        if current.join("Cargo.toml").exists() {
+            return Some(current.to_string_lossy().to_string());
+        }
+
+        match current.parent() {
+            Some(parent) => current = parent,
+            None => return None,
+        }
     }
 }
 
