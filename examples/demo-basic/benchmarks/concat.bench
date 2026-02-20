@@ -244,6 +244,7 @@ suite concatN {
              showRegression: true,
             regressionStyle: "dotted",
             showRegressionLabel: true,
+            yScale: "symlog"
         )
     }
 

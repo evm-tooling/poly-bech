@@ -87,8 +87,7 @@ fn filter_results_by_suite(results: &BenchmarkResults, suite_name: &str) -> Benc
 
 /// Generate a bar chart SVG
 fn generate_bar_chart(directive: &ChartDirectiveIR, results: &BenchmarkResults) -> Result<String> {
-    // TODO: Pass suite config from the benchmark execution context
-    bar_chart::generate(results, directive, None)
+    bar_chart::generate(results, directive)
 }
 
 /// Generate a pie chart SVG

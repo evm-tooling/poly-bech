@@ -19,26 +19,14 @@ use super::{
 const DEFAULT_BAR_WIDTH: i32 = 20; // Width of each bar
 const DEFAULT_BAR_GROUP_GAP: i32 = 20; // Gap between benchmark groups
 const DEFAULT_BAR_WITHIN_GAP: i32 = 2; // Gap between bars within a group
-const DEFAULT_CHART_HEIGHT: i32 = 450; // Default chart height
+const DEFAULT_CHART_HEIGHT: i32 = 445; // Default chart height
 const MARGIN_LEFT: i32 = 80; // Left margin for Y-axis labels
 const MARGIN_RIGHT: i32 = 40; // Right margin
 const MARGIN_BOTTOM: i32 = 70; // Bottom margin for X-axis labels
 
-/// Suite configuration for display
-pub struct SuiteConfig {
-    pub iterations: Option<u64>,
-    pub warmup: Option<u64>,
-    pub timeout_ms: Option<u64>,
-    pub order: Option<String>,
-}
-
 /// Generate a vertical grouped bar chart SVG
 /// Each benchmark is a group with bars for Go, TS, Rust side-by-side
-pub fn generate(
-    results: &BenchmarkResults,
-    directive: &ChartDirectiveIR,
-    _suite_config: Option<&SuiteConfig>,
-) -> Result<String> {
+pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Result<String> {
     let mut svg = String::new();
 
     // Collect all benchmarks with at least one measurement
@@ -72,15 +60,15 @@ pub fn generate(
 
     // Typography settings
     let title_font_size = directive.title_font_size.unwrap_or(16);
-    let subtitle_font_size = directive.subtitle_font_size.unwrap_or(11);
-    let axis_label_font_size = directive.axis_label_font_size.unwrap_or(11);
-    let tick_label_font_size = directive.tick_label_font_size.unwrap_or(10);
+    let subtitle_font_size = directive.subtitle_font_size.unwrap_or(12);
+    let axis_label_font_size = directive.axis_label_font_size.unwrap_or(12);
+    let tick_label_font_size = directive.tick_label_font_size.unwrap_or(11);
 
     // Grid settings
     let show_grid = directive.show_grid.unwrap_or(true);
-    let grid_opacity = directive.grid_opacity.unwrap_or(0.15);
+    let grid_opacity = directive.grid_opacity.unwrap_or(1.0);
     let show_minor_grid = directive.show_minor_grid.unwrap_or(false);
-    let minor_grid_opacity = directive.minor_grid_opacity.unwrap_or(0.08);
+    let minor_grid_opacity = directive.minor_grid_opacity.unwrap_or(0.8);
     let show_vertical_grid = directive.show_vertical_grid.unwrap_or(false);
 
     // Axis settings
@@ -112,17 +100,19 @@ pub fn generate(
     let total_groups_width =
         num_benchmarks * group_width + (num_benchmarks - 1).max(0) * bar_group_gap;
 
-    // Chart dimensions - calculate minimum width needed to fit all bars
-    let min_chart_width = total_groups_width + MARGIN_LEFT + MARGIN_RIGHT + 60; // Add padding for bars
+    // Chart dimensions - calculate width needed to fit all bars
+    // Width = MARGIN_LEFT + total_groups_width + MARGIN_RIGHT + padding
+    let dynamic_width = total_groups_width + MARGIN_LEFT + MARGIN_RIGHT + 60;
 
-    // Use the larger of: user-specified width OR minimum width needed to fit bars
+    // Use user-specified width if provided (ensuring it's at least the dynamic minimum),
+    // otherwise use the dynamically calculated width based on bar count
     let chart_width = directive
         .width
-        .map(|w| w.max(min_chart_width)) // If user specified width, ensure it's at least min
-        .unwrap_or(min_chart_width.max(600)); // Otherwise use min or 600, whichever is larger
+        .map(|w| w.max(dynamic_width)) // If user specified width, ensure it's at least min
+        .unwrap_or(dynamic_width); // Otherwise use dynamic width based on bar count
 
     let chart_height = directive.height.unwrap_or(DEFAULT_CHART_HEIGHT);
-    let plot_height = chart_height - DEFAULT_MARGIN_TOP - MARGIN_BOTTOM - 30;
+    let plot_height = chart_height - DEFAULT_MARGIN_TOP - MARGIN_BOTTOM;
     let plot_width = chart_width - MARGIN_LEFT - MARGIN_RIGHT;
 
     // Collect all values for Y scale
@@ -198,8 +188,18 @@ pub fn generate(
 
     // Chart group - translate to plot area
     let plot_x = MARGIN_LEFT;
-    let plot_y = DEFAULT_MARGIN_TOP + 30;
+    let plot_y = DEFAULT_MARGIN_TOP;
     svg.push_str(&format!("<g transform=\"translate({},{})\">\n", plot_x, plot_y));
+
+    // Calculate bar positions - start at origin (left edge of plot area)
+    let start_x = 0;
+
+    // Calculate the actual X-axis end position (end of last bar group)
+    let x_axis_end = if num_benchmarks > 0 {
+        start_x + (num_benchmarks - 1) * (group_width + bar_group_gap) + group_width
+    } else {
+        plot_width
+    };
 
     // Draw grid lines and Y-axis ticks
     if use_log_scale {
@@ -221,7 +221,7 @@ pub fn generate(
                         ((minor_value.log10() - log_min) / log_range * plot_height as f64) as i32;
                     svg.push_str(&format!(
                         "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\" stroke-width=\"0.5\" opacity=\"{}\"/>\n",
-                        y, plot_width, y, minor_grid_opacity
+                        y, x_axis_end, y, minor_grid_opacity
                     ));
                 }
             }
@@ -235,7 +235,7 @@ pub fn generate(
             if show_grid {
                 svg.push_str(&format!(
                     "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\" stroke-width=\"1\" opacity=\"{}\"/>\n",
-                    y, plot_width, y, grid_opacity
+                    y, x_axis_end, y, grid_opacity
                 ));
             }
 
@@ -271,7 +271,7 @@ pub fn generate(
                 let y = plot_height - (i as f64 / total_minor as f64 * plot_height as f64) as i32;
                 svg.push_str(&format!(
                     "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\" stroke-width=\"0.5\" opacity=\"{}\"/>\n",
-                    y, plot_width, y, minor_grid_opacity
+                    y, x_axis_end, y, minor_grid_opacity
                 ));
             }
         }
@@ -283,7 +283,7 @@ pub fn generate(
                     plot_height - (i as f64 / num_grid_lines as f64 * plot_height as f64) as i32;
                 svg.push_str(&format!(
                     "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\" stroke-width=\"1\" opacity=\"{}\"/>\n",
-                    y, plot_width, y, grid_opacity
+                    y, x_axis_end, y, grid_opacity
                 ));
             }
         }
@@ -313,9 +313,6 @@ pub fn generate(
         }
     }
 
-    // Calculate bar positions - center groups in plot area
-    let start_x = (plot_width - total_groups_width) / 2;
-
     // Draw vertical grid lines at each benchmark position
     if show_vertical_grid {
         for i in 0..num_benchmarks {
@@ -334,8 +331,17 @@ pub fn generate(
     ));
     svg.push_str(&format!(
         "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#4B5563\" stroke-width=\"{}\"/>\n",
-        plot_height, plot_width, plot_height, axis_thickness
+        plot_height, x_axis_end, plot_height, axis_thickness
     ));
+
+    // Draw X-axis tick marks for each benchmark
+    for i in 0..num_benchmarks {
+        let tick_x = start_x + i as i32 * (group_width + bar_group_gap) + group_width / 2;
+        svg.push_str(&format!(
+            "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#4B5563\" stroke-width=\"{}\"/>\n",
+            tick_x, plot_height, tick_x, plot_height + 5, axis_thickness
+        ));
+    }
 
     // Collect data for regression lines
     let mut go_data: Vec<(f64, f64)> = Vec::new();
@@ -515,7 +521,10 @@ pub fn generate(
         ));
     }
 
-    // Draw regression lines if enabled
+    // Draw regression lines if enabled and collect regression info for legend
+    let show_equation = directive.show_equation.unwrap_or(false);
+    let mut regression_infos: Vec<RegressionInfo> = Vec::new();
+
     if show_regression && num_benchmarks >= 2 {
         let dash_array = match regression_style {
             "solid" => "",
@@ -523,11 +532,10 @@ pub fn generate(
             _ => "6,4", // dashed default
         };
         let regression_model = directive.regression_model.as_deref();
-        let show_equation = directive.show_equation.unwrap_or(false);
 
         // Draw regression for each language
         if go_data.len() >= 2 {
-            draw_regression_line_bar(
+            if let Some(info) = draw_regression_line_bar(
                 &mut svg,
                 &go_data,
                 &filtered,
@@ -540,16 +548,16 @@ pub fn generate(
                 GO_COLOR,
                 dash_array,
                 show_regression_label,
-                show_r_squared,
-                show_equation,
                 regression_model,
                 "Go",
                 plot_width,
-            );
+            ) {
+                regression_infos.push(info);
+            }
         }
 
         if ts_data.len() >= 2 {
-            draw_regression_line_bar(
+            if let Some(info) = draw_regression_line_bar(
                 &mut svg,
                 &ts_data,
                 &filtered,
@@ -562,16 +570,16 @@ pub fn generate(
                 TS_COLOR,
                 dash_array,
                 show_regression_label,
-                show_r_squared,
-                show_equation,
                 regression_model,
                 "TS",
                 plot_width,
-            );
+            ) {
+                regression_infos.push(info);
+            }
         }
 
         if rust_data.len() >= 2 {
-            draw_regression_line_bar(
+            if let Some(info) = draw_regression_line_bar(
                 &mut svg,
                 &rust_data,
                 &filtered,
@@ -584,12 +592,12 @@ pub fn generate(
                 RUST_COLOR,
                 dash_array,
                 show_regression_label,
-                show_r_squared,
-                show_equation,
                 regression_model,
                 "Rust",
                 plot_width,
-            );
+            ) {
+                regression_infos.push(info);
+            }
         }
     }
 
@@ -600,11 +608,11 @@ pub fn generate(
         -55, plot_height / 2, axis_label_font_size, TEXT_SECONDARY, -55, plot_height / 2, escape_xml(&y_label)
     ));
 
-    // X-axis label
+    // X-axis label - centered on actual data area
     let x_label = directive.x_label.clone().unwrap_or_else(|| "Benchmark".to_string());
     svg.push_str(&format!(
         "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
-        plot_width / 2, plot_height + 55, axis_label_font_size, TEXT_SECONDARY, escape_xml(&x_label)
+        x_axis_end / 2, plot_height + 55, axis_label_font_size, TEXT_SECONDARY, escape_xml(&x_label)
     ));
 
     svg.push_str("</g>\n");
@@ -630,6 +638,9 @@ pub fn generate(
             plot_y,
             legend_position,
             &legend_items,
+            &regression_infos,
+            show_r_squared,
+            show_equation,
         );
         svg.push_str(&legend_svg);
     }
@@ -640,6 +651,7 @@ pub fn generate(
 }
 
 /// Draw regression line for bar chart
+/// Returns RegressionInfo if regression was drawn successfully
 #[allow(clippy::too_many_arguments)]
 fn draw_regression_line_bar(
     svg: &mut String,
@@ -654,20 +666,18 @@ fn draw_regression_line_bar(
     color: &str,
     dash_array: &str,
     show_label: bool,
-    show_r_squared: bool,
-    show_equation: bool,
     regression_model: Option<&str>,
     lang_name: &str,
     plot_width: i32,
-) {
+) -> Option<RegressionInfo> {
     if data.len() < 2 {
-        return;
+        return None;
     }
 
     // Fit regression model (user-specified or auto)
     let model = match select_model(data, regression_model) {
         Some(m) => m,
-        None => return,
+        None => return None,
     };
 
     // Generate points along the regression curve at each bar position
@@ -684,7 +694,7 @@ fn draw_regression_line_bar(
     }
 
     if path_points.is_empty() {
-        return;
+        return None;
     }
 
     // Build path
@@ -705,39 +715,34 @@ fn draw_regression_line_bar(
         path, color, dash_attr
     ));
 
-    // Add complexity label inside chart area
-    if show_label || show_r_squared || show_equation {
+    // Add complexity label on the line if enabled (bigger font, no R² or equation)
+    if show_label {
         let last_point = path_points.last().unwrap();
 
         // Position label to the left of the last point, inside the chart
-        let label_x = (last_point.0 - 10).min(plot_width - 120);
-        let label_y = (last_point.1 - 8).max(15);
-
-        // Build label text
-        let mut label_parts = Vec::new();
-        label_parts.push(lang_name.to_string());
-        if show_label {
-            label_parts.push(model_type_to_complexity(&model.model_type).to_string());
-        }
-        if show_r_squared {
-            label_parts.push(format!("R²={:.2}", model.r_squared));
-        }
-        let label_text = format!("({})", label_parts.join(" "));
+        let complexity = model_type_to_complexity(&model.model_type);
+        let label_text = format!("{} {}", lang_name, complexity);
+        let label_width = (label_text.len() as i32) * 7;
+        let label_x = (last_point.0 - label_width - 5).min(plot_width - label_width - 10);
+        let label_y = (last_point.1 - 8).max(16);
 
         svg.push_str(&format!(
-            "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"9\" fill=\"{}\" opacity=\"0.85\" font-style=\"italic\">{}</text>\n",
+            "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\" opacity=\"0.9\" font-weight=\"500\">{}</text>\n",
             label_x, label_y, color, label_text
         ));
-
-        // Show equation on a second line if enabled
-        if show_equation {
-            let equation = model.format_equation();
-            svg.push_str(&format!(
-                "  <text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"8\" fill=\"{}\" opacity=\"0.75\" font-style=\"italic\">{}</text>\n",
-                label_x, label_y + 12, color, equation
-            ));
-        }
     }
+
+    // Return regression info for legend
+    let complexity = model_type_to_complexity(&model.model_type).to_string();
+    let equation = model.format_equation();
+
+    Some(RegressionInfo {
+        lang: lang_name.to_string(),
+        color: color.to_string(),
+        complexity,
+        r_squared: model.r_squared,
+        equation,
+    })
 }
 
 /// Convert model type to complexity notation
@@ -901,6 +906,16 @@ fn svg_title_custom(
     svg
 }
 
+/// Regression info for legend display
+#[derive(Clone)]
+pub struct RegressionInfo {
+    pub lang: String,
+    pub color: String,
+    pub complexity: String,
+    pub r_squared: f64,
+    pub equation: String,
+}
+
 /// Render a legend at the specified position inside the chart area
 fn render_legend_positioned(
     chart_width: i32,
@@ -909,6 +924,9 @@ fn render_legend_positioned(
     margin_top: i32,
     position: &str,
     items: &[(&str, &str)],
+    regression_info: &[RegressionInfo],
+    show_r_squared: bool,
+    show_equation: bool,
 ) -> String {
     if items.is_empty() {
         return String::new();
@@ -917,7 +935,33 @@ fn render_legend_positioned(
     let padding = 8;
     let item_height = 18;
     let box_height = items.len() as i32 * item_height + padding * 2;
-    let box_width = 100;
+
+    // Calculate box width based on actual content
+    // Square(12) + gap(6) + label + gap(8) + R²(~50) + gap(8) + equation
+    let char_width = 6; // approximate width per character at font-size 10
+    let mut max_content_width = 0;
+
+    for (_, label) in items.iter() {
+        let mut line_width = 18 + (label.len() as i32 * char_width); // square + gap + label
+
+        if let Some(reg_info) = regression_info.iter().find(|r| {
+            // Match by language name
+            (r.lang == "Go" && *label == "Go") ||
+                (r.lang == "TS" && *label == "TypeScript") ||
+                (r.lang == "Rust" && *label == "Rust")
+        }) {
+            if show_r_squared {
+                line_width += 8 + 50; // gap + "R²=0.99"
+            }
+            if show_equation {
+                line_width += 8 + (reg_info.equation.len() as i32 * char_width);
+            }
+        }
+
+        max_content_width = max_content_width.max(line_width);
+    }
+
+    let box_width = max_content_width + padding * 2 + 10; // extra padding for safety
 
     // Calculate position based on legend_position
     let (box_x, box_y) = match position {
@@ -941,7 +985,7 @@ fn render_legend_positioned(
         box_x, box_y, box_width, box_height
     ));
 
-    // Legend items
+    // Legend items - all on one line per language
     for (i, (color, label)) in items.iter().enumerate() {
         let item_y = box_y + padding + (i as i32 * item_height);
 
@@ -953,11 +997,32 @@ fn render_legend_positioned(
             color
         ));
 
-        // Label text
+        // Build the full label text with regression info inline
+        let mut x_offset = box_x + padding + 18;
+
+        // Language name
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"10\" fill=\"{}\">{}</text>\n",
-            box_x + padding + 18, item_y + 10, TEXT_COLOR, escape_xml(label)
+            x_offset, item_y + 10, TEXT_COLOR, escape_xml(label)
         ));
+        x_offset += (label.len() as i32) * 7 + 8;
+
+        // Add regression info inline if available
+        if let Some(reg_info) = regression_info.iter().find(|r| r.color == *color) {
+            if show_r_squared {
+                svg.push_str(&format!(
+                    "<text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"10\" fill=\"{}\" opacity=\"0.85\">R²={:.4}</text>\n",
+                    x_offset, item_y + 10, color, reg_info.r_squared
+                ));
+                x_offset += 65;
+            }
+            if show_equation {
+                svg.push_str(&format!(
+                    "<text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"10\" fill=\"{}\" opacity=\"0.85\">{}</text>\n",
+                    x_offset, item_y + 10, color, escape_xml(&reg_info.equation)
+                ));
+            }
+        }
     }
 
     svg
@@ -977,7 +1042,7 @@ pub fn generate_simple(
     directive.title = Some(title.to_string());
     directive.description = description.map(|s| s.to_string());
 
-    generate(results, &directive, None)
+    generate(results, &directive)
 }
 
 #[cfg(test)]
@@ -994,7 +1059,7 @@ mod tests {
     #[test]
     fn test_generate_empty() {
         let results = BenchmarkResults::new(vec![]);
-        let svg = generate(&results, &default_directive(), None).unwrap();
+        let svg = generate(&results, &default_directive()).unwrap();
         assert!(svg.contains("<svg"));
     }
 
@@ -1009,7 +1074,7 @@ mod tests {
         let suite = SuiteResults::new("suite".to_string(), None, benchmarks);
         let results = BenchmarkResults::new(vec![suite]);
 
-        let svg = generate(&results, &default_directive(), None).unwrap();
+        let svg = generate(&results, &default_directive()).unwrap();
         assert!(svg.contains("<svg"));
     }
 
