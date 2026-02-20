@@ -205,7 +205,7 @@
     "charting-params": {
       "patterns": [
         {
-          "match": "\\b(title|description|xlabel|ylabel|sortBy|sortOrder|timeUnit)\\s*:\\s*",
+          "match": "\\b(title|description|xlabel|ylabel|sortBy|sortOrder|timeUnit|output|filterWinner|legendPosition|regressionStyle|regressionModel|yScale|baselineBenchmark)\\s*:\\s*",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
@@ -213,13 +213,43 @@
           }
         },
         {
-          "match": "\\b(showTotalTime|showLegend|showGrid)\\s*:\\s*(true|false)",
+          "match": "\\b(showTotalTime|showLegend|showGrid|showMemory|showStats|showConfig|showWinCounts|showGeoMean|showDistribution|compact|showErrorBars|showRegression|showRegressionLabel|showRSquared|showEquation|showRegressionBand|showMinorGrid|showVerticalGrid|showStdDevBand|roundTicks)\\s*:\\s*(true|false)",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
             },
             "2": {
               "name": "constant.language.boolean.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(width|height|precision|limit|titleFontSize|subtitleFontSize|axisLabelFontSize|tickLabelFontSize|barGroupGap|barWithinGroupGap|barWidth|ciLevel)\\s*:\\s*(\\d+)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.numeric.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(minSpeedup|axisThickness|yAxisMin|yAxisMax|gridOpacity|minorGridOpacity|errorBarOpacity|errorBarThickness|regressionBandOpacity|symlogThreshold)\\s*:\\s*([\\d.]+)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.numeric.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(includeBenchmarks|excludeBenchmarks)\\s*:",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
             }
           }
         },
@@ -366,33 +396,10 @@
         }
       ]
     },
-    "setup-section-keywords": {
-      "patterns": [
-        {
-          "match": "^\\s*(import|declare|init|helpers)\\s*(\\{|\\()?",
-          "captures": {
-            "1": {
-              "name": "keyword.control.setup.bench"
-            }
-          }
-        },
-        {
-          "match": "^\\s*(async)\\s+(init)\\s*\\{?",
-          "captures": {
-            "1": {
-              "name": "keyword.control.async.bench"
-            },
-            "2": {
-              "name": "keyword.control.setup.bench"
-            }
-          }
-        }
-      ]
-    },
     "setup-go-block": {
       "name": "meta.block.setup.go.bench",
-      "begin": "\\b(setup)\\s+(go)\\s*\\{\\s*$",
-      "end": "^(\\s{2,4})\\}\\s*$",
+      "begin": "\\b(setup)\\s+(go)\\s*\\{",
+      "end": "^(\\s{0,8})\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.bench"
@@ -408,8 +415,77 @@
       },
       "patterns": [
         {
-          "include": "#setup-section-keywords"
+          "include": "#setup-import-go-block"
         },
+        {
+          "include": "#setup-init-go-block"
+        },
+        {
+          "include": "#setup-helpers-go-block"
+        },
+        {
+          "include": "#comment"
+        }
+      ]
+    },
+    "setup-import-go-block": {
+      "name": "meta.block.import.go.bench",
+      "begin": "^(\\s*)(import)\\s*(\\()",
+      "end": "^\\s*\\)",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        },
+        "3": {
+          "name": "punctuation.definition.block.begin.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.go"
+        }
+      ]
+    },
+    "setup-init-go-block": {
+      "name": "meta.block.init.go.bench",
+      "begin": "^(\\s*)(init)\\s*\\{",
+      "end": "^\\s{0,12}\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.go"
+        }
+      ]
+    },
+    "setup-helpers-go-block": {
+      "name": "meta.block.helpers.go.bench",
+      "begin": "^(\\s*)(helpers)\\s*\\{",
+      "end": "^\\s{0,12}\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
         {
           "include": "source.go"
         }
@@ -417,8 +493,8 @@
     },
     "setup-ts-block": {
       "name": "meta.block.setup.ts.bench",
-      "begin": "\\b(setup)\\s+(ts)\\s*\\{\\s*$",
-      "end": "^(\\s{2,4})\\}\\s*$",
+      "begin": "\\b(setup)\\s+(ts)\\s*\\{",
+      "end": "^(\\s{0,8})\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.bench"
@@ -434,8 +510,74 @@
       },
       "patterns": [
         {
-          "include": "#setup-section-keywords"
+          "include": "#setup-import-ts-block"
         },
+        {
+          "include": "#setup-init-ts-block"
+        },
+        {
+          "include": "#setup-helpers-ts-block"
+        },
+        {
+          "include": "#comment"
+        }
+      ]
+    },
+    "setup-import-ts-block": {
+      "name": "meta.block.import.ts.bench",
+      "begin": "^(\\s*)(import)\\s*\\{",
+      "end": "\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.ts"
+        }
+      ]
+    },
+    "setup-init-ts-block": {
+      "name": "meta.block.init.ts.bench",
+      "begin": "^(\\s*)(init)\\s*\\{",
+      "end": "^\\s{0,12}\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.ts"
+        }
+      ]
+    },
+    "setup-helpers-ts-block": {
+      "name": "meta.block.helpers.ts.bench",
+      "begin": "^(\\s*)(helpers)\\s*\\{",
+      "end": "^\\s{0,12}\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
         {
           "include": "source.ts"
         }
@@ -443,8 +585,8 @@
     },
     "setup-rust-block": {
       "name": "meta.block.setup.rust.bench",
-      "begin": "\\b(setup)\\s+(rust)\\s*\\{\\s*$",
-      "end": "^(\\s{2,4})\\}\\s*$",
+      "begin": "\\b(setup)\\s+(rust)\\s*\\{",
+      "end": "^(\\s{0,8})\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.bench"
@@ -460,8 +602,69 @@
       },
       "patterns": [
         {
-          "include": "#setup-section-keywords"
+          "include": "#setup-use-rust-block"
         },
+        {
+          "include": "#setup-init-rust-block"
+        },
+        {
+          "include": "#setup-helpers-rust-block"
+        },
+        {
+          "include": "#comment"
+        }
+      ]
+    },
+    "setup-use-rust-block": {
+      "name": "meta.block.use.rust.bench",
+      "begin": "^(\\s*)(use)\\s+",
+      "end": ";",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.rust"
+        }
+      ]
+    },
+    "setup-init-rust-block": {
+      "name": "meta.block.init.rust.bench",
+      "begin": "^(\\s*)(init)\\s*\\{",
+      "end": "^\\s{0,12}\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.rust"
+        }
+      ]
+    },
+    "setup-helpers-rust-block": {
+      "name": "meta.block.helpers.rust.bench",
+      "begin": "^(\\s*)(helpers)\\s*\\{",
+      "end": "^\\s{0,12}\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
         {
           "include": "source.rust"
         }
@@ -469,7 +672,7 @@
     },
     "fixture-block": {
       "begin": "\\b(fixture)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
-      "end": "^(\\s{2,4})\\}\\s*$",
+      "end": "^\\s{0,8}\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.bench"
@@ -526,7 +729,7 @@
     },
     "bench-block": {
       "begin": "\\b(bench)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
-      "end": "^(\\s{2,4})\\}\\s*$",
+      "end": "^\\s{0,8}\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.bench"
@@ -718,7 +921,7 @@
     "bench-go-block": {
       "name": "meta.block.bench.go.bench",
       "begin": "\\b(go)\\s*:\\s*\\{\\s*$",
-      "end": "^(\\s{6,8})\\}\\s*$",
+      "end": "^\\s{0,12}\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "entity.name.language.bench"
@@ -739,7 +942,7 @@
     "bench-ts-block": {
       "name": "meta.block.bench.ts.bench",
       "begin": "\\b(ts)\\s*:\\s*\\{\\s*$",
-      "end": "^(\\s{6,8})\\}\\s*$",
+      "end": "^\\s{0,12}\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "entity.name.language.bench"
@@ -792,7 +995,7 @@
     "fixture-go-block": {
       "name": "meta.block.fixture.go.bench",
       "begin": "\\b(go)\\s*:\\s*\\{\\s*$",
-      "end": "^(\\s{6,8})\\}\\s*$",
+      "end": "^\\s{0,12}\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "entity.name.language.bench"
@@ -813,7 +1016,7 @@
     "fixture-ts-block": {
       "name": "meta.block.fixture.ts.bench",
       "begin": "\\b(ts)\\s*:\\s*\\{\\s*$",
-      "end": "^(\\s{6,8})\\}\\s*$",
+      "end": "^\\s{0,12}\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "entity.name.language.bench"
@@ -834,7 +1037,7 @@
     "fixture-rust-block": {
       "name": "meta.block.fixture.rust.bench",
       "begin": "\\b(rust)\\s*:\\s*\\{\\s*$",
-      "end": "^(\\s{6,8})\\}\\s*$",
+      "end": "^\\s{0,12}\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "entity.name.language.bench"
@@ -855,7 +1058,7 @@
     "bench-rust-block": {
       "name": "meta.block.bench.rust.bench",
       "begin": "\\b(rust)\\s*:\\s*\\{\\s*$",
-      "end": "^(\\s{6,8})\\}\\s*$",
+      "end": "^\\s{0,12}\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "entity.name.language.bench"

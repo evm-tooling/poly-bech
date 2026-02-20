@@ -477,7 +477,7 @@ fn wrap_go_code(code: &str, block_type: BlockType, context: &SetupContext) -> (S
             (wrapped, prefix_lines + 1)
         }
         BlockType::Benchmark | BlockType::Skip | BlockType::Validate => {
-            // Benchmark code needs full context
+            // Benchmark code needs full context and fixture variable stubs
             let (prefix, prefix_lines) = build_context_prefix(context, true);
             if has_package && has_func {
                 (code.to_string(), 0)
@@ -485,8 +485,20 @@ fn wrap_go_code(code: &str, block_type: BlockType, context: &SetupContext) -> (S
                 let wrapped = format!("{}{}", prefix, code);
                 (wrapped, prefix_lines)
             } else {
-                let wrapped = format!("{}func main() {{\n{}\n}}", prefix, code);
-                (wrapped, prefix_lines + 1)
+                // Inject fixture variable stubs so references like `s600` don't cause errors
+                let mut fixture_stubs = String::new();
+                let mut stub_lines = 0;
+                for fixture_name in &context.fixture_vars {
+                    fixture_stubs.push_str(&format!("    var {} []byte\n", fixture_name));
+                    stub_lines += 1;
+                }
+                // Add _ = to suppress "declared but not used" for fixtures not used in this block
+                for fixture_name in &context.fixture_vars {
+                    fixture_stubs.push_str(&format!("    _ = {}\n", fixture_name));
+                    stub_lines += 1;
+                }
+                let wrapped = format!("{}func main() {{\n{}{}\n}}", prefix, fixture_stubs, code);
+                (wrapped, prefix_lines + 1 + stub_lines)
             }
         }
     }
