@@ -1,0 +1,119 @@
+================================================================================
+Missing closing brace in suite
+================================================================================
+
+suite test {
+    bench foo {
+        go: run()
+    }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code))))
+      (MISSING "}"))))
+
+================================================================================
+Missing benchmark name
+================================================================================
+
+suite test {
+    bench {
+        go: run()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (ERROR
+        (embedded_code)
+        (embedded_code)))))
+
+================================================================================
+Incomplete property
+================================================================================
+
+suite test {
+    description:
+    
+    bench foo {
+        go: run()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (property
+        name: (property_name)
+        value: (identifier))
+      (ERROR
+        (identifier)
+        (embedded_code)))))
+
+================================================================================
+Missing language tag
+================================================================================
+
+suite test {
+    bench foo {
+        : run()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (ERROR
+            (embedded_code)))))))
+
+================================================================================
+Partial setup block
+================================================================================
+
+suite test {
+    setup go {
+        import (
+            "fmt"
+        )
+        
+        helpers {
+
+    bench foo {
+        go: run()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (ERROR
+    (identifier)
+    (language_tag)
+    (import_section
+      (paren_code_block
+        (embedded_code)))
+    (helpers_section
+      (code_block
+        (embedded_code)))))

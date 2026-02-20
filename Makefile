@@ -3,7 +3,8 @@
 # Quick commands for local development and CI
 
 .PHONY: help check check-compile build build-debug watch release release-build release-both clean install-tools reload cli run \
-        cli-release init add install pb-build pb-run fmt fmt-check lint test test-cover oncommit install-hooks
+        cli-release init add install pb-build pb-run fmt fmt-check lint test test-cover oncommit install-hooks \
+        grammar grammar-wasm
 
 # Default target
 help:
@@ -274,3 +275,29 @@ ifndef TITLE
 	$(error Usage: make pr TITLE="your-pr-title")
 endif
 	@./scripts/quick-pr.sh "$(TITLE)"
+
+# ============================================================================
+# Tree-sitter Grammar
+# ============================================================================
+# Build the Tree-sitter grammar for poly-bench DSL
+# ============================================================================
+
+# Generate Tree-sitter parser from grammar.js
+grammar:
+	@echo "🔨 Generating Tree-sitter grammar..."
+	@cd poly-bench-grammar && npm install && npm run generate
+	@echo "✅ Grammar generated!"
+
+# Build Tree-sitter WASM for VSCode extension
+grammar-wasm: grammar
+	@echo "🔨 Building Tree-sitter WASM..."
+	@cd poly-bench-grammar && npm run build-wasm
+	@mkdir -p extensions/vscode/tree-sitter
+	@cp poly-bench-grammar/tree-sitter-polybench.wasm extensions/vscode/tree-sitter/
+	@echo "✅ WASM built and copied to extensions/vscode/tree-sitter/"
+
+# Test Tree-sitter grammar
+grammar-test: grammar
+	@echo "🧪 Testing Tree-sitter grammar..."
+	@cd poly-bench-grammar && npm test
+	@echo "✅ Grammar tests passed!"

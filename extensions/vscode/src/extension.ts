@@ -10,6 +10,10 @@
  * - Code completion
  * - Semantic tokens for enhanced highlighting
  * - Document formatting
+ *
+ * New in v2:
+ * - Optional Tree-sitter WASM for client-side highlighting
+ * - New LSP v2 with error-tolerant parsing
  */
 
 import * as path from 'path';
@@ -37,10 +41,55 @@ let client: LanguageClient | undefined;
 /** Resolves when the LSP is ready (so format-on-save can run). */
 let clientReady: Promise<void> | null = null;
 
+/** Tree-sitter parser instance (if enabled) */
+let treeSitterParser: any = null;
+
 /** Server launch: command and optional args (e.g. poly-bench with ['lsp']). */
 interface LspServerSpec {
   command: string;
   args: string[];
+}
+
+/**
+ * Check if the new LSP v2 should be used
+ */
+function shouldUseNewLsp(): boolean {
+  return workspace.getConfiguration('poly-bench').get<boolean>('useNewLsp', false);
+}
+
+/**
+ * Check if Tree-sitter WASM highlighting should be used
+ */
+function shouldUseTreeSitter(): boolean {
+  return workspace.getConfiguration('poly-bench').get<boolean>('useTreeSitterHighlighting', false);
+}
+
+/**
+ * Initialize Tree-sitter WASM parser if enabled
+ */
+async function initTreeSitter(context: ExtensionContext): Promise<void> {
+  if (!shouldUseTreeSitter()) {
+    return;
+  }
+
+  try {
+    const Parser = require('web-tree-sitter');
+    await Parser.init();
+    treeSitterParser = new Parser();
+
+    const wasmPath = path.join(context.extensionPath, 'tree-sitter', 'tree-sitter-polybench.wasm');
+    if (fs.existsSync(wasmPath)) {
+      const lang = await Parser.Language.load(wasmPath);
+      treeSitterParser.setLanguage(lang);
+      console.log('[Poly-Bench] Tree-sitter WASM initialized');
+    } else {
+      console.log('[Poly-Bench] Tree-sitter WASM not found, using TextMate grammar');
+      treeSitterParser = null;
+    }
+  } catch (err) {
+    console.error('[Poly-Bench] Failed to initialize Tree-sitter:', err);
+    treeSitterParser = null;
+  }
 }
 
 /**
@@ -50,11 +99,16 @@ interface LspServerSpec {
  * 1. User-configured path (poly-bench.lspPath) — if path looks like poly-bench (no -lsp), use args ['lsp']
  * 2. Bundled binary in extension: prefer poly-bench + lsp, then poly-bench-lsp
  * 3. PATH: prefer poly-bench with args ['lsp'], then poly-bench-lsp
+ *
+ * If useNewLsp is enabled, uses 'lsp-v2' subcommand instead of 'lsp'.
  */
 function findLspServer(context: ExtensionContext): LspServerSpec | null {
+  const useNewLsp = shouldUseNewLsp();
+  const lspSubcommand = useNewLsp ? 'lsp-v2' : 'lsp';
+
   const useLspSubcommand = (cmd: string): LspServerSpec => ({
     command: cmd,
-    args: ['lsp'],
+    args: [lspSubcommand],
   });
   const useLegacyLsp = (cmd: string): LspServerSpec => ({
     command: cmd,
@@ -105,7 +159,10 @@ function findLspServer(context: ExtensionContext): LspServerSpec | null {
   return useLspSubcommand('poly-bench');
 }
 
-export function activate(context: ExtensionContext): void {
+export async function activate(context: ExtensionContext): Promise<void> {
+  // Initialize Tree-sitter WASM if enabled
+  await initTreeSitter(context);
+
   const spec = findLspServer(context);
 
   if (!spec) {
@@ -129,8 +186,13 @@ export function activate(context: ExtensionContext): void {
     spec.args.length > 0
       ? `${spec.command} ${spec.args.join(' ')}`
       : spec.command;
-  outputChannel.appendLine(`[startup] Using LSP (${label}): ${desc}`);
-  console.log(`[Poly-Bench] Using LSP: ${label} → ${desc}`);
+  const lspVersion = shouldUseNewLsp() ? 'v2' : 'v1';
+  outputChannel.appendLine(`[startup] Using LSP ${lspVersion} (${label}): ${desc}`);
+  console.log(`[Poly-Bench] Using LSP ${lspVersion}: ${label} → ${desc}`);
+
+  if (treeSitterParser) {
+    outputChannel.appendLine('[startup] Tree-sitter WASM highlighting enabled');
+  }
 
   // Server options - run poly-bench lsp or poly-bench-lsp
   const serverOptions: ServerOptions = {

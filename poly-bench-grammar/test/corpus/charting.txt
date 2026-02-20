@@ -1,0 +1,199 @@
+================================================================================
+Simple after block with bar chart
+================================================================================
+
+use std::charting
+
+suite test {
+    bench foo {
+        go: run()
+    }
+
+    after {
+        charting.drawBarChart(
+            title: "Performance"
+        )
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (use_statement
+    module: (identifier))
+  (suite
+    name: (identifier)
+    (suite_body
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code))))
+      (after_block
+        (after_body
+          (chart_directive
+            function: (chart_function_name)
+            (chart_params
+              (chart_param
+                name: (chart_param_name)
+                value: (string
+                  (string_content))))))))))
+
+================================================================================
+Multiple chart directives
+================================================================================
+
+use std::charting
+
+suite test {
+    bench foo {
+        go: run()
+    }
+
+    after {
+        charting.drawBarChart(
+            title: "Bar Chart",
+            output: "bar.svg"
+        )
+
+        charting.drawLineChart(
+            title: "Line Chart",
+            xlabel: "Size",
+            ylabel: "Time"
+        )
+
+        charting.drawPieChart(
+            title: "Distribution"
+        )
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (use_statement
+    module: (identifier))
+  (suite
+    name: (identifier)
+    (suite_body
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code))))
+      (after_block
+        (after_body
+          (chart_directive
+            function: (chart_function_name)
+            (chart_params
+              (chart_param
+                name: (chart_param_name)
+                value: (string
+                  (string_content)))
+              (chart_param
+                name: (chart_param_name)
+                value: (string
+                  (string_content)))))
+          (chart_directive
+            function: (chart_function_name)
+            (chart_params
+              (chart_param
+                name: (chart_param_name)
+                value: (string
+                  (string_content)))
+              (chart_param
+                name: (chart_param_name)
+                value: (string
+                  (string_content)))
+              (chart_param
+                name: (chart_param_name)
+                value: (string
+                  (string_content)))))
+          (chart_directive
+            function: (chart_function_name)
+            (chart_params
+              (chart_param
+                name: (chart_param_name)
+                value: (string
+                  (string_content))))))))))
+
+================================================================================
+Chart with all parameter types
+================================================================================
+
+use std::charting
+
+suite test {
+    bench foo {
+        go: run()
+    }
+
+    after {
+        charting.drawBarChart(
+            title: "Full Example",
+            showStats: true,
+            showMemory: false,
+            width: 800,
+            height: 600,
+            precision: 2,
+            minSpeedup: 1.5,
+            includeBenchmarks: ["foo", "bar"],
+            sortBy: "speedup"
+        )
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (use_statement
+    module: (identifier))
+  (suite
+    name: (identifier)
+    (suite_body
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code))))
+      (after_block
+        (after_body
+          (chart_directive
+            function: (chart_function_name)
+            (chart_params
+              (chart_param
+                name: (chart_param_name)
+                value: (string
+                  (string_content)))
+              (chart_param
+                name: (chart_param_name)
+                value: (boolean))
+              (chart_param
+                name: (chart_param_name)
+                value: (boolean))
+              (chart_param
+                name: (chart_param_name)
+                value: (number))
+              (chart_param
+                name: (chart_param_name)
+                value: (number))
+              (chart_param
+                name: (chart_param_name)
+                value: (number))
+              (chart_param
+                name: (chart_param_name)
+                value: (float))
+              (chart_param
+                name: (chart_param_name)
+                value: (string_array
+                  (string
+                    (string_content))
+                  (string
+                    (string_content))))
+              (chart_param
+                name: (chart_param_name)
+                value: (string
+                  (string_content))))))))))
