@@ -18,9 +18,78 @@ use std::fmt::Write;
 
 const INDENT: &str = "    ";
 
+/// Reformat embedded code with proper indentation based on brace counting.
+/// This handles Go, TypeScript, and Rust code by tracking `{` and `}` to determine indent level.
+fn reformat_embedded_code(code: &str, base_indent: &str) -> Vec<String> {
+    let lines: Vec<&str> = code.lines().collect();
+    if lines.is_empty() {
+        return Vec::new();
+    }
+
+    // First, strip all lines to their trimmed content
+    let trimmed_lines: Vec<&str> = lines.iter().map(|l| l.trim()).collect();
+
+    // Track brace depth and format each line
+    let mut result = Vec::new();
+    let mut depth: i32 = 0;
+
+    for line in &trimmed_lines {
+        if line.is_empty() {
+            result.push(String::new());
+            continue;
+        }
+
+        // Count braces to determine indent adjustment
+        // Lines starting with } should be dedented before we print them
+        let starts_with_close = line.starts_with('}') || line.starts_with(')');
+
+        // Calculate indent for this line
+        let line_depth = if starts_with_close { (depth - 1).max(0) } else { depth };
+        let indent = format!("{}{}", base_indent, INDENT.repeat(line_depth as usize));
+
+        result.push(format!("{}{}", indent, line));
+
+        // Update depth based on braces in this line (excluding those in strings)
+        let net_braces = count_net_braces(line);
+        depth = (depth + net_braces).max(0);
+    }
+
+    result
+}
+
+/// Count net brace change in a line, attempting to skip braces inside string literals.
+fn count_net_braces(line: &str) -> i32 {
+    let mut net = 0i32;
+    let mut in_string = false;
+    let mut string_char = '"';
+    let mut prev_char = '\0';
+
+    for ch in line.chars() {
+        if in_string {
+            if ch == string_char && prev_char != '\\' {
+                in_string = false;
+            }
+        } else {
+            match ch {
+                '"' | '\'' | '`' => {
+                    in_string = true;
+                    string_char = ch;
+                }
+                '{' => net += 1,
+                '}' => net -= 1,
+                _ => {}
+            }
+        }
+        prev_char = ch;
+    }
+
+    net
+}
+
 /// Preserve embedded code with minimal normalization.
 /// Only strips common leading indent to align to the block's indent level.
 /// Does NOT attempt to reformat or re-indent based on brace counting.
+#[allow(dead_code)]
 fn preserve_embedded_code(code: &str, base_indent: &str) -> Vec<String> {
     let lines: Vec<&str> = code.lines().collect();
     if lines.is_empty() {
@@ -546,8 +615,8 @@ fn write_code_block(out: &mut String, keyword: &str, block: &CodeBlock, inner: &
     } else if code.contains('\n') {
         // Multi-line code block
         writeln!(out, "{}{} {{", inner, keyword).unwrap();
-        let preserved = preserve_embedded_code(&code, &content_indent);
-        for line in &preserved {
+        let reformatted = reformat_embedded_code(&code, &content_indent);
+        for line in &reformatted {
             if line.trim().is_empty() {
                 out.push('\n');
             } else {

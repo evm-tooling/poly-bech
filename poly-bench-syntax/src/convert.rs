@@ -153,6 +153,9 @@ fn convert_suite_body(node: TsNode, source: &str, suite: &mut PartialSuite) {
             }
             "setup_block" => {
                 if let Some((lang, setup)) = convert_setup_block(child, source) {
+                    if !suite.setups.contains_key(&lang) {
+                        suite.setup_order.push(lang);
+                    }
                     suite.setups.insert(lang, setup);
                 }
             }
