@@ -131,19 +131,9 @@ impl SelectedModel {
         }
     }
 
-    /// Format the regression equation with actual coefficients
+    /// Format the regression equation with actual coefficients (always 2 decimal places)
     pub fn format_equation(&self) -> String {
-        let format_coeff = |c: f64| -> String {
-            if c.abs() >= 1000.0 {
-                format!("{:.0}", c)
-            } else if c.abs() >= 10.0 {
-                format!("{:.1}", c)
-            } else if c.abs() >= 1.0 {
-                format!("{:.2}", c)
-            } else {
-                format!("{:.3}", c)
-            }
-        };
+        let format_coeff = |c: f64| -> String { format!("{:.2}", c) };
 
         match self.model_type {
             ModelType::Constant => {
