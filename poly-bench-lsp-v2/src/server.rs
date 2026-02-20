@@ -9,6 +9,7 @@ use crate::{
     diagnostics::compute_diagnostics,
     document::Document,
     embedded::EmbeddedConfig,
+    embedded_diagnostics::check_embedded_code,
     formatter::format_document,
     hover::get_hover,
     hover_cache::invalidate_document_cache,
@@ -48,8 +49,25 @@ impl PolyBenchLanguageServer {
 
     /// Publish diagnostics for a document
     async fn publish_diagnostics(&self, uri: &Url) {
+        self.publish_diagnostics_impl(uri, false).await;
+    }
+
+    /// Publish diagnostics for a document, optionally including embedded code diagnostics
+    async fn publish_diagnostics_with_embedded(&self, uri: &Url) {
+        self.publish_diagnostics_impl(uri, true).await;
+    }
+
+    /// Internal implementation for publishing diagnostics
+    async fn publish_diagnostics_impl(&self, uri: &Url, include_embedded: bool) {
         if let Some(doc) = self.documents.get(uri) {
-            let diagnostics = compute_diagnostics(&doc);
+            let mut diagnostics = compute_diagnostics(&doc);
+
+            // On save, also check embedded code
+            if include_embedded {
+                let embedded_diags = check_embedded_code(&doc);
+                diagnostics.extend(embedded_diags);
+            }
+
             self.client.publish_diagnostics(uri.clone(), diagnostics, Some(doc.version)).await;
         }
     }
@@ -216,7 +234,8 @@ impl LanguageServer for PolyBenchLanguageServer {
         let uri = params.text_document.uri;
         debug!("Document saved: {}", uri);
 
-        self.publish_diagnostics(&uri).await;
+        // On save, run full diagnostics including embedded code checks
+        self.publish_diagnostics_with_embedded(&uri).await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
