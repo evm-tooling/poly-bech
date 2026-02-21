@@ -14,7 +14,7 @@ poly-bench lets you define benchmarks once and run them across multiple language
 
 ```bash
 # Install
-curl -L https://raw.githubusercontent.com/evm-tooling/poly-bench/main/scripts/install.sh | bash
+curl -sSL https://polybench.evm-tooling.tools | bash
 
 # Initialize a project
 poly-bench init my-benchmarks
@@ -311,7 +311,7 @@ Visual comparisons via `charting.*` directives in `after` blocks.
 **One-liner:**
 
 ```bash
-curl -L https://raw.githubusercontent.com/evm-tooling/poly-bench/main/scripts/install.sh | bash
+curl -sSL https://polybench.evm-tooling.tools | bash
 ```
 
 **From source:**
