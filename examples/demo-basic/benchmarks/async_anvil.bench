@@ -9,17 +9,12 @@ suite evmBench {
     sink: false
     cvThreshold: 10
 
-    globalSetup {
-        anvil.spawnAnvil()
-    }
-
     setup go {
         import (
-        "context"
-
-        "github.com/ChefBingbong/viem-go/chain/definitions"
-        "github.com/ChefBingbong/viem-go/client"
-        "github.com/ChefBingbong/viem-go/client/transport"
+            "context"
+            "github.com/ChefBingbong/viem-go/chain/definitions"
+            "github.com/ChefBingbong/viem-go/client"
+            "github.com/ChefBingbong/viem-go/client/transport"
         )
 
         declare {
@@ -31,12 +26,12 @@ suite evmBench {
             ctx = context.Background()
 
             _publicClient, err := client.CreatePublicClient(client.PublicClientConfig{
-             Chain:     &definitions.Mainnet,
-             Transport: transport.HTTP(""),
+                Chain:     &definitions.Mainnet,
+                Transport: transport.HTTP(""),
             })
 
             if err != nil {
-             panic("Error creating client: %v\n")
+                panic("Error creating client: %v\n")
             }
 
             publicClient = _publicClient
@@ -61,14 +56,14 @@ suite evmBench {
         }
 
         declare {
-            let publicClient: any
+            let publicClient: any 
         }
 
         init {
             publicClient = createPublicClient({
                 chain: mainnet,
                 transport: http(ANVIL_RPC_URL),
-            }) 
+            })
         }
 
         helpers {

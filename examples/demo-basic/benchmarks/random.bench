@@ -13,8 +13,8 @@ suite randomN {
 
     setup go {
         import (
-            "encoding/binary"
-            "math"
+        "encoding/binary"
+        "math"
         )
 
         helpers {
@@ -99,11 +99,11 @@ suite randomN {
 
                 // Calculate variance
                 let variance: f64 = arr.iter()
-                    .map(|&x| {
-                        let diff = x - mean;
-                        diff * diff
-                    })
-                    .sum::<f64>() / n as f64;
+                .map(|&x| {
+                    let diff = x - mean;
+                    diff * diff
+                })
+                .sum::<f64>() / n as f64;
 
                 // Return standard deviation
                 variance.sqrt()
@@ -217,14 +217,16 @@ suite randomN {
             description: "Sum/mean/variance calculation - linear complexity",
             output: "random-line.svg",
             xlabel: "Array Size (n elements)",
-            ylabel: "Time (ns/op)",
+            ylabel: "Time (ns/op)"
         )
+
         charting.drawBarChart(
             title: "Random Statistics Comparison",
             description: "Vertical grouped bars - linear growth pattern",
             output: "random-bar.svg",
             xlabel: "Array Size",
-            ylabel: "Time (ns/op)",
+            ylabel: "Time (ns/op)"
         )
     }
+
 }
