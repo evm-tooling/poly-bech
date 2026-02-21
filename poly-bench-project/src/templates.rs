@@ -528,7 +528,8 @@ mod tests {
     #[test]
     fn test_cargo_toml() {
         let content = cargo_toml("my-project", "2021");
-        assert!(content.contains("name = \"my_project\""));
+        // Package name is always "polybench_runner" to match executor's expected binary name
+        assert!(content.contains("name = \"polybench_runner\""));
         assert!(content.contains("edition = \"2021\""));
         assert!(content.contains("serde"));
         assert!(content.contains("serde_json"));
