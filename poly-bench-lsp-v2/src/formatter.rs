@@ -31,10 +31,47 @@ pub fn format_document(doc: &Document) -> Vec<TextEdit> {
     format_document_with_config(doc, &FormatterConfig::default())
 }
 
+/// Format source text directly, returning the formatted string.
+/// This is useful for CLI tools that don't need LSP TextEdit semantics.
+pub fn format_source(source: &str) -> String {
+    format_source_with_config(source, &FormatterConfig::default())
+}
+
+/// Format source text with custom configuration
+pub fn format_source_with_config(source: &str, config: &FormatterConfig) -> String {
+    let doc = Document::new(
+        tower_lsp::lsp_types::Url::parse("file:///cli-format.bench").unwrap(),
+        source.to_string(),
+        1,
+    );
+    format_document_to_string(&doc, config)
+}
+
 /// Format a document with custom configuration
 pub fn format_document_with_config(doc: &Document, config: &FormatterConfig) -> Vec<TextEdit> {
     let source = doc.source_text();
+    let formatted = format_document_to_string(doc, config);
 
+    // Check if formatting changed anything
+    if formatted.trim() == source.trim() {
+        return vec![];
+    }
+
+    // Return a single edit that replaces the entire document
+    let end_line = source.lines().count().saturating_sub(1);
+    let end_char = source.lines().last().map(|l| l.len()).unwrap_or(0);
+
+    vec![TextEdit {
+        range: Range {
+            start: Position { line: 0, character: 0 },
+            end: Position { line: end_line as u32, character: end_char as u32 },
+        },
+        new_text: formatted,
+    }]
+}
+
+/// Format a document to a string (internal helper used by both LSP and CLI)
+fn format_document_to_string(doc: &Document, config: &FormatterConfig) -> String {
     // Build the complete formatted file
     let mut formatted = String::new();
 
@@ -52,10 +89,12 @@ pub fn format_document_with_config(doc: &Document, config: &FormatterConfig) -> 
         formatted.push('\n');
     }
 
-    // Format global setup if present and has valid statements
+    // Format global setup if present and has statements (valid or with errors)
+    // We keep globalSetup blocks that have any statements, even if they have parse errors,
+    // to avoid accidentally deleting user content. Only truly empty blocks are removed.
     if let Some(Node::Valid(global_setup)) = &doc.partial_ast.global_setup {
-        let has_valid_statements = global_setup.statements.iter().any(|s| s.is_valid());
-        if has_valid_statements {
+        let has_any_statements = !global_setup.statements.is_empty();
+        if has_any_statements {
             formatted.push_str("globalSetup {\n");
             for stmt in &global_setup.statements {
                 if let Node::Valid(s) = stmt {
@@ -107,24 +146,7 @@ pub fn format_document_with_config(doc: &Document, config: &FormatterConfig) -> 
     }
 
     // Trim trailing whitespace but keep one final newline
-    let formatted = formatted.trim_end().to_string() + "\n";
-
-    // Check if formatting changed anything
-    if formatted.trim() == source.trim() {
-        return vec![];
-    }
-
-    // Return a single edit that replaces the entire document
-    let end_line = source.lines().count().saturating_sub(1);
-    let end_char = source.lines().last().map(|l| l.len()).unwrap_or(0);
-
-    vec![TextEdit {
-        range: Range {
-            start: Position { line: 0, character: 0 },
-            end: Position { line: end_line as u32, character: end_char as u32 },
-        },
-        new_text: formatted,
-    }]
+    formatted.trim_end().to_string() + "\n"
 }
 
 /// Format a use statement
@@ -157,10 +179,10 @@ fn format_suite_content(suite: &PartialSuite, config: &FormatterConfig) -> Strin
         formatted.push('\n');
     }
 
-    // Suite-level globalSetup
+    // Suite-level globalSetup - keep if it has any statements (valid or with errors)
     if let Some(Node::Valid(global_setup)) = &suite.global_setup {
-        let has_valid_statements = global_setup.statements.iter().any(|s| s.is_valid());
-        if has_valid_statements {
+        let has_any_statements = !global_setup.statements.is_empty();
+        if has_any_statements {
             formatted.push_str(&inner_indent);
             formatted.push_str("globalSetup {\n");
             for stmt in &global_setup.statements {

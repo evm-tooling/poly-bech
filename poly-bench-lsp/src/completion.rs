@@ -10,6 +10,40 @@ use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, InsertTextFormat,
 
 use super::document::ParsedDocument;
 
+/// Minimum number of characters required before showing completions
+const MIN_PREFIX_CHARS: usize = 2;
+
+/// Extract the current word/prefix being typed from the line text
+/// Returns the partial word at the end of the line that the user is typing
+fn extract_current_prefix(line_text: &str) -> String {
+    let trimmed = line_text.trim_end();
+    // Split on non-alphanumeric characters (except underscore) and get the last word
+    trimmed.rsplit(|c: char| !c.is_alphanumeric() && c != '_').next().unwrap_or("").to_string()
+}
+
+/// Filter completions based on the prefix the user has typed
+/// Only returns completions that match the prefix and only if prefix meets minimum length
+fn filter_completions_by_prefix(
+    items: Vec<CompletionItem>,
+    prefix: &str,
+    min_chars: usize,
+) -> Vec<CompletionItem> {
+    // If prefix is too short, return empty (no completions yet)
+    if prefix.len() < min_chars {
+        return vec![];
+    }
+
+    let prefix_lower = prefix.to_lowercase();
+    items
+        .into_iter()
+        .filter(|item| {
+            let label_lower = item.label.to_lowercase();
+            // Match if label starts with prefix or contains it as a word
+            label_lower.starts_with(&prefix_lower)
+        })
+        .collect()
+}
+
 /// Get completions at a position
 ///
 /// `trigger_char` is the character that triggered completion (e.g., "." or ":"),
@@ -83,8 +117,8 @@ pub fn get_completions(
             // Add stdlib module names for autocomplete
             items.extend(stdlib_module_name_completions(&stdlib_imports));
         }
-        Context::AfterColon(keyword) => {
-            items.extend(after_colon_completions(&keyword));
+        Context::AfterColon(ref keyword) => {
+            items.extend(after_colon_completions(keyword));
             // Also add stdlib module names for expressions
             items.extend(stdlib_module_name_completions(&stdlib_imports));
         }
@@ -94,15 +128,13 @@ pub fn get_completions(
         Context::InsideGlobalSetup => {
             items.extend(global_setup_completions(&stdlib_imports));
         }
-        Context::ModuleDotAccess(module_name) => {
+        Context::ModuleDotAccess(ref module_name) => {
             // User typed "anvil." - show all symbols from that module
-            items.extend(stdlib_module_member_completions(&module_name, &stdlib_imports));
+            items.extend(stdlib_module_member_completions(module_name, &stdlib_imports));
         }
         Context::Unknown => {
-            // Provide all keywords as fallback
-            items.extend(all_keyword_completions());
-            // Also add stdlib module names
-            items.extend(stdlib_module_name_completions(&stdlib_imports));
+            // In unknown context, don't provide completions to avoid noise
+            // The user needs to be in a recognized context for completions
         }
         // Embedded code contexts - only show setup symbols, no DSL keywords
         Context::InsideEmbeddedInit |
@@ -148,6 +180,31 @@ pub fn get_completions(
             // Inside charting function arguments - show parameter completions
             items.extend(charting_function_param_completions());
         }
+    }
+
+    // Apply prefix filtering for non-trigger-character completions
+    // This ensures completions only appear after user types 2+ characters
+    let prefix = extract_current_prefix(trimmed);
+
+    // Don't filter if:
+    // 1. Triggered by a special character (., :, {, space)
+    // 2. Context is AfterColon (showing enum values)
+    // 3. Context is UseStdModule (showing module names after "use std::")
+    // 4. Context is ModuleDotAccess or ChartingDotAccess (showing members after "module.")
+    let should_skip_filtering = trigger_char.is_some() ||
+        matches!(
+            context,
+            Context::AfterColon(_) |
+                Context::UseStdModule |
+                Context::ModuleDotAccess(_) |
+                Context::ChartingDotAccess
+        );
+
+    if !should_skip_filtering && !prefix.is_empty() {
+        items = filter_completions_by_prefix(items, &prefix, MIN_PREFIX_CHARS);
+    } else if !should_skip_filtering && prefix.is_empty() {
+        // No prefix typed and no trigger character - don't show completions
+        items.clear();
     }
 
     items
@@ -1220,218 +1277,6 @@ fn after_colon_completions(keyword: &str) -> Vec<CompletionItem> {
         ],
         _ => vec![],
     }
-}
-
-fn all_keyword_completions() -> Vec<CompletionItem> {
-    let mut items = Vec::new();
-
-    // Top-level keywords
-    items.extend(top_level_completions());
-
-    // Suite body completions
-    items.extend(suite_body_completions());
-
-    // Setup section completions
-    items.extend(setup_section_completions());
-
-    // Bench body completions
-    items.extend(bench_body_completions());
-
-    // Fixture body completions
-    items.extend(fixture_body_completions());
-
-    // Global setup completions (passing empty imports since this is generic fallback)
-    items.extend(global_setup_completions(&[]));
-
-    // Add individual keyword completions that might be missing from context-specific functions
-    items.extend(vec![
-        // Core structure keywords
-        completion_item(
-            "suite",
-            "suite ${1:name} {\n    $0\n}",
-            "Top-level benchmark suite",
-            CompletionItemKind::KEYWORD,
-        ),
-        completion_item(
-            "bench",
-            "bench ${1:name} {\n    go: $2\n    ts: $0\n}",
-            "Benchmark definition",
-            CompletionItemKind::KEYWORD,
-        ),
-        completion_item(
-            "setup",
-            "setup ${1|go,ts,rust|} {\n    $0\n}",
-            "Language-specific setup block",
-            CompletionItemKind::KEYWORD,
-        ),
-        completion_item(
-            "fixture",
-            "fixture ${1:name} {\n    $0\n}",
-            "Shared test data fixture",
-            CompletionItemKind::KEYWORD,
-        ),
-        completion_item(
-            "globalSetup",
-            "globalSetup {\n    $0\n}",
-            "Global setup block (runs once before all benchmarks)",
-            CompletionItemKind::KEYWORD,
-        ),
-        // Setup section keywords
-        completion_item(
-            "init",
-            "init {\n    $0\n}",
-            "Initialization code block",
-            CompletionItemKind::KEYWORD,
-        ),
-        completion_item(
-            "declare",
-            "declare {\n    $0\n}",
-            "Package-level declarations",
-            CompletionItemKind::KEYWORD,
-        ),
-        completion_item(
-            "helpers",
-            "helpers {\n    $0\n}",
-            "Helper function definitions",
-            CompletionItemKind::KEYWORD,
-        ),
-        completion_item(
-            "import",
-            "import {\n    $0\n}",
-            "Import statements",
-            CompletionItemKind::KEYWORD,
-        ),
-        // Language keywords
-        completion_item("go", "go: $0", "Go language implementation", CompletionItemKind::KEYWORD),
-        completion_item(
-            "ts",
-            "ts: $0",
-            "TypeScript language implementation",
-            CompletionItemKind::KEYWORD,
-        ),
-        completion_item(
-            "rust",
-            "rust: $0",
-            "Rust language implementation",
-            CompletionItemKind::KEYWORD,
-        ),
-        // Configuration properties
-        completion_item(
-            "description",
-            "description: \"$0\"",
-            "Description text",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "iterations",
-            "iterations: ${1:1000}",
-            "Number of benchmark iterations",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "warmup",
-            "warmup: ${1:100}",
-            "Number of warmup iterations",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "timeout",
-            "timeout: ${1:30s}",
-            "Benchmark timeout duration",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "tags",
-            "tags: [\"$0\"]",
-            "Benchmark tags for filtering",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "skip",
-            "skip ${1|go,ts,rust|}: $0",
-            "Skip condition for a language",
-            CompletionItemKind::KEYWORD,
-        ),
-        completion_item(
-            "validate",
-            "validate: $0",
-            "Validation expression",
-            CompletionItemKind::PROPERTY,
-        ),
-        // Lifecycle hooks
-        completion_item(
-            "before",
-            "before ${1|go,ts,rust|}: {\n    $0\n}",
-            "Before hook (runs once before benchmark)",
-            CompletionItemKind::KEYWORD,
-        ),
-        completion_item(
-            "after",
-            "after ${1|go,ts,rust|}: {\n    $0\n}",
-            "After hook (runs once after benchmark)",
-            CompletionItemKind::KEYWORD,
-        ),
-        completion_item(
-            "each",
-            "each ${1|go,ts,rust|}: {\n    $0\n}",
-            "Each hook (runs per iteration)",
-            CompletionItemKind::KEYWORD,
-        ),
-        // Suite configuration
-        completion_item(
-            "requires",
-            "requires: [\"${1:go}\", \"${2:ts}\", \"${3:rust}\"]",
-            "Required language implementations",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "order",
-            "order: ${1|sequential,parallel,random|}",
-            "Benchmark execution order",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "compare",
-            "compare: ${1|true,false|}",
-            "Enable cross-language comparison",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "baseline",
-            "baseline: \"${1|go,ts,rust|}\"",
-            "Baseline language for comparison",
-            CompletionItemKind::PROPERTY,
-        ),
-        // Fixture properties
-        completion_item(
-            "shape",
-            "shape: \"$0\"",
-            "Type shape annotation for fixture",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "hex",
-            "hex: \"$0\"",
-            "Hex-encoded data literal",
-            CompletionItemKind::PROPERTY,
-        ),
-        // Async keyword
-        completion_item(
-            "async",
-            "async $0",
-            "Async modifier (for TypeScript)",
-            CompletionItemKind::KEYWORD,
-        ),
-        // Use statement
-        completion_item(
-            "use",
-            "use std::${1|constants,anvil|}",
-            "Import from standard library",
-            CompletionItemKind::KEYWORD,
-        ),
-    ]);
-
-    items
 }
 
 /// Completions for stdlib module names after "use std::"

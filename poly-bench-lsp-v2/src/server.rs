@@ -322,35 +322,118 @@ impl LanguageServer for PolyBenchLanguageServer {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
 
+        // Get trigger character if available
+        let trigger_char = params.context.as_ref().and_then(|ctx| ctx.trigger_character.as_deref());
+
+        // Helper to create exclusive completion list (tells VS Code not to add word completions)
+        let exclusive_list = |items: Vec<CompletionItem>| -> CompletionResponse {
+            CompletionResponse::List(CompletionList { is_incomplete: false, items })
+        };
+
         if let Some(doc) = self.documents.get(&uri) {
+            // Get the line text before cursor for context detection
+            let line_text = get_line_text_before_cursor(&doc.source, position);
+            let trimmed = line_text.trim();
+
+            // Handle trigger character completions (bypass prefix filtering)
+            if trigger_char == Some(".") {
+                // Check for module dot access (e.g., "charting.", "anvil.")
+                if let Some(module) = extract_module_before_dot(trimmed) {
+                    if has_stdlib_import(&doc.source, &module) {
+                        return Ok(Some(exclusive_list(get_module_member_completions(&module))));
+                    }
+                }
+                // Dot pressed but not a known module - return empty exclusive list
+                return Ok(Some(exclusive_list(vec![])));
+            }
+
+            if trigger_char == Some(":") {
+                // Check for use statement
+                if trimmed.starts_with("use") || trimmed.starts_with("use std") {
+                    return Ok(Some(exclusive_list(get_stdlib_module_completions())));
+                }
+                // Colon pressed but not a use statement - return empty exclusive list
+                return Ok(Some(exclusive_list(vec![])));
+            }
+
+            // Extract current prefix being typed
+            let prefix = extract_current_prefix(trimmed);
+
+            // Check for charting function parameter context
+            if is_inside_charting_function_args(trimmed) {
+                let completions = get_charting_param_completions();
+                let filtered = if prefix.is_empty() {
+                    completions
+                } else {
+                    filter_completions_by_prefix(completions, &prefix, 1)
+                };
+                return Ok(Some(exclusive_list(filtered)));
+            }
+
+            // Check for module dot access without trigger (e.g., user typed "charting.dr")
+            if let Some(module) = extract_module_before_dot(trimmed) {
+                if has_stdlib_import(&doc.source, &module) {
+                    let completions = get_module_member_completions(&module);
+                    // Filter by text after the dot
+                    let after_dot = trimmed.rsplit('.').next().unwrap_or("");
+                    if !after_dot.is_empty() {
+                        let filtered = filter_completions_by_prefix(completions, after_dot, 1);
+                        return Ok(Some(exclusive_list(filtered)));
+                    }
+                    return Ok(Some(exclusive_list(completions)));
+                }
+            }
+
+            // Use tree-sitter for context detection
             let point =
                 tree_sitter::Point::new(position.line as usize, position.character as usize);
 
             if let Some(node) = doc.tree.root_node().descendant_for_point_range(point, point) {
                 let mut completions = Vec::new();
 
-                let parent = node.parent();
-                let parent_kind = parent.map(|p| p.kind()).unwrap_or("");
+                // Walk up to find the containing block
+                let context = determine_completion_context(node, &doc.source);
 
-                match parent_kind {
-                    "suite_body" => {
-                        completions.extend(get_suite_body_completions());
+                match context {
+                    CompletionContext::TopLevel => {
+                        completions.extend(get_top_level_completions());
                     }
-                    "benchmark_body" => {
+                    CompletionContext::SuiteBody => {
+                        completions.extend(get_suite_body_completions());
+                        // Add imported stdlib modules
+                        completions.extend(get_imported_module_completions(&doc.source));
+                    }
+                    CompletionContext::SetupBody => {
+                        completions.extend(get_setup_body_completions());
+                    }
+                    CompletionContext::BenchmarkBody => {
                         completions.extend(get_benchmark_body_completions());
                     }
-                    "fixture_body" => {
+                    CompletionContext::FixtureBody => {
                         completions.extend(get_fixture_body_completions());
                     }
-                    "after_body" => {
+                    CompletionContext::AfterBody => {
                         completions.extend(get_charting_completions());
                     }
-                    _ => {
-                        completions.extend(get_top_level_completions());
+                    CompletionContext::EmbeddedCode => {
+                        // Inside embedded Go/TS/Rust code - no DSL completions
+                        return Ok(Some(exclusive_list(vec![])));
+                    }
+                    CompletionContext::GlobalSetup => {
+                        completions.extend(get_global_setup_completions(&doc.source));
                     }
                 }
 
-                return Ok(Some(CompletionResponse::Array(completions)));
+                // Apply prefix filtering
+                // For trigger characters, show all completions without filtering
+                // For typed prefixes, filter by prefix to reduce noise
+                if trigger_char.is_none() && !prefix.is_empty() {
+                    completions = filter_completions_by_prefix(completions, &prefix, 1);
+                }
+
+                // Always return an exclusive list to prevent VS Code word completions
+                // Even if empty, this tells VS Code we handled the request
+                return Ok(Some(exclusive_list(completions)));
             }
         }
 
@@ -468,6 +551,525 @@ fn find_rust_project_root(start_path: &str) -> Option<String> {
     }
 }
 
+/// Completion context determined from tree-sitter AST
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum CompletionContext {
+    TopLevel,
+    SuiteBody,
+    SetupBody,
+    BenchmarkBody,
+    FixtureBody,
+    AfterBody,
+    EmbeddedCode,
+    GlobalSetup,
+}
+
+/// Get the line text before the cursor position
+fn get_line_text_before_cursor(source: &ropey::Rope, position: Position) -> String {
+    let line_idx = position.line as usize;
+    if line_idx < source.len_lines() {
+        let line = source.line(line_idx);
+        let line_str: String = line.chars().collect();
+        let char_pos = (position.character as usize).min(line_str.len());
+        line_str[..char_pos].to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// Extract the current word/prefix being typed
+fn extract_current_prefix(line_text: &str) -> String {
+    let trimmed = line_text.trim_end();
+    trimmed.rsplit(|c: char| !c.is_alphanumeric() && c != '_').next().unwrap_or("").to_string()
+}
+
+/// Filter completions by prefix (case-insensitive)
+fn filter_completions_by_prefix(
+    items: Vec<CompletionItem>,
+    prefix: &str,
+    min_chars: usize,
+) -> Vec<CompletionItem> {
+    if prefix.len() < min_chars {
+        return vec![];
+    }
+    let prefix_lower = prefix.to_lowercase();
+    items.into_iter().filter(|item| item.label.to_lowercase().starts_with(&prefix_lower)).collect()
+}
+
+/// Extract module name before a dot (e.g., "charting" from "charting." or "charting.draw")
+fn extract_module_before_dot(line_text: &str) -> Option<String> {
+    let trimmed = line_text.trim();
+    if !trimmed.contains('.') {
+        return None;
+    }
+
+    let known_modules = ["anvil", "charting", "constants"];
+
+    // Check for "module." at end or "module.partial" pattern
+    for module in known_modules {
+        let pattern = format!("{}.", module);
+        if trimmed.contains(&pattern) {
+            // Verify it's at a word boundary
+            if let Some(pos) = trimmed.rfind(&pattern) {
+                if pos == 0 || trimmed[..pos].ends_with(char::is_whitespace) {
+                    return Some(module.to_string());
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Check if a stdlib module is imported in the source
+fn has_stdlib_import(source: &ropey::Rope, module: &str) -> bool {
+    let pattern = format!("use std::{}", module);
+    for line in source.lines() {
+        let line_str: String = line.chars().collect();
+        if line_str.trim().starts_with(&pattern) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Check if cursor is inside charting function arguments
+fn is_inside_charting_function_args(text: &str) -> bool {
+    // Match patterns like "charting.drawBarChart(" with unclosed paren
+    let patterns = [
+        "charting.drawBarChart(",
+        "charting.drawLineChart(",
+        "charting.drawPieChart(",
+        "charting.drawSpeedupChart(",
+        "charting.drawScalingChart(",
+        "charting.drawTable(",
+    ];
+
+    for pattern in patterns {
+        if text.contains(pattern) {
+            // Check if there's an unclosed paren
+            let after_pattern = text.rsplit(pattern).next().unwrap_or("");
+            let open_parens = after_pattern.matches('(').count();
+            let close_parens = after_pattern.matches(')').count();
+            if open_parens >= close_parens {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Determine completion context from tree-sitter node
+fn determine_completion_context(
+    node: tree_sitter::Node,
+    source: &ropey::Rope,
+) -> CompletionContext {
+    let mut current = Some(node);
+
+    while let Some(n) = current {
+        match n.kind() {
+            "suite_body" => return CompletionContext::SuiteBody,
+            "benchmark_body" => return CompletionContext::BenchmarkBody,
+            "fixture_body" => return CompletionContext::FixtureBody,
+            "after_body" => return CompletionContext::AfterBody,
+            "setup_body" | "setup_block" => return CompletionContext::SetupBody,
+            "global_setup" | "global_setup_body" => return CompletionContext::GlobalSetup,
+            "init_block" | "helpers_block" | "import_block" | "declare_block" => {
+                return CompletionContext::EmbeddedCode;
+            }
+            "embedded_code" | "code_block" => return CompletionContext::EmbeddedCode,
+            "source_file" => return CompletionContext::TopLevel,
+            _ => {}
+        }
+        current = n.parent();
+    }
+
+    // Check line content for additional context
+    let row = node.start_position().row;
+    if row < source.len_lines() {
+        let line: String = source.line(row).chars().collect();
+        let line_trimmed = line.trim();
+        if line_trimmed.starts_with("go:") ||
+            line_trimmed.starts_with("ts:") ||
+            line_trimmed.starts_with("rust:")
+        {
+            return CompletionContext::EmbeddedCode;
+        }
+    }
+
+    CompletionContext::TopLevel
+}
+
+/// Get completions for stdlib module members (after "module.")
+fn get_module_member_completions(module: &str) -> Vec<CompletionItem> {
+    match module {
+        "anvil" => vec![
+            CompletionItem {
+                label: "spawnAnvil".to_string(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                insert_text: Some("spawnAnvil()".to_string()),
+                detail: Some("Spawn a local Anvil Ethereum node".to_string()),
+                documentation: Some(Documentation::String(
+                    "Spawn a local Anvil node. Use fork: \"url\" to fork from a chain.".to_string(),
+                )),
+                ..Default::default()
+            },
+            CompletionItem {
+                label: "spawnAnvil with fork".to_string(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                insert_text: Some("spawnAnvil(fork: \"$0\")".to_string()),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                detail: Some("Spawn Anvil with chain forking".to_string()),
+                ..Default::default()
+            },
+            CompletionItem {
+                label: "ANVIL_RPC_URL".to_string(),
+                kind: Some(CompletionItemKind::CONSTANT),
+                detail: Some("Anvil RPC endpoint URL".to_string()),
+                documentation: Some(Documentation::String(
+                    "The RPC endpoint URL for the spawned Anvil node.".to_string(),
+                )),
+                ..Default::default()
+            },
+        ],
+        "charting" => vec![
+            CompletionItem {
+                label: "drawBarChart".to_string(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                insert_text: Some("drawBarChart($0)".to_string()),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                detail: Some("Draw a bar chart of benchmark results".to_string()),
+                ..Default::default()
+            },
+            CompletionItem {
+                label: "drawLineChart".to_string(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                insert_text: Some("drawLineChart($0)".to_string()),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                detail: Some("Draw a line chart for trends".to_string()),
+                ..Default::default()
+            },
+            CompletionItem {
+                label: "drawPieChart".to_string(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                insert_text: Some("drawPieChart($0)".to_string()),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                detail: Some("Draw a pie chart of time distribution".to_string()),
+                ..Default::default()
+            },
+            CompletionItem {
+                label: "drawSpeedupChart".to_string(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                insert_text: Some("drawSpeedupChart($0)".to_string()),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                detail: Some("Draw a speedup comparison chart".to_string()),
+                ..Default::default()
+            },
+            CompletionItem {
+                label: "drawScalingChart".to_string(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                insert_text: Some("drawScalingChart($0)".to_string()),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                detail: Some("Draw a scaling efficiency chart".to_string()),
+                ..Default::default()
+            },
+            CompletionItem {
+                label: "drawTable".to_string(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                insert_text: Some("drawTable($0)".to_string()),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                detail: Some("Generate a results table".to_string()),
+                ..Default::default()
+            },
+        ],
+        "constants" => vec![
+            CompletionItem {
+                label: "PI".to_string(),
+                kind: Some(CompletionItemKind::CONSTANT),
+                detail: Some("Pi constant (≈ 3.14159)".to_string()),
+                ..Default::default()
+            },
+            CompletionItem {
+                label: "E".to_string(),
+                kind: Some(CompletionItemKind::CONSTANT),
+                detail: Some("Euler's number (≈ 2.71828)".to_string()),
+                ..Default::default()
+            },
+        ],
+        _ => vec![],
+    }
+}
+
+/// Get completions for stdlib modules (after "use std::")
+fn get_stdlib_module_completions() -> Vec<CompletionItem> {
+    vec![
+        CompletionItem {
+            label: "anvil".to_string(),
+            kind: Some(CompletionItemKind::MODULE),
+            detail: Some("Anvil Ethereum node module".to_string()),
+            documentation: Some(Documentation::String(
+                "Provides ANVIL_RPC_URL and spawnAnvil() for Ethereum testing.".to_string(),
+            )),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "charting".to_string(),
+            kind: Some(CompletionItemKind::MODULE),
+            detail: Some("Chart generation module".to_string()),
+            documentation: Some(Documentation::String(
+                "Provides drawBarChart, drawLineChart, drawPieChart, etc.".to_string(),
+            )),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "constants".to_string(),
+            kind: Some(CompletionItemKind::MODULE),
+            detail: Some("Mathematical constants module".to_string()),
+            documentation: Some(Documentation::String("Provides PI and E constants.".to_string())),
+            ..Default::default()
+        },
+    ]
+}
+
+/// Get completions for imported stdlib modules (module names for dot access)
+fn get_imported_module_completions(source: &ropey::Rope) -> Vec<CompletionItem> {
+    let mut items = Vec::new();
+    let modules = ["anvil", "charting", "constants"];
+
+    for module in modules {
+        if has_stdlib_import(source, module) {
+            items.push(CompletionItem {
+                label: module.to_string(),
+                kind: Some(CompletionItemKind::MODULE),
+                detail: Some(format!("std::{} module - type '.' for members", module)),
+                insert_text: Some(module.to_string()),
+                ..Default::default()
+            });
+        }
+    }
+
+    items
+}
+
+/// Get completions for charting function parameters
+fn get_charting_param_completions() -> Vec<CompletionItem> {
+    vec![
+        // Basic parameters (all charts)
+        param_completion("title", "string", "Chart title"),
+        param_completion("description", "string", "Chart description"),
+        param_completion("output", "string", "Output filename"),
+        param_completion("width", "number", "Chart width in pixels"),
+        param_completion("height", "number", "Chart height in pixels"),
+        param_completion("xlabel", "string", "X-axis label"),
+        param_completion("ylabel", "string", "Y-axis label"),
+        // Display toggles
+        bool_param_completion("showStats", "Show ops/sec and time per op"),
+        bool_param_completion("showConfig", "Show config in footer"),
+        bool_param_completion("showWinCounts", "Show win counts in legend"),
+        bool_param_completion("showGeoMean", "Show geometric mean speedup"),
+        bool_param_completion("showDistribution", "Show min/max/p50/p99 distribution"),
+        bool_param_completion("showMemory", "Show bytes/allocs memory stats"),
+        bool_param_completion("showTotalTime", "Show total execution time"),
+        bool_param_completion("compact", "Minimal chart mode"),
+        // Filtering
+        param_completion("minSpeedup", "number", "Only show benchmarks with speedup >= N"),
+        enum_param_completion("filterWinner", &["go", "ts", "all"], "Filter by winner language"),
+        array_param_completion("includeBenchmarks", "Only include these benchmark names"),
+        array_param_completion("excludeBenchmarks", "Exclude these benchmark names"),
+        param_completion("limit", "number", "Max benchmarks to show"),
+        // Sorting
+        enum_param_completion(
+            "sortBy",
+            &["speedup", "name", "time", "ops", "natural"],
+            "Sort benchmarks by",
+        ),
+        enum_param_completion("sortOrder", &["asc", "desc"], "Sort order"),
+        // Data display
+        param_completion("precision", "number", "Decimal places for numbers"),
+        enum_param_completion("timeUnit", &["auto", "ns", "us", "ms", "s"], "Time unit display"),
+        // Axis styling
+        param_completion("axisThickness", "number", "Stroke width for axes"),
+        param_completion("yAxisMin", "number", "Minimum y-axis value"),
+        param_completion("yAxisMax", "number", "Maximum y-axis value"),
+        enum_param_completion(
+            "yScale",
+            &["linear", "log", "symlog", "percent"],
+            "Y-axis scale type",
+        ),
+        param_completion(
+            "baselineBenchmark",
+            "string",
+            "Baseline benchmark name for percentage scale",
+        ),
+        param_completion("symlogThreshold", "number", "Threshold for symlog scale"),
+        // Grid
+        bool_param_completion("showGrid", "Toggle grid lines"),
+        param_completion("gridOpacity", "number", "Grid line opacity (0.0-1.0)"),
+        bool_param_completion("showMinorGrid", "Show minor grid lines"),
+        param_completion("minorGridOpacity", "number", "Minor grid line opacity"),
+        bool_param_completion("showVerticalGrid", "Show vertical grid lines"),
+        // Typography
+        param_completion("titleFontSize", "number", "Title font size"),
+        param_completion("subtitleFontSize", "number", "Subtitle font size"),
+        param_completion("axisLabelFontSize", "number", "X/Y axis title font size"),
+        param_completion("tickLabelFontSize", "number", "Tick mark label font size"),
+        // Legend
+        enum_param_completion(
+            "legendPosition",
+            &["top-left", "top-right", "bottom-left", "bottom-right", "hidden"],
+            "Legend position",
+        ),
+        // Error bars
+        bool_param_completion("showErrorBars", "Toggle error bars"),
+        param_completion("errorBarOpacity", "number", "Error bar opacity"),
+        param_completion("errorBarThickness", "number", "Error bar stroke width"),
+        enum_param_completion("ciLevel", &["90", "95", "99"], "Confidence interval level"),
+        bool_param_completion("showStdDevBand", "Show standard deviation band (line charts)"),
+        // Regression
+        bool_param_completion("showRegression", "Toggle regression line"),
+        enum_param_completion(
+            "regressionStyle",
+            &["solid", "dashed", "dotted"],
+            "Regression line style",
+        ),
+        enum_param_completion(
+            "regressionModel",
+            &["auto", "constant", "log", "linear", "nlogn", "quadratic", "cubic"],
+            "Regression model type",
+        ),
+        bool_param_completion("showRegressionLabel", "Show detected model label"),
+        bool_param_completion("showRSquared", "Show R² value"),
+        bool_param_completion("showEquation", "Show regression equation"),
+        bool_param_completion("showRegressionBand", "Show confidence band around regression"),
+        param_completion(
+            "regressionBandOpacity",
+            "number",
+            "Opacity of regression confidence band",
+        ),
+        // Bar chart specific
+        param_completion("barWidth", "number", "Width of individual bars"),
+        param_completion("barGroupGap", "number", "Gap between benchmark groups"),
+        param_completion("barWithinGroupGap", "number", "Gap between bars within a group"),
+        // Tick formatting
+        bool_param_completion("roundTicks", "Round tick labels to whole numbers"),
+    ]
+}
+
+fn param_completion(name: &str, param_type: &str, description: &str) -> CompletionItem {
+    CompletionItem {
+        label: name.to_string(),
+        kind: Some(CompletionItemKind::PROPERTY),
+        detail: Some(format!("{} ({})", description, param_type)),
+        insert_text: Some(format!("{}: $0", name)),
+        insert_text_format: Some(InsertTextFormat::SNIPPET),
+        ..Default::default()
+    }
+}
+
+fn bool_param_completion(name: &str, description: &str) -> CompletionItem {
+    CompletionItem {
+        label: name.to_string(),
+        kind: Some(CompletionItemKind::PROPERTY),
+        detail: Some(format!("{} (bool)", description)),
+        insert_text: Some(format!("{}: ${{1|true,false|}}", name)),
+        insert_text_format: Some(InsertTextFormat::SNIPPET),
+        ..Default::default()
+    }
+}
+
+fn enum_param_completion(name: &str, values: &[&str], description: &str) -> CompletionItem {
+    let choices = values.join(",");
+    CompletionItem {
+        label: name.to_string(),
+        kind: Some(CompletionItemKind::PROPERTY),
+        detail: Some(format!("{} (enum)", description)),
+        insert_text: Some(format!("{}: \"${{1|{}|}}\"", name, choices)),
+        insert_text_format: Some(InsertTextFormat::SNIPPET),
+        ..Default::default()
+    }
+}
+
+fn array_param_completion(name: &str, description: &str) -> CompletionItem {
+    CompletionItem {
+        label: name.to_string(),
+        kind: Some(CompletionItemKind::PROPERTY),
+        detail: Some(format!("{} (array)", description)),
+        insert_text: Some(format!("{}: [\"$0\"]", name)),
+        insert_text_format: Some(InsertTextFormat::SNIPPET),
+        ..Default::default()
+    }
+}
+
+/// Get completions for setup blocks
+fn get_setup_body_completions() -> Vec<CompletionItem> {
+    vec![
+        CompletionItem {
+            label: "import".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("import {\n\t$0\n}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Import statements block".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "declare".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("declare {\n\t$0\n}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Package-level declarations".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "init".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("init {\n\t$0\n}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Initialization code block".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "helpers".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("helpers {\n\t$0\n}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Helper function definitions".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "async init".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("async init {\n\t$0\n}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Async initialization (TypeScript only)".to_string()),
+            ..Default::default()
+        },
+    ]
+}
+
+/// Get completions for globalSetup blocks
+fn get_global_setup_completions(source: &ropey::Rope) -> Vec<CompletionItem> {
+    let mut items = Vec::new();
+
+    // If anvil is imported, suggest anvil.spawnAnvil()
+    if has_stdlib_import(source, "anvil") {
+        items.push(CompletionItem {
+            label: "anvil.spawnAnvil".to_string(),
+            kind: Some(CompletionItemKind::FUNCTION),
+            insert_text: Some("anvil.spawnAnvil()".to_string()),
+            detail: Some("Spawn a local Anvil Ethereum node".to_string()),
+            ..Default::default()
+        });
+        items.push(CompletionItem {
+            label: "anvil".to_string(),
+            kind: Some(CompletionItemKind::MODULE),
+            detail: Some("std::anvil module - type '.' for members".to_string()),
+            ..Default::default()
+        });
+    }
+
+    items
+}
+
 fn get_top_level_completions() -> Vec<CompletionItem> {
     vec![
         CompletionItem {
@@ -505,6 +1107,7 @@ fn get_top_level_completions() -> Vec<CompletionItem> {
 
 fn get_suite_body_completions() -> Vec<CompletionItem> {
     vec![
+        // Block definitions
         CompletionItem {
             label: "bench".to_string(),
             kind: Some(CompletionItemKind::KEYWORD),
@@ -542,6 +1145,17 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
             ..Default::default()
         },
         CompletionItem {
+            label: "setup rust".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some(
+                "setup rust {\n\timport {\n\t\tuse $1;\n\t}\n\n\thelpers {\n\t\t$0\n\t}\n}"
+                    .to_string(),
+            ),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Define Rust setup block".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
             label: "after".to_string(),
             kind: Some(CompletionItemKind::KEYWORD),
             insert_text: Some("after {\n\t$0\n}".to_string()),
@@ -550,17 +1164,176 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
             ..Default::default()
         },
         CompletionItem {
+            label: "before".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("before ${1|go,ts|}: {\n\t$0\n}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Suite-level before hook".to_string()),
+            ..Default::default()
+        },
+        // Basic configuration
+        CompletionItem {
             label: "description".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
             insert_text: Some("description: \"$0\"".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Suite description".to_string()),
             ..Default::default()
         },
         CompletionItem {
             label: "iterations".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("iterations: ${0:1000}".to_string()),
+            insert_text: Some("iterations: ${1:1000}".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Default iteration count for benchmarks".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "warmup".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("warmup: ${1:100}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Warmup iterations before timing".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "timeout".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("timeout: ${1:30s}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Suite-level timeout".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "requires".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("requires: [\"${1:go}\", \"${2:ts}\"]".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Required language implementations".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "order".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("order: ${1|sequential,parallel,random|}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Benchmark execution order".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "compare".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("compare: true".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Enable comparison tables".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "baseline".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("baseline: \"${1|go,ts|}\"".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Baseline language for comparison".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "tags".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("tags: [\"$0\"]".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Suite-level tags".to_string()),
+            ..Default::default()
+        },
+        // Auto-calibration settings
+        CompletionItem {
+            label: "mode".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("mode: ${1|auto,fixed|}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some(
+                "Execution mode: auto (time-based) or fixed (iteration count)".to_string(),
+            ),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "targetTime".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("targetTime: ${1:3000ms}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Target duration for auto-calibration mode".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "minIterations".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("minIterations: ${1:100}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Minimum iterations for auto-calibration".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "maxIterations".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("maxIterations: ${1:1000000}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Maximum iterations for auto-calibration".to_string()),
+            ..Default::default()
+        },
+        // Performance settings
+        CompletionItem {
+            label: "sink".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("sink: ${1|true,false|}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Use sink/black-box pattern to prevent dead code elimination".to_string()),
+            ..Default::default()
+        },
+        // Statistical settings
+        CompletionItem {
+            label: "outlierDetection".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("outlierDetection: ${1|true,false|}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Enable IQR-based outlier detection and removal".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "cvThreshold".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("cvThreshold: ${1:5}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some(
+                "Coefficient of variation threshold (%) for stability warnings".to_string(),
+            ),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "count".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("count: ${1:10}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some(
+                "Number of times to run each benchmark for statistical consistency".to_string(),
+            ),
+            ..Default::default()
+        },
+        // Observability settings
+        CompletionItem {
+            label: "memory".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("memory: ${1|true,false|}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Enable memory allocation profiling".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "concurrency".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("concurrency: ${1:1}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some(
+                "Number of concurrent goroutines/workers for parallel execution".to_string(),
+            ),
             ..Default::default()
         },
     ]
@@ -613,6 +1386,63 @@ fn get_benchmark_body_completions() -> Vec<CompletionItem> {
             kind: Some(CompletionItemKind::PROPERTY),
             insert_text: Some("tags: [\"$0\"]".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Benchmark tags for filtering".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "description".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("description: \"$0\"".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Benchmark description".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "iterations".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("iterations: ${0:1000}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Override iterations for this benchmark".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "warmup".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("warmup: ${0:100}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Override warmup iterations".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "timeout".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("timeout: ${0:30s}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Benchmark timeout".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "each".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("each ${1:go}: $0".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Per-iteration hook".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "skip".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("skip ${1:go}: $0".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Skip condition for a language".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "validate".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("validate: $0".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Validation expression".to_string()),
             ..Default::default()
         },
     ]
@@ -652,50 +1482,49 @@ fn get_fixture_body_completions() -> Vec<CompletionItem> {
             detail: Some("TypeScript fixture implementation".to_string()),
             ..Default::default()
         },
+        CompletionItem {
+            label: "rust".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("rust: $0".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Rust fixture implementation".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "description".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("description: \"$0\"".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Fixture description".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "shape".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("shape: \"$0\"".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Type shape annotation".to_string()),
+            ..Default::default()
+        },
     ]
 }
 
 fn get_charting_completions() -> Vec<CompletionItem> {
-    vec![
-        CompletionItem {
-            label: "charting.drawBarChart".to_string(),
-            kind: Some(CompletionItemKind::FUNCTION),
-            insert_text: Some(
-                "charting.drawBarChart(\n\ttitle: \"$1\",\n\toutput: \"$2\"\n)".to_string(),
-            ),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            detail: Some("Draw a bar chart".to_string()),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "charting.drawLineChart".to_string(),
-            kind: Some(CompletionItemKind::FUNCTION),
-            insert_text: Some(
-                "charting.drawLineChart(\n\ttitle: \"$1\",\n\txlabel: \"$2\",\n\tylabel: \"$3\"\n)"
-                    .to_string(),
-            ),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            detail: Some("Draw a line chart".to_string()),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "charting.drawSpeedupChart".to_string(),
-            kind: Some(CompletionItemKind::FUNCTION),
-            insert_text: Some(
-                "charting.drawSpeedupChart(\n\ttitle: \"$1\",\n\tbaselineBenchmark: \"$2\"\n)"
-                    .to_string(),
-            ),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            detail: Some("Draw a speedup chart".to_string()),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "charting.drawTable".to_string(),
-            kind: Some(CompletionItemKind::FUNCTION),
-            insert_text: Some("charting.drawTable(\n\ttitle: \"$1\"\n)".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            detail: Some("Generate a results table".to_string()),
-            ..Default::default()
-        },
-    ]
+    // In after blocks, suggest "charting" module for dot access
+    vec![CompletionItem {
+        label: "charting".to_string(),
+        kind: Some(CompletionItemKind::MODULE),
+        detail: Some("Chart generation module - type '.' for methods".to_string()),
+        documentation: Some(Documentation::String(
+            "Type charting. to see available chart functions:\n\
+                 - drawBarChart()\n\
+                 - drawLineChart()\n\
+                 - drawPieChart()\n\
+                 - drawSpeedupChart()\n\
+                 - drawTable()"
+                .to_string(),
+        )),
+        insert_text: Some("charting".to_string()),
+        ..Default::default()
+    }]
 }

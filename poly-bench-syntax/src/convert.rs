@@ -70,14 +70,20 @@ fn convert_global_setup(node: TsNode, source: &str) -> Node<GlobalSetup> {
         if child.kind() == "global_setup_body" {
             let mut body_cursor = child.walk();
             for stmt in child.children(&mut body_cursor) {
-                match stmt.kind() {
-                    "anvil_call" => {
-                        statements.push(convert_anvil_call(stmt, source));
+                if stmt.kind() == "global_setup_statement" {
+                    // Look inside global_setup_statement for the actual call
+                    let mut stmt_cursor = stmt.walk();
+                    for inner in stmt.children(&mut stmt_cursor) {
+                        match inner.kind() {
+                            "anvil_call" => {
+                                statements.push(convert_anvil_call(inner, source));
+                            }
+                            "function_call" => {
+                                statements.push(convert_function_call(inner, source));
+                            }
+                            _ => {}
+                        }
                     }
-                    "function_call" => {
-                        statements.push(convert_function_call(stmt, source));
-                    }
-                    _ => {}
                 }
             }
         }
@@ -733,5 +739,38 @@ suite test {
 
         // Should still have parsed the suite
         assert_eq!(file.suites.len(), 1);
+    }
+
+    #[test]
+    fn test_convert_with_global_setup() {
+        let source = r#"
+use std::anvil
+
+globalSetup {
+    anvil.spawnAnvil()
+}
+
+suite test {
+    globalSetup {
+        anvil.spawnAnvil(fork: "https://mainnet.infura.io")
+    }
+    
+    bench foo {
+        go: run()
+    }
+}
+"#;
+        let file = parse_source(source);
+
+        // Check file-level globalSetup
+        assert!(file.global_setup.is_some(), "File-level globalSetup should exist");
+        let gs = file.global_setup.as_ref().unwrap().as_valid().unwrap();
+        assert_eq!(gs.statements.len(), 1, "File-level globalSetup should have 1 statement");
+
+        // Check suite-level globalSetup
+        let suite = file.suites[0].as_valid().unwrap();
+        assert!(suite.global_setup.is_some(), "Suite-level globalSetup should exist");
+        let suite_gs = suite.global_setup.as_ref().unwrap().as_valid().unwrap();
+        assert_eq!(suite_gs.statements.len(), 1, "Suite-level globalSetup should have 1 statement");
     }
 }
