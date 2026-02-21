@@ -1,7 +1,9 @@
-//! Fetch latest version from crates.io and compare with current; used for --version warning and
-//! upgrade command.
+//! Fetch latest version from GitHub releases and compare with current; used for --version warning
+//! and upgrade command.
 
-/// Print a warning to stderr if current version is older than the latest on crates.io.
+const GITHUB_REPO: &str = "evanmcgrane/poly-bench";
+
+/// Print a warning to stderr if current version is older than the latest on GitHub.
 /// Non-fatal: on network/parse errors, we do nothing.
 pub fn warn_if_outdated(current: &str) {
     if let Some(latest) = fetch_latest_version() {
@@ -14,15 +16,53 @@ pub fn warn_if_outdated(current: &str) {
     }
 }
 
-/// Fetch latest version string from crates.io. Returns None on any error or timeout.
+/// Fetch latest version string from GitHub releases. Returns None on any error or timeout.
 pub fn fetch_latest_version() -> Option<String> {
-    let response = ureq::get("https://crates.io/api/v1/crates/poly-bench")
-        .timeout(std::time::Duration::from_secs(2))
+    let url = format!("https://api.github.com/repos/{}/releases/latest", GITHUB_REPO);
+    let response = ureq::get(&url)
+        .set("User-Agent", "poly-bench-cli")
+        .set("Accept", "application/vnd.github.v3+json")
+        .timeout(std::time::Duration::from_secs(5))
         .call()
         .ok()?;
     let json: serde_json::Value = response.into_json().ok()?;
-    let latest = json.get("crate")?.get("newest_version")?.as_str()?;
-    Some(latest.to_string())
+    let tag_name = json.get("tag_name")?.as_str()?;
+    let version = tag_name.trim_start_matches('v');
+    Some(version.to_string())
+}
+
+/// Get the download URL for a specific version and platform.
+/// Returns None if the platform is not supported.
+pub fn get_download_url(version: &str) -> Option<String> {
+    let artifact_name = get_artifact_name()?;
+    Some(format!(
+        "https://github.com/{}/releases/download/v{}/{}",
+        GITHUB_REPO, version, artifact_name
+    ))
+}
+
+/// Get the artifact name for the current platform.
+fn get_artifact_name() -> Option<&'static str> {
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    {
+        Some("poly-bench-linux-x86_64")
+    }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    {
+        Some("poly-bench-macos-aarch64")
+    }
+    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+    {
+        Some("poly-bench-windows-x86_64.exe")
+    }
+    #[cfg(not(any(
+        all(target_os = "linux", target_arch = "x86_64"),
+        all(target_os = "macos", target_arch = "aarch64"),
+        all(target_os = "windows", target_arch = "x86_64")
+    )))]
+    {
+        None
+    }
 }
 
 /// Compare semver strings: true if current < latest (current is older).

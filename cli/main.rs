@@ -7,7 +7,7 @@ mod welcome;
 use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
 use miette::Result;
-use std::{path::PathBuf, time::Duration};
+use std::{io::Read, path::PathBuf, time::Duration};
 
 use poly_bench_dsl as dsl;
 use poly_bench_executor as executor;
@@ -236,6 +236,7 @@ async fn main() -> Result<()> {
     let command = match cli.command {
         None => {
             welcome::show_welcome_and_maybe_mark_seen();
+            version_check::warn_if_outdated(VERSION);
             return Ok(());
         }
         Some(c) => c,
@@ -1097,45 +1098,89 @@ async fn cmd_codegen(file: &PathBuf, lang: &str, output: &PathBuf) -> Result<()>
 
 fn cmd_upgrade() -> Result<()> {
     use colored::Colorize;
+    use std::io::Write;
+
     let current = VERSION;
     let latest = match version_check::fetch_latest_version() {
         Some(v) => v,
         None => {
             eprintln!(
-                "{} Could not fetch latest version. Try: cargo install poly-bench",
+                "{} Could not fetch latest version from GitHub. Check your internet connection.",
                 "⚠".yellow()
             );
             return Ok(());
         }
     };
+
     if !version_check::is_older(current, &latest) {
         println!("{} Already on latest version ({}).", "✓".green().bold(), current);
         return Ok(());
     }
+
+    let download_url = match version_check::get_download_url(&latest) {
+        Some(url) => url,
+        None => {
+            eprintln!(
+                "{} No pre-built binary available for this platform. Build from source:",
+                "⚠".yellow()
+            );
+            eprintln!("    git clone https://github.com/evanmcgrane/poly-bench");
+            eprintln!("    cd poly-bench && cargo build --release");
+            return Ok(());
+        }
+    };
+
     println!("Upgrading from {} to {}...", current, latest);
-    let status = std::process::Command::new("cargo")
-        .args(["install", "poly-bench", "--version", &latest])
-        .status();
-    match status {
-        Ok(s) if s.success() => {
-            println!("{} Upgraded to poly-bench {}.", "✓".green().bold(), latest);
-        }
-        Ok(_) => {
-            eprintln!(
-                "{} Install failed. You can try manually: cargo install poly-bench --version {}",
-                "⚠".yellow(),
-                latest
-            );
-        }
+    println!("Downloading from: {}", download_url);
+
+    let current_exe = match std::env::current_exe() {
+        Ok(path) => path,
         Err(e) => {
-            eprintln!(
-                "{} cargo not found or failed ({}). To upgrade, run: cargo install poly-bench --version {}",
-                "⚠".yellow(),
-                e,
-                latest
-            );
+            eprintln!("{} Could not determine current executable path: {}", "⚠".yellow(), e);
+            return Ok(());
+        }
+    };
+
+    let temp_path = current_exe.with_extension("new");
+
+    let response = match ureq::get(&download_url).set("User-Agent", "poly-bench-cli").call() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("{} Failed to download: {}", "⚠".yellow(), e);
+            return Ok(());
+        }
+    };
+
+    let mut bytes = Vec::new();
+    if let Err(e) = response.into_reader().read_to_end(&mut bytes) {
+        eprintln!("{} Failed to read download: {}", "⚠".yellow(), e);
+        return Ok(());
+    }
+
+    if let Err(e) = std::fs::File::create(&temp_path).and_then(|mut f| f.write_all(&bytes)) {
+        eprintln!("{} Failed to write temporary file: {}", "⚠".yellow(), e);
+        return Ok(());
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = std::fs::set_permissions(&temp_path, std::fs::Permissions::from_mode(0o755))
+        {
+            eprintln!("{} Failed to set executable permissions: {}", "⚠".yellow(), e);
+            let _ = std::fs::remove_file(&temp_path);
+            return Ok(());
         }
     }
+
+    if let Err(e) = std::fs::rename(&temp_path, &current_exe) {
+        eprintln!("{} Failed to replace binary: {}", "⚠".yellow(), e);
+        eprintln!("    You may need to run with elevated permissions (sudo).");
+        let _ = std::fs::remove_file(&temp_path);
+        return Ok(());
+    }
+
+    println!("{} Upgraded to poly-bench {}.", "✓".green().bold(), latest);
     Ok(())
 }
 
