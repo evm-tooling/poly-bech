@@ -6,7 +6,7 @@ use crate::{
     fixtures::{decode_hex, extract_fixture_refs, load_hex_file},
     imports::{extract_go_imports, extract_rust_imports, extract_ts_imports, ParsedSetup},
     AnvilConfigIR, BenchmarkIR, BenchmarkSpec, ChartDirectiveIR, FixtureIR, FixtureParamIR,
-    SuiteIR,
+    SourceLocation, SuiteIR,
 };
 use miette::{miette, Result};
 use poly_bench_dsl::{
@@ -107,22 +107,33 @@ fn lower_suite(
                 _ => ParsedSetup::passthrough(&import_block.code),
             };
             ir.imports.insert(*lang, parsed.imports);
+            // Preserve source location
+            ir.imports_source
+                .insert(*lang, SourceLocation::new(import_block.span.line, import_block.span.col));
         }
 
         // Handle declarations
         if let Some(ref decl_block) = structured_setup.declarations {
             ir.declarations.insert(*lang, decl_block.code.clone());
+            ir.declarations_source
+                .insert(*lang, SourceLocation::new(decl_block.span.line, decl_block.span.col));
         }
 
         // Handle init code
         if let Some(ref init_block) = structured_setup.init {
             ir.init_code.insert(*lang, init_block.code.clone());
             ir.async_init.insert(*lang, structured_setup.async_init);
+            ir.init_source
+                .insert(*lang, SourceLocation::new(init_block.span.line, init_block.span.col));
         }
 
         // Handle helpers
         if let Some(ref helpers_block) = structured_setup.helpers {
             ir.helpers.insert(*lang, helpers_block.code.clone());
+            ir.helpers_source.insert(
+                *lang,
+                SourceLocation::new(helpers_block.span.line, helpers_block.span.col),
+            );
         }
     }
 

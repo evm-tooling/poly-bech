@@ -21,7 +21,10 @@ use crate::{
     virtual_files::{VirtualFile, VirtualGoFile, VirtualRustFile, VirtualTsFile},
 };
 use poly_bench_syntax::{Lang, Node};
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range};
 
 /// Result of checking embedded code
@@ -84,6 +87,10 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
 
         let virtual_file =
             VirtualGoFile::from_blocks(bench_uri, &bench_path, &go_mod_root, go_blocks, 1);
+
+        // Write virtual file to disk for gopls
+        write_virtual_file_to_disk(virtual_file.path(), virtual_file.content());
+
         let diagnostics = go::check_go_blocks(&virtual_file);
         let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names);
         all_diagnostics.extend(map_diagnostics_to_bench(filtered, &virtual_file, doc, Lang::Go));
@@ -91,15 +98,26 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
 
     // Check TypeScript blocks
     if let Some(ts_blocks) = blocks_by_lang.get(&Lang::TypeScript) {
-        let ts_module_root = find_module_root(&bench_path, "package.json")
-            .or_else(|| find_polybench_runtime(&bench_path, "ts"))
+        // Prioritize .polybench/runtime-env/ts/ over general package.json search
+        // This ensures we use the polybench runtime environment for linting
+        let ts_module_root = find_polybench_runtime(&bench_path, "ts")
+            .or_else(|| find_module_root(&bench_path, "package.json"))
             .unwrap_or_else(|| bench_path.clone());
+
+        tracing::debug!("[embedded-diagnostics] TypeScript module root: {}", ts_module_root);
 
         // Initialize tsserver client if not already done
         let _ = init_tsserver_client(&ts_module_root);
 
+        // Ensure tsconfig.json exists for TypeScript
+        ensure_tsconfig(&ts_module_root);
+
         let virtual_file =
             VirtualTsFile::from_blocks(bench_uri, &bench_path, &ts_module_root, ts_blocks, 1);
+
+        // Write virtual file to disk - tsserver requires files on disk
+        write_virtual_file_to_disk(virtual_file.path(), virtual_file.content());
+
         let diagnostics = typescript::check_ts_blocks(&virtual_file);
         let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names);
         all_diagnostics.extend(map_diagnostics_to_bench(
@@ -112,9 +130,13 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
 
     // Check Rust blocks
     if let Some(rust_blocks) = blocks_by_lang.get(&Lang::Rust) {
-        let rust_project_root = find_module_root(&bench_path, "Cargo.toml")
-            .or_else(|| find_polybench_runtime(&bench_path, "rust"))
+        // Prioritize .polybench/runtime-env/rust/ over general Cargo.toml search
+        // This ensures we use the polybench runtime environment for linting
+        let rust_project_root = find_polybench_runtime(&bench_path, "rust")
+            .or_else(|| find_module_root(&bench_path, "Cargo.toml"))
             .unwrap_or_else(|| bench_path.clone());
+
+        tracing::debug!("[embedded-diagnostics] Rust project root: {}", rust_project_root);
 
         // Initialize rust-analyzer client if not already done
         let _ = init_rust_analyzer_client(&rust_project_root);
@@ -126,6 +148,10 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
             rust_blocks,
             1,
         );
+
+        // Write virtual file to disk - rust-analyzer requires files on disk
+        write_virtual_file_to_disk(virtual_file.path(), virtual_file.content());
+
         let diagnostics = rust::check_rust_blocks(&virtual_file);
         let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names);
         all_diagnostics.extend(map_diagnostics_to_bench(filtered, &virtual_file, doc, Lang::Rust));
@@ -191,6 +217,62 @@ fn filter_fixture_diagnostics(
             true
         })
         .collect()
+}
+
+/// Write a virtual file to disk, creating parent directories as needed
+fn write_virtual_file_to_disk(path: &str, content: &str) {
+    let path = Path::new(path);
+
+    // Create parent directories if they don't exist
+    if let Some(parent) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            tracing::warn!(
+                "[embedded-diagnostics] Failed to create directory {}: {}",
+                parent.display(),
+                e
+            );
+            return;
+        }
+    }
+
+    // Write the file
+    if let Err(e) = std::fs::write(path, content) {
+        tracing::warn!(
+            "[embedded-diagnostics] Failed to write virtual file {}: {}",
+            path.display(),
+            e
+        );
+    } else {
+        tracing::debug!("[embedded-diagnostics] Wrote virtual file: {}", path.display());
+    }
+}
+
+/// Ensure tsconfig.json exists in the TypeScript module root
+fn ensure_tsconfig(ts_module_root: &str) {
+    let tsconfig_path = Path::new(ts_module_root).join("tsconfig.json");
+    if !tsconfig_path.exists() {
+        let tsconfig_content = r#"{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true
+  }
+}
+"#;
+        if let Err(e) = std::fs::write(&tsconfig_path, tsconfig_content) {
+            tracing::warn!("[embedded-diagnostics] Failed to create tsconfig.json: {}", e);
+        } else {
+            tracing::debug!(
+                "[embedded-diagnostics] Created tsconfig.json at {}",
+                tsconfig_path.display()
+            );
+        }
+    }
 }
 
 /// Find .polybench/runtime-env/{lang}/ directory
@@ -286,6 +368,85 @@ fn offset_to_line_col(source: &str, offset: usize) -> (u32, u32) {
     }
 
     (line, col)
+}
+
+/// Result of validating embedded code for pre-run checks
+#[derive(Debug, Clone)]
+pub struct ValidationError {
+    /// The language of the code with the error
+    pub lang: Lang,
+    /// Line number in the .bench file (1-indexed for display)
+    pub line: u32,
+    /// Column number in the .bench file (1-indexed for display)
+    pub column: u32,
+    /// The error message
+    pub message: String,
+    /// Severity of the error
+    pub severity: DiagnosticSeverity,
+}
+
+impl std::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}] line {}:{}: {}", self.lang.as_str(), self.line, self.column, self.message)
+    }
+}
+
+/// Validate all embedded code in a document and return any errors found
+/// This is useful for pre-run validation to catch errors before benchmark execution
+pub fn validate_all_embedded_code(doc: &Document) -> Vec<ValidationError> {
+    let diagnostics = check_embedded_code(doc);
+
+    diagnostics
+        .into_iter()
+        .filter(|d| d.severity == Some(DiagnosticSeverity::ERROR))
+        .map(|d| {
+            let lang = d
+                .source
+                .as_ref()
+                .and_then(|s| {
+                    if s.contains("go") {
+                        Some(Lang::Go)
+                    } else if s.contains("typescript") || s.contains("ts") {
+                        Some(Lang::TypeScript)
+                    } else if s.contains("rust") {
+                        Some(Lang::Rust)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(Lang::Go);
+
+            ValidationError {
+                lang,
+                line: d.range.start.line + 1,
+                column: d.range.start.character + 1,
+                message: d.message,
+                severity: d.severity.unwrap_or(DiagnosticSeverity::ERROR),
+            }
+        })
+        .collect()
+}
+
+/// Check if a document has any embedded code errors
+/// Returns true if there are errors that would cause runtime failures
+pub fn has_embedded_errors(doc: &Document) -> bool {
+    let errors = validate_all_embedded_code(doc);
+    !errors.is_empty()
+}
+
+/// Format validation errors for display
+pub fn format_validation_errors(errors: &[ValidationError]) -> String {
+    if errors.is_empty() {
+        return String::from("No embedded code errors found.");
+    }
+
+    let mut output = format!("Found {} embedded code error(s):\n", errors.len());
+
+    for (i, error) in errors.iter().enumerate() {
+        output.push_str(&format!("  {}. {}\n", i + 1, error));
+    }
+
+    output
 }
 
 #[cfg(test)]

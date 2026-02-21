@@ -24,19 +24,28 @@ pub fn check_ts_blocks(virtual_file: &VirtualTsFile) -> Vec<EmbeddedDiagnostic> 
         }
     };
 
-    // Ensure the virtual file is opened in tsserver
     let uri = virtual_file.uri();
     let content = virtual_file.content();
     let version = virtual_file.version();
 
+    tracing::debug!("[ts-diagnostics] Checking TypeScript file: {} (version {})", uri, version);
+
+    // Open/update the file in tsserver
     if let Err(e) = client.did_change(uri, content, version) {
         tracing::warn!("[ts-diagnostics] Failed to update file in tsserver: {}", e);
         return diagnostics;
     }
 
+    // Give tsserver a moment to analyze the file
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
     // Request diagnostics from tsserver
     match client.request_diagnostics(uri) {
         Ok(lsp_diags) => {
+            tracing::debug!(
+                "[ts-diagnostics] Received {} diagnostics from tsserver",
+                lsp_diags.len()
+            );
             for diag in lsp_diags {
                 diagnostics.push(EmbeddedDiagnostic {
                     message: diag.message,

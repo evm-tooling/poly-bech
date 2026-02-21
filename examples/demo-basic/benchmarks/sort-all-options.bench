@@ -63,7 +63,7 @@ suite sortN {
                 let n = data.len() / 4;
                 let mut arr: Vec<i32> = (0..n).map(|i| {
                     let j = i * 4;
-                    i32::from_be_byte([data[j], data[j+1], data[j+2], data[j+3]])
+                    i32::from_be_byts([data[j], data[j+1], data[j+2], data[j+3]])
                 }).collect();
                 arr.sort_unstable();
                 let mut out = vec![0u8; data.len()];

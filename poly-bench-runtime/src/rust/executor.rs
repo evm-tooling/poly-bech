@@ -59,6 +59,61 @@ impl Runtime for RustRuntime {
         Ok(())
     }
 
+    async fn compile_check(&self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<()> {
+        let source = generate_standalone_benchmark(spec, suite)?;
+
+        // Build line mappings for error remapping
+        let mappings = crate::build_rust_mappings(suite, &source);
+
+        // Always use a clean temp directory for compile checks to avoid interference
+        // from other files (like LSP virtual files) in the project
+        let check_id = format!(
+            "{:x}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos() %
+                0xFFFFFFFF
+        );
+        let temp_dir = std::env::temp_dir().join(format!("polybench-rust-check-{}", check_id));
+        std::fs::create_dir_all(&temp_dir)
+            .map_err(|e| miette!("Failed to create temp directory: {}", e))?;
+
+        let src_dir = temp_dir.join("src");
+        std::fs::create_dir_all(&src_dir)
+            .map_err(|e| miette!("Failed to create src directory: {}", e))?;
+
+        let cargo_toml = generate_cargo_toml(suite);
+        std::fs::write(temp_dir.join("Cargo.toml"), cargo_toml)
+            .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
+
+        let src_path = src_dir.join("main.rs");
+        std::fs::write(&src_path, &source)
+            .map_err(|e| miette!("Failed to write benchmark source: {}", e))?;
+
+        let cargo_binary = which::which("cargo").map_err(|_| miette!("Cargo not found in PATH"))?;
+
+        // Use 'cargo check' for fast compilation checking without codegen
+        let output = tokio::process::Command::new(&cargo_binary)
+            .args(["check", "--release", "--quiet"])
+            .current_dir(&temp_dir)
+            .output()
+            .await
+            .map_err(|e| miette!("Failed to compile Rust benchmark: {}", e))?;
+
+        // Clean up temp directory
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            // Remap error line numbers to .bench file locations
+            let remapped = crate::remap_rust_error(&stderr, &mappings);
+            return Err(miette!("Rust compilation failed:\n{}", remapped));
+        }
+
+        Ok(())
+    }
+
     async fn run_benchmark(
         &mut self,
         spec: &BenchmarkSpec,

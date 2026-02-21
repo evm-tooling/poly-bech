@@ -87,6 +87,133 @@ impl Runtime for JsRuntime {
         Ok(())
     }
 
+    async fn compile_check(&self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<()> {
+        // Generate the TypeScript code (before stripping types)
+        let impl_code = spec
+            .get_impl(Lang::TypeScript)
+            .ok_or_else(|| miette!("No TypeScript implementation for benchmark {}", spec.name))?;
+
+        let mut script = String::new();
+
+        // User imports first
+        if let Some(user_imports) = suite.imports.get(&Lang::TypeScript) {
+            for import_stmt in user_imports {
+                script.push_str(import_stmt);
+                script.push('\n');
+            }
+        }
+
+        // Add declarations
+        if let Some(declarations) = suite.declarations.get(&Lang::TypeScript) {
+            if !declarations.trim().is_empty() {
+                script.push_str(declarations);
+                script.push_str("\n\n");
+            }
+        }
+
+        // Add helpers
+        if let Some(helpers) = suite.helpers.get(&Lang::TypeScript) {
+            if !helpers.trim().is_empty() {
+                script.push_str(helpers);
+                script.push_str("\n\n");
+            }
+        }
+
+        // Add fixtures
+        for fixture_name in &spec.fixture_refs {
+            if let Some(fixture) = suite.get_fixture(fixture_name) {
+                if let Some(fixture_impl) = fixture.implementations.get(&Lang::TypeScript) {
+                    if fixture_impl.contains("return") {
+                        script.push_str(&format!(
+                            "const {} = (() => {{\n{}\n}})();\n",
+                            fixture_name, fixture_impl
+                        ));
+                    } else {
+                        script.push_str(&format!("const {} = {};\n", fixture_name, fixture_impl));
+                    }
+                } else if !fixture.data.is_empty() {
+                    script.push_str(&format!(
+                        "const {} = new Uint8Array([{}]);\n",
+                        fixture_name,
+                        fixture.data.iter().map(|b| b.to_string()).collect::<Vec<_>>().join(", ")
+                    ));
+                }
+            }
+        }
+
+        // Add the benchmark implementation wrapped in a function
+        script.push_str(&format!(
+            "\nfunction __benchmark() {{\n    {};\n}}\n__benchmark();\n",
+            impl_code
+        ));
+
+        // Determine where to write the file
+        let (script_path, working_dir) = if let Some(ref project_root) = self.project_root {
+            let is_runtime_env = project_root.as_os_str().to_string_lossy().contains("runtime-env");
+            let script_path = if is_runtime_env {
+                project_root.join("bench_check.ts")
+            } else {
+                let bench_dir = project_root.join(".polybench");
+                std::fs::create_dir_all(&bench_dir)
+                    .map_err(|e| miette!("Failed to create .polybench directory: {}", e))?;
+                bench_dir.join("bench_check.ts")
+            };
+            (script_path, project_root.clone())
+        } else {
+            let temp_dir =
+                self.temp_dir.as_ref().ok_or_else(|| miette!("Runtime not initialized"))?;
+            (temp_dir.path().join("bench_check.ts"), temp_dir.path().to_path_buf())
+        };
+
+        std::fs::write(&script_path, &script)
+            .map_err(|e| miette!("Failed to write TypeScript check file: {}", e))?;
+
+        // Build line mappings for error remapping
+        let mappings = crate::build_typescript_mappings(suite, &script);
+
+        // Try to use tsc if available, otherwise use node --check for basic syntax
+        if let Ok(tsc_binary) = which::which("tsc") {
+            let output = tokio::process::Command::new(&tsc_binary)
+                .args(["--noEmit", "--skipLibCheck", script_path.to_str().unwrap()])
+                .current_dir(&working_dir)
+                .output()
+                .await
+                .map_err(|e| miette!("Failed to run TypeScript compiler: {}", e))?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let error_output = if stderr.is_empty() { stdout } else { stderr };
+                // Remap error line numbers to .bench file locations
+                let remapped = crate::remap_typescript_error(&error_output, &mappings);
+                return Err(miette!("TypeScript compilation failed:\n{}", remapped));
+            }
+        } else {
+            // Fallback: use Node.js --check for basic syntax validation
+            // Note: This won't catch type errors, only syntax errors
+            let js_script = strip_typescript_syntax(&script);
+            let js_path = script_path.with_extension("mjs");
+            std::fs::write(&js_path, &js_script)
+                .map_err(|e| miette!("Failed to write JS check file: {}", e))?;
+
+            let output = tokio::process::Command::new(&self.node_binary)
+                .args(["--check", js_path.to_str().unwrap()])
+                .current_dir(&working_dir)
+                .output()
+                .await
+                .map_err(|e| miette!("Failed to check JavaScript syntax: {}", e))?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                // Remap error line numbers to .bench file locations
+                let remapped = crate::remap_typescript_error(&stderr, &mappings);
+                return Err(miette!("JavaScript syntax check failed:\n{}", remapped));
+            }
+        }
+
+        Ok(())
+    }
+
     async fn run_benchmark(
         &mut self,
         spec: &BenchmarkSpec,

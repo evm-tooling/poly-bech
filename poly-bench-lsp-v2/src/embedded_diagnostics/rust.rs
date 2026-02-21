@@ -24,19 +24,29 @@ pub fn check_rust_blocks(virtual_file: &VirtualRustFile) -> Vec<EmbeddedDiagnost
         }
     };
 
-    // Ensure the virtual file is opened in rust-analyzer
     let uri = virtual_file.uri();
     let content = virtual_file.content();
     let version = virtual_file.version();
 
+    tracing::debug!("[rust-diagnostics] Checking Rust file: {} (version {})", uri, version);
+
+    // Open/update the file in rust-analyzer
     if let Err(e) = client.did_change(uri, content, version) {
         tracing::warn!("[rust-diagnostics] Failed to update file in rust-analyzer: {}", e);
         return diagnostics;
     }
 
+    // Give rust-analyzer a moment to analyze the file
+    // rust-analyzer needs more time than tsserver due to cargo/rustc integration
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
     // Request diagnostics from rust-analyzer
     match client.request_diagnostics(uri) {
         Ok(lsp_diags) => {
+            tracing::debug!(
+                "[rust-diagnostics] Received {} diagnostics from rust-analyzer",
+                lsp_diags.len()
+            );
             for diag in lsp_diags {
                 diagnostics.push(EmbeddedDiagnostic {
                     message: diag.message,
