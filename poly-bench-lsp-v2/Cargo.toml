@@ -23,6 +23,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 which = "6"
 parking_lot = "0.12"
+regex = "1"
+tempfile = "3"
 
 [dev-dependencies]
 tokio-test = "0.4"
