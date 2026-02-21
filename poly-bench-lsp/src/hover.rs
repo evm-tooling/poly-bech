@@ -1144,7 +1144,7 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             Import a module from the poly-bench standard library.\n\n\
             Available modules:\n\
             - `anvil` - Anvil node integration (ANVIL_RPC_URL)\n\
-            - `charting` - Chart generation (drawBarChart, drawPieChart, drawLineChart)\n\
+            - `charting` - Chart generation (drawBarChart, drawLineChart, drawSpeedupChart, drawTable)\n\
             - `constants` - Mathematical constants (std_PI, std_E)"
         ),
 
@@ -1204,8 +1204,9 @@ fn stdlib_module_docs(module: &str) -> Option<&'static str> {
             Use in a suite-level `after { }` block to generate charts after benchmarks complete.\n\n\
             **Provided functions:**\n\
             - `charting.drawBarChart()` - Generate a bar chart comparing benchmark times\n\
-            - `charting.drawPieChart()` - Generate a pie chart showing time distribution\n\
-            - `charting.drawLineChart()` - Generate a line chart for trend visualization\n\n\
+            - `charting.drawLineChart()` - Generate a line chart for trend visualization\n\
+            - `charting.drawSpeedupChart()` - Generate a speedup comparison chart\n\
+            - `charting.drawTable()` - Generate a data table\n\n\
             **Example:**\n\
             ```\nafter {\n    charting.drawBarChart(\n        title: \"Performance Comparison\",\n        xlabel: \"Benchmark\",\n        ylabel: \"Time (ns)\"\n    )\n}\n```"
         ),
@@ -1257,8 +1258,13 @@ fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
             **Basic Parameters:**\n\
             - `title` - Chart title (string)\n\
             - `description` - Chart description (string)\n\
-            - `xlabel`, `ylabel` - Axis labels (string)\n\
+            - `xlabel` - X-axis label (string)\n\
             - `output` - Output filename (default: bar-chart.svg)\n\n\
+            **Chart Mode:**\n\
+            - `chartMode` - \"performance\" (default) or \"throughput\"\n\
+              - `\"performance\"`: Y-axis = \"Time (ns/op)\"\n\
+              - `\"throughput\"`: Y-axis = \"Iterations\"\n\
+            - Y-axis label is auto-determined by chartMode\n\n\
             **Display Toggles:** (default: true unless noted)\n\
             - `showStats` - Show ops/sec and time per op\n\
             - `showConfig` - Show iterations/warmup/timeout\n\
@@ -1280,23 +1286,7 @@ fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
             - `precision` - Decimal places (default: 2)\n\
             - `timeUnit` - \"auto\", \"ns\", \"us\", \"ms\", \"s\"\n\n\
             **Example:**\n\
-            ```\nafter {\n    charting.drawBarChart(\n        title: \"Performance Comparison\",\n        sortBy: \"speedup\",\n        sortOrder: \"desc\",\n        limit: 10\n    )\n}\n```\n\n\
-            *From `std::charting`*"
-        ),
-        "drawPieChart" => Some(
-            "**charting.drawPieChart** `(...params)`\n\n\
-            Generate a pie chart showing time distribution across benchmarks.\n\n\
-            **Basic Parameters:**\n\
-            - `title` - Chart title (string)\n\
-            - `description` - Chart description (string)\n\
-            - `output` - Output filename (default: pie-chart.svg)\n\n\
-            **Display Toggles:**\n\
-            - `showStats` - Show timing info in legend (default: true)\n\
-            - `showTotalTime` - Show total time (default: false)\n\
-            - `compact` - Minimal mode (default: false)\n\n\
-            **Filtering:** Same as drawBarChart\n\n\
-            **Example:**\n\
-            ```\nafter {\n    charting.drawPieChart(\n        title: \"Time Distribution\",\n        showStats: true\n    )\n}\n```\n\n\
+            ```\nafter {\n    charting.drawBarChart(\n        title: \"Performance Comparison\",\n        chartMode: \"performance\",\n        sortBy: \"speedup\",\n        sortOrder: \"desc\",\n        limit: 10\n    )\n}\n```\n\n\
             *From `std::charting`*"
         ),
         "drawLineChart" => Some(
@@ -1305,8 +1295,13 @@ fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
             **Basic Parameters:**\n\
             - `title` - Chart title (string)\n\
             - `description` - Chart description (string)\n\
-            - `xlabel`, `ylabel` - Axis labels (string)\n\
+            - `xlabel` - X-axis label (string)\n\
             - `output` - Output filename (default: line-chart.svg)\n\n\
+            **Chart Mode:**\n\
+            - `chartMode` - \"performance\" (default) or \"throughput\"\n\
+              - `\"performance\"`: Y-axis = \"Time (ns/op)\"\n\
+              - `\"throughput\"`: Y-axis = \"Iterations\"\n\
+            - Y-axis label is auto-determined by chartMode\n\n\
             **Display Toggles:**\n\
             - `showStats` - Show timing tooltips on hover (default: true)\n\
             - `compact` - Minimal mode (default: false)\n\n\
@@ -1315,7 +1310,7 @@ fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
             - `precision` - Decimal places (default: 2)\n\
             - `timeUnit` - \"auto\", \"ns\", \"us\", \"ms\", \"s\"\n\n\
             **Example:**\n\
-            ```\nafter {\n    charting.drawLineChart(\n        title: \"Performance Trends\",\n        sortBy: \"name\"\n    )\n}\n```\n\n\
+            ```\nafter {\n    charting.drawLineChart(\n        title: \"Performance Trends\",\n        chartMode: \"throughput\",\n        sortBy: \"name\"\n    )\n}\n```\n\n\
             *From `std::charting`*"
         ),
         // Namespaced std::constants symbols (new preferred style)

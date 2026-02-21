@@ -473,7 +473,7 @@ impl Parser {
 
         let chart_type = ChartType::from_function_name(&func_name).ok_or_else(|| {
             self.make_error(ParseError::InvalidProperty {
-                name: format!("Unknown charting function '{}'. Valid functions: drawBarChart, drawPieChart, drawLineChart", func_name),
+                name: format!("Unknown charting function '{}'. Valid functions: drawBarChart, drawLineChart, drawSpeedupChart, drawTable", func_name),
                 span: func_token.span.clone(),
             })
         })?;
@@ -531,6 +531,7 @@ impl Parser {
                 "baseline" | "baselineBenchmark" => {
                     directive.baseline_benchmark = Some(self.expect_string()?)
                 }
+                "chartMode" => directive.chart_mode = Some(self.expect_string()?),
 
                 // Boolean parameters
                 "showStats" => directive.show_stats = self.expect_bool()?,

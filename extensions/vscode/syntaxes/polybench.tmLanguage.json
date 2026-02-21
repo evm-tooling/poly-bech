@@ -87,7 +87,7 @@
         },
         {
           "name": "meta.function-call.charting.bench",
-          "match": "\\b(drawBarChart|drawLineChart|drawPieChart|drawScatterPlot|drawHistogram|drawHeatmap|drawBoxPlot|drawAreaChart)\\s*\\(",
+          "match": "\\b(drawBarChart|drawLineChart|drawSpeedupChart|drawTable|drawScatterPlot|drawHistogram|drawHeatmap|drawBoxPlot|drawAreaChart)\\s*\\(",
           "captures": {
             "1": {
               "name": "entity.name.function.bench"
@@ -205,7 +205,7 @@
     "charting-params": {
       "patterns": [
         {
-          "match": "\\b(title|description|xlabel|ylabel|sortBy|sortOrder|timeUnit|output|filterWinner|legendPosition|regressionStyle|regressionModel|yScale|baselineBenchmark)\\s*:\\s*",
+          "match": "\\b(title|description|xlabel|ylabel|sortBy|sortOrder|timeUnit|output|filterWinner|legendPosition|regressionStyle|regressionModel|yScale|baselineBenchmark|chartMode|baseline)\\s*:\\s*",
           "captures": {
             "1": {
               "name": "keyword.other.bench"

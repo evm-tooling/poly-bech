@@ -639,9 +639,7 @@ fn is_inside_charting_function_args(text: &str) -> bool {
     let patterns = [
         "charting.drawBarChart(",
         "charting.drawLineChart(",
-        "charting.drawPieChart(",
         "charting.drawSpeedupChart(",
-        "charting.drawScalingChart(",
         "charting.drawTable(",
     ];
 
@@ -750,27 +748,11 @@ fn get_module_member_completions(module: &str) -> Vec<CompletionItem> {
                 ..Default::default()
             },
             CompletionItem {
-                label: "drawPieChart".to_string(),
-                kind: Some(CompletionItemKind::FUNCTION),
-                insert_text: Some("drawPieChart($0)".to_string()),
-                insert_text_format: Some(InsertTextFormat::SNIPPET),
-                detail: Some("Draw a pie chart of time distribution".to_string()),
-                ..Default::default()
-            },
-            CompletionItem {
                 label: "drawSpeedupChart".to_string(),
                 kind: Some(CompletionItemKind::FUNCTION),
                 insert_text: Some("drawSpeedupChart($0)".to_string()),
                 insert_text_format: Some(InsertTextFormat::SNIPPET),
                 detail: Some("Draw a speedup comparison chart".to_string()),
-                ..Default::default()
-            },
-            CompletionItem {
-                label: "drawScalingChart".to_string(),
-                kind: Some(CompletionItemKind::FUNCTION),
-                insert_text: Some("drawScalingChart($0)".to_string()),
-                insert_text_format: Some(InsertTextFormat::SNIPPET),
-                detail: Some("Draw a scaling efficiency chart".to_string()),
                 ..Default::default()
             },
             CompletionItem {
@@ -817,7 +799,7 @@ fn get_stdlib_module_completions() -> Vec<CompletionItem> {
             kind: Some(CompletionItemKind::MODULE),
             detail: Some("Chart generation module".to_string()),
             documentation: Some(Documentation::String(
-                "Provides drawBarChart, drawLineChart, drawPieChart, etc.".to_string(),
+                "Provides drawBarChart, drawLineChart, drawSpeedupChart, drawTable.".to_string(),
             )),
             ..Default::default()
         },

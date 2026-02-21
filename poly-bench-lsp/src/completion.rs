@@ -164,7 +164,7 @@ pub fn get_completions(
     documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
         tower_lsp::lsp_types::MarkupContent {
             kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-            value: "**std::charting**\n\nType `charting.` to access chart functions:\n- `charting.drawBarChart()` - Bar chart\n- `charting.drawPieChart()` - Pie chart\n- `charting.drawLineChart()` - Line chart".to_string(),
+            value: "**std::charting**\n\nType `charting.` to access chart functions:\n- `charting.drawBarChart()` - Bar chart\n- `charting.drawLineChart()` - Line chart\n- `charting.drawSpeedupChart()` - Speedup chart\n- `charting.drawTable()` - Data table".to_string(),
         }
     )),
     insert_text: Some("charting".to_string()),
@@ -1297,11 +1297,11 @@ tower_lsp::lsp_types::MarkupContent {
 CompletionItem {
     label: "charting".to_string(),
     kind: Some(CompletionItemKind::MODULE),
-    detail: Some("Chart generation (drawBarChart, drawPieChart, drawLineChart)".to_string()),
+    detail: Some("Chart generation (drawBarChart, drawLineChart, drawSpeedupChart, drawTable)".to_string()),
     documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
 tower_lsp::lsp_types::MarkupContent {
     kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-    value: "**std::charting**\n\nGenerate charts from benchmark results:\n- `charting.drawBarChart()` - Bar chart comparison\n- `charting.drawPieChart()` - Pie chart distribution\n- `charting.drawLineChart()` - Line chart trends\n\nUse in suite-level `after { }` block.".to_string(),
+    value: "**std::charting**\n\nGenerate charts from benchmark results:\n- `charting.drawBarChart()` - Bar chart comparison\n- `charting.drawLineChart()` - Line chart trends\n- `charting.drawSpeedupChart()` - Speedup comparison\n- `charting.drawTable()` - Data table\n\nUse in suite-level `after { }` block.".to_string(),
 }
     )),
     ..Default::default()
@@ -1339,20 +1339,6 @@ tower_lsp::lsp_types::MarkupContent {
     ..Default::default()
 },
 CompletionItem {
-    label: "drawPieChart".to_string(),
-    kind: Some(CompletionItemKind::FUNCTION),
-    detail: Some("Draw a pie chart of time distribution".to_string()),
-    documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-tower_lsp::lsp_types::MarkupContent {
-    kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-    value: "**charting.drawPieChart** `(title?, description?, output?)`\n\nGenerates a pie chart showing time distribution across benchmarks.\n\n**Parameters:**\n- `title` - Chart title\n- `description` - Chart description\n- `output` - Output filename (default: pie-chart.svg)".to_string(),
-}
-    )),
-    insert_text: Some("drawPieChart($0)".to_string()),
-    insert_text_format: Some(InsertTextFormat::SNIPPET),
-    ..Default::default()
-},
-CompletionItem {
     label: "drawLineChart".to_string(),
     kind: Some(CompletionItemKind::FUNCTION),
     detail: Some("Draw a line chart for trend visualization".to_string()),
@@ -1375,9 +1361,9 @@ fn charting_function_param_completions() -> Vec<CompletionItem> {
         // String parameters
         chart_param_completion("title", "string", "Chart title", "The title displayed at the top of the chart.", "title: \"$0\""),
         chart_param_completion("description", "string", "Chart description", "A description shown below the chart title.", "description: \"$0\""),
-        chart_param_completion("xlabel", "string", "X-axis label", "Label for the X-axis.", "xlabel: \"$0\""),
-        chart_param_completion("ylabel", "string", "Y-axis label", "Label for the Y-axis.", "ylabel: \"$0\""),
-        chart_param_completion("output", "string", "Output filename", "The output filename for the generated chart SVG.\n\nDefault: `bar-chart.svg`, `pie-chart.svg`, or `line-chart.svg` depending on chart type.", "output: \"$0\""),
+        chart_param_completion("xlabel", "string", "X-axis label", "Label for the X-axis.\n\nCustomize to describe your benchmark inputs (e.g., \"Input Size\", \"Array Length\").", "xlabel: \"$0\""),
+        chart_param_completion("ylabel", "string", "Y-axis label", "Label for the Y-axis.\n\n**Note:** Not available for bar charts or line charts. For those chart types, the Y-axis label is automatically determined by `chartMode`:\n- `\"performance\"`: \"Time (ns/op)\"\n- `\"throughput\"`: \"Iterations\"", "ylabel: \"$0\""),
+        chart_param_completion("output", "string", "Output filename", "The output filename for the generated chart SVG.\n\nDefault: `bar-chart.svg` or `line-chart.svg` depending on chart type.", "output: \"$0\""),
 
         // Display toggle parameters (boolean)
         chart_param_completion("showStats", "bool", "Show statistics", "Show ops/sec and time per op for each benchmark.\n\nDefault: `true`", "showStats: ${1|true,false|}"),
@@ -1458,6 +1444,9 @@ fn charting_function_param_completions() -> Vec<CompletionItem> {
 
         // Tick formatting
         chart_param_completion("roundTicks", "bool", "Round ticks", "Round tick labels to whole numbers when appropriate.\n\nDefault: `false`", "roundTicks: ${1|true,false|}"),
+
+        // Chart mode
+        chart_param_completion("chartMode", "string", "Chart plotting mode", "Controls what data is plotted:\n\n- `\"performance\"` (default): Y-axis = ns/op, X-axis = input size\n- `\"throughput\"`: Y-axis = iterations, X-axis = benchmark\n\nUse `\"performance\"` to compare how fast operations run at different input sizes.\nUse `\"throughput\"` to compare how many operations completed in the benchmark time.\n\n**Available for:** Bar charts and line charts only.", "chartMode: \"${1|performance,throughput|}\""),
     ]
 }
 

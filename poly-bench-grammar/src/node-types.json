@@ -1179,6 +1179,10 @@
     "named": false
   },
   {
+    "type": "chartMode",
+    "named": false
+  },
+  {
     "type": "charting",
     "named": false
   },
@@ -1240,14 +1244,6 @@
   },
   {
     "type": "drawLineChart",
-    "named": false
-  },
-  {
-    "type": "drawPieChart",
-    "named": false
-  },
-  {
-    "type": "drawScalingChart",
     "named": false
   },
   {

@@ -603,9 +603,6 @@ fn get_chart_function_documentation(name: &str) -> String {
             "**drawSpeedupChart**\n\nDraw a chart showing relative speedup compared to baseline."
                 .to_string()
         }
-        "drawPieChart" => {
-            "**drawPieChart**\n\nDraw a pie chart showing time distribution.".to_string()
-        }
         "drawTable" => "**drawTable**\n\nGenerate a table of benchmark results.".to_string(),
         _ => format!("**{}**", name),
     }
@@ -849,7 +846,7 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             Import a module from the poly-bench standard library.\n\n\
             Available modules:\n\
             - `anvil` - Anvil node integration (ANVIL_RPC_URL)\n\
-            - `charting` - Chart generation (drawBarChart, drawPieChart, drawLineChart)\n\
+            - `charting` - Chart generation (drawBarChart, drawLineChart, drawSpeedupChart, drawTable)\n\
             - `constants` - Mathematical constants (std_PI, std_E)",
         ),
         "globalSetup" => Some(
@@ -898,8 +895,9 @@ fn stdlib_module_docs(module: &str) -> Option<&'static str> {
             Use in a suite-level `after { }` block to generate charts after benchmarks complete.\n\n\
             **Provided functions:**\n\
             - `charting.drawBarChart()` - Generate a bar chart comparing benchmark times\n\
-            - `charting.drawPieChart()` - Generate a pie chart showing time distribution\n\
-            - `charting.drawLineChart()` - Generate a line chart for trend visualization",
+            - `charting.drawLineChart()` - Generate a line chart for trend visualization\n\
+            - `charting.drawSpeedupChart()` - Generate a speedup comparison chart\n\
+            - `charting.drawTable()` - Generate a data table",
         ),
         "constants" => Some(
             "**std::constants**\n\n\
@@ -953,15 +951,6 @@ fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
             - `filterWinner` - Filter by winner: \"go\", \"ts\", \"all\"\n\
             - `includeBenchmarks`, `excludeBenchmarks` - Filter by name (array)\n\
             - `limit` - Max benchmarks to show (number)\n\n\
-            *From `std::charting`*",
-        ),
-        "drawPieChart" => Some(
-            "**charting.drawPieChart** `(...params)`\n\n\
-            Generate a pie chart showing time distribution across benchmarks.\n\n\
-            **Basic Parameters:**\n\
-            - `title` - Chart title (string)\n\
-            - `description` - Chart description (string)\n\
-            - `output` - Output filename (default: pie-chart.svg)\n\n\
             *From `std::charting`*",
         ),
         "drawLineChart" => Some(

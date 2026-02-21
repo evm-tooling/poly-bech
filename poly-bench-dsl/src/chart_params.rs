@@ -91,6 +91,9 @@ pub enum ChartParam {
 
     // Tick formatting
     RoundTicks,
+
+    // Chart mode (performance vs throughput)
+    ChartMode,
 }
 
 impl ChartParam {
@@ -154,6 +157,7 @@ impl ChartParam {
             ChartParam::ShowRegressionBand => "showRegressionBand",
             ChartParam::RegressionBandOpacity => "regressionBandOpacity",
             ChartParam::RoundTicks => "roundTicks",
+            ChartParam::ChartMode => "chartMode",
         }
     }
 
@@ -217,6 +221,7 @@ impl ChartParam {
             "showRegressionBand" => Some(ChartParam::ShowRegressionBand),
             "regressionBandOpacity" => Some(ChartParam::RegressionBandOpacity),
             "roundTicks" => Some(ChartParam::RoundTicks),
+            "chartMode" => Some(ChartParam::ChartMode),
             _ => None,
         }
     }
@@ -334,7 +339,8 @@ pub fn get_valid_params(chart_type: ChartType) -> HashSet<ChartParam> {
 
     match chart_type {
         ChartType::BarChart => {
-            params.extend([ChartParam::XLabel, ChartParam::YLabel]);
+            // Note: YLabel is intentionally excluded - it's auto-determined by chartMode
+            params.insert(ChartParam::XLabel);
             params.extend([
                 ChartParam::ShowStats,
                 ChartParam::ShowConfig,
@@ -357,9 +363,11 @@ pub fn get_valid_params(chart_type: ChartType) -> HashSet<ChartParam> {
             params.extend(error_bar_params());
             params.extend(regression_params());
             params.insert(ChartParam::RoundTicks);
+            params.insert(ChartParam::ChartMode);
         }
         ChartType::LineChart => {
-            params.extend([ChartParam::XLabel, ChartParam::YLabel]);
+            // Note: YLabel is intentionally excluded - it's auto-determined by chartMode
+            params.insert(ChartParam::XLabel);
             params.insert(ChartParam::Compact);
             params.extend(axis_styling_params());
             params.extend(grid_params());
@@ -369,34 +377,13 @@ pub fn get_valid_params(chart_type: ChartType) -> HashSet<ChartParam> {
             params.insert(ChartParam::ShowStdDevBand);
             params.extend(regression_params());
             params.insert(ChartParam::RoundTicks);
-        }
-        ChartType::PieChart => {
-            params.extend([
-                ChartParam::ShowStats,
-                ChartParam::ShowDistribution,
-                ChartParam::ShowTotalTime,
-                ChartParam::Compact,
-            ]);
-            params.extend([ChartParam::TitleFontSize, ChartParam::SubtitleFontSize]);
-            params.insert(ChartParam::LegendPosition);
+            params.insert(ChartParam::ChartMode);
         }
         ChartType::SpeedupChart => {
             params.insert(ChartParam::BaselineBenchmark);
             params.extend([ChartParam::ShowGrid, ChartParam::GridOpacity]);
             params.extend(typography_params());
             params.insert(ChartParam::LegendPosition);
-        }
-        ChartType::ScalingChart => {
-            params.extend([ChartParam::XLabel, ChartParam::YLabel]);
-            params.extend([ChartParam::YAxisMin, ChartParam::YAxisMax, ChartParam::YScale]);
-            params.extend([
-                ChartParam::ShowGrid,
-                ChartParam::GridOpacity,
-                ChartParam::ShowMinorGrid,
-            ]);
-            params.extend(typography_params());
-            params.insert(ChartParam::LegendPosition);
-            params.insert(ChartParam::RoundTicks);
         }
         ChartType::Table => {
             params.extend([
@@ -453,14 +440,8 @@ pub fn validate_param(chart_type: ChartType, param_name: &str) -> Result<(), Par
 
         // Parameter exists but not valid for this chart type
         // Find which chart types it IS valid for
-        let all_chart_types = [
-            ChartType::BarChart,
-            ChartType::LineChart,
-            ChartType::PieChart,
-            ChartType::SpeedupChart,
-            ChartType::ScalingChart,
-            ChartType::Table,
-        ];
+        let all_chart_types =
+            [ChartType::BarChart, ChartType::LineChart, ChartType::SpeedupChart, ChartType::Table];
 
         let valid_chart_types: Vec<_> = all_chart_types
             .into_iter()
@@ -505,15 +486,6 @@ mod tests {
         assert!(params.contains(&ChartParam::ShowRegression));
         assert!(!params.contains(&ChartParam::ShowConfig)); // Bar/Table only
         assert!(!params.contains(&ChartParam::BarWidth)); // Bar only
-    }
-
-    #[test]
-    fn test_pie_chart_params() {
-        let params = get_valid_params(ChartType::PieChart);
-        assert!(params.contains(&ChartParam::Title));
-        assert!(params.contains(&ChartParam::ShowStats));
-        assert!(!params.contains(&ChartParam::ShowRegression)); // Bar/Line only
-        assert!(!params.contains(&ChartParam::ShowGrid)); // Not applicable
     }
 
     #[test]

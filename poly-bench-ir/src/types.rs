@@ -609,6 +609,10 @@ pub struct ChartDirectiveIR {
     /// Threshold for symlog scale - values below this are treated linearly (default:
     /// auto-calculated)
     pub symlog_threshold: Option<f64>,
+
+    // Chart mode
+    /// Chart mode: "performance" (ns/op vs size) or "throughput" (iterations vs time)
+    pub chart_mode: Option<String>,
 }
 
 impl ChartDirectiveIR {
@@ -688,6 +692,8 @@ impl ChartDirectiveIR {
             y_scale: None,
             baseline_benchmark: None,
             symlog_threshold: None,
+            // Chart mode
+            chart_mode: None,
         }
     }
 
@@ -695,10 +701,8 @@ impl ChartDirectiveIR {
     pub fn get_title(&self) -> String {
         self.title.clone().unwrap_or_else(|| match self.chart_type {
             ChartType::BarChart => "Benchmark Results".to_string(),
-            ChartType::PieChart => "Time Distribution".to_string(),
             ChartType::LineChart => "Performance Trend".to_string(),
             ChartType::SpeedupChart => "Speedup vs Baseline".to_string(),
-            ChartType::ScalingChart => "Scaling Efficiency".to_string(),
             ChartType::Table => "Benchmark Results".to_string(),
         })
     }
@@ -707,10 +711,8 @@ impl ChartDirectiveIR {
     pub fn get_x_label(&self) -> String {
         self.x_label.clone().unwrap_or_else(|| match self.chart_type {
             ChartType::BarChart => "Time".to_string(),
-            ChartType::PieChart => "".to_string(),
             ChartType::LineChart => "Benchmark".to_string(),
             ChartType::SpeedupChart => "Speedup".to_string(),
-            ChartType::ScalingChart => "Input Size".to_string(),
             ChartType::Table => "".to_string(),
         })
     }
@@ -719,10 +721,8 @@ impl ChartDirectiveIR {
     pub fn get_y_label(&self) -> String {
         self.y_label.clone().unwrap_or_else(|| match self.chart_type {
             ChartType::BarChart => "Benchmark".to_string(),
-            ChartType::PieChart => "".to_string(),
             ChartType::LineChart => "Time".to_string(),
             ChartType::SpeedupChart => "Benchmark".to_string(),
-            ChartType::ScalingChart => "Efficiency".to_string(),
             ChartType::Table => "".to_string(),
         })
     }
