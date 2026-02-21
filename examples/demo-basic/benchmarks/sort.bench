@@ -13,8 +13,8 @@ suite sortN {
 
     setup go {
         import (
-            "encoding/binary"
-            "sort"
+        "encoding/binary"
+        "sort"
         )
 
         helpers {
@@ -180,14 +180,16 @@ suite sortN {
             description: "Stdlib sort comparison across Go, TypeScript, and Rust",
             output: "sort-line1.svg",
             xlabel: "Array Size (n elements)",
-            ylabel: "Time (ns/op)",
+            ylabel: "Time (ns/op)"
         )
+
         charting.drawBarChart(
             title: "Sort Performance Comparison",
             description: "Vertical grouped bars - Go vs TypeScript vs Rust",
             output: "sort-bar.svg",
             xlabel: "Benchmark",
-            ylabel: "Time (ns/op)",
+            ylabel: "Time (ns/op)"
         )
     }
+
 }

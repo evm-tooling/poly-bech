@@ -52,37 +52,45 @@ pub fn format_document_with_config(doc: &Document, config: &FormatterConfig) -> 
         formatted.push('\n');
     }
 
-    // Format global setup if present
+    // Format global setup if present and has valid statements
     if let Some(Node::Valid(global_setup)) = &doc.partial_ast.global_setup {
-        formatted.push_str("globalSetup {\n");
-        for stmt in &global_setup.statements {
-            if let Node::Valid(s) = stmt {
-                match s {
-                    poly_bench_syntax::GlobalSetupStatement::AnvilSpawn { fork_url, .. } => {
-                        formatted.push_str(&make_indent(config, 1));
-                        if let Some(url) = fork_url {
-                            formatted.push_str(&format!("anvil.spawnAnvil(fork: \"{}\")\n", url));
-                        } else {
-                            formatted.push_str("anvil.spawnAnvil()\n");
+        let has_valid_statements = global_setup.statements.iter().any(|s| s.is_valid());
+        if has_valid_statements {
+            formatted.push_str("globalSetup {\n");
+            for stmt in &global_setup.statements {
+                if let Node::Valid(s) = stmt {
+                    match s {
+                        poly_bench_syntax::GlobalSetupStatement::AnvilSpawn {
+                            fork_url, ..
+                        } => {
+                            formatted.push_str(&make_indent(config, 1));
+                            if let Some(url) = fork_url {
+                                formatted
+                                    .push_str(&format!("anvil.spawnAnvil(fork: \"{}\")\n", url));
+                            } else {
+                                formatted.push_str("anvil.spawnAnvil()\n");
+                            }
                         }
-                    }
-                    poly_bench_syntax::GlobalSetupStatement::FunctionCall {
-                        name, args, ..
-                    } => {
-                        formatted.push_str(&make_indent(config, 1));
-                        formatted.push_str(name);
-                        formatted.push('(');
-                        let args_str: Vec<String> = args
-                            .iter()
-                            .map(|(k, v)| format!("{}: {}", k, format_value(v)))
-                            .collect();
-                        formatted.push_str(&args_str.join(", "));
-                        formatted.push_str(")\n");
+                        poly_bench_syntax::GlobalSetupStatement::FunctionCall {
+                            name,
+                            args,
+                            ..
+                        } => {
+                            formatted.push_str(&make_indent(config, 1));
+                            formatted.push_str(name);
+                            formatted.push('(');
+                            let args_str: Vec<String> = args
+                                .iter()
+                                .map(|(k, v)| format!("{}: {}", k, format_value(v)))
+                                .collect();
+                            formatted.push_str(&args_str.join(", "));
+                            formatted.push_str(")\n");
+                        }
                     }
                 }
             }
+            formatted.push_str("}\n\n");
         }
-        formatted.push_str("}\n\n");
     }
 
     // Format each suite
@@ -141,9 +149,55 @@ fn format_suite_content(suite: &PartialSuite, config: &FormatterConfig) -> Strin
 
     // Add blank line after properties if there are other items
     if !suite.properties.is_empty() &&
-        (!suite.setups.is_empty() || !suite.fixtures.is_empty() || !suite.benchmarks.is_empty())
+        (suite.global_setup.is_some() ||
+            !suite.setups.is_empty() ||
+            !suite.fixtures.is_empty() ||
+            !suite.benchmarks.is_empty())
     {
         formatted.push('\n');
+    }
+
+    // Suite-level globalSetup
+    if let Some(Node::Valid(global_setup)) = &suite.global_setup {
+        let has_valid_statements = global_setup.statements.iter().any(|s| s.is_valid());
+        if has_valid_statements {
+            formatted.push_str(&inner_indent);
+            formatted.push_str("globalSetup {\n");
+            for stmt in &global_setup.statements {
+                if let Node::Valid(s) = stmt {
+                    match s {
+                        poly_bench_syntax::GlobalSetupStatement::AnvilSpawn {
+                            fork_url, ..
+                        } => {
+                            formatted.push_str(&make_indent(config, 2));
+                            if let Some(url) = fork_url {
+                                formatted
+                                    .push_str(&format!("anvil.spawnAnvil(fork: \"{}\")\n", url));
+                            } else {
+                                formatted.push_str("anvil.spawnAnvil()\n");
+                            }
+                        }
+                        poly_bench_syntax::GlobalSetupStatement::FunctionCall {
+                            name,
+                            args,
+                            ..
+                        } => {
+                            formatted.push_str(&make_indent(config, 2));
+                            formatted.push_str(name);
+                            formatted.push('(');
+                            let args_str: Vec<String> = args
+                                .iter()
+                                .map(|(k, v)| format!("{}: {}", k, format_value(v)))
+                                .collect();
+                            formatted.push_str(&args_str.join(", "));
+                            formatted.push_str(")\n");
+                        }
+                    }
+                }
+            }
+            formatted.push_str(&inner_indent);
+            formatted.push_str("}\n\n");
+        }
     }
 
     // Setup blocks - iterate in original order
@@ -154,59 +208,67 @@ fn format_suite_content(suite: &PartialSuite, config: &FormatterConfig) -> Strin
             formatted.push_str(&format!("setup {} {{\n", lang.as_str()));
 
             if let Some(imports) = &s.imports {
-                formatted.push_str(&make_indent(config, 2));
-                formatted.push_str("import ");
-                if lang == &poly_bench_syntax::Lang::Go {
-                    formatted.push_str("(\n");
-                    for line in imports.code.lines() {
-                        if !line.trim().is_empty() {
-                            formatted.push_str(&make_indent(config, 3));
-                            formatted.push_str(line.trim());
-                            formatted.push('\n');
-                        }
-                    }
+                if !imports.code.trim().is_empty() {
                     formatted.push_str(&make_indent(config, 2));
-                    formatted.push_str(")\n");
-                } else {
-                    formatted.push_str("{\n");
-                    for line in imports.code.lines() {
-                        if !line.trim().is_empty() {
-                            formatted.push_str(&make_indent(config, 3));
-                            formatted.push_str(line.trim());
-                            formatted.push('\n');
+                    formatted.push_str("import ");
+                    if lang == &poly_bench_syntax::Lang::Go {
+                        formatted.push_str("(\n");
+                        for line in imports.code.lines() {
+                            if !line.trim().is_empty() {
+                                formatted.push_str(&make_indent(config, 3));
+                                formatted.push_str(line.trim());
+                                formatted.push('\n');
+                            }
                         }
+                        formatted.push_str(&make_indent(config, 2));
+                        formatted.push_str(")\n");
+                    } else {
+                        formatted.push_str("{\n");
+                        for line in imports.code.lines() {
+                            if !line.trim().is_empty() {
+                                formatted.push_str(&make_indent(config, 3));
+                                formatted.push_str(line.trim());
+                                formatted.push('\n');
+                            }
+                        }
+                        formatted.push_str(&make_indent(config, 2));
+                        formatted.push_str("}\n");
                     }
-                    formatted.push_str(&make_indent(config, 2));
-                    formatted.push_str("}\n");
+                    formatted.push('\n');
                 }
-                formatted.push('\n');
             }
 
             if let Some(declare) = &s.declare {
-                formatted.push_str(&make_indent(config, 2));
-                formatted.push_str("declare {\n");
-                format_code_block(&declare.code, config, 3, &mut formatted);
-                formatted.push_str(&make_indent(config, 2));
-                formatted.push_str("}\n\n");
+                if !declare.code.trim().is_empty() {
+                    formatted.push_str(&make_indent(config, 2));
+                    formatted.push_str("declare {\n");
+                    format_code_block(&declare.code, config, 3, &mut formatted);
+                    formatted.push_str(&make_indent(config, 2));
+                    formatted.push_str("}\n\n");
+                }
             }
 
             if let Some(init) = &s.init {
-                formatted.push_str(&make_indent(config, 2));
-                if s.is_async_init {
-                    formatted.push_str("async ");
+                if !init.code.trim().is_empty() {
+                    formatted.push_str(&make_indent(config, 2));
+                    if s.is_async_init {
+                        formatted.push_str("async ");
+                    }
+                    formatted.push_str("init {\n");
+                    format_code_block(&init.code, config, 3, &mut formatted);
+                    formatted.push_str(&make_indent(config, 2));
+                    formatted.push_str("}\n\n");
                 }
-                formatted.push_str("init {\n");
-                format_code_block(&init.code, config, 3, &mut formatted);
-                formatted.push_str(&make_indent(config, 2));
-                formatted.push_str("}\n\n");
             }
 
             if let Some(helpers) = &s.helpers {
-                formatted.push_str(&make_indent(config, 2));
-                formatted.push_str("helpers {\n");
-                format_code_block(&helpers.code, config, 3, &mut formatted);
-                formatted.push_str(&make_indent(config, 2));
-                formatted.push_str("}\n");
+                if !helpers.code.trim().is_empty() {
+                    formatted.push_str(&make_indent(config, 2));
+                    formatted.push_str("helpers {\n");
+                    format_code_block(&helpers.code, config, 3, &mut formatted);
+                    formatted.push_str(&make_indent(config, 2));
+                    formatted.push_str("}\n");
+                }
             }
 
             formatted.push_str(&inner_indent);

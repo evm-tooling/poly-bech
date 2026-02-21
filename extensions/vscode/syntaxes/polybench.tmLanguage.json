@@ -418,6 +418,9 @@
           "include": "#setup-import-go-block"
         },
         {
+          "include": "#setup-declare-go-block"
+        },
+        {
           "include": "#setup-init-go-block"
         },
         {
@@ -438,6 +441,26 @@
         },
         "3": {
           "name": "punctuation.definition.block.begin.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.go"
+        }
+      ]
+    },
+    "setup-declare-go-block": {
+      "name": "meta.block.declare.go.bench",
+      "begin": "^(\\s*)(declare)\\s*\\{",
+      "end": "^\\s{0,12}\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
         }
       },
       "endCaptures": {
@@ -513,6 +536,9 @@
           "include": "#setup-import-ts-block"
         },
         {
+          "include": "#setup-declare-ts-block"
+        },
+        {
           "include": "#setup-init-ts-block"
         },
         {
@@ -526,7 +552,27 @@
     "setup-import-ts-block": {
       "name": "meta.block.import.ts.bench",
       "begin": "^(\\s*)(import)\\s*\\{",
-      "end": "\\}",
+      "end": "^\\s{0,12}\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.ts"
+        }
+      ]
+    },
+    "setup-declare-ts-block": {
+      "name": "meta.block.declare.ts.bench",
+      "begin": "^(\\s*)(declare)\\s*\\{",
+      "end": "^\\s{0,12}\\}",
       "beginCaptures": {
         "2": {
           "name": "keyword.control.setup.bench"
@@ -602,6 +648,12 @@
       },
       "patterns": [
         {
+          "include": "#setup-import-rust-block"
+        },
+        {
+          "include": "#setup-declare-rust-block"
+        },
+        {
           "include": "#setup-use-rust-block"
         },
         {
@@ -612,6 +664,46 @@
         },
         {
           "include": "#comment"
+        }
+      ]
+    },
+    "setup-import-rust-block": {
+      "name": "meta.block.import.rust.bench",
+      "begin": "^(\\s*)(import)\\s*\\{",
+      "end": "^\\s{0,12}\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.rust"
+        }
+      ]
+    },
+    "setup-declare-rust-block": {
+      "name": "meta.block.declare.rust.bench",
+      "begin": "^(\\s*)(declare)\\s*\\{",
+      "end": "^\\s{0,12}\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.rust"
         }
       ]
     },

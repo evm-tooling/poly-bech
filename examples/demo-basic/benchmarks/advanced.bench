@@ -14,10 +14,10 @@ suite example {
 
     setup go {
         import (
-            "crypto/sha256"
-            "sync"
-            "github.com/ethereum/go-ethereum/common"
-            "github.com/ChefBingbong/viem-go/abi"
+        "crypto/sha256"
+        "sync"
+        "github.com/ethereum/go-ethereum/common"
+        "github.com/ChefBingbong/viem-go/abi"
         )
 
         declare {
@@ -31,15 +31,15 @@ suite example {
         init {
             var err error
             benchERC20ABI, err = abi.Parse([]byte(`[
-                {"name":"name","type":"function","inputs":[],"outputs":[{"type":"string"}],"stateMutability":"view"},
-                {"name":"symbol","type":"function","inputs":[],"outputs":[{"type":"string"}],"stateMutability":"view"},
-                {"name":"decimals","type":"function","inputs":[],"outputs":[{"type":"uint8"}],"stateMutability":"view"},
-                {"name":"totalSupply","type":"function","inputs":[],"outputs":[{"type":"uint256"}],"stateMutability":"view"},
-                {"name":"balanceOf","type":"function","inputs":[{"name":"owner","type":"address"}],"outputs":[{"type":"uint256"}],"stateMutability":"view"},
-                {"name":"allowance","type":"function","inputs":[{"name":"owner","type":"address"},{"name":"spender","type":"address"}],"outputs":[{"type":"uint256"}],"stateMutability":"view"},
-                {"name":"transfer","type":"function","inputs":[{"name":"to","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"type":"bool"}],"stateMutability":"nonpayable"},
-                {"name":"approve","type":"function","inputs":[{"name":"spender","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"type":"bool"}],"stateMutability":"nonpayable"},
-                {"name":"transferFrom","type":"function","inputs":[{"name":"from","type":"address"},{"name":"to","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"type":"bool"}],"stateMutability":"nonpayable"}
+            {"name":"name","type":"function","inputs":[],"outputs":[{"type":"string"}],"stateMutability":"view"},
+            {"name":"symbol","type":"function","inputs":[],"outputs":[{"type":"string"}],"stateMutability":"view"},
+            {"name":"decimals","type":"function","inputs":[],"outputs":[{"type":"uint8"}],"stateMutability":"view"},
+            {"name":"totalSupply","type":"function","inputs":[],"outputs":[{"type":"uint256"}],"stateMutability":"view"},
+            {"name":"balanceOf","type":"function","inputs":[{"name":"owner","type":"address"}],"outputs":[{"type":"uint256"}],"stateMutability":"view"},
+            {"name":"allowance","type":"function","inputs":[{"name":"owner","type":"address"},{"name":"spender","type":"address"}],"outputs":[{"type":"uint256"}],"stateMutability":"view"},
+            {"name":"transfer","type":"function","inputs":[{"name":"to","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"type":"bool"}],"stateMutability":"nonpayable"},
+            {"name":"approve","type":"function","inputs":[{"name":"spender","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"type":"bool"}],"stateMutability":"nonpayable"},
+            {"name":"transferFrom","type":"function","inputs":[{"name":"from","type":"address"},{"name":"to","type":"address"},{"name":"amount","type":"uint256"}],"outputs":[{"type":"bool"}],"stateMutability":"nonpayable"}
             ]`))
             if err != nil {
                 panic("failed to parse ERC20 ABI for benchmarks: " + err.Error())
@@ -94,15 +94,15 @@ suite example {
             let setupCounter = 0;
             let allocBuf: Uint8Array | null = null;
             const erc20Abi = parseAbi([
-                'function name() view returns (string)',
-                'function symbol() view returns (string)',
-                'function decimals() view returns (uint8)',
-                'function totalSupply() view returns (uint256)',
-                'function balanceOf(address owner) view returns (uint256)',
-                'function allowance(address owner, address spender) view returns (uint256)',
-                'function transfer(address to, uint256 amount) returns (bool)',
-                'function approve(address spender, uint256 amount) returns (bool)',
-                'function transferFrom(address from, address to, uint256 amount) returns (bool)',
+            'function name() view returns (string)',
+            'function symbol() view returns (string)',
+            'function decimals() view returns (uint8)',
+            'function totalSupply() view returns (uint256)',
+            'function balanceOf(address owner) view returns (uint256)',
+            'function allowance(address owner, address spender) view returns (uint256)',
+            'function transfer(address to, uint256 amount) returns (bool)',
+            'function approve(address spender, uint256 amount) returns (bool)',
+            'function transferFrom(address from, address to, uint256 amount) returns (bool)',
             ])
 
             const VITALIK = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
@@ -127,10 +127,10 @@ suite example {
 
             function encodeTs() {
                 return encodeFunctionData({
-                abi: erc20Abi,
-                functionName: 'balanceOf',
-                args: [VITALIK],
-            })
+                    abi: erc20Abi,
+                    functionName: 'balanceOf',
+                    args: [VITALIK],
+                })
             }
         }
     }
@@ -244,16 +244,16 @@ suite example {
         mode: "fixed"
         before go: resetCounter()
         before ts: resetCounter()
-        after ts: {
-            void setupCounter 
-        }
-        after go: {
-            _ = setupCounter 
-        }
         each go: incrementCounter()
         each ts: incrementCounter()
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
+        after go: {
+            _ = setupCounter 
+        }
+        after ts: {
+            void setupCounter 
+        }
     }
 
     after {
@@ -261,19 +261,22 @@ suite example {
             title: "Performance Comparison",
             description: "Go vs TypeScript Benchmark Results",
             sortBy: "speedup",
-            sortOrder: "desc",
+            sortOrder: "desc"
         )
+
         charting.drawLineChart(
             title: "Performance Trends",
             description: "Timing across all benchmarks",
             xlabel: "Benchmark",
             ylabel: "Time",
-            timeUnit: "auto",
+            timeUnit: "auto"
         )
+
         charting.drawPieChart(
             title: "Time Distribution",
             description: "Relative time spent in each benchmark",
-            showTotalTime: true,
+            showTotalTime: true
         )
     }
+
 }

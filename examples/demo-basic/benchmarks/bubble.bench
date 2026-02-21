@@ -13,7 +13,7 @@ suite bubbleN {
 
     setup go {
         import (
-            "encoding/binary"
+        "encoding/binary"
         )
 
         helpers {
@@ -193,14 +193,16 @@ suite bubbleN {
             description: "Classic bubble sort - quadratic complexity comparison",
             output: "bubble-line.svg",
             xlabel: "Array Size (n elements)",
-            ylabel: "Time (ns/op)",
+            ylabel: "Time (ns/op)"
         )
+
         charting.drawBarChart(
             title: "Bubble Sort Comparison",
             description: "Vertical grouped bars - quadratic growth visible",
             output: "bubble-bar.svg",
             xlabel: "Array Size",
-            ylabel: "Time (ns/op)",
+            ylabel: "Time (ns/op)"
         )
     }
+
 }
