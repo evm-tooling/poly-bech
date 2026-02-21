@@ -121,11 +121,11 @@ function runBenchmark(fn: () => any, iterations: number, warmup: number, useSink
 
 // Auto-calibrating benchmark (time-based, like Go's testing.B)
 // Total time is approximately targetTimeMs
-function runBenchmarkAuto(fn: () => any, targetTimeMs: number, useSink: boolean = true, trackMemory: boolean = false): BenchResult {
+function runBenchmarkAuto(fn: () => any, targetTimeMs: number, useSink: boolean = true, trackMemory: boolean = false, warmupCount: number = 100): BenchResult {
     const targetNanos = targetTimeMs * 1e6;
     
-    // Brief warmup (100 iterations)
-    for (let i = 0; i < 100; i++) {
+    // Brief warmup
+    for (let i = 0; i < warmupCount; i++) {
         if (useSink) {
             __polybench_sink = fn();
         } else {
@@ -267,11 +267,11 @@ function runBenchmarkWithHook(fn: () => any, eachHook: () => void, iterations: n
 }
 
 // Auto-calibrating benchmark with per-iteration hook (time-based, like Go's testing.B)
-function runBenchmarkAutoWithHook(fn: () => any, eachHook: () => void, targetTimeMs: number, useSink: boolean = true, trackMemory: boolean = false): BenchResult {
+function runBenchmarkAutoWithHook(fn: () => any, eachHook: () => void, targetTimeMs: number, useSink: boolean = true, trackMemory: boolean = false, warmupCount: number = 100): BenchResult {
     const targetNanos = targetTimeMs * 1e6;
     
-    // Brief warmup (100 iterations)
-    for (let i = 0; i < 100; i++) {
+    // Brief warmup
+    for (let i = 0; i < warmupCount; i++) {
         eachHook();
         if (useSink) {
             __polybench_sink = fn();
@@ -536,7 +536,7 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec) -> Result<()> {
         return {}
     }}, () => {{
         {}
-    }}, {}, {}, {});{}
+    }}, {}, {}, {}, {});{}
     return result;
 }}
 
@@ -548,6 +548,7 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec) -> Result<()> {
                         bench.target_time_ms,
                         use_sink,
                         track_memory,
+                        bench.warmup,
                         after_code
                     ));
                 } else {
@@ -557,7 +558,7 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec) -> Result<()> {
         return {}
     }}, () => {{
         {}
-    }}, {}, {}, {});
+    }}, {}, {}, {}, {});
 }}
 
 "#,
@@ -566,7 +567,8 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec) -> Result<()> {
                         each.trim(),
                         bench.target_time_ms,
                         use_sink,
-                        track_memory
+                        track_memory,
+                        bench.warmup
                     ));
                 }
             } else if has_before_or_after {
@@ -575,7 +577,7 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec) -> Result<()> {
                     r#"function bench_{}(): BenchResult {{
 {}    const result = runBenchmarkAuto(() => {{
         return {}
-    }}, {}, {}, {});{}
+    }}, {}, {}, {}, {});{}
     return result;
 }}
 
@@ -586,6 +588,7 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec) -> Result<()> {
                     bench.target_time_ms,
                     use_sink,
                     track_memory,
+                    bench.warmup,
                     after_code
                 ));
             } else {
@@ -594,11 +597,16 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec) -> Result<()> {
                     r#"function bench_{}(): BenchResult {{
     return runBenchmarkAuto(() => {{
         return {}
-    }}, {}, {}, {});
+    }}, {}, {}, {}, {});
 }}
 
 "#,
-                    bench.full_name, impl_code, bench.target_time_ms, use_sink, track_memory
+                    bench.full_name,
+                    impl_code,
+                    bench.target_time_ms,
+                    use_sink,
+                    track_memory,
+                    bench.warmup
                 ));
             }
         }

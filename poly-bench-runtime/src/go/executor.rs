@@ -26,6 +26,8 @@ pub struct GoRuntime {
     module_root: Option<PathBuf>,
     /// Anvil RPC URL if std::anvil is enabled
     anvil_rpc_url: Option<String>,
+    /// Cached compiled binary path and source hash for reuse across runs
+    cached_binary: Option<(PathBuf, u64)>,
 }
 
 impl GoRuntime {
@@ -36,6 +38,7 @@ impl GoRuntime {
             compiler: None,
             module_root: None,
             anvil_rpc_url: None,
+            cached_binary: None,
         }
     }
 
@@ -155,6 +158,17 @@ impl Runtime for GoRuntime {
 }
 
 impl GoRuntime {
+    /// Compute a hash of the source code for cache invalidation
+    fn hash_source(source: &str) -> u64 {
+        use std::{
+            collections::hash_map::DefaultHasher,
+            hash::{Hash, Hasher},
+        };
+        let mut hasher = DefaultHasher::new();
+        source.hash(&mut hasher);
+        hasher.finish()
+    }
+
     /// Run benchmark via loaded plugin
     fn run_via_plugin(&self, lib: &Library, spec: &BenchmarkSpec) -> Result<Measurement> {
         unsafe {
@@ -171,14 +185,21 @@ impl GoRuntime {
         }
     }
 
-    /// Run benchmark via subprocess (fallback for unsupported platforms)
-    async fn run_via_subprocess(
-        &self,
-        spec: &BenchmarkSpec,
-        suite: &SuiteIR,
-    ) -> Result<Measurement> {
+    /// Pre-compile the benchmark binary without running it.
+    /// This allows compilation to happen before timing starts.
+    pub async fn precompile(&mut self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<()> {
         let source = generate_standalone_benchmark(spec, suite)?;
+        let source_hash = Self::hash_source(&source);
 
+        // Check if we already have a cached binary with matching source hash
+        if let Some((ref binary_path, cached_hash)) = self.cached_binary {
+            if cached_hash == source_hash && binary_path.exists() {
+                // Already compiled, nothing to do
+                return Ok(());
+            }
+        }
+
+        // Need to compile - set up directories and source
         let (src_path, working_dir) = if let Some(ref module_root) = self.module_root {
             let is_runtime_env = module_root.as_os_str().to_string_lossy().contains("runtime-env");
             let src_path = if is_runtime_env {
@@ -203,8 +224,36 @@ impl GoRuntime {
 
         let go_binary = which::which("go").map_err(|_| miette!("Go not found in PATH"))?;
 
-        let mut cmd = tokio::process::Command::new(&go_binary);
-        cmd.args(["run", src_path.to_str().unwrap()]).current_dir(&working_dir);
+        // Build the binary (separate from running)
+        let binary_path = working_dir.join("polybench_runner");
+        let build_output = tokio::process::Command::new(&go_binary)
+            .args(["build", "-o", binary_path.to_str().unwrap(), src_path.to_str().unwrap()])
+            .current_dir(&working_dir)
+            .output()
+            .await
+            .map_err(|e| miette!("Failed to build Go benchmark: {}", e))?;
+
+        if !build_output.status.success() {
+            let stderr = String::from_utf8_lossy(&build_output.stderr);
+            return Err(miette!("Go benchmark build failed:\n{}", stderr));
+        }
+
+        if !binary_path.exists() {
+            return Err(miette!(
+                "Compiled binary not found at expected path: {}",
+                binary_path.display()
+            ));
+        }
+
+        // Cache the binary path and source hash for reuse
+        self.cached_binary = Some((binary_path, source_hash));
+
+        Ok(())
+    }
+
+    /// Run a pre-compiled binary and parse the result
+    async fn run_binary(&self, binary_path: &PathBuf, spec: &BenchmarkSpec) -> Result<Measurement> {
+        let mut cmd = tokio::process::Command::new(binary_path);
 
         if let Some(ref url) = self.anvil_rpc_url {
             cmd.env("ANVIL_RPC_URL", url);
@@ -223,6 +272,77 @@ impl GoRuntime {
             .map_err(|e| miette!("Failed to parse benchmark result: {}\nOutput: {}", e, stdout))?;
 
         Ok(result.into_measurement_with_options(spec.outlier_detection, spec.cv_threshold))
+    }
+
+    /// Run benchmark via subprocess (fallback for unsupported platforms)
+    /// Compiles once and reuses the binary for subsequent runs with the same source
+    async fn run_via_subprocess(
+        &mut self,
+        spec: &BenchmarkSpec,
+        suite: &SuiteIR,
+    ) -> Result<Measurement> {
+        let source = generate_standalone_benchmark(spec, suite)?;
+        let source_hash = Self::hash_source(&source);
+
+        // Check if we have a cached binary with matching source hash
+        if let Some((ref binary_path, cached_hash)) = self.cached_binary {
+            if cached_hash == source_hash && binary_path.exists() {
+                // Reuse cached binary - skip compilation
+                return self.run_binary(binary_path, spec).await;
+            }
+        }
+
+        // Need to compile - set up directories and source
+        let (src_path, working_dir) = if let Some(ref module_root) = self.module_root {
+            let is_runtime_env = module_root.as_os_str().to_string_lossy().contains("runtime-env");
+            let src_path = if is_runtime_env {
+                module_root.join("bench_standalone.go")
+            } else {
+                let bench_dir = module_root.join(".polybench");
+                std::fs::create_dir_all(&bench_dir)
+                    .map_err(|e| miette!("Failed to create .polybench directory: {}", e))?;
+                bench_dir.join("bench_standalone.go")
+            };
+            (src_path, module_root.clone())
+        } else {
+            let compiler =
+                self.compiler.as_ref().ok_or_else(|| miette!("Compiler not initialized"))?;
+
+            let src_path = compiler.temp_path().join("bench_standalone.go");
+            (src_path, compiler.temp_path().to_path_buf())
+        };
+
+        std::fs::write(&src_path, &source)
+            .map_err(|e| miette!("Failed to write benchmark source: {}", e))?;
+
+        let go_binary = which::which("go").map_err(|_| miette!("Go not found in PATH"))?;
+
+        // Build the binary (separate from running)
+        let binary_path = working_dir.join("polybench_runner");
+        let build_output = tokio::process::Command::new(&go_binary)
+            .args(["build", "-o", binary_path.to_str().unwrap(), src_path.to_str().unwrap()])
+            .current_dir(&working_dir)
+            .output()
+            .await
+            .map_err(|e| miette!("Failed to build Go benchmark: {}", e))?;
+
+        if !build_output.status.success() {
+            let stderr = String::from_utf8_lossy(&build_output.stderr);
+            return Err(miette!("Go benchmark build failed:\n{}", stderr));
+        }
+
+        if !binary_path.exists() {
+            return Err(miette!(
+                "Compiled binary not found at expected path: {}",
+                binary_path.display()
+            ));
+        }
+
+        // Cache the binary path and source hash for reuse
+        self.cached_binary = Some((binary_path.clone(), source_hash));
+
+        // Run the binary
+        self.run_binary(&binary_path, spec).await
     }
 }
 
@@ -415,7 +535,12 @@ func main() {{
     // Warmup
     code.push_str(&format!(
         "\n{}",
-        shared::generate_warmup_loop(bench_call, decls.sink_keepalive, each_hook, "100")
+        shared::generate_warmup_loop(
+            bench_call,
+            decls.sink_keepalive,
+            each_hook,
+            &spec.warmup.to_string()
+        )
     ));
 
     // Auto-calibration loop

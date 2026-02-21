@@ -19,11 +19,13 @@ pub struct RustRuntime {
     project_root: Option<PathBuf>,
     /// Anvil RPC URL if std::anvil is enabled
     anvil_rpc_url: Option<String>,
+    /// Cached compiled binary path and source hash for reuse across runs
+    cached_binary: Option<(PathBuf, u64)>,
 }
 
 impl RustRuntime {
     pub fn new() -> Self {
-        Self { project_root: None, anvil_rpc_url: None }
+        Self { project_root: None, anvil_rpc_url: None, cached_binary: None }
     }
 
     /// Set the Rust project root directory where Cargo.toml is located
@@ -168,14 +170,32 @@ impl Runtime for RustRuntime {
 }
 
 impl RustRuntime {
-    /// Run benchmark via cargo subprocess
-    async fn run_via_subprocess(
-        &self,
-        spec: &BenchmarkSpec,
-        suite: &SuiteIR,
-    ) -> Result<Measurement> {
-        let source = generate_standalone_benchmark(spec, suite)?;
+    /// Compute a hash of the source code for cache invalidation
+    fn hash_source(source: &str) -> u64 {
+        use std::{
+            collections::hash_map::DefaultHasher,
+            hash::{Hash, Hasher},
+        };
+        let mut hasher = DefaultHasher::new();
+        source.hash(&mut hasher);
+        hasher.finish()
+    }
 
+    /// Pre-compile the benchmark binary without running it.
+    /// This allows compilation to happen before timing starts.
+    pub async fn precompile(&mut self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<()> {
+        let source = generate_standalone_benchmark(spec, suite)?;
+        let source_hash = Self::hash_source(&source);
+
+        // Check if we already have a cached binary with matching source hash
+        if let Some((ref binary_path, cached_hash)) = self.cached_binary {
+            if cached_hash == source_hash && binary_path.exists() {
+                // Already compiled, nothing to do
+                return Ok(());
+            }
+        }
+
+        // Need to compile - set up directories and source
         let (src_path, working_dir) = if let Some(ref project_root) = self.project_root {
             let is_runtime_env = project_root.as_os_str().to_string_lossy().contains("runtime-env");
             let src_path = if is_runtime_env {
@@ -194,14 +214,23 @@ impl RustRuntime {
             }
 
             // Ensure Cargo.toml exists (create minimal one if missing)
-            let cargo_path = project_root.join("Cargo.toml");
+            let cargo_path = if is_runtime_env {
+                project_root.join("Cargo.toml")
+            } else {
+                project_root.join(".polybench").join("rust").join("Cargo.toml")
+            };
             if !cargo_path.exists() {
                 let cargo_toml = generate_cargo_toml(suite);
                 std::fs::write(&cargo_path, cargo_toml)
                     .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
             }
 
-            (src_path, project_root.clone())
+            let working = if is_runtime_env {
+                project_root.clone()
+            } else {
+                project_root.join(".polybench").join("rust")
+            };
+            (src_path, working)
         } else {
             // Create temp directory for standalone execution
             let temp_dir = std::env::temp_dir().join("polybench-rust");
@@ -225,8 +254,147 @@ impl RustRuntime {
 
         let cargo_binary = which::which("cargo").map_err(|_| miette!("Cargo not found in PATH"))?;
 
-        let mut cmd = tokio::process::Command::new(&cargo_binary);
-        cmd.args(["run", "--release", "--quiet"]).current_dir(&working_dir);
+        // Build the binary
+        let build_output = tokio::process::Command::new(&cargo_binary)
+            .args(["build", "--release", "--quiet"])
+            .current_dir(&working_dir)
+            .output()
+            .await
+            .map_err(|e| miette!("Failed to build Rust benchmark: {}", e))?;
+
+        if !build_output.status.success() {
+            let stderr = String::from_utf8_lossy(&build_output.stderr);
+            return Err(miette!("Rust benchmark build failed:\n{}", stderr));
+        }
+
+        // Binary name matches the package name in Cargo.toml
+        let binary_name = "polybench_runner";
+        let binary_path = working_dir.join("target").join("release").join(binary_name);
+
+        if !binary_path.exists() {
+            return Err(miette!(
+                "Compiled binary not found at expected path: {}",
+                binary_path.display()
+            ));
+        }
+
+        // Cache the binary path and source hash for reuse
+        self.cached_binary = Some((binary_path, source_hash));
+
+        Ok(())
+    }
+
+    /// Run benchmark via cargo subprocess
+    /// Compiles once and reuses the binary for subsequent runs with the same source
+    async fn run_via_subprocess(
+        &mut self,
+        spec: &BenchmarkSpec,
+        suite: &SuiteIR,
+    ) -> Result<Measurement> {
+        let source = generate_standalone_benchmark(spec, suite)?;
+        let source_hash = Self::hash_source(&source);
+
+        // Check if we have a cached binary with matching source hash
+        if let Some((ref binary_path, cached_hash)) = self.cached_binary {
+            if cached_hash == source_hash && binary_path.exists() {
+                // Reuse cached binary - skip compilation
+                return self.run_binary(binary_path, spec).await;
+            }
+        }
+
+        // Need to compile - set up directories and source
+        let (src_path, working_dir) = if let Some(ref project_root) = self.project_root {
+            let is_runtime_env = project_root.as_os_str().to_string_lossy().contains("runtime-env");
+            let src_path = if is_runtime_env {
+                project_root.join("src").join("main.rs")
+            } else {
+                let bench_dir = project_root.join(".polybench").join("rust");
+                std::fs::create_dir_all(&bench_dir)
+                    .map_err(|e| miette!("Failed to create .polybench/rust directory: {}", e))?;
+                bench_dir.join("src").join("main.rs")
+            };
+
+            // Ensure src directory exists
+            if let Some(parent) = src_path.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| miette!("Failed to create src directory: {}", e))?;
+            }
+
+            // Ensure Cargo.toml exists (create minimal one if missing)
+            let cargo_path = if is_runtime_env {
+                project_root.join("Cargo.toml")
+            } else {
+                project_root.join(".polybench").join("rust").join("Cargo.toml")
+            };
+            if !cargo_path.exists() {
+                let cargo_toml = generate_cargo_toml(suite);
+                std::fs::write(&cargo_path, cargo_toml)
+                    .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
+            }
+
+            let working = if is_runtime_env {
+                project_root.clone()
+            } else {
+                project_root.join(".polybench").join("rust")
+            };
+            (src_path, working)
+        } else {
+            // Create temp directory for standalone execution
+            let temp_dir = std::env::temp_dir().join("polybench-rust");
+            std::fs::create_dir_all(&temp_dir)
+                .map_err(|e| miette!("Failed to create temp directory: {}", e))?;
+
+            let src_dir = temp_dir.join("src");
+            std::fs::create_dir_all(&src_dir)
+                .map_err(|e| miette!("Failed to create src directory: {}", e))?;
+
+            // Create minimal Cargo.toml
+            let cargo_toml = generate_minimal_cargo_toml();
+            std::fs::write(temp_dir.join("Cargo.toml"), cargo_toml)
+                .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
+
+            (src_dir.join("main.rs"), temp_dir)
+        };
+
+        std::fs::write(&src_path, &source)
+            .map_err(|e| miette!("Failed to write benchmark source: {}", e))?;
+
+        let cargo_binary = which::which("cargo").map_err(|_| miette!("Cargo not found in PATH"))?;
+
+        // Build the binary (separate from running)
+        let build_output = tokio::process::Command::new(&cargo_binary)
+            .args(["build", "--release", "--quiet"])
+            .current_dir(&working_dir)
+            .output()
+            .await
+            .map_err(|e| miette!("Failed to build Rust benchmark: {}", e))?;
+
+        if !build_output.status.success() {
+            let stderr = String::from_utf8_lossy(&build_output.stderr);
+            return Err(miette!("Rust benchmark build failed:\n{}", stderr));
+        }
+
+        // Binary name matches the package name in Cargo.toml
+        let binary_name = "polybench_runner";
+        let binary_path = working_dir.join("target").join("release").join(binary_name);
+
+        if !binary_path.exists() {
+            return Err(miette!(
+                "Compiled binary not found at expected path: {}",
+                binary_path.display()
+            ));
+        }
+
+        // Cache the binary path and source hash for reuse
+        self.cached_binary = Some((binary_path.clone(), source_hash));
+
+        // Run the binary
+        self.run_binary(&binary_path, spec).await
+    }
+
+    /// Run a pre-compiled binary and parse the result
+    async fn run_binary(&self, binary_path: &PathBuf, spec: &BenchmarkSpec) -> Result<Measurement> {
+        let mut cmd = tokio::process::Command::new(binary_path);
 
         if let Some(ref url) = self.anvil_rpc_url {
             cmd.env("ANVIL_RPC_URL", url);
@@ -492,7 +660,7 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
                     &bench_call,
                     decls.sink_keepalive,
                     each_hook,
-                    "100",
+                    &spec.warmup.to_string(),
                 ));
 
                 // Auto-calibration loop
