@@ -1,0 +1,9 @@
+{
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "destination": "https://raw.githubusercontent.com/evm-tooling/poly-bench/main/scripts/install.sh",
+      "permanent": false
+    }
+  ]
+}
