@@ -1,11 +1,12 @@
 //! Embedded language diagnostics
 //!
 //! This module provides diagnostics for embedded code blocks (Go, TypeScript, Rust)
-//! by communicating with external language servers (gopls, tsserver, rust-analyzer).
+//! by running compilers directly (tsc, rustc) or communicating with language servers (gopls).
 //!
 //! Architecture:
-//! - Each language has its own provider implementing `EmbeddedDiagnosticProvider`
-//! - Providers use virtual files to communicate with language servers
+//! - TypeScript: Runs `tsc --noEmit` directly for reliable diagnostics
+//! - Rust: Runs `rustc --emit=metadata` directly for reliable diagnostics
+//! - Go: Uses gopls via LSP protocol (Go tooling is more stable)
 //! - Position mappings translate between .bench file and virtual file positions
 
 pub mod go;
@@ -16,8 +17,6 @@ use crate::{
     document::Document,
     embedded::{extract_embedded_blocks, EmbeddedBlock},
     gopls_client::init_gopls_client,
-    rust_analyzer_client::init_rust_analyzer_client,
-    tsserver_client::init_tsserver_client,
     virtual_files::{VirtualFile, VirtualGoFile, VirtualRustFile, VirtualTsFile},
 };
 use poly_bench_syntax::{Lang, Node};
@@ -76,6 +75,9 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
     // Collect fixture names from the AST to filter out false positives
     let fixture_names = collect_fixture_names(&doc.partial_ast);
 
+    // Convert fixture names to Vec<String> for passing to virtual file builders
+    let fixture_names_vec: Vec<String> = fixture_names.iter().cloned().collect();
+
     // Check Go blocks
     if let Some(go_blocks) = blocks_by_lang.get(&Lang::Go) {
         let go_mod_root = find_module_root(&bench_path, "go.mod")
@@ -85,8 +87,14 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
         // Initialize gopls client if not already done
         let _ = init_gopls_client(&go_mod_root);
 
-        let virtual_file =
-            VirtualGoFile::from_blocks(bench_uri, &bench_path, &go_mod_root, go_blocks, 1);
+        let virtual_file = VirtualGoFile::from_blocks_with_fixtures(
+            bench_uri,
+            &bench_path,
+            &go_mod_root,
+            go_blocks,
+            1,
+            &fixture_names_vec,
+        );
 
         // Write virtual file to disk for gopls
         write_virtual_file_to_disk(virtual_file.path(), virtual_file.content());
@@ -96,7 +104,7 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
         all_diagnostics.extend(map_diagnostics_to_bench(filtered, &virtual_file, doc, Lang::Go));
     }
 
-    // Check TypeScript blocks
+    // Check TypeScript blocks using direct tsc execution
     if let Some(ts_blocks) = blocks_by_lang.get(&Lang::TypeScript) {
         // Prioritize .polybench/runtime-env/ts/ over general package.json search
         // This ensures we use the polybench runtime environment for linting
@@ -106,18 +114,22 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
 
         tracing::debug!("[embedded-diagnostics] TypeScript module root: {}", ts_module_root);
 
-        // Initialize tsserver client if not already done
-        let _ = init_tsserver_client(&ts_module_root);
-
         // Ensure tsconfig.json exists for TypeScript
         ensure_tsconfig(&ts_module_root);
 
-        let virtual_file =
-            VirtualTsFile::from_blocks(bench_uri, &bench_path, &ts_module_root, ts_blocks, 1);
+        let virtual_file = VirtualTsFile::from_blocks_with_fixtures(
+            bench_uri,
+            &bench_path,
+            &ts_module_root,
+            ts_blocks,
+            1,
+            &fixture_names_vec,
+        );
 
-        // Write virtual file to disk - tsserver requires files on disk
+        // Write virtual file to disk - tsc needs files on disk for module resolution
         write_virtual_file_to_disk(virtual_file.path(), virtual_file.content());
 
+        // Run tsc directly for reliable diagnostics
         let diagnostics = typescript::check_ts_blocks(&virtual_file);
         let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names);
         all_diagnostics.extend(map_diagnostics_to_bench(
@@ -128,7 +140,7 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
         ));
     }
 
-    // Check Rust blocks
+    // Check Rust blocks using direct rustc execution
     if let Some(rust_blocks) = blocks_by_lang.get(&Lang::Rust) {
         // Prioritize .polybench/runtime-env/rust/ over general Cargo.toml search
         // This ensures we use the polybench runtime environment for linting
@@ -138,20 +150,19 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
 
         tracing::debug!("[embedded-diagnostics] Rust project root: {}", rust_project_root);
 
-        // Initialize rust-analyzer client if not already done
-        let _ = init_rust_analyzer_client(&rust_project_root);
-
-        let virtual_file = VirtualRustFile::from_blocks(
+        let virtual_file = VirtualRustFile::from_blocks_with_fixtures(
             bench_uri,
             &bench_path,
             &rust_project_root,
             rust_blocks,
             1,
+            &fixture_names_vec,
         );
 
-        // Write virtual file to disk - rust-analyzer requires files on disk
+        // Write virtual file to disk for reference
         write_virtual_file_to_disk(virtual_file.path(), virtual_file.content());
 
+        // Run rustc directly for reliable diagnostics
         let diagnostics = rust::check_rust_blocks(&virtual_file);
         let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names);
         all_diagnostics.extend(map_diagnostics_to_bench(filtered, &virtual_file, doc, Lang::Rust));

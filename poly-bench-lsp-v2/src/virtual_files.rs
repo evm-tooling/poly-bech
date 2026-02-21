@@ -154,8 +154,20 @@ impl VirtualGoFile {
         blocks: &[&EmbeddedBlock],
         version: i32,
     ) -> Self {
+        Self::from_blocks_with_fixtures(bench_uri, bench_path, go_mod_root, blocks, version, &[])
+    }
+
+    /// Create a new virtual Go file from embedded blocks with fixture names for stub injection
+    pub fn from_blocks_with_fixtures(
+        bench_uri: &str,
+        bench_path: &str,
+        go_mod_root: &str,
+        blocks: &[&EmbeddedBlock],
+        version: i32,
+        fixture_names: &[String],
+    ) -> Self {
         let mut builder = VirtualFileBuilder::new_go(bench_uri, bench_path, go_mod_root, version);
-        builder.build_go(blocks);
+        builder.build_go(blocks, fixture_names);
         Self(builder.finish())
     }
 
@@ -204,9 +216,22 @@ impl VirtualTsFile {
         blocks: &[&EmbeddedBlock],
         version: i32,
     ) -> Self {
+        Self::from_blocks_with_fixtures(bench_uri, bench_path, ts_module_root, blocks, version, &[])
+    }
+
+    /// Create a new virtual TypeScript file from embedded blocks with fixture names for stub
+    /// injection
+    pub fn from_blocks_with_fixtures(
+        bench_uri: &str,
+        bench_path: &str,
+        ts_module_root: &str,
+        blocks: &[&EmbeddedBlock],
+        version: i32,
+        fixture_names: &[String],
+    ) -> Self {
         let mut builder =
             VirtualFileBuilder::new_ts(bench_uri, bench_path, ts_module_root, version);
-        builder.build_ts(blocks);
+        builder.build_ts(blocks, fixture_names);
         Self(builder.finish())
     }
 
@@ -255,9 +280,28 @@ impl VirtualRustFile {
         blocks: &[&EmbeddedBlock],
         version: i32,
     ) -> Self {
+        Self::from_blocks_with_fixtures(
+            bench_uri,
+            bench_path,
+            rust_project_root,
+            blocks,
+            version,
+            &[],
+        )
+    }
+
+    /// Create a new virtual Rust file from embedded blocks with fixture names for stub injection
+    pub fn from_blocks_with_fixtures(
+        bench_uri: &str,
+        bench_path: &str,
+        rust_project_root: &str,
+        blocks: &[&EmbeddedBlock],
+        version: i32,
+        fixture_names: &[String],
+    ) -> Self {
         let mut builder =
             VirtualFileBuilder::new_rust(bench_uri, bench_path, rust_project_root, version);
-        builder.build_rust(blocks);
+        builder.build_rust(blocks, fixture_names);
         Self(builder.finish())
     }
 
@@ -373,7 +417,7 @@ impl VirtualFileBuilder {
         }
     }
 
-    fn build_go(&mut self, blocks: &[&EmbeddedBlock]) {
+    fn build_go(&mut self, blocks: &[&EmbeddedBlock], fixture_names: &[String]) {
         let (imports, declares, helpers, inits, other) = Self::categorize_blocks(blocks);
 
         // Go package declaration
@@ -412,17 +456,33 @@ impl VirtualFileBuilder {
             self.write_line("");
         }
 
-        // Other blocks wrapped in Go functions
+        // Other blocks (benchmarks, fixtures, etc.) wrapped in Go functions
+        // Need fixture stubs for benchmark blocks that reference fixtures
         for (i, block) in other.iter().enumerate() {
             let func_name = Self::func_name_for_block(block.block_type, i);
             self.write_line(&format!("func {}() {{", func_name));
+
+            // Inject fixture variable stubs for benchmark/validate/skip blocks
+            if matches!(
+                block.block_type,
+                BlockType::Benchmark | BlockType::Validate | BlockType::Skip
+            ) {
+                for fixture_name in fixture_names {
+                    self.write_line(&format!("\tvar {} []byte", fixture_name));
+                }
+                // Suppress unused variable warnings
+                for fixture_name in fixture_names {
+                    self.write_line(&format!("\t_ = {}", fixture_name));
+                }
+            }
+
             self.add_block_content(block);
             self.write_line("}");
             self.write_line("");
         }
     }
 
-    fn build_ts(&mut self, blocks: &[&EmbeddedBlock]) {
+    fn build_ts(&mut self, blocks: &[&EmbeddedBlock], fixture_names: &[String]) {
         let (imports, declares, helpers, inits, other) = Self::categorize_blocks(blocks);
 
         // TypeScript imports
@@ -449,17 +509,29 @@ impl VirtualFileBuilder {
             self.write_line("");
         }
 
-        // Other blocks wrapped in TS functions
+        // Other blocks (benchmarks, fixtures, etc.) wrapped in TS functions
+        // Need fixture stubs for benchmark blocks that reference fixtures
         for (i, block) in other.iter().enumerate() {
             let func_name = Self::func_name_for_block(block.block_type, i);
             self.write_line(&format!("function {}() {{", func_name));
+
+            // Inject fixture variable stubs for benchmark/validate/skip blocks
+            if matches!(
+                block.block_type,
+                BlockType::Benchmark | BlockType::Validate | BlockType::Skip
+            ) {
+                for fixture_name in fixture_names {
+                    self.write_line(&format!("  declare const {}: Uint8Array;", fixture_name));
+                }
+            }
+
             self.add_block_content(block);
             self.write_line("}");
             self.write_line("");
         }
     }
 
-    fn build_rust(&mut self, blocks: &[&EmbeddedBlock]) {
+    fn build_rust(&mut self, blocks: &[&EmbeddedBlock], fixture_names: &[String]) {
         let (imports, declares, helpers, inits, other) = Self::categorize_blocks(blocks);
 
         // Rust header with allow attributes to suppress warnings
@@ -494,11 +566,23 @@ impl VirtualFileBuilder {
             self.write_line("");
         }
 
-        // Other blocks wrapped in Rust functions
+        // Other blocks (benchmarks, fixtures, etc.) wrapped in Rust functions
+        // Need fixture stubs for benchmark blocks that reference fixtures
         for (i, block) in other.iter().enumerate() {
             let func_name = Self::func_name_for_block(block.block_type, i);
             self.write_line(&format!("fn {}() {{", func_name));
-            self.add_block_content(block);
+
+            // Inject fixture variable stubs for benchmark/validate/skip blocks
+            if matches!(
+                block.block_type,
+                BlockType::Benchmark | BlockType::Validate | BlockType::Skip
+            ) {
+                for fixture_name in fixture_names {
+                    self.write_line(&format!("    let {}: &[u8] = &[];", fixture_name));
+                }
+            }
+
+            self.add_block_content_with_semicolon(block);
             self.write_line("}");
             self.write_line("");
         }
@@ -574,6 +658,30 @@ impl VirtualFileBuilder {
         if !code.ends_with('\n') {
             self.content.push('\n');
         }
+
+        self.current_line += line_count;
+    }
+
+    fn add_block_content_with_semicolon(&mut self, block: &EmbeddedBlock) {
+        let code = &block.code;
+        let trimmed = code.trim_end();
+        let line_count = code.lines().count().max(1) as u32;
+
+        self.section_mappings.push(SectionMapping {
+            virtual_start_line: self.current_line,
+            line_count,
+            bench_span: block.span,
+            block_type: block.block_type,
+            code: code.clone(),
+        });
+
+        // Add the code content
+        self.content.push_str(trimmed);
+        // Add semicolon to suppress return value (avoids E0308 mismatched types)
+        if !trimmed.ends_with(';') && !trimmed.ends_with('}') {
+            self.content.push(';');
+        }
+        self.content.push('\n');
 
         self.current_line += line_count;
     }
