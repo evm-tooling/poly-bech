@@ -628,6 +628,7 @@ fn convert_chart_directive(node: TsNode, source: &str) -> Node<ChartDirective> {
     let function = node.field("function").map(|n| n.text(source).to_string()).unwrap_or_default();
 
     let mut params = HashMap::new();
+    let mut param_order = Vec::new();
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -643,13 +644,17 @@ fn convert_chart_directive(node: TsNode, source: &str) -> Node<ChartDirective> {
                         .field("value")
                         .map(|n| convert_value(n, source))
                         .unwrap_or(PropertyValue::String(String::new()));
+                    // Track parameter order before inserting
+                    if !params.contains_key(&name) {
+                        param_order.push(name.clone());
+                    }
                     params.insert(name, value);
                 }
             }
         }
     }
 
-    Node::Valid(ChartDirective { function, params, span })
+    Node::Valid(ChartDirective { function, params, param_order, span })
 }
 
 fn extract_error(node: TsNode, source: &str) -> ParseError {

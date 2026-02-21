@@ -906,243 +906,14 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
             ChartType::Table => "drawTable",
         };
 
-        // Collect all the parameters to output
-        let mut params: Vec<String> = Vec::new();
-
-        // Title and description
-        if let Some(ref title) = directive.title {
-            params.push(format!("{}title: \"{}\"", inner2, escape_string(title)));
-        }
-        if let Some(ref desc) = directive.description {
-            params.push(format!("{}description: \"{}\"", inner2, escape_string(desc)));
-        }
-
-        // Axis labels (for line/bar charts)
-        if let Some(ref xlabel) = directive.x_label {
-            params.push(format!("{}xlabel: \"{}\"", inner2, escape_string(xlabel)));
-        }
-        if let Some(ref ylabel) = directive.y_label {
-            params.push(format!("{}ylabel: \"{}\"", inner2, escape_string(ylabel)));
-        }
-
-        // Output file
-        if let Some(ref output) = directive.output_file {
-            params.push(format!("{}output: \"{}\"", inner2, escape_string(output)));
-        }
-
-        // Display toggles - only output non-default values
-        // Defaults: showStats=true, showConfig=true, showWinCounts=true, showGeoMean=true,
-        //           showDistribution=true, showMemory=false, showTotalTime=false, compact=false
-        if !directive.show_stats {
-            params.push(format!("{}showStats: false", inner2));
-        }
-        if !directive.show_config {
-            params.push(format!("{}showConfig: false", inner2));
-        }
-        if !directive.show_win_counts {
-            params.push(format!("{}showWinCounts: false", inner2));
-        }
-        if !directive.show_geo_mean {
-            params.push(format!("{}showGeoMean: false", inner2));
-        }
-        if !directive.show_distribution {
-            params.push(format!("{}showDistribution: false", inner2));
-        }
-        if directive.show_memory {
-            params.push(format!("{}showMemory: true", inner2));
-        }
-        if directive.show_total_time {
-            params.push(format!("{}showTotalTime: true", inner2));
-        }
-        if directive.compact {
-            params.push(format!("{}compact: true", inner2));
-        }
-
-        // Filtering
-        if let Some(min_speedup) = directive.min_speedup {
-            params.push(format!("{}minSpeedup: {}", inner2, min_speedup));
-        }
-        if let Some(ref filter_winner) = directive.filter_winner {
-            params.push(format!("{}filterWinner: \"{}\"", inner2, escape_string(filter_winner)));
-        }
-        if !directive.include_benchmarks.is_empty() {
-            let items: Vec<_> = directive
-                .include_benchmarks
-                .iter()
-                .map(|s| format!("\"{}\"", escape_string(s)))
-                .collect();
-            params.push(format!("{}includeBenchmarks: [{}]", inner2, items.join(", ")));
-        }
-        if !directive.exclude_benchmarks.is_empty() {
-            let items: Vec<_> = directive
-                .exclude_benchmarks
-                .iter()
-                .map(|s| format!("\"{}\"", escape_string(s)))
-                .collect();
-            params.push(format!("{}excludeBenchmarks: [{}]", inner2, items.join(", ")));
-        }
-        if let Some(limit) = directive.limit {
-            params.push(format!("{}limit: {}", inner2, limit));
-        }
-
-        // Sorting
-        if let Some(ref sort_by) = directive.sort_by {
-            params.push(format!("{}sortBy: \"{}\"", inner2, escape_string(sort_by)));
-        }
-        if let Some(ref sort_order) = directive.sort_order {
-            params.push(format!("{}sortOrder: \"{}\"", inner2, escape_string(sort_order)));
-        }
-
-        // Layout
-        if let Some(width) = directive.width {
-            params.push(format!("{}width: {}", inner2, width));
-        }
-
-        // Data display
-        if let Some(precision) = directive.precision {
-            params.push(format!("{}precision: {}", inner2, precision));
-        }
-        if let Some(ref time_unit) = directive.time_unit {
-            params.push(format!("{}timeUnit: \"{}\"", inner2, escape_string(time_unit)));
-        }
-
-        // === NEW PARAMETERS ===
-
-        // Dimensions
-        if let Some(height) = directive.height {
-            params.push(format!("{}height: {}", inner2, height));
-        }
-
-        // Axis styling
-        if let Some(axis_thickness) = directive.axis_thickness {
-            params.push(format!("{}axisThickness: {}", inner2, axis_thickness));
-        }
-        if let Some(y_axis_min) = directive.y_axis_min {
-            params.push(format!("{}yAxisMin: {}", inner2, y_axis_min));
-        }
-        if let Some(y_axis_max) = directive.y_axis_max {
-            params.push(format!("{}yAxisMax: {}", inner2, y_axis_max));
-        }
-        if let Some(ref y_scale) = directive.y_scale {
-            params.push(format!("{}yScale: \"{}\"", inner2, escape_string(y_scale)));
-        }
-        if let Some(ref baseline_benchmark) = directive.baseline_benchmark {
-            params.push(format!(
-                "{}baselineBenchmark: \"{}\"",
-                inner2,
-                escape_string(baseline_benchmark)
-            ));
-        }
-        if let Some(symlog_threshold) = directive.symlog_threshold {
-            params.push(format!("{}symlogThreshold: {}", inner2, symlog_threshold));
-        }
-
-        // Grid
-        if let Some(show_grid) = directive.show_grid {
-            params.push(format!("{}showGrid: {}", inner2, show_grid));
-        }
-        if let Some(grid_opacity) = directive.grid_opacity {
-            params.push(format!("{}gridOpacity: {}", inner2, grid_opacity));
-        }
-        if let Some(show_minor_grid) = directive.show_minor_grid {
-            params.push(format!("{}showMinorGrid: {}", inner2, show_minor_grid));
-        }
-        if let Some(minor_grid_opacity) = directive.minor_grid_opacity {
-            params.push(format!("{}minorGridOpacity: {}", inner2, minor_grid_opacity));
-        }
-        if let Some(show_vertical_grid) = directive.show_vertical_grid {
-            params.push(format!("{}showVerticalGrid: {}", inner2, show_vertical_grid));
-        }
-
-        // Typography
-        if let Some(title_font_size) = directive.title_font_size {
-            params.push(format!("{}titleFontSize: {}", inner2, title_font_size));
-        }
-        if let Some(subtitle_font_size) = directive.subtitle_font_size {
-            params.push(format!("{}subtitleFontSize: {}", inner2, subtitle_font_size));
-        }
-        if let Some(axis_label_font_size) = directive.axis_label_font_size {
-            params.push(format!("{}axisLabelFontSize: {}", inner2, axis_label_font_size));
-        }
-        if let Some(tick_label_font_size) = directive.tick_label_font_size {
-            params.push(format!("{}tickLabelFontSize: {}", inner2, tick_label_font_size));
-        }
-
-        // Legend
-        if let Some(ref legend_position) = directive.legend_position {
-            params.push(format!(
-                "{}legendPosition: \"{}\"",
-                inner2,
-                escape_string(legend_position)
-            ));
-        }
-
-        // Error bars
-        if let Some(show_error_bars) = directive.show_error_bars {
-            params.push(format!("{}showErrorBars: {}", inner2, show_error_bars));
-        }
-        if let Some(error_bar_opacity) = directive.error_bar_opacity {
-            params.push(format!("{}errorBarOpacity: {}", inner2, error_bar_opacity));
-        }
-        if let Some(error_bar_thickness) = directive.error_bar_thickness {
-            params.push(format!("{}errorBarThickness: {}", inner2, error_bar_thickness));
-        }
-        if let Some(ci_level) = directive.ci_level {
-            params.push(format!("{}ciLevel: {}", inner2, ci_level));
-        }
-        if let Some(show_std_dev_band) = directive.show_std_dev_band {
-            params.push(format!("{}showStdDevBand: {}", inner2, show_std_dev_band));
-        }
-
-        // Regression
-        if let Some(show_regression) = directive.show_regression {
-            params.push(format!("{}showRegression: {}", inner2, show_regression));
-        }
-        if let Some(ref regression_style) = directive.regression_style {
-            params.push(format!(
-                "{}regressionStyle: \"{}\"",
-                inner2,
-                escape_string(regression_style)
-            ));
-        }
-        if let Some(ref regression_model) = directive.regression_model {
-            params.push(format!(
-                "{}regressionModel: \"{}\"",
-                inner2,
-                escape_string(regression_model)
-            ));
-        }
-        if let Some(show_regression_label) = directive.show_regression_label {
-            params.push(format!("{}showRegressionLabel: {}", inner2, show_regression_label));
-        }
-        if let Some(show_r_squared) = directive.show_r_squared {
-            params.push(format!("{}showRSquared: {}", inner2, show_r_squared));
-        }
-        if let Some(show_equation) = directive.show_equation {
-            params.push(format!("{}showEquation: {}", inner2, show_equation));
-        }
-        if let Some(show_regression_band) = directive.show_regression_band {
-            params.push(format!("{}showRegressionBand: {}", inner2, show_regression_band));
-        }
-        if let Some(regression_band_opacity) = directive.regression_band_opacity {
-            params.push(format!("{}regressionBandOpacity: {}", inner2, regression_band_opacity));
-        }
-
-        // Bar chart specific
-        if let Some(bar_group_gap) = directive.bar_group_gap {
-            params.push(format!("{}barGroupGap: {}", inner2, bar_group_gap));
-        }
-        if let Some(bar_within_group_gap) = directive.bar_within_group_gap {
-            params.push(format!("{}barWithinGroupGap: {}", inner2, bar_within_group_gap));
-        }
-        if let Some(bar_width) = directive.bar_width {
-            params.push(format!("{}barWidth: {}", inner2, bar_width));
-        }
-
-        // Tick formatting
-        if let Some(round_ticks) = directive.round_ticks {
-            params.push(format!("{}roundTicks: {}", inner2, round_ticks));
-        }
+        // Collect all the parameters to output, preserving original order if available
+        let params: Vec<String> = if !directive.param_order.is_empty() {
+            // Use the original parameter order from parsing
+            format_params_in_order(directive, &inner2)
+        } else {
+            // Fall back to default order for backwards compatibility
+            format_params_default_order(directive, &inner2)
+        };
 
         // Output the directive
         if params.is_empty() {
@@ -1162,6 +933,468 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
 
     writeln!(out, "{}}}", pad).unwrap();
     out.push('\n');
+}
+
+/// Format parameters in the order they appeared in the source
+fn format_params_in_order(directive: &ChartDirective, indent: &str) -> Vec<String> {
+    let mut params = Vec::new();
+
+    for param_name in &directive.param_order {
+        if let Some(formatted) = format_single_param(directive, param_name, indent) {
+            params.push(formatted);
+        }
+    }
+
+    params
+}
+
+/// Format a single parameter by name
+fn format_single_param(directive: &ChartDirective, name: &str, indent: &str) -> Option<String> {
+    match name {
+        // String parameters
+        "title" => {
+            directive.title.as_ref().map(|v| format!("{}title: \"{}\"", indent, escape_string(v)))
+        }
+        "description" => directive
+            .description
+            .as_ref()
+            .map(|v| format!("{}description: \"{}\"", indent, escape_string(v))),
+        "xlabel" => directive
+            .x_label
+            .as_ref()
+            .map(|v| format!("{}xlabel: \"{}\"", indent, escape_string(v))),
+        "ylabel" => directive
+            .y_label
+            .as_ref()
+            .map(|v| format!("{}ylabel: \"{}\"", indent, escape_string(v))),
+        "output" => directive
+            .output_file
+            .as_ref()
+            .map(|v| format!("{}output: \"{}\"", indent, escape_string(v))),
+        "filterWinner" => directive
+            .filter_winner
+            .as_ref()
+            .map(|v| format!("{}filterWinner: \"{}\"", indent, escape_string(v))),
+        "sortBy" => directive
+            .sort_by
+            .as_ref()
+            .map(|v| format!("{}sortBy: \"{}\"", indent, escape_string(v))),
+        "sortOrder" => directive
+            .sort_order
+            .as_ref()
+            .map(|v| format!("{}sortOrder: \"{}\"", indent, escape_string(v))),
+        "timeUnit" => directive
+            .time_unit
+            .as_ref()
+            .map(|v| format!("{}timeUnit: \"{}\"", indent, escape_string(v))),
+        "legendPosition" => directive
+            .legend_position
+            .as_ref()
+            .map(|v| format!("{}legendPosition: \"{}\"", indent, escape_string(v))),
+        "regressionStyle" => directive
+            .regression_style
+            .as_ref()
+            .map(|v| format!("{}regressionStyle: \"{}\"", indent, escape_string(v))),
+        "yScale" => directive
+            .y_scale
+            .as_ref()
+            .map(|v| format!("{}yScale: \"{}\"", indent, escape_string(v))),
+        "regressionModel" => directive
+            .regression_model
+            .as_ref()
+            .map(|v| format!("{}regressionModel: \"{}\"", indent, escape_string(v))),
+        "baseline" | "baselineBenchmark" => directive
+            .baseline_benchmark
+            .as_ref()
+            .map(|v| format!("{}baselineBenchmark: \"{}\"", indent, escape_string(v))),
+
+        // Boolean parameters (only output non-default values)
+        "showStats" => {
+            if !directive.show_stats {
+                Some(format!("{}showStats: false", indent))
+            } else {
+                None
+            }
+        }
+        "showConfig" => {
+            if !directive.show_config {
+                Some(format!("{}showConfig: false", indent))
+            } else {
+                None
+            }
+        }
+        "showWinCounts" => {
+            if !directive.show_win_counts {
+                Some(format!("{}showWinCounts: false", indent))
+            } else {
+                None
+            }
+        }
+        "showGeoMean" => {
+            if !directive.show_geo_mean {
+                Some(format!("{}showGeoMean: false", indent))
+            } else {
+                None
+            }
+        }
+        "showDistribution" => {
+            if !directive.show_distribution {
+                Some(format!("{}showDistribution: false", indent))
+            } else {
+                None
+            }
+        }
+        "showMemory" => {
+            if directive.show_memory {
+                Some(format!("{}showMemory: true", indent))
+            } else {
+                None
+            }
+        }
+        "showTotalTime" => {
+            if directive.show_total_time {
+                Some(format!("{}showTotalTime: true", indent))
+            } else {
+                None
+            }
+        }
+        "compact" => {
+            if directive.compact {
+                Some(format!("{}compact: true", indent))
+            } else {
+                None
+            }
+        }
+        "showGrid" => directive.show_grid.map(|v| format!("{}showGrid: {}", indent, v)),
+        "showErrorBars" => {
+            directive.show_error_bars.map(|v| format!("{}showErrorBars: {}", indent, v))
+        }
+        "showRegression" => {
+            directive.show_regression.map(|v| format!("{}showRegression: {}", indent, v))
+        }
+        "showRegressionLabel" => {
+            directive.show_regression_label.map(|v| format!("{}showRegressionLabel: {}", indent, v))
+        }
+        "roundTicks" => directive.round_ticks.map(|v| format!("{}roundTicks: {}", indent, v)),
+        "showRSquared" => {
+            directive.show_r_squared.map(|v| format!("{}showRSquared: {}", indent, v))
+        }
+        "showEquation" => directive.show_equation.map(|v| format!("{}showEquation: {}", indent, v)),
+        "showMinorGrid" => {
+            directive.show_minor_grid.map(|v| format!("{}showMinorGrid: {}", indent, v))
+        }
+        "showVerticalGrid" => {
+            directive.show_vertical_grid.map(|v| format!("{}showVerticalGrid: {}", indent, v))
+        }
+        "showStdDevBand" => {
+            directive.show_std_dev_band.map(|v| format!("{}showStdDevBand: {}", indent, v))
+        }
+        "showRegressionBand" => {
+            directive.show_regression_band.map(|v| format!("{}showRegressionBand: {}", indent, v))
+        }
+
+        // Integer parameters
+        "limit" => directive.limit.map(|v| format!("{}limit: {}", indent, v)),
+        "width" => directive.width.map(|v| format!("{}width: {}", indent, v)),
+        "precision" => directive.precision.map(|v| format!("{}precision: {}", indent, v)),
+        "height" => directive.height.map(|v| format!("{}height: {}", indent, v)),
+        "titleFontSize" => {
+            directive.title_font_size.map(|v| format!("{}titleFontSize: {}", indent, v))
+        }
+        "subtitleFontSize" => {
+            directive.subtitle_font_size.map(|v| format!("{}subtitleFontSize: {}", indent, v))
+        }
+        "axisLabelFontSize" => {
+            directive.axis_label_font_size.map(|v| format!("{}axisLabelFontSize: {}", indent, v))
+        }
+        "tickLabelFontSize" => {
+            directive.tick_label_font_size.map(|v| format!("{}tickLabelFontSize: {}", indent, v))
+        }
+        "barGroupGap" => directive.bar_group_gap.map(|v| format!("{}barGroupGap: {}", indent, v)),
+        "barWithinGroupGap" => {
+            directive.bar_within_group_gap.map(|v| format!("{}barWithinGroupGap: {}", indent, v))
+        }
+        "barWidth" => directive.bar_width.map(|v| format!("{}barWidth: {}", indent, v)),
+        "ciLevel" => directive.ci_level.map(|v| format!("{}ciLevel: {}", indent, v)),
+
+        // Float parameters
+        "minSpeedup" => directive.min_speedup.map(|v| format!("{}minSpeedup: {}", indent, v)),
+        "axisThickness" => {
+            directive.axis_thickness.map(|v| format!("{}axisThickness: {}", indent, v))
+        }
+        "yAxisMin" => directive.y_axis_min.map(|v| format!("{}yAxisMin: {}", indent, v)),
+        "yAxisMax" => directive.y_axis_max.map(|v| format!("{}yAxisMax: {}", indent, v)),
+        "gridOpacity" => directive.grid_opacity.map(|v| format!("{}gridOpacity: {}", indent, v)),
+        "errorBarOpacity" => {
+            directive.error_bar_opacity.map(|v| format!("{}errorBarOpacity: {}", indent, v))
+        }
+        "errorBarThickness" => {
+            directive.error_bar_thickness.map(|v| format!("{}errorBarThickness: {}", indent, v))
+        }
+        "minorGridOpacity" => {
+            directive.minor_grid_opacity.map(|v| format!("{}minorGridOpacity: {}", indent, v))
+        }
+        "regressionBandOpacity" => directive
+            .regression_band_opacity
+            .map(|v| format!("{}regressionBandOpacity: {}", indent, v)),
+        "symlogThreshold" => {
+            directive.symlog_threshold.map(|v| format!("{}symlogThreshold: {}", indent, v))
+        }
+
+        // Array parameters
+        "includeBenchmarks" => {
+            if !directive.include_benchmarks.is_empty() {
+                let items: Vec<_> = directive
+                    .include_benchmarks
+                    .iter()
+                    .map(|s| format!("\"{}\"", escape_string(s)))
+                    .collect();
+                Some(format!("{}includeBenchmarks: [{}]", indent, items.join(", ")))
+            } else {
+                None
+            }
+        }
+        "excludeBenchmarks" => {
+            if !directive.exclude_benchmarks.is_empty() {
+                let items: Vec<_> = directive
+                    .exclude_benchmarks
+                    .iter()
+                    .map(|s| format!("\"{}\"", escape_string(s)))
+                    .collect();
+                Some(format!("{}excludeBenchmarks: [{}]", indent, items.join(", ")))
+            } else {
+                None
+            }
+        }
+
+        _ => None,
+    }
+}
+
+/// Format parameters in default order (for backwards compatibility)
+fn format_params_default_order(directive: &ChartDirective, inner2: &str) -> Vec<String> {
+    let mut params: Vec<String> = Vec::new();
+
+    // Title and description
+    if let Some(ref title) = directive.title {
+        params.push(format!("{}title: \"{}\"", inner2, escape_string(title)));
+    }
+    if let Some(ref desc) = directive.description {
+        params.push(format!("{}description: \"{}\"", inner2, escape_string(desc)));
+    }
+
+    // Axis labels (for line/bar charts)
+    if let Some(ref xlabel) = directive.x_label {
+        params.push(format!("{}xlabel: \"{}\"", inner2, escape_string(xlabel)));
+    }
+    if let Some(ref ylabel) = directive.y_label {
+        params.push(format!("{}ylabel: \"{}\"", inner2, escape_string(ylabel)));
+    }
+
+    // Output file
+    if let Some(ref output) = directive.output_file {
+        params.push(format!("{}output: \"{}\"", inner2, escape_string(output)));
+    }
+
+    // Display toggles - only output non-default values
+    if !directive.show_stats {
+        params.push(format!("{}showStats: false", inner2));
+    }
+    if !directive.show_config {
+        params.push(format!("{}showConfig: false", inner2));
+    }
+    if !directive.show_win_counts {
+        params.push(format!("{}showWinCounts: false", inner2));
+    }
+    if !directive.show_geo_mean {
+        params.push(format!("{}showGeoMean: false", inner2));
+    }
+    if !directive.show_distribution {
+        params.push(format!("{}showDistribution: false", inner2));
+    }
+    if directive.show_memory {
+        params.push(format!("{}showMemory: true", inner2));
+    }
+    if directive.show_total_time {
+        params.push(format!("{}showTotalTime: true", inner2));
+    }
+    if directive.compact {
+        params.push(format!("{}compact: true", inner2));
+    }
+
+    // Filtering
+    if let Some(min_speedup) = directive.min_speedup {
+        params.push(format!("{}minSpeedup: {}", inner2, min_speedup));
+    }
+    if let Some(ref filter_winner) = directive.filter_winner {
+        params.push(format!("{}filterWinner: \"{}\"", inner2, escape_string(filter_winner)));
+    }
+    if !directive.include_benchmarks.is_empty() {
+        let items: Vec<_> = directive
+            .include_benchmarks
+            .iter()
+            .map(|s| format!("\"{}\"", escape_string(s)))
+            .collect();
+        params.push(format!("{}includeBenchmarks: [{}]", inner2, items.join(", ")));
+    }
+    if !directive.exclude_benchmarks.is_empty() {
+        let items: Vec<_> = directive
+            .exclude_benchmarks
+            .iter()
+            .map(|s| format!("\"{}\"", escape_string(s)))
+            .collect();
+        params.push(format!("{}excludeBenchmarks: [{}]", inner2, items.join(", ")));
+    }
+    if let Some(limit) = directive.limit {
+        params.push(format!("{}limit: {}", inner2, limit));
+    }
+
+    // Sorting
+    if let Some(ref sort_by) = directive.sort_by {
+        params.push(format!("{}sortBy: \"{}\"", inner2, escape_string(sort_by)));
+    }
+    if let Some(ref sort_order) = directive.sort_order {
+        params.push(format!("{}sortOrder: \"{}\"", inner2, escape_string(sort_order)));
+    }
+
+    // Layout
+    if let Some(width) = directive.width {
+        params.push(format!("{}width: {}", inner2, width));
+    }
+
+    // Data display
+    if let Some(precision) = directive.precision {
+        params.push(format!("{}precision: {}", inner2, precision));
+    }
+    if let Some(ref time_unit) = directive.time_unit {
+        params.push(format!("{}timeUnit: \"{}\"", inner2, escape_string(time_unit)));
+    }
+
+    // Dimensions
+    if let Some(height) = directive.height {
+        params.push(format!("{}height: {}", inner2, height));
+    }
+
+    // Axis styling
+    if let Some(axis_thickness) = directive.axis_thickness {
+        params.push(format!("{}axisThickness: {}", inner2, axis_thickness));
+    }
+    if let Some(y_axis_min) = directive.y_axis_min {
+        params.push(format!("{}yAxisMin: {}", inner2, y_axis_min));
+    }
+    if let Some(y_axis_max) = directive.y_axis_max {
+        params.push(format!("{}yAxisMax: {}", inner2, y_axis_max));
+    }
+    if let Some(ref y_scale) = directive.y_scale {
+        params.push(format!("{}yScale: \"{}\"", inner2, escape_string(y_scale)));
+    }
+    if let Some(ref baseline_benchmark) = directive.baseline_benchmark {
+        params.push(format!(
+            "{}baselineBenchmark: \"{}\"",
+            inner2,
+            escape_string(baseline_benchmark)
+        ));
+    }
+    if let Some(symlog_threshold) = directive.symlog_threshold {
+        params.push(format!("{}symlogThreshold: {}", inner2, symlog_threshold));
+    }
+
+    // Grid
+    if let Some(show_grid) = directive.show_grid {
+        params.push(format!("{}showGrid: {}", inner2, show_grid));
+    }
+    if let Some(grid_opacity) = directive.grid_opacity {
+        params.push(format!("{}gridOpacity: {}", inner2, grid_opacity));
+    }
+    if let Some(show_minor_grid) = directive.show_minor_grid {
+        params.push(format!("{}showMinorGrid: {}", inner2, show_minor_grid));
+    }
+    if let Some(minor_grid_opacity) = directive.minor_grid_opacity {
+        params.push(format!("{}minorGridOpacity: {}", inner2, minor_grid_opacity));
+    }
+    if let Some(show_vertical_grid) = directive.show_vertical_grid {
+        params.push(format!("{}showVerticalGrid: {}", inner2, show_vertical_grid));
+    }
+
+    // Typography
+    if let Some(title_font_size) = directive.title_font_size {
+        params.push(format!("{}titleFontSize: {}", inner2, title_font_size));
+    }
+    if let Some(subtitle_font_size) = directive.subtitle_font_size {
+        params.push(format!("{}subtitleFontSize: {}", inner2, subtitle_font_size));
+    }
+    if let Some(axis_label_font_size) = directive.axis_label_font_size {
+        params.push(format!("{}axisLabelFontSize: {}", inner2, axis_label_font_size));
+    }
+    if let Some(tick_label_font_size) = directive.tick_label_font_size {
+        params.push(format!("{}tickLabelFontSize: {}", inner2, tick_label_font_size));
+    }
+
+    // Legend
+    if let Some(ref legend_position) = directive.legend_position {
+        params.push(format!("{}legendPosition: \"{}\"", inner2, escape_string(legend_position)));
+    }
+
+    // Error bars
+    if let Some(show_error_bars) = directive.show_error_bars {
+        params.push(format!("{}showErrorBars: {}", inner2, show_error_bars));
+    }
+    if let Some(error_bar_opacity) = directive.error_bar_opacity {
+        params.push(format!("{}errorBarOpacity: {}", inner2, error_bar_opacity));
+    }
+    if let Some(error_bar_thickness) = directive.error_bar_thickness {
+        params.push(format!("{}errorBarThickness: {}", inner2, error_bar_thickness));
+    }
+    if let Some(ci_level) = directive.ci_level {
+        params.push(format!("{}ciLevel: {}", inner2, ci_level));
+    }
+    if let Some(show_std_dev_band) = directive.show_std_dev_band {
+        params.push(format!("{}showStdDevBand: {}", inner2, show_std_dev_band));
+    }
+
+    // Regression
+    if let Some(show_regression) = directive.show_regression {
+        params.push(format!("{}showRegression: {}", inner2, show_regression));
+    }
+    if let Some(ref regression_style) = directive.regression_style {
+        params.push(format!("{}regressionStyle: \"{}\"", inner2, escape_string(regression_style)));
+    }
+    if let Some(ref regression_model) = directive.regression_model {
+        params.push(format!("{}regressionModel: \"{}\"", inner2, escape_string(regression_model)));
+    }
+    if let Some(show_regression_label) = directive.show_regression_label {
+        params.push(format!("{}showRegressionLabel: {}", inner2, show_regression_label));
+    }
+    if let Some(show_r_squared) = directive.show_r_squared {
+        params.push(format!("{}showRSquared: {}", inner2, show_r_squared));
+    }
+    if let Some(show_equation) = directive.show_equation {
+        params.push(format!("{}showEquation: {}", inner2, show_equation));
+    }
+    if let Some(show_regression_band) = directive.show_regression_band {
+        params.push(format!("{}showRegressionBand: {}", inner2, show_regression_band));
+    }
+    if let Some(regression_band_opacity) = directive.regression_band_opacity {
+        params.push(format!("{}regressionBandOpacity: {}", inner2, regression_band_opacity));
+    }
+
+    // Bar chart specific
+    if let Some(bar_group_gap) = directive.bar_group_gap {
+        params.push(format!("{}barGroupGap: {}", inner2, bar_group_gap));
+    }
+    if let Some(bar_within_group_gap) = directive.bar_within_group_gap {
+        params.push(format!("{}barWithinGroupGap: {}", inner2, bar_within_group_gap));
+    }
+    if let Some(bar_width) = directive.bar_width {
+        params.push(format!("{}barWidth: {}", inner2, bar_width));
+    }
+
+    // Tick formatting
+    if let Some(round_ticks) = directive.round_ticks {
+        params.push(format!("{}roundTicks: {}", inner2, round_ticks));
+    }
+
+    params
 }
 
 fn escape_string(s: &str) -> String {

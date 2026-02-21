@@ -238,9 +238,12 @@ fn format_suite_content(suite: &PartialSuite, config: &FormatterConfig) -> Strin
             if let Node::Valid(d) = directive {
                 formatted.push_str(&make_indent(config, 2));
                 formatted.push_str(&format!("charting.{}(\n", d.function));
-                for (name, value) in &d.params {
-                    formatted.push_str(&make_indent(config, 3));
-                    formatted.push_str(&format!("{}: {},\n", name, format_value(value)));
+                // Use param_order to preserve original parameter ordering
+                for name in &d.param_order {
+                    if let Some(value) = d.params.get(name) {
+                        formatted.push_str(&make_indent(config, 3));
+                        formatted.push_str(&format!("{}: {},\n", name, format_value(value)));
+                    }
                 }
                 formatted.push_str(&make_indent(config, 2));
                 formatted.push_str(")\n");

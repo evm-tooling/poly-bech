@@ -403,6 +403,8 @@ pub struct AfterBlock {
 pub struct ChartDirective {
     pub function: String,
     pub params: HashMap<String, PropertyValue>,
+    /// Order of parameters as they appeared in source (for formatting)
+    pub param_order: Vec<String>,
     pub span: Span,
 }
 
