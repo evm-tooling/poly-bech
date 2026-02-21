@@ -327,11 +327,9 @@ async fn cmd_check(file: &PathBuf, show_ast: bool) -> Result<()> {
 }
 
 async fn cmd_compile(file: Option<PathBuf>, lang: Option<String>) -> Result<()> {
-    use colored::Colorize;
-
     // Get benchmark files to compile
-    let files = match file {
-        Some(f) => vec![f],
+    let (files, run_parallel) = match file {
+        Some(f) => (vec![f], false),
         None => {
             let current_dir = std::env::current_dir()
                 .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
@@ -353,7 +351,7 @@ async fn cmd_compile(file: Option<PathBuf>, lang: Option<String>) -> Result<()> 
                 ));
             }
 
-            bench_files
+            (bench_files, true)
         }
     };
 
@@ -366,32 +364,164 @@ async fn cmd_compile(file: Option<PathBuf>, lang: Option<String>) -> Result<()> 
         None => vec![dsl::Lang::Go, dsl::Lang::TypeScript, dsl::Lang::Rust],
     };
 
+    if run_parallel && files.len() > 1 {
+        compile_files_parallel(&files, &langs).await
+    } else {
+        compile_files_sequential(&files, &langs).await
+    }
+}
+
+struct CompileResult {
+    file: PathBuf,
+    bench_count: usize,
+    errors: Vec<executor::CompileError>,
+}
+
+async fn compile_single_file(bench_file: PathBuf, langs: Vec<dsl::Lang>) -> Result<CompileResult> {
+    let source = std::fs::read_to_string(&bench_file)
+        .map_err(|e| miette::miette!("Failed to read file {}: {}", bench_file.display(), e))?;
+
+    let filename = bench_file.file_name().and_then(|s| s.to_str()).unwrap_or("unknown");
+
+    let ast = dsl::parse(&source, filename)?;
+    let ir_result = ir::lower(&ast, bench_file.parent())?;
+
+    let bench_count: usize = ir_result.suites.iter().map(|s| s.benchmarks.len()).sum();
+    let project_roots = resolve_project_roots(None, None, &bench_file)?;
+
+    let compile_errors = executor::validate_benchmarks(&ir_result, &langs, &project_roots).await?;
+
+    Ok(CompileResult { file: bench_file, bench_count, errors: compile_errors })
+}
+
+async fn compile_files_parallel(files: &[PathBuf], langs: &[dsl::Lang]) -> Result<()> {
+    use colored::Colorize;
+    use futures::future::join_all;
+
+    println!("{} Compiling {} file(s) in parallel...\n", "⚡".cyan(), files.len());
+
+    let spinner = create_compiling_spinner();
+
+    let futures: Vec<_> =
+        files.iter().map(|f| compile_single_file(f.clone(), langs.to_vec())).collect();
+
+    let results = join_all(futures).await;
+    spinner.finish_and_clear();
+
+    let mut total_errors = 0;
+    let mut total_benchmarks = 0;
+    let mut failed_results = Vec::new();
+    let mut success_results = Vec::new();
+
+    for result in results {
+        match result {
+            Ok(compile_result) => {
+                total_benchmarks += compile_result.bench_count;
+                if compile_result.errors.is_empty() {
+                    success_results.push(compile_result);
+                } else {
+                    total_errors += compile_result.errors.len();
+                    failed_results.push(compile_result);
+                }
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+    }
+
+    for result in &success_results {
+        println!(
+            "{} {} - {} benchmark(s) compiled successfully",
+            "✓".green().bold(),
+            result.file.display(),
+            result.bench_count
+        );
+    }
+
+    for result in &failed_results {
+        eprintln!(
+            "{} {} - {} error(s):",
+            "✗".red().bold(),
+            result.file.display(),
+            result.errors.len()
+        );
+
+        for err in &result.errors {
+            let header = if err.benchmarks.len() == 1 {
+                format!("[{}] {}", err.lang, err.benchmarks[0])
+            } else {
+                format!(
+                    "[{}] {} error (affects {} benchmarks)",
+                    err.lang,
+                    err.source,
+                    err.benchmarks.len()
+                )
+            };
+            eprintln!("  {} {}", "•".red(), header);
+
+            let mut shown_lines = 0;
+            for line in err.message.lines() {
+                if line.contains(".bench file line") {
+                    eprintln!("    {}", line.yellow());
+                } else if line.starts_with("error") || line.contains("error TS") {
+                    eprintln!("    {}", line.red());
+                } else if shown_lines < 8 {
+                    eprintln!("    {}", line.dimmed());
+                }
+                shown_lines += 1;
+                if shown_lines >= 12 {
+                    eprintln!("    {}", "... (truncated)".dimmed());
+                    break;
+                }
+            }
+            eprintln!();
+        }
+    }
+
+    if total_errors > 0 {
+        return Err(miette::miette!(
+            "Compilation failed with {} error(s) across {} file(s)",
+            total_errors,
+            files.len()
+        ));
+    }
+
+    if files.len() > 1 {
+        println!(
+            "\n{} All {} benchmark(s) across {} file(s) compiled successfully",
+            "✓".green().bold(),
+            total_benchmarks,
+            files.len()
+        );
+    }
+
+    Ok(())
+}
+
+async fn compile_files_sequential(files: &[PathBuf], langs: &[dsl::Lang]) -> Result<()> {
+    use colored::Colorize;
+
     let mut total_errors = 0;
     let mut total_benchmarks = 0;
 
-    for bench_file in &files {
-        // Parse the DSL file
+    for bench_file in files {
         let source = std::fs::read_to_string(bench_file)
             .map_err(|e| miette::miette!("Failed to read file {}: {}", bench_file.display(), e))?;
 
         let filename = bench_file.file_name().and_then(|s| s.to_str()).unwrap_or("unknown");
 
         let ast = dsl::parse(&source, filename)?;
-
-        // Lower to IR
         let ir_result = ir::lower(&ast, bench_file.parent())?;
 
-        // Count benchmarks
         let bench_count: usize = ir_result.suites.iter().map(|s| s.benchmarks.len()).sum();
         total_benchmarks += bench_count;
 
-        // Resolve project roots for module resolution
         let project_roots = resolve_project_roots(None, None, bench_file)?;
 
-        // Show spinner while compiling
         let spinner = create_compiling_spinner();
         let compile_errors =
-            executor::validate_benchmarks(&ir_result, &langs, &project_roots).await?;
+            executor::validate_benchmarks(&ir_result, langs, &project_roots).await?;
         spinner.finish_and_clear();
 
         if !compile_errors.is_empty() {
