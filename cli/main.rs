@@ -1344,20 +1344,18 @@ async fn cmd_fmt(files: Vec<PathBuf>, write: bool) -> Result<()> {
     for file in &files {
         let source = std::fs::read_to_string(file)
             .map_err(|e| miette::miette!("Failed to read {}: {}", file.display(), e))?;
-        let filename = file.file_name().and_then(|s| s.to_str()).unwrap_or("unknown");
-        match dsl::parse(&source, filename) {
-            Ok(ast) => {
-                let formatted = dsl::format_file(&ast);
-                if write {
-                    std::fs::write(file, &formatted).map_err(|e| {
-                        miette::miette!("Failed to write {}: {}", file.display(), e)
-                    })?;
-                    println!("{} {}", "✓".green().bold(), file.display());
-                } else {
-                    print!("{}", formatted);
-                }
-            }
-            Err(e) => return Err(e),
+
+        // Use the LSP v2 formatter for consistent behavior with on-save formatting.
+        // This formatter correctly removes empty code blocks (init, declare, helpers, import)
+        // while preserving globalSetup blocks that have statements.
+        let formatted = poly_bench_lsp_v2::formatter::format_source(&source);
+
+        if write {
+            std::fs::write(file, &formatted)
+                .map_err(|e| miette::miette!("Failed to write {}: {}", file.display(), e))?;
+            println!("{} {}", "✓".green().bold(), file.display());
+        } else {
+            print!("{}", formatted);
         }
     }
 
