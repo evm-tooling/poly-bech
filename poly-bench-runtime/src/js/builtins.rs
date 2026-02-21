@@ -80,11 +80,11 @@ pub const BENCHMARK_HARNESS: &str = r#"
 
     // Run a benchmark with auto-calibration (time-based, like Go's testing.B)
     // Total benchmark time is approximately targetTimeMs
-    function runBenchmarkAuto(fn, targetTimeMs, useSink = true, trackMemory = false) {
+    function runBenchmarkAuto(fn, targetTimeMs, useSink = true, trackMemory = false, warmupCount = 100) {
         const targetNanos = targetTimeMs * 1e6;
         
-        // Brief warmup (fixed 100 iterations to warm JIT)
-        for (let i = 0; i < 100; i++) {
+        // Brief warmup to warm JIT
+        for (let i = 0; i < warmupCount; i++) {
             if (useSink) {
                 globalThis.__polybench_sink = fn();
             } else {
@@ -227,11 +227,11 @@ pub const BENCHMARK_HARNESS: &str = r#"
     }
 
     // Run an async benchmark with auto-calibration (time-based)
-    async function runBenchmarkAutoAsync(fn, targetTimeMs, useSink = true, trackMemory = false) {
+    async function runBenchmarkAutoAsync(fn, targetTimeMs, useSink = true, trackMemory = false, warmupCount = 100) {
         const targetNanos = targetTimeMs * 1e6;
         
-        // Brief warmup (fixed 100 iterations)
-        for (let i = 0; i < 100; i++) {
+        // Brief warmup
+        for (let i = 0; i < warmupCount; i++) {
             if (useSink) {
                 globalThis.__polybench_sink = await fn();
             } else {

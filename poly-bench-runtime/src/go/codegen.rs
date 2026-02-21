@@ -220,8 +220,8 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 	// Auto-calibration mode: iterations parameter is ignored, runs for targetTime
 	targetNanos := int64({})
 {}{}
-{}{}	// Brief warmup (100 iterations)
-	for i := 0; i < 100; i++ {{
+{}{}	// Brief warmup ({} iterations)
+	for i := 0; i < {}; i++ {{
 {}		{}
 {}	}}
 	
@@ -247,6 +247,8 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
                 decls.memory_decl,
                 before_hook,
                 decls.memory_before,
+                bench.warmup,
+                bench.warmup,
                 each_hook_code,
                 bench_call,
                 decls.sink_keepalive,

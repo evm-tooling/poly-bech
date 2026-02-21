@@ -278,6 +278,21 @@ pub async fn run(
             // Run Go benchmark
             if spec.has_lang(Lang::Go) {
                 if let Some(ref mut rt) = go_runtime {
+                    // Pre-compile the benchmark binary before timing starts
+                    // This ensures compilation overhead is not included in the wall-clock time
+                    let precompile_start = Instant::now();
+                    if let Err(e) = rt.precompile(&spec_clone, suite).await {
+                        eprintln!("    {} Pre-compilation failed: {}", "Go:".red(), e);
+                    }
+                    let precompile_elapsed = precompile_start.elapsed();
+                    if precompile_elapsed.as_millis() > 100 {
+                        print!(
+                            "    {} compiled in {:.2}s\n",
+                            "Go:".green().dimmed(),
+                            precompile_elapsed.as_secs_f64()
+                        );
+                    }
+
                     let lang_start = Instant::now();
 
                     if spec_clone.count > 1 {
@@ -356,6 +371,22 @@ pub async fn run(
             // Run TypeScript benchmark
             if spec.has_lang(Lang::TypeScript) {
                 if let Some(ref mut rt) = js_runtime {
+                    // Pre-compile/prepare the benchmark script before timing starts
+                    // This ensures script writing and syntax checking is not included in the
+                    // wall-clock time
+                    let precompile_start = Instant::now();
+                    if let Err(e) = rt.precompile(&spec_clone, suite).await {
+                        eprintln!("    {} Pre-compilation failed: {}", "TS:".red(), e);
+                    }
+                    let precompile_elapsed = precompile_start.elapsed();
+                    if precompile_elapsed.as_millis() > 100 {
+                        print!(
+                            "    {} prepared in {:.2}s\n",
+                            "TS:".cyan().dimmed(),
+                            precompile_elapsed.as_secs_f64()
+                        );
+                    }
+
                     let lang_start = Instant::now();
 
                     if spec_clone.count > 1 {
@@ -434,6 +465,21 @@ pub async fn run(
             // Run Rust benchmark
             if spec.has_lang(Lang::Rust) {
                 if let Some(ref mut rt) = rust_runtime {
+                    // Pre-compile the benchmark binary before timing starts
+                    // This ensures compilation overhead is not included in the wall-clock time
+                    let precompile_start = Instant::now();
+                    if let Err(e) = rt.precompile(&spec_clone, suite).await {
+                        eprintln!("    {} Pre-compilation failed: {}", "Rust:".red(), e);
+                    }
+                    let precompile_elapsed = precompile_start.elapsed();
+                    if precompile_elapsed.as_millis() > 100 {
+                        print!(
+                            "    {} compiled in {:.2}s\n",
+                            "Rust:".yellow().dimmed(),
+                            precompile_elapsed.as_secs_f64()
+                        );
+                    }
+
                     let lang_start = Instant::now();
 
                     if spec_clone.count > 1 {
