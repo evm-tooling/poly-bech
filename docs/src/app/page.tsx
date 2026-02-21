@@ -277,8 +277,7 @@ const runtimeDetails = [
   },
 ]
 
-const installScriptUrl =
-  'https://install.evm-tooling.tools'
+const installScriptUrl = 'https://install.evm-tooling.tools'
 const installCommand = `curl -L ${installScriptUrl} | bash`
 
 export default function Home() {

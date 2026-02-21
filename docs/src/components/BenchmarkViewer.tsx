@@ -165,10 +165,11 @@ export default function BenchmarkViewer({ suites }: BenchmarkViewerProps) {
   const dropdownRef = React.useRef<HTMLDivElement>(null)
 
   const suite = safeSuites[activeSuiteIdx]
-  if (!suite?.slides?.length) return null
-  const slide = suite.slides[activeSlideIdx]
+  const slide = suite?.slides?.[activeSlideIdx]
   const canPrev = activeSlideIdx > 0
-  const canNext = activeSlideIdx < suite.slides.length - 1
+  const canNext = suite?.slides
+    ? activeSlideIdx < suite.slides.length - 1
+    : false
 
   // Close dropdown on outside click
   React.useEffect(() => {
@@ -183,6 +184,31 @@ export default function BenchmarkViewer({ suites }: BenchmarkViewerProps) {
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
+
+  // Keyboard navigation
+  React.useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      const viewer = dropdownRef.current?.closest('[data-benchmark-viewer]')
+      if (!viewer) return
+      if (
+        !viewer.contains(document.activeElement) &&
+        document.activeElement !== viewer
+      )
+        return
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        goPrev()
+      }
+      if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        goNext()
+      }
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  })
+
+  if (!suite?.slides?.length) return null
 
   function goTo(idx: number) {
     setDirection(idx > activeSlideIdx ? 1 : -1)
@@ -207,29 +233,6 @@ export default function BenchmarkViewer({ suites }: BenchmarkViewerProps) {
     setDirection(1)
     setDropdownOpen(false)
   }
-
-  // Keyboard navigation
-  React.useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      const viewer = dropdownRef.current?.closest('[data-benchmark-viewer]')
-      if (!viewer) return
-      if (
-        !viewer.contains(document.activeElement) &&
-        document.activeElement !== viewer
-      )
-        return
-      if (e.key === 'ArrowLeft') {
-        e.preventDefault()
-        goPrev()
-      }
-      if (e.key === 'ArrowRight') {
-        e.preventDefault()
-        goNext()
-      }
-    }
-    document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  })
 
   return (
     <div
