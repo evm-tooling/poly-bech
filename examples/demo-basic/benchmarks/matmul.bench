@@ -13,25 +13,8 @@ suite matmulN {
 
     setup go {
         import (
-        "encoding/binary"
+            "encoding/binary"
         )
-
-        init {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        }
 
         helpers {
             func matmulGo(data []byte) []byte {
@@ -57,23 +40,6 @@ suite matmulN {
     }
 
     setup ts {
-        init {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        }
-
         helpers {
             function matmulTs(data: Uint8Array): Uint8Array {
                 const n = new DataView(data.buffer, data.byteOffset, 4).getUint32(0, true)
@@ -95,23 +61,6 @@ suite matmulN {
     }
 
     setup rust {
-        init {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        }
-
         helpers {
             fn matmul_rust(data: &[u8]) -> Vec<u8> {
                 let n = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
@@ -239,50 +188,13 @@ suite matmulN {
             output: "matmul-line.svg",
             xlabel: "Matrix Size (n×n)",
             ylabel: "Time (ns/op)",
-            width: 610,
-            height: 450,
-            axisThickness: 1.5,
-            showGrid: true,
-            gridOpacity: 0.2,
-            titleFontSize: 18,
-            subtitleFontSize: 12,
-            axisLabelFontSize: 12,
-            tickLabelFontSize: 10,
-            legendPosition: "top-left",
-            showErrorBars: true,
-            errorBarOpacity: 0.4,
-            errorBarThickness: 1.5,
-            showRegression: true,
-            regressionStyle: "dashed",
-            showRegressionLabel: true,
-            timeUnit: "auto",
-            precision: 0
         )
-
         charting.drawBarChart(
             title: "Matrix Multiplication Comparison",
             description: "Vertical grouped bars showing cubic growth",
             output: "matmul-bar.svg",
             xlabel: "Matrix Size",
             ylabel: "Time (ns/op)",
-          width: 610,
-            height: 450,
-            axisThickness: 1.5,
-            showGrid: true,
-            gridOpacity: 0.15,
-            titleFontSize: 18,
-            subtitleFontSize: 12,
-            axisLabelFontSize: 12,
-            tickLabelFontSize: 10,
-            legendPosition: "bottom-right",
-            showErrorBars: true,
-            errorBarOpacity: 0.5,
-            errorBarThickness: 1.5,
-            barGroupGap: 25,
-            barWithinGroupGap: 3,
-            timeUnit: "auto",
-            precision: 0
         )
     }
-
 }

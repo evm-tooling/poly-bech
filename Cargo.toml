@@ -113,6 +113,9 @@ once_cell.workspace = true
 # Gopls integration
 futures.workspace = true
 
+# Progress indicators
+indicatif.workspace = true
+
 [dev-dependencies]
 pretty_assertions.workspace = true
 

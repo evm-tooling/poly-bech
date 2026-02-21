@@ -5,8 +5,9 @@ mod version_check;
 mod welcome;
 
 use clap::{Parser, Subcommand};
+use indicatif::{ProgressBar, ProgressStyle};
 use miette::Result;
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use poly_bench_dsl as dsl;
 use poly_bench_executor as executor;
@@ -52,6 +53,17 @@ enum Commands {
         /// Show the parsed AST
         #[arg(long, default_value = "false")]
         show_ast: bool,
+    },
+
+    /// Compile-check benchmarks without running them
+    Compile {
+        /// Path to a .bench file (optional; if omitted, compiles all in benchmarks/)
+        #[arg(value_name = "FILE")]
+        file: Option<PathBuf>,
+
+        /// Check only benchmarks for a specific language (go, ts, rust)
+        #[arg(long, value_name = "LANG")]
+        lang: Option<String>,
     },
 
     /// Run benchmarks from a DSL file or project
@@ -224,6 +236,9 @@ async fn main() -> Result<()> {
         Commands::Check { file, show_ast } => {
             cmd_check(&file, show_ast).await?;
         }
+        Commands::Compile { file, lang } => {
+            cmd_compile(file, lang).await?;
+        }
         Commands::Run { file, lang, iterations, report, output, go_project, ts_project } => {
             cmd_run(file, lang, iterations, &report, output, go_project, ts_project).await?;
         }
@@ -311,6 +326,143 @@ async fn cmd_check(file: &PathBuf, show_ast: bool) -> Result<()> {
     }
 }
 
+async fn cmd_compile(file: Option<PathBuf>, lang: Option<String>) -> Result<()> {
+    use colored::Colorize;
+
+    // Get benchmark files to compile
+    let files = match file {
+        Some(f) => vec![f],
+        None => {
+            let current_dir = std::env::current_dir()
+                .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+
+            let project_root = project::find_project_root(&current_dir).ok_or_else(|| {
+                miette::miette!(
+                    "No .bench file specified and not in a poly-bench project.\n\
+                    Either specify a file: poly-bench compile <file.bench>\n\
+                    Or run from a poly-bench project directory"
+                )
+            })?;
+
+            let bench_files = project::find_bench_files(&project_root)?;
+
+            if bench_files.is_empty() {
+                return Err(miette::miette!(
+                    "No .bench files found in {}/",
+                    project::BENCHMARKS_DIR
+                ));
+            }
+
+            bench_files
+        }
+    };
+
+    // Filter languages if specified
+    let langs: Vec<dsl::Lang> = match lang.as_deref() {
+        Some("go") => vec![dsl::Lang::Go],
+        Some("ts") | Some("typescript") => vec![dsl::Lang::TypeScript],
+        Some("rust") | Some("rs") => vec![dsl::Lang::Rust],
+        Some(l) => return Err(miette::miette!("Unknown language: {}", l)),
+        None => vec![dsl::Lang::Go, dsl::Lang::TypeScript, dsl::Lang::Rust],
+    };
+
+    let mut total_errors = 0;
+    let mut total_benchmarks = 0;
+
+    for bench_file in &files {
+        // Parse the DSL file
+        let source = std::fs::read_to_string(bench_file)
+            .map_err(|e| miette::miette!("Failed to read file {}: {}", bench_file.display(), e))?;
+
+        let filename = bench_file.file_name().and_then(|s| s.to_str()).unwrap_or("unknown");
+
+        let ast = dsl::parse(&source, filename)?;
+
+        // Lower to IR
+        let ir_result = ir::lower(&ast, bench_file.parent())?;
+
+        // Count benchmarks
+        let bench_count: usize = ir_result.suites.iter().map(|s| s.benchmarks.len()).sum();
+        total_benchmarks += bench_count;
+
+        // Resolve project roots for module resolution
+        let project_roots = resolve_project_roots(None, None, bench_file)?;
+
+        // Show spinner while compiling
+        let spinner = create_compiling_spinner();
+        let compile_errors =
+            executor::validate_benchmarks(&ir_result, &langs, &project_roots).await?;
+        spinner.finish_and_clear();
+
+        if !compile_errors.is_empty() {
+            total_errors += compile_errors.len();
+            eprintln!(
+                "{} {} - {} error(s):",
+                "✗".red().bold(),
+                bench_file.display(),
+                compile_errors.len()
+            );
+
+            for err in &compile_errors {
+                let header = if err.benchmarks.len() == 1 {
+                    format!("[{}] {}", err.lang, err.benchmarks[0])
+                } else {
+                    format!(
+                        "[{}] {} error (affects {} benchmarks)",
+                        err.lang,
+                        err.source,
+                        err.benchmarks.len()
+                    )
+                };
+                eprintln!("  {} {}", "•".red(), header);
+
+                let mut shown_lines = 0;
+                for line in err.message.lines() {
+                    if line.contains(".bench file line") {
+                        eprintln!("    {}", line.yellow());
+                    } else if line.starts_with("error") || line.contains("error TS") {
+                        eprintln!("    {}", line.red());
+                    } else if shown_lines < 8 {
+                        eprintln!("    {}", line.dimmed());
+                    }
+                    shown_lines += 1;
+                    if shown_lines >= 12 {
+                        eprintln!("    {}", "... (truncated)".dimmed());
+                        break;
+                    }
+                }
+                eprintln!();
+            }
+        } else {
+            println!(
+                "{} {} - {} benchmark(s) compiled successfully",
+                "✓".green().bold(),
+                bench_file.display(),
+                bench_count
+            );
+        }
+    }
+
+    if total_errors > 0 {
+        return Err(miette::miette!(
+            "Compilation failed with {} error(s) across {} file(s)",
+            total_errors,
+            files.len()
+        ));
+    }
+
+    if files.len() > 1 {
+        println!(
+            "\n{} All {} benchmark(s) across {} file(s) compiled successfully",
+            "✓".green().bold(),
+            total_benchmarks,
+            files.len()
+        );
+    }
+
+    Ok(())
+}
+
 async fn cmd_run(
     file: Option<PathBuf>,
     lang: Option<String>,
@@ -384,8 +536,9 @@ async fn cmd_run(
             resolve_project_roots(go_project.clone(), ts_project.clone(), bench_file)?;
 
         // Pre-run validation: compile-check all benchmarks before running
-        println!("{} Validating benchmarks from {}", "🔍".cyan(), bench_file.display());
+        let spinner = create_compiling_spinner();
         let compile_errors = executor::validate_benchmarks(&ir, &langs, &project_roots).await?;
+        spinner.finish_and_clear();
 
         if !compile_errors.is_empty() {
             eprintln!("\n{} Compilation errors in {}:\n", "✗".red().bold(), bench_file.display());
@@ -890,4 +1043,18 @@ async fn cmd_fmt(files: Vec<PathBuf>, write: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Create a spinner for the "Compiling..." phase
+fn create_compiling_spinner() -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(
+        ProgressStyle::default_spinner()
+            .template("{spinner:.cyan} {msg}")
+            .unwrap()
+            .tick_strings(&["[±]", "[∓]", "[±]", "[∓]"]),
+    );
+    pb.set_message("Compiling...");
+    pb.enable_steady_tick(Duration::from_millis(120));
+    pb
 }
