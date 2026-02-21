@@ -4,7 +4,7 @@
   "description": "Tree-sitter grammar for the poly-bench DSL",
   "repository": {
     "type": "git",
-    "url": "https://github.com/evanmcgrane/poly-bench"
+    "url": "https://github.com/evm-tooling/poly-bench"
   },
   "license": "MIT",
   "main": "bindings/node",

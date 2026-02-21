@@ -1,7 +1,7 @@
 //! Fetch latest version from GitHub releases and compare with current; used for --version warning
 //! and upgrade command.
 
-const GITHUB_REPO: &str = "evanmcgrane/poly-bench";
+const GITHUB_REPO: &str = "evm-tooling/poly-bench";
 
 /// Print a warning to stderr if current version is older than the latest on GitHub.
 /// Non-fatal: on network/parse errors, we do nothing.

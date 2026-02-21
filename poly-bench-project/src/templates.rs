@@ -260,13 +260,13 @@ pub fn package_json_pretty(name: &str) -> String {
 }
 
 /// Generate Cargo.toml content for Rust runtime environment
-pub fn cargo_toml(name: &str, edition: &str) -> String {
+/// Note: Package name is always "polybench_runner" to match the executor's expected binary name
+pub fn cargo_toml(_name: &str, edition: &str) -> String {
     format!(
         r#"[package]
-name = "{}"
+name = "polybench_runner"
 version = "0.1.0"
 edition = "{}"
-default-run = "{}"
 
 # Mark this as a standalone workspace to avoid being included in parent workspaces
 [workspace]
@@ -280,9 +280,7 @@ opt-level = 3
 lto = true
 codegen-units = 1
 "#,
-        name.replace('-', "_"),
-        edition,
-        name.replace('-', "_")
+        edition
     )
 }
 
