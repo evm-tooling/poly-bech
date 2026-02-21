@@ -278,7 +278,7 @@ const runtimeDetails = [
 ]
 
 const installScriptUrl =
-  'https://raw.githubusercontent.com/evm-tooling/poly-bench/main/scripts/install.sh'
+  'https://install.evm-tooling.tools'
 const installCommand = `curl -L ${installScriptUrl} | bash`
 
 export default function Home() {
@@ -422,25 +422,16 @@ export default function Home() {
                     </div>
                     <CopyButton text={installCommand} />
                   </div>
-                  <Highlight
-                    theme={codeTheme}
-                    code={`$ ${installCommand}`.trim()}
-                    language="bash"
-                  >
-                    {({ tokens, getLineProps, getTokenProps }) => (
-                      <pre className="p-5 text-[13px] leading-relaxed font-mono overflow-x-auto">
-                        <code>
-                          {tokens.map((line, i) => (
-                            <div key={i} {...getLineProps({ line })}>
-                              {line.map((token, key) => (
-                                <span key={key} {...getTokenProps({ token })} />
-                              ))}
-                            </div>
-                          ))}
-                        </code>
-                      </pre>
-                    )}
-                  </Highlight>
+                  <pre className="p-5 text-[13px] leading-relaxed font-mono overflow-x-auto">
+                    <code>
+                      <span className="text-foreground-muted">$</span>{' '}
+                      <span className="text-primary">curl</span>{' '}
+                      <span className="text-tertiary">-L</span>{' '}
+                      <span className="text-amber-400">{installScriptUrl}</span>{' '}
+                      <span className="text-foreground-muted">|</span>{' '}
+                      <span className="text-success">bash</span>
+                    </code>
+                  </pre>
                 </div>
               </motion.div>
             </div>
@@ -827,8 +818,13 @@ export default function Home() {
               Install poly-bench and write your first .bench file in under a
               minute.
             </p>
-            <div className="mt-8 inline-block rounded-xl px-6 py-4 font-mono text-sm !border !border-border bg-background-secondary text-foreground-secondary">
-              <span className="text-success">$</span> cargo install poly-bench
+            <div className="mt-8 inline-block rounded-xl px-6 py-4 font-mono text-sm !border !border-border bg-background-secondary">
+              <span className="text-foreground-muted">$</span>{' '}
+              <span className="text-primary">curl</span>{' '}
+              <span className="text-tertiary">-sSL</span>{' '}
+              <span className="text-amber-400">{installScriptUrl}</span>{' '}
+              <span className="text-foreground-muted">|</span>{' '}
+              <span className="text-success">bash</span>
             </div>
             <div className="mt-8 flex justify-center gap-4">
               <a
