@@ -217,7 +217,8 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
     let charting_methods = [
         "drawBarChart",
         "drawLineChart",
-        "drawPieChart",
+        "drawSpeedupChart",
+        "drawTable",
         "drawScatterPlot",
         "drawHistogram",
         "drawHeatmap",

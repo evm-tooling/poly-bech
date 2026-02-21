@@ -359,6 +359,9 @@ fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -
     ir.ci_level = directive.ci_level;
     ir.show_std_dev_band = directive.show_std_dev_band;
 
+    // Chart mode
+    ir.chart_mode = directive.chart_mode.clone();
+
     ir
 }
 

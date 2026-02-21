@@ -1033,10 +1033,6 @@
         },
         {
           "type": "STRING",
-          "value": "drawPieChart"
-        },
-        {
-          "type": "STRING",
           "value": "drawScatterPlot"
         },
         {
@@ -1058,10 +1054,6 @@
         {
           "type": "STRING",
           "value": "drawSpeedupChart"
-        },
-        {
-          "type": "STRING",
-          "value": "drawScalingChart"
         },
         {
           "type": "STRING",
@@ -1188,7 +1180,15 @@
         },
         {
           "type": "STRING",
+          "value": "baseline"
+        },
+        {
+          "type": "STRING",
           "value": "filterWinner"
+        },
+        {
+          "type": "STRING",
+          "value": "chartMode"
         },
         {
           "type": "STRING",

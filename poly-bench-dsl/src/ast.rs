@@ -309,14 +309,10 @@ impl GlobalSetup {
 pub enum ChartType {
     /// Horizontal bar chart comparing benchmark times
     BarChart,
-    /// Pie chart showing relative time distribution
-    PieChart,
     /// Line chart for trend visualization
     LineChart,
     /// Speedup chart showing relative performance vs baseline
     SpeedupChart,
-    /// Scaling efficiency chart with ideal line overlay
-    ScalingChart,
     /// Data table rendered as SVG
     Table,
 }
@@ -325,10 +321,8 @@ impl ChartType {
     pub fn from_function_name(name: &str) -> Option<Self> {
         match name {
             "drawBarChart" => Some(ChartType::BarChart),
-            "drawPieChart" => Some(ChartType::PieChart),
             "drawLineChart" => Some(ChartType::LineChart),
             "drawSpeedupChart" => Some(ChartType::SpeedupChart),
-            "drawScalingChart" => Some(ChartType::ScalingChart),
             "drawTable" => Some(ChartType::Table),
             _ => None,
         }
@@ -337,10 +331,8 @@ impl ChartType {
     pub fn as_str(&self) -> &'static str {
         match self {
             ChartType::BarChart => "bar",
-            ChartType::PieChart => "pie",
             ChartType::LineChart => "line",
             ChartType::SpeedupChart => "speedup",
-            ChartType::ScalingChart => "scaling",
             ChartType::Table => "table",
         }
     }
@@ -348,10 +340,8 @@ impl ChartType {
     pub fn default_filename(&self) -> &'static str {
         match self {
             ChartType::BarChart => "bar-chart.svg",
-            ChartType::PieChart => "pie-chart.svg",
             ChartType::LineChart => "line-chart.svg",
             ChartType::SpeedupChart => "speedup-chart.svg",
-            ChartType::ScalingChart => "scaling-chart.svg",
             ChartType::Table => "table.svg",
         }
     }
@@ -523,6 +513,10 @@ pub struct ChartDirective {
     /// Show standard deviation band on line charts (default: false)
     pub show_std_dev_band: Option<bool>,
 
+    // Chart mode
+    /// Chart mode: "performance" (ns/op vs size) or "throughput" (iterations vs time)
+    pub chart_mode: Option<String>,
+
     /// Order of parameters as they appeared in source (for formatting)
     #[serde(default)]
     pub param_order: Vec<String>,
@@ -607,6 +601,8 @@ impl ChartDirective {
             // Error bars enhancements
             ci_level: None,
             show_std_dev_band: None,
+            // Chart mode
+            chart_mode: None,
             // Parameter order tracking
             param_order: Vec::new(),
         }

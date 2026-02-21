@@ -28,9 +28,7 @@
 //!
 //! - `drawBarChart` - Vertical grouped bar chart comparing benchmark times
 //! - `drawLineChart` - Line chart for trend visualization
-//! - `drawPieChart` - Pie chart showing relative time distribution
 //! - `drawSpeedupChart` - Speedup chart showing relative performance vs baseline
-//! - `drawScalingChart` - Scaling efficiency chart
 //! - `drawTable` - SVG data table with conditional formatting
 //!
 //! ## Common Parameters (all charts)
@@ -132,44 +130,6 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             - `timeUnit` - \"auto\", \"ns\", \"us\", \"ms\", \"s\"\n\n\
             **Example:**\n\
             ```\nafter {\n    charting.drawBarChart(\n        title: \"Hash Function Performance\",\n        sortBy: \"speedup\",\n        sortOrder: \"desc\",\n        showErrorBars: true,\n        showRegression: true\n    )\n}\n```",
-    },
-    StdlibSymbol {
-        name: "drawPieChart",
-        kind: StdlibSymbolKind::Function,
-        description: "Draw a pie chart of benchmark time distribution",
-        documentation: "**charting.drawPieChart** `(...params)`\n\n\
-            Generate a pie chart showing the relative time distribution across benchmarks.\n\n\
-            Each slice represents a benchmark's proportion of total execution time.\n\n\
-            **Basic Parameters:**\n\
-            - `title` - Chart title (default: \"Time Distribution\")\n\
-            - `description` - Subtitle/description text\n\
-            - `output` - Output filename (default: \"pie-chart.svg\")\n\n\
-            **Dimensions:**\n\
-            - `width` - Chart width in pixels\n\
-            - `height` - Chart height in pixels\n\n\
-            **Display Toggles:**\n\
-            - `showStats` - Show timing info in legend (default: true)\n\
-            - `showTotalTime` - Show total time below chart (default: false)\n\
-            - `compact` - Minimal mode (default: false)\n\n\
-            **Filtering:**\n\
-            - `minSpeedup` - Only include benchmarks with speedup >= N\n\
-            - `filterWinner` - \"go\", \"ts\", or \"all\"\n\
-            - `includeBenchmarks` - Array of names to include\n\
-            - `excludeBenchmarks` - Array of names to exclude\n\
-            - `limit` - Max benchmarks to display\n\n\
-            **Sorting:**\n\
-            - `sortBy` - \"speedup\", \"name\", \"time\", \"ops\", or \"natural\"\n\
-            - `sortOrder` - \"asc\" or \"desc\"\n\n\
-            **Typography:**\n\
-            - `titleFontSize` - Title font size (default: 16)\n\
-            - `subtitleFontSize` - Subtitle font size (default: 11)\n\n\
-            **Legend:**\n\
-            - `legendPosition` - \"top-left\", \"top-right\", \"bottom-left\", \"bottom-right\", \"hidden\"\n\n\
-            **Data Display:**\n\
-            - `precision` - Decimal places (default: 2)\n\
-            - `timeUnit` - \"auto\", \"ns\", \"us\", \"ms\", \"s\"\n\n\
-            **Example:**\n\
-            ```\nafter {\n    charting.drawPieChart(\n        title: \"Execution Time Breakdown\",\n        showStats: true,\n        legendPosition: \"bottom-right\"\n    )\n}\n```",
     },
     StdlibSymbol {
         name: "drawLineChart",
@@ -279,54 +239,6 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             ```\nafter {\n    charting.drawSpeedupChart(\n        title: \"TypeScript vs Go Speedup\",\n        baseline: \"go\",\n        sortBy: \"speedup\",\n        sortOrder: \"desc\"\n    )\n}\n```",
     },
     StdlibSymbol {
-        name: "drawScalingChart",
-        kind: StdlibSymbolKind::Function,
-        description: "Draw a scaling efficiency chart with ideal line overlay",
-        documentation: "**charting.drawScalingChart** `(...params)`\n\n\
-            Generate a scaling efficiency chart showing how performance scales with input size.\n\n\
-            Extracts numeric values from benchmark names (e.g., n100, size1000) for the X-axis.\n\
-            Shows efficiency relative to O(n) scaling - values > 1 indicate worse than linear.\n\n\
-            **Basic Parameters:**\n\
-            - `title` - Chart title (default: \"Scaling Efficiency\")\n\
-            - `description` - Subtitle/description text\n\
-            - `xlabel`, `ylabel` - Axis labels\n\
-            - `output` - Output filename (default: \"scaling-chart.svg\")\n\n\
-            **Dimensions:**\n\
-            - `width` - Chart width in pixels\n\
-            - `height` - Chart height in pixels\n\n\
-            **Filtering:**\n\
-            - `minSpeedup` - Only include benchmarks with speedup >= N\n\
-            - `filterWinner` - \"go\", \"ts\", or \"all\"\n\
-            - `includeBenchmarks` - Array of names to include\n\
-            - `excludeBenchmarks` - Array of names to exclude\n\
-            - `limit` - Max benchmarks to display\n\n\
-            **Sorting:**\n\
-            - `sortBy` - \"speedup\", \"name\", \"time\", \"ops\", or \"natural\"\n\
-            - `sortOrder` - \"asc\" or \"desc\"\n\n\
-            **Axis Styling:**\n\
-            - `yAxisMin` - Minimum Y-axis value\n\
-            - `yAxisMax` - Maximum Y-axis value\n\
-            - `yScale` - Y-axis scale: \"linear\" (default) or \"log\"\n\n\
-            **Grid:**\n\
-            - `showGrid` - Toggle grid lines (default: true)\n\
-            - `gridOpacity` - Grid line opacity (default: 0.3)\n\
-            - `showMinorGrid` - Show minor grid lines (default: false)\n\n\
-            **Typography:**\n\
-            - `titleFontSize` - Title font size (default: 16)\n\
-            - `subtitleFontSize` - Subtitle font size (default: 11)\n\
-            - `axisLabelFontSize` - Axis label font size (default: 11)\n\
-            - `tickLabelFontSize` - Tick label font size (default: 10)\n\n\
-            **Legend:**\n\
-            - `legendPosition` - \"top-left\", \"top-right\", \"bottom-left\", \"bottom-right\", \"hidden\"\n\n\
-            **Tick Formatting:**\n\
-            - `roundTicks` - Round tick labels to whole numbers (default: false)\n\n\
-            **Data Display:**\n\
-            - `precision` - Decimal places (default: 2)\n\
-            - `timeUnit` - \"auto\", \"ns\", \"us\", \"ms\", \"s\"\n\n\
-            **Example:**\n\
-            ```\nafter {\n    charting.drawScalingChart(\n        title: \"Algorithm Scaling Analysis\",\n        yScale: \"log\",\n        showGrid: true\n    )\n}\n```",
-    },
-    StdlibSymbol {
         name: "drawTable",
         kind: StdlibSymbolKind::Function,
         description: "Draw an SVG data table with conditional formatting",
@@ -378,14 +290,12 @@ mod tests {
     #[test]
     fn test_charting_symbols() {
         let symbols = get_symbols();
-        assert_eq!(symbols.len(), 6);
+        assert_eq!(symbols.len(), 4);
 
         let names: Vec<_> = symbols.iter().map(|s| s.name).collect();
         assert!(names.contains(&"drawBarChart"));
-        assert!(names.contains(&"drawPieChart"));
         assert!(names.contains(&"drawLineChart"));
         assert!(names.contains(&"drawSpeedupChart"));
-        assert!(names.contains(&"drawScalingChart"));
         assert!(names.contains(&"drawTable"));
     }
 

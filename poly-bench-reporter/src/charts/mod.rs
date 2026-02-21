@@ -1,12 +1,10 @@
 //! Modular chart generators for benchmark visualization
 //!
-//! Provides bar charts, pie charts, and line charts for visualizing benchmark results.
+//! Provides bar charts, line charts, speedup charts, and tables for visualizing benchmark results.
 
 pub mod bar_chart;
 pub mod line_chart;
-pub mod pie_chart;
 pub mod regression;
-pub mod scaling_chart;
 pub mod speedup_chart;
 pub mod table;
 
@@ -36,19 +34,6 @@ pub const TEXT_MUTED: &str = "#9CA3AF";
 pub const GO_GRADIENT_END: &str = "#0891B2";
 pub const TS_GRADIENT_END: &str = "#1D4ED8";
 pub const RUST_GRADIENT_END: &str = "#B7410E"; // Darker rust color
-
-// Color palette for pie charts
-pub const PIE_COLORS: &[&str] = &[
-    "#00ADD8", // Go blue
-    "#3178C6", // TS blue
-    "#DEA584", // Rust orange
-    "#10B981", // Emerald
-    "#F59E0B", // Amber
-    "#EF4444", // Red
-    "#8B5CF6", // Violet
-    "#EC4899", // Pink
-    "#06B6D4", // Cyan
-];
 
 /// Escape XML special characters
 pub fn escape_xml(s: &str) -> String {
@@ -426,6 +411,32 @@ pub fn format_ops_per_sec(ops: f64) -> String {
         format!("{:.1}K", ops / 1_000.0)
     } else {
         format!("{:.0}", ops)
+    }
+}
+
+/// Format iterations count for display (with "iterations" suffix)
+pub fn format_iterations(iterations: u64) -> String {
+    if iterations >= 1_000_000_000 {
+        format!("{:.1}B iterations", iterations as f64 / 1_000_000_000.0)
+    } else if iterations >= 1_000_000 {
+        format!("{:.1}M iterations", iterations as f64 / 1_000_000.0)
+    } else if iterations >= 1_000 {
+        format!("{:.1}K iterations", iterations as f64 / 1_000.0)
+    } else {
+        format!("{} iterations", iterations)
+    }
+}
+
+/// Format iterations count for axis tick labels (short form, no suffix)
+pub fn format_iterations_short(iterations: u64) -> String {
+    if iterations >= 1_000_000_000 {
+        format!("{:.1}B", iterations as f64 / 1_000_000_000.0)
+    } else if iterations >= 1_000_000 {
+        format!("{:.1}M", iterations as f64 / 1_000_000.0)
+    } else if iterations >= 1_000 {
+        format!("{:.1}K", iterations as f64 / 1_000.0)
+    } else {
+        format!("{}", iterations)
     }
 }
 

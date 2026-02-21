@@ -899,10 +899,8 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
         // Determine function name based on chart type
         let func_name = match directive.chart_type {
             ChartType::BarChart => "drawBarChart",
-            ChartType::PieChart => "drawPieChart",
             ChartType::LineChart => "drawLineChart",
             ChartType::SpeedupChart => "drawSpeedupChart",
-            ChartType::ScalingChart => "drawScalingChart",
             ChartType::Table => "drawTable",
         };
 
@@ -1429,9 +1427,9 @@ suite example {
             title: "Performance Trends"
         )
         
-        charting.drawPieChart(
-            title: "Time Distribution",
-            showTotalTime: true
+        charting.drawTable(
+            title: "Results Table",
+            compact: true
         )
     }
 }"#;
@@ -1449,13 +1447,10 @@ suite example {
             formatted.contains("charting.drawLineChart"),
             "Expected drawLineChart call in output"
         );
-        assert!(
-            formatted.contains("charting.drawPieChart"),
-            "Expected drawPieChart call in output"
-        );
+        assert!(formatted.contains("charting.drawTable"), "Expected drawTable call in output");
         // Verify non-default values are preserved
         assert!(formatted.contains("sortBy: \"speedup\""), "Expected sortBy parameter");
-        assert!(formatted.contains("showTotalTime: true"), "Expected showTotalTime parameter");
+        assert!(formatted.contains("compact: true"), "Expected compact parameter");
     }
 
     #[test]

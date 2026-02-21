@@ -6,8 +6,8 @@ use poly_bench_executor::BenchmarkResults;
 use poly_bench_ir::ChartDirectiveIR;
 
 use super::{
-    compute_ci_bounds, escape_xml, filter_benchmarks, format_duration_with_unit,
-    format_ops_per_sec,
+    compute_ci_bounds, escape_xml, filter_benchmarks, format_duration_with_unit, format_iterations,
+    format_iterations_short, format_ops_per_sec,
     regression::{select_model, ModelType},
     sort_benchmarks, svg_header, svg_title, DEFAULT_MARGIN_BOTTOM, DEFAULT_MARGIN_LEFT,
     DEFAULT_MARGIN_RIGHT, DEFAULT_MARGIN_TOP, GO_COLOR, RUST_COLOR, TEXT_MUTED, TEXT_SECONDARY,
@@ -46,8 +46,14 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
     // Typography settings
     let tick_label_font_size = directive.tick_label_font_size.unwrap_or(11);
 
+    // Chart mode: "performance" (default) or "throughput"
+    let chart_mode = directive.chart_mode.as_deref().unwrap_or("performance");
+    let is_throughput_mode = chart_mode == "throughput";
+
     // Collect benchmark data points from filtered results
-    // (name, nanos, ops, ci_lower, ci_upper, std_dev)
+    // (name, y_value, ops, ci_lower, ci_upper, std_dev)
+    // In throughput mode: y_value = iterations
+    // In performance mode: y_value = nanos_per_op
     let mut go_points: Vec<(String, f64, f64, Option<f64>, Option<f64>, Option<f64>)> = Vec::new();
     let mut ts_points: Vec<(String, f64, f64, Option<f64>, Option<f64>, Option<f64>)> = Vec::new();
     let mut rust_points: Vec<(String, f64, f64, Option<f64>, Option<f64>, Option<f64>)> =
@@ -55,16 +61,21 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
 
     for bench in &filtered {
         if let Some(m) = bench.measurements.get(&Lang::Go) {
-            let (ci_lower, ci_upper) = compute_ci_bounds(
-                m.nanos_per_op,
-                m.raw_samples.as_ref(),
-                ci_level,
-                m.ci_95_lower,
-                m.ci_95_upper,
-            );
+            let y_value = if is_throughput_mode { m.iterations as f64 } else { m.nanos_per_op };
+            let (ci_lower, ci_upper) = if is_throughput_mode {
+                (None, None)
+            } else {
+                compute_ci_bounds(
+                    m.nanos_per_op,
+                    m.raw_samples.as_ref(),
+                    ci_level,
+                    m.ci_95_lower,
+                    m.ci_95_upper,
+                )
+            };
             go_points.push((
                 bench.name.clone(),
-                m.nanos_per_op,
+                y_value,
                 m.ops_per_sec,
                 ci_lower,
                 ci_upper,
@@ -72,16 +83,21 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
             ));
         }
         if let Some(m) = bench.measurements.get(&Lang::TypeScript) {
-            let (ci_lower, ci_upper) = compute_ci_bounds(
-                m.nanos_per_op,
-                m.raw_samples.as_ref(),
-                ci_level,
-                m.ci_95_lower,
-                m.ci_95_upper,
-            );
+            let y_value = if is_throughput_mode { m.iterations as f64 } else { m.nanos_per_op };
+            let (ci_lower, ci_upper) = if is_throughput_mode {
+                (None, None)
+            } else {
+                compute_ci_bounds(
+                    m.nanos_per_op,
+                    m.raw_samples.as_ref(),
+                    ci_level,
+                    m.ci_95_lower,
+                    m.ci_95_upper,
+                )
+            };
             ts_points.push((
                 bench.name.clone(),
-                m.nanos_per_op,
+                y_value,
                 m.ops_per_sec,
                 ci_lower,
                 ci_upper,
@@ -89,16 +105,21 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
             ));
         }
         if let Some(m) = bench.measurements.get(&Lang::Rust) {
-            let (ci_lower, ci_upper) = compute_ci_bounds(
-                m.nanos_per_op,
-                m.raw_samples.as_ref(),
-                ci_level,
-                m.ci_95_lower,
-                m.ci_95_upper,
-            );
+            let y_value = if is_throughput_mode { m.iterations as f64 } else { m.nanos_per_op };
+            let (ci_lower, ci_upper) = if is_throughput_mode {
+                (None, None)
+            } else {
+                compute_ci_bounds(
+                    m.nanos_per_op,
+                    m.raw_samples.as_ref(),
+                    ci_level,
+                    m.ci_95_lower,
+                    m.ci_95_upper,
+                )
+            };
             rust_points.push((
                 bench.name.clone(),
-                m.nanos_per_op,
+                y_value,
                 m.ops_per_sec,
                 ci_lower,
                 ci_upper,
@@ -152,15 +173,25 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         .collect();
 
     // Determine Y-axis scale type
-    let use_log_scale = directive.y_scale.as_deref() == Some("log");
+    let scale_type = directive.y_scale.as_deref().unwrap_or("linear");
+    let use_log_scale = scale_type == "log";
+    let use_symlog_scale = scale_type == "symlog";
 
     // Calculate min/max values
     let raw_max: f64 = all_values.iter().cloned().fold(1.0, f64::max);
     let raw_min: f64 = all_values.iter().cloned().fold(raw_max, f64::min).max(1.0);
 
+    // Symlog threshold: values below this are treated linearly
+    let symlog_threshold = directive.symlog_threshold.unwrap_or_else(|| {
+        let range = raw_max - raw_min.min(0.0);
+        (range / 100.0).max(1.0)
+    });
+
     let max_value = directive.y_axis_max.unwrap_or(raw_max * 1.15);
     let min_value = if use_log_scale {
         directive.y_axis_min.unwrap_or(raw_min * 0.5).max(1.0)
+    } else if use_symlog_scale {
+        directive.y_axis_min.unwrap_or(0.0)
     } else {
         directive.y_axis_min.unwrap_or(0.0)
     };
@@ -169,6 +200,11 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
     let log_min = min_value.max(1.0).log10();
     let log_max = max_value.log10();
     let log_range = (log_max - log_min).max(0.001);
+
+    // For symlog scale, compute the transformed range
+    let symlog_min = symlog_transform(min_value, symlog_threshold);
+    let symlog_max = symlog_transform(max_value, symlog_threshold);
+    let symlog_range = (symlog_max - symlog_min).max(0.001);
 
     // Collect unique benchmark names for X axis (preserve order from sorted results)
     let bench_names: Vec<String> = filtered.iter().map(|b| b.name.clone()).collect();
@@ -231,9 +267,39 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
                     y, chart_width, y, grid_opacity
                 ));
             }
+            let label = if is_throughput_mode {
+                format_iterations_short(tick_value as u64)
+            } else {
+                format_duration_with_unit(tick_value, time_unit, precision)
+            };
             svg.push_str(&format!(
                 "  <text x=\"-10\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
-                y + 4, tick_label_font_size, TEXT_MUTED, format_duration_with_unit(tick_value, time_unit, precision)
+                y + 4, tick_label_font_size, TEXT_MUTED, label
+            ));
+        }
+    } else if use_symlog_scale {
+        // Symlog scale: logarithmic for large values, linear near zero
+        let tick_values = compute_symlog_ticks(min_value, max_value, symlog_threshold);
+
+        for &tick_value in &tick_values {
+            let transformed = symlog_transform(tick_value, symlog_threshold);
+            let y = chart_height -
+                ((transformed - symlog_min) / symlog_range * chart_height as f64) as i32;
+
+            if show_grid {
+                svg.push_str(&format!(
+                    "  <line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#E5E7EB\" opacity=\"{}\"/>\n",
+                    y, chart_width, y, grid_opacity
+                ));
+            }
+            let label = if is_throughput_mode {
+                format_iterations_short(tick_value as u64)
+            } else {
+                format_duration_with_unit(tick_value, time_unit, precision)
+            };
+            svg.push_str(&format!(
+                "  <text x=\"-10\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+                y + 4, tick_label_font_size, TEXT_MUTED, label
             ));
         }
     } else {
@@ -266,9 +332,14 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
                     y, chart_width, y, grid_opacity
                 ));
             }
+            let label = if is_throughput_mode {
+                format_iterations_short(value as u64)
+            } else {
+                format_duration_with_unit(value, time_unit, precision)
+            };
             svg.push_str(&format!(
                 "  <text x=\"-10\" y=\"{}\" text-anchor=\"end\" font-family=\"sans-serif\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
-                y + 4, tick_label_font_size, TEXT_MUTED, format_duration_with_unit(value, time_unit, precision)
+                y + 4, tick_label_font_size, TEXT_MUTED, label
             ));
         }
     }
@@ -318,7 +389,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
     #[allow(clippy::too_many_arguments)]
     fn draw_series(
         svg: &mut String,
-        points: &[(String, f64, f64, Option<f64>, Option<f64>, Option<f64>)], /* (name, nanos,
+        points: &[(String, f64, f64, Option<f64>, Option<f64>, Option<f64>)], /* (name, y_value,
                                                                                * ops,
                                                                                * ci_lower,
                                                                                * ci_upper,
@@ -331,6 +402,10 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         log_min: f64,
         log_range: f64,
         use_log_scale: bool,
+        use_symlog_scale: bool,
+        symlog_min: f64,
+        symlog_range: f64,
+        symlog_threshold: f64,
         color: &str,
         show_stats: bool,
         time_unit: Option<&str>,
@@ -339,6 +414,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         error_bar_opacity: f32,
         error_bar_thickness: f32,
         show_std_dev_band: bool,
+        is_throughput_mode: bool,
     ) {
         if points.is_empty() {
             return;
@@ -360,6 +436,10 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
             if use_log_scale {
                 chart_height -
                     ((value.max(1.0).log10() - log_min) / log_range * chart_height as f64) as i32
+            } else if use_symlog_scale {
+                let transformed = symlog_transform(value, symlog_threshold);
+                chart_height -
+                    ((transformed - symlog_min) / symlog_range * chart_height as f64) as i32
             } else {
                 chart_height - ((value - min_value) / value_range * chart_height as f64) as i32
             }
@@ -475,11 +555,20 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
 
                 // Add title (tooltip) with stats if enabled
                 if show_stats {
-                    let time_str = format_duration_with_unit(*value, time_unit, precision);
+                    let value_str = if is_throughput_mode {
+                        format_iterations(*value as u64)
+                    } else {
+                        format_duration_with_unit(*value, time_unit, precision)
+                    };
                     let ops_str = format_ops_per_sec(*ops);
+                    let tooltip = if is_throughput_mode {
+                        format!("{}: {}", escape_xml(name), value_str)
+                    } else {
+                        format!("{}: {} ({} ops/s)", escape_xml(name), value_str, ops_str)
+                    };
                     svg.push_str(&format!(
-                        "  <circle cx=\"{}\" cy=\"{}\" r=\"5\" fill=\"{}\" stroke=\"white\" stroke-width=\"2\">\n    <title>{}: {} ({} ops/s)</title>\n  </circle>\n",
-                        x, y, color, escape_xml(name), time_str, ops_str
+                        "  <circle cx=\"{}\" cy=\"{}\" r=\"5\" fill=\"{}\" stroke=\"white\" stroke-width=\"2\">\n    <title>{}</title>\n  </circle>\n",
+                        x, y, color, tooltip
                     ));
                 } else {
                     svg.push_str(&format!(
@@ -505,6 +594,10 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         log_min,
         log_range,
         use_log_scale,
+        use_symlog_scale,
+        symlog_min,
+        symlog_range,
+        symlog_threshold,
         GO_COLOR,
         directive.show_stats,
         time_unit,
@@ -513,6 +606,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         error_bar_opacity,
         error_bar_thickness,
         show_std_dev_band,
+        is_throughput_mode,
     );
 
     // Draw TS line
@@ -527,6 +621,10 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         log_min,
         log_range,
         use_log_scale,
+        use_symlog_scale,
+        symlog_min,
+        symlog_range,
+        symlog_threshold,
         TS_COLOR,
         directive.show_stats,
         time_unit,
@@ -535,6 +633,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         error_bar_opacity,
         error_bar_thickness,
         show_std_dev_band,
+        is_throughput_mode,
     );
 
     // Draw Rust line
@@ -549,6 +648,10 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         log_min,
         log_range,
         use_log_scale,
+        use_symlog_scale,
+        symlog_min,
+        symlog_range,
+        symlog_threshold,
         RUST_COLOR,
         directive.show_stats,
         time_unit,
@@ -557,6 +660,7 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
         error_bar_opacity,
         error_bar_thickness,
         show_std_dev_band,
+        is_throughput_mode,
     );
 
     // Draw regression lines if enabled and collect regression info for legend
@@ -597,6 +701,10 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
                     log_min,
                     log_range,
                     use_log_scale,
+                    use_symlog_scale,
+                    symlog_min,
+                    symlog_range,
+                    symlog_threshold,
                     GO_COLOR,
                     regression_style,
                     show_label,
@@ -627,6 +735,10 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
                     log_min,
                     log_range,
                     use_log_scale,
+                    use_symlog_scale,
+                    symlog_min,
+                    symlog_range,
+                    symlog_threshold,
                     TS_COLOR,
                     regression_style,
                     show_label,
@@ -657,6 +769,10 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
                     log_min,
                     log_range,
                     use_log_scale,
+                    use_symlog_scale,
+                    symlog_min,
+                    symlog_range,
+                    symlog_threshold,
                     RUST_COLOR,
                     regression_style,
                     show_label,
@@ -672,7 +788,9 @@ pub fn generate(results: &BenchmarkResults, directive: &ChartDirectiveIR) -> Res
     // Axis labels
     let axis_label_size = directive.axis_label_font_size.unwrap_or(12);
     let x_label = directive.x_label.clone().unwrap_or_else(|| "Benchmark".to_string());
-    let y_label = directive.y_label.clone().unwrap_or_else(|| "Time".to_string());
+    let default_y_label =
+        if is_throughput_mode { "Iterations".to_string() } else { "Time".to_string() };
+    let y_label = directive.y_label.clone().unwrap_or(default_y_label);
 
     svg.push_str(&format!(
         "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
@@ -756,6 +874,69 @@ fn compute_log_ticks(min_value: f64, max_value: f64) -> Vec<f64> {
             }
         }
         ticks.extend(extra_ticks);
+        ticks.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        ticks.dedup();
+    }
+
+    ticks
+}
+
+/// Symmetric logarithmic transformation.
+/// Values above threshold are transformed logarithmically, values below are linear.
+fn symlog_transform(value: f64, threshold: f64) -> f64 {
+    if value.abs() <= threshold {
+        value / threshold
+    } else if value > 0.0 {
+        1.0 + (value / threshold).ln()
+    } else {
+        -1.0 - (-value / threshold).ln()
+    }
+}
+
+/// Compute tick values for symlog scale.
+fn compute_symlog_ticks(min_value: f64, max_value: f64, threshold: f64) -> Vec<f64> {
+    let mut ticks = Vec::new();
+
+    if min_value <= 0.0 && max_value >= 0.0 {
+        ticks.push(0.0);
+    }
+
+    if threshold >= min_value && threshold <= max_value {
+        ticks.push(threshold);
+    }
+
+    if max_value > threshold {
+        let min_power = (threshold.log10().floor()) as i32;
+        let max_power = (max_value.log10().ceil()) as i32;
+
+        for power in min_power..=max_power {
+            let tick = 10_f64.powi(power);
+            if tick > threshold && tick >= min_value * 0.9 && tick <= max_value * 1.1 {
+                ticks.push(tick);
+            }
+        }
+    }
+
+    if min_value < threshold {
+        let step = threshold / 2.0;
+        let mut tick = step;
+        while tick < threshold && tick >= min_value {
+            if tick > 0.0 {
+                ticks.push(tick);
+            }
+            tick -= step;
+        }
+    }
+
+    ticks.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    ticks.dedup();
+
+    if ticks.len() < 3 {
+        let num_ticks = 5;
+        for i in 0..=num_ticks {
+            let tick = min_value + (max_value - min_value) * (i as f64 / num_ticks as f64);
+            ticks.push(tick);
+        }
         ticks.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         ticks.dedup();
     }
@@ -904,6 +1085,10 @@ fn draw_regression_line(
     log_min: f64,
     log_range: f64,
     use_log_scale: bool,
+    use_symlog_scale: bool,
+    symlog_min: f64,
+    symlog_range: f64,
+    symlog_threshold: f64,
     color: &str,
     style: &str,
     show_label: bool,
@@ -932,6 +1117,11 @@ fn draw_regression_line(
             if use_log_scale {
                 chart_height -
                     ((value.max(1.0).log10() - log_min) / log_range * chart_height as f64)
+                        .min(chart_height as f64) as i32
+            } else if use_symlog_scale {
+                let transformed = symlog_transform(value, symlog_threshold);
+                chart_height -
+                    ((transformed - symlog_min) / symlog_range * chart_height as f64)
                         .min(chart_height as f64) as i32
             } else {
                 chart_height -

@@ -34,15 +34,13 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         })
         .unwrap_or(Lang::Go);
 
-    // Determine which languages have data (excluding baseline)
-    let has_go = baseline_lang != Lang::Go &&
-        filtered.iter().any(|b| b.measurements.contains_key(&Lang::Go));
-    let has_ts = baseline_lang != Lang::TypeScript &&
-        filtered.iter().any(|b| b.measurements.contains_key(&Lang::TypeScript));
-    let has_rust = baseline_lang != Lang::Rust &&
-        filtered.iter().any(|b| b.measurements.contains_key(&Lang::Rust));
+    // Determine which languages have data (including baseline)
+    let has_go = filtered.iter().any(|b| b.measurements.contains_key(&Lang::Go));
+    let has_ts = filtered.iter().any(|b| b.measurements.contains_key(&Lang::TypeScript));
+    let has_rust = filtered.iter().any(|b| b.measurements.contains_key(&Lang::Rust));
 
-    let comparison_langs: Vec<Lang> = [
+    // All languages to display (including baseline)
+    let all_langs: Vec<Lang> = [
         if has_go { Some(Lang::Go) } else { None },
         if has_ts { Some(Lang::TypeScript) } else { None },
         if has_rust { Some(Lang::Rust) } else { None },
@@ -51,12 +49,12 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
     .flatten()
     .collect();
 
-    if comparison_langs.is_empty() {
+    if all_langs.is_empty() {
         return String::from("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"400\" height=\"100\"><text x=\"200\" y=\"50\" text-anchor=\"middle\" font-family=\"sans-serif\">No comparison data available</text></svg>");
     }
 
     let num_benchmarks = filtered.len() as i32;
-    let num_langs = comparison_langs.len() as i32;
+    let num_langs = all_langs.len() as i32;
     let rows_per_benchmark = num_langs;
     let total_rows = num_benchmarks * rows_per_benchmark;
 
@@ -71,8 +69,8 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
     let plot_width = chart_width - DEFAULT_MARGIN_LEFT - DEFAULT_MARGIN_RIGHT - 100; // Extra space for labels
     let plot_height = chart_height - DEFAULT_MARGIN_TOP - DEFAULT_MARGIN_BOTTOM;
 
-    // Calculate speedups for all benchmarks
-    let mut speedups: Vec<(String, Vec<(Lang, f64)>)> = Vec::new();
+    // Calculate speedups for all benchmarks (including baseline at 1.0x)
+    let mut speedups: Vec<(String, Vec<(Lang, f64, bool)>)> = Vec::new(); // (lang, speedup, is_baseline)
     let mut max_speedup: f64 = 2.0; // Minimum scale
 
     for bench in &filtered {
@@ -80,11 +78,12 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
 
         if let Some(base_ns) = baseline_time {
             let mut bench_speedups = Vec::new();
-            for &lang in &comparison_langs {
+            for &lang in &all_langs {
                 if let Some(m) = bench.measurements.get(&lang) {
                     let speedup = base_ns / m.nanos_per_op;
+                    let is_baseline = lang == baseline_lang;
                     max_speedup = max_speedup.max(speedup);
-                    bench_speedups.push((lang, speedup));
+                    bench_speedups.push((lang, speedup, is_baseline));
                 }
             }
             if !bench_speedups.is_empty() {
@@ -154,16 +153,12 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
             escape_xml(bench_name)
         ));
 
-        for (lang, speedup) in bench_speedups {
+        for (lang, speedup, is_baseline) in bench_speedups {
             let color = lang_color(*lang);
             let bar_width = ((speedup / max_speedup) * plot_width as f64) as i32;
 
-            // Determine bar color based on speedup
-            let fill_color = if *speedup >= 1.0 {
-                color // Faster than baseline
-            } else {
-                "#EF4444" // Slower than baseline (red)
-            };
+            // Always use the language's own color for consistency with the legend
+            let fill_color = color;
 
             // Draw bar
             svg.push_str(&format!(
@@ -182,7 +177,9 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
                 Lang::Rust => "Rust",
                 _ => "?",
             };
-            let speedup_label = if *speedup >= 1.0 {
+            let speedup_label = if *is_baseline {
+                format!("{}: 1.00x (baseline)", lang_name)
+            } else if *speedup >= 1.0 {
                 format!("{}: {:.2}x faster", lang_name, speedup)
             } else {
                 format!("{}: {:.2}x slower", lang_name, 1.0 / speedup)
@@ -202,16 +199,20 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         y += 12; // Extra gap between benchmark groups
     }
 
-    // Legend
+    // Legend - include all languages with data
     let mut legend_items: Vec<(&str, &str)> = Vec::new();
     if has_go {
-        legend_items.push((GO_COLOR, "Go"));
+        let label = if baseline_lang == Lang::Go { "Go (baseline)" } else { "Go" };
+        legend_items.push((GO_COLOR, label));
     }
     if has_ts {
-        legend_items.push((TS_COLOR, "TypeScript"));
+        let label =
+            if baseline_lang == Lang::TypeScript { "TypeScript (baseline)" } else { "TypeScript" };
+        legend_items.push((TS_COLOR, label));
     }
     if has_rust {
-        legend_items.push((RUST_COLOR, "Rust"));
+        let label = if baseline_lang == Lang::Rust { "Rust (baseline)" } else { "Rust" };
+        legend_items.push((RUST_COLOR, label));
     }
     svg.push_str(&svg_legend(chart_width, chart_height - 25, &legend_items));
 
