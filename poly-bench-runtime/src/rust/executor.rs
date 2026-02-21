@@ -461,7 +461,7 @@ impl BenchResultJson {
 /// Generate a minimal Cargo.toml for standalone execution
 fn generate_minimal_cargo_toml() -> String {
     r#"[package]
-name = "polybench-standalone"
+name = "polybench_runner"
 version = "0.1.0"
 edition = "2021"
 
