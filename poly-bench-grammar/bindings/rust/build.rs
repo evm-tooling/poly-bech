@@ -8,10 +8,6 @@
 fn main() {
     let src_dir = std::path::Path::new("src");
 
-    // Check if parser.c exists - if not, provide helpful error
-    #[cfg(target_env = "msvc")]
-    c_config.flag("-utf-8");
-
     let parser_path = src_dir.join("parser.c");
     if !parser_path.exists() {
         eprintln!("=======================================================");
@@ -31,6 +27,10 @@ fn main() {
 
     let mut c_config = cc::Build::new();
     c_config.std("c11").include(src_dir);
+
+    // Enable UTF-8 source encoding for MSVC
+    #[cfg(target_env = "msvc")]
+    c_config.flag("-utf-8");
 
     // Compile the generated parser
     c_config.file(&parser_path);
