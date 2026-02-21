@@ -87,74 +87,12 @@ impl Runtime for JsRuntime {
         Ok(())
     }
 
+    fn generate_check_source(&self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<String> {
+        generate_typescript_check_source(spec, suite)
+    }
+
     async fn compile_check(&self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<()> {
-        // Generate the TypeScript code (before stripping types)
-        let impl_code = spec
-            .get_impl(Lang::TypeScript)
-            .ok_or_else(|| miette!("No TypeScript implementation for benchmark {}", spec.name))?;
-
-        let mut script = String::new();
-
-        // User imports first
-        if let Some(user_imports) = suite.imports.get(&Lang::TypeScript) {
-            for import_stmt in user_imports {
-                script.push_str(import_stmt);
-                script.push('\n');
-            }
-        }
-
-        // Add declarations
-        if let Some(declarations) = suite.declarations.get(&Lang::TypeScript) {
-            if !declarations.trim().is_empty() {
-                script.push_str(declarations);
-                script.push_str("\n\n");
-            }
-        }
-
-        // Add helpers
-        if let Some(helpers) = suite.helpers.get(&Lang::TypeScript) {
-            if !helpers.trim().is_empty() {
-                script.push_str(helpers);
-                script.push_str("\n\n");
-            }
-        }
-
-        // Add fixtures
-        for fixture_name in &spec.fixture_refs {
-            if let Some(fixture) = suite.get_fixture(fixture_name) {
-                if let Some(fixture_impl) = fixture.implementations.get(&Lang::TypeScript) {
-                    if fixture_impl.contains("return") {
-                        script.push_str(&format!(
-                            "const {} = (() => {{\n{}\n}})();\n",
-                            fixture_name, fixture_impl
-                        ));
-                    } else {
-                        script.push_str(&format!("const {} = {};\n", fixture_name, fixture_impl));
-                    }
-                } else if !fixture.data.is_empty() {
-                    script.push_str(&format!(
-                        "const {} = new Uint8Array([{}]);\n",
-                        fixture_name,
-                        fixture.data.iter().map(|b| b.to_string()).collect::<Vec<_>>().join(", ")
-                    ));
-                }
-            }
-        }
-
-        // Add the benchmark implementation wrapped in a function
-        // If the implementation contains 'await', make it an async function
-        let is_async = impl_code.contains("await ");
-        if is_async {
-            script.push_str(&format!(
-                "\nasync function __benchmark() {{\n    {};\n}}\n__benchmark();\n",
-                impl_code
-            ));
-        } else {
-            script.push_str(&format!(
-                "\nfunction __benchmark() {{\n    {};\n}}\n__benchmark();\n",
-                impl_code
-            ));
-        }
+        let script = self.generate_check_source(spec, suite)?;
 
         // Use a unique filename per benchmark to avoid race conditions in parallel validation
         let safe_name = spec.name.replace('.', "_").replace('/', "_");
@@ -184,10 +122,34 @@ impl Runtime for JsRuntime {
         // Build line mappings for error remapping
         let mappings = crate::build_typescript_mappings(suite, &script);
 
-        // Try to use tsc if available, otherwise use node --check for basic syntax
+        // Try esbuild first (much faster for syntax validation)
+        // esbuild doesn't do full type checking but catches most errors quickly
+        if let Ok(esbuild_binary) = which::which("esbuild") {
+            let output = tokio::process::Command::new(&esbuild_binary)
+                .args([
+                    script_path.to_str().unwrap(),
+                    "--bundle",
+                    "--platform=node",
+                    "--format=esm",
+                    "--outfile=/dev/null",
+                    "--log-level=error",
+                ])
+                .current_dir(&working_dir)
+                .output()
+                .await
+                .map_err(|e| miette!("Failed to run esbuild: {}", e))?;
+
+            if output.status.success() {
+                // esbuild succeeded - fast path complete
+                return Ok(());
+            }
+
+            // esbuild failed - fall through to tsc for detailed type errors
+            // (esbuild errors are often less informative than tsc)
+        }
+
+        // Try tsc for full type checking (slower but more thorough)
         if let Ok(tsc_binary) = which::which("tsc") {
-            // Use modern TypeScript settings that support async/await and modern JS features
-            // We can't use --project with explicit files, so we pass compiler options directly
             let args = vec![
                 "--noEmit",
                 "--skipLibCheck",
@@ -213,13 +175,11 @@ impl Runtime for JsRuntime {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let error_output = if stderr.is_empty() { stdout } else { stderr };
-                // Remap error line numbers to .bench file locations
                 let remapped = crate::remap_typescript_error(&error_output, &mappings);
                 return Err(miette!("TypeScript compilation failed:\n{}", remapped));
             }
         } else {
             // Fallback: use Node.js --check for basic syntax validation
-            // Note: This won't catch type errors, only syntax errors
             let js_script = strip_typescript_syntax(&script);
             let js_path = script_path.with_extension("mjs");
             std::fs::write(&js_path, &js_script)
@@ -234,7 +194,6 @@ impl Runtime for JsRuntime {
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                // Remap error line numbers to .bench file locations
                 let remapped = crate::remap_typescript_error(&stderr, &mappings);
                 return Err(miette!("JavaScript syntax check failed:\n{}", remapped));
             }
@@ -550,4 +509,75 @@ impl BenchResultJson {
             )
         }
     }
+}
+
+/// Generate TypeScript source code for compile checking
+fn generate_typescript_check_source(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<String> {
+    let impl_code = spec
+        .get_impl(Lang::TypeScript)
+        .ok_or_else(|| miette!("No TypeScript implementation for benchmark {}", spec.name))?;
+
+    let mut script = String::new();
+
+    // User imports first
+    if let Some(user_imports) = suite.imports.get(&Lang::TypeScript) {
+        for import_stmt in user_imports {
+            script.push_str(import_stmt);
+            script.push('\n');
+        }
+    }
+
+    // Add declarations
+    if let Some(declarations) = suite.declarations.get(&Lang::TypeScript) {
+        if !declarations.trim().is_empty() {
+            script.push_str(declarations);
+            script.push_str("\n\n");
+        }
+    }
+
+    // Add helpers
+    if let Some(helpers) = suite.helpers.get(&Lang::TypeScript) {
+        if !helpers.trim().is_empty() {
+            script.push_str(helpers);
+            script.push_str("\n\n");
+        }
+    }
+
+    // Add fixtures
+    for fixture_name in &spec.fixture_refs {
+        if let Some(fixture) = suite.get_fixture(fixture_name) {
+            if let Some(fixture_impl) = fixture.implementations.get(&Lang::TypeScript) {
+                if fixture_impl.contains("return") {
+                    script.push_str(&format!(
+                        "const {} = (() => {{\n{}\n}})();\n",
+                        fixture_name, fixture_impl
+                    ));
+                } else {
+                    script.push_str(&format!("const {} = {};\n", fixture_name, fixture_impl));
+                }
+            } else if !fixture.data.is_empty() {
+                script.push_str(&format!(
+                    "const {} = new Uint8Array([{}]);\n",
+                    fixture_name,
+                    fixture.data.iter().map(|b| b.to_string()).collect::<Vec<_>>().join(", ")
+                ));
+            }
+        }
+    }
+
+    // Add the benchmark implementation wrapped in a function
+    let is_async = impl_code.contains("await ");
+    if is_async {
+        script.push_str(&format!(
+            "\nasync function __benchmark() {{\n    {};\n}}\n__benchmark();\n",
+            impl_code
+        ));
+    } else {
+        script.push_str(&format!(
+            "\nfunction __benchmark() {{\n    {};\n}}\n__benchmark();\n",
+            impl_code
+        ));
+    }
+
+    Ok(script)
 }

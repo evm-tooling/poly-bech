@@ -73,8 +73,12 @@ impl Runtime for GoRuntime {
         Ok(())
     }
 
+    fn generate_check_source(&self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<String> {
+        generate_standalone_benchmark(spec, suite)
+    }
+
     async fn compile_check(&self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<()> {
-        let source = generate_standalone_benchmark(spec, suite)?;
+        let source = self.generate_check_source(spec, suite)?;
 
         // Build line mappings for error remapping
         let mappings = crate::build_go_mappings(suite, &source);

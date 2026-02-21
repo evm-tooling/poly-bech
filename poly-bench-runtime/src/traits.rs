@@ -18,6 +18,10 @@ pub trait Runtime: Send + Sync {
     /// Initialize the runtime with suite-level setup
     async fn initialize(&mut self, suite: &SuiteIR) -> Result<()>;
 
+    /// Generate the source code that would be compiled for a benchmark.
+    /// This is used for content-based caching of compilation results.
+    fn generate_check_source(&self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<String>;
+
     /// Compile-check a benchmark without running it.
     /// Returns Ok(()) if compilation succeeds, or an error with compiler output.
     /// This is used for pre-run validation to catch errors before executing benchmarks.
