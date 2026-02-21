@@ -16,3 +16,4 @@ serde.workspace = true
 tokio.workspace = true
 colored.workspace = true
 indicatif.workspace = true
+futures.workspace = true

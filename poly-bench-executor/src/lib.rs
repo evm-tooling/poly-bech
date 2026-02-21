@@ -3,6 +3,7 @@
 mod anvil;
 pub mod comparison;
 mod scheduler;
+mod validation;
 
 use std::path::PathBuf;
 
@@ -21,3 +22,4 @@ pub struct ProjectRoots {
 
 pub use comparison::{BenchmarkResult, BenchmarkResults, SuiteResults};
 pub use scheduler::run;
+pub use validation::{validate_benchmarks, CompileError};

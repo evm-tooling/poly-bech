@@ -383,6 +383,66 @@ async fn cmd_run(
         let project_roots =
             resolve_project_roots(go_project.clone(), ts_project.clone(), bench_file)?;
 
+        // Pre-run validation: compile-check all benchmarks before running
+        println!("{} Validating benchmarks from {}", "🔍".cyan(), bench_file.display());
+        let compile_errors = executor::validate_benchmarks(&ir, &langs, &project_roots).await?;
+
+        if !compile_errors.is_empty() {
+            eprintln!("\n{} Compilation errors in {}:\n", "✗".red().bold(), bench_file.display());
+
+            for err in &compile_errors {
+                // Show error header with language and source type
+                let header = if err.benchmarks.len() == 1 {
+                    format!("[{}] {}", err.lang, err.benchmarks[0])
+                } else {
+                    format!(
+                        "[{}] {} error (affects {} benchmarks: {})",
+                        err.lang,
+                        err.source,
+                        err.benchmarks.len(),
+                        if err.benchmarks.len() <= 3 {
+                            err.benchmarks.join(", ")
+                        } else {
+                            format!(
+                                "{}, {} more...",
+                                err.benchmarks[..2].join(", "),
+                                err.benchmarks.len() - 2
+                            )
+                        }
+                    )
+                };
+                eprintln!("  {} {}", "•".red(), header);
+
+                // Show error message with better formatting
+                let mut shown_lines = 0;
+                for line in err.message.lines() {
+                    // Highlight lines that show .bench file locations
+                    if line.contains(".bench file line") {
+                        eprintln!("    {}", line.yellow());
+                    } else if line.starts_with("error") || line.contains("error TS") {
+                        eprintln!("    {}", line.red());
+                    } else if shown_lines < 8 {
+                        eprintln!("    {}", line.dimmed());
+                    }
+                    shown_lines += 1;
+                    if shown_lines >= 12 {
+                        eprintln!("    {}", "... (truncated)".dimmed());
+                        break;
+                    }
+                }
+                eprintln!();
+            }
+
+            // Count total affected benchmarks for the summary
+            let total_affected: usize = compile_errors.iter().map(|e| e.benchmarks.len()).sum();
+            return Err(miette::miette!(
+                "Found {} unique error(s) affecting {} benchmark(s). Fix the errors above before running benchmarks.",
+                compile_errors.len(),
+                total_affected
+            ));
+        }
+        println!("  {} All benchmarks compile successfully\n", "✓".green());
+
         println!("{} Running benchmarks from {}", "▶".green().bold(), bench_file.display());
 
         // Execute benchmarks

@@ -58,6 +58,8 @@ pub struct LspClient<C: LspConfig> {
     workspace_root: String,
     /// Virtual files that have been opened
     open_files: DashMap<String, i32>,
+    /// Stored diagnostics from publishDiagnostics notifications, keyed by URI
+    stored_diagnostics: Arc<DashMap<String, Vec<LspDiagnostic>>>,
     /// Phantom data for config type
     _config: std::marker::PhantomData<C>,
 }
@@ -79,6 +81,7 @@ impl<C: LspConfig> LspClient<C> {
             available: AtomicBool::new(true),
             workspace_root: workspace_root.to_string(),
             open_files: DashMap::new(),
+            stored_diagnostics: Arc::new(DashMap::new()),
             _config: std::marker::PhantomData,
         })
     }
@@ -129,6 +132,7 @@ impl<C: LspConfig> LspClient<C> {
     /// Start a thread to read responses from the server
     fn start_reader_thread(&self, stdout: ChildStdout) {
         let pending = self.pending.clone();
+        let stored_diagnostics = self.stored_diagnostics.clone();
         let server_name = C::SERVER_NAME;
 
         thread::spawn(move || {
@@ -208,6 +212,32 @@ impl<C: LspConfig> LspClient<C> {
                     }
                 } else if let Some(method) = response.get("method").and_then(|m| m.as_str()) {
                     tracing::trace!("[{}-reader] Received notification: {}", server_name, method);
+
+                    // Handle publishDiagnostics notification
+                    if method == "textDocument/publishDiagnostics" {
+                        if let Some(params) = response.get("params") {
+                            if let Some(uri) = params.get("uri").and_then(|u| u.as_str()) {
+                                let diagnostics = if let Some(diags) =
+                                    params.get("diagnostics").and_then(|d| d.as_array())
+                                {
+                                    diags
+                                        .iter()
+                                        .filter_map(|d| parse_single_diagnostic(d))
+                                        .collect()
+                                } else {
+                                    Vec::new()
+                                };
+
+                                tracing::debug!(
+                                    "[{}-reader] Storing {} diagnostics for {}",
+                                    server_name,
+                                    diagnostics.len(),
+                                    uri
+                                );
+                                stored_diagnostics.insert(uri.to_string(), diagnostics);
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -459,11 +489,14 @@ impl<C: LspConfig> LspClient<C> {
     }
 
     /// Request diagnostics for a document
-    /// Uses textDocument/diagnostic (LSP 3.17+) with fallback behavior
+    /// Uses textDocument/diagnostic (LSP 3.17+) with fallback to stored publishDiagnostics
     pub fn request_diagnostics(&self, uri: &str) -> Result<Vec<LspDiagnostic>, String> {
         if !self.initialized.load(Ordering::SeqCst) {
             self.initialize()?;
         }
+
+        // Clear any previously stored diagnostics for this URI
+        self.clear_stored_diagnostics(uri);
 
         // Try textDocument/diagnostic first (LSP 3.17+)
         let result = self.send_request_with_timeout(
@@ -478,17 +511,58 @@ impl<C: LspConfig> LspClient<C> {
 
         match result {
             Ok(value) => parse_diagnostic_response(&value),
-            Err(_) => {
-                // Server might not support textDocument/diagnostic
-                // Return empty - diagnostics will come via publishDiagnostics notification
-                Ok(vec![])
+            Err(e) => {
+                tracing::debug!(
+                    "[{}] textDocument/diagnostic not supported ({}), waiting for publishDiagnostics",
+                    C::SERVER_NAME,
+                    e
+                );
+
+                // Server doesn't support textDocument/diagnostic
+                // Wait for publishDiagnostics notification to arrive
+                self.wait_for_diagnostics(uri)
             }
         }
+    }
+
+    /// Wait for diagnostics to arrive via publishDiagnostics notification
+    fn wait_for_diagnostics(&self, uri: &str) -> Result<Vec<LspDiagnostic>, String> {
+        // Poll for diagnostics with exponential backoff
+        // Start with 50ms, max 500ms, total wait up to ~2 seconds
+        let wait_intervals = [50, 100, 200, 300, 400, 500, 500];
+
+        for wait_ms in wait_intervals {
+            thread::sleep(std::time::Duration::from_millis(wait_ms));
+
+            let diagnostics = self.get_stored_diagnostics(uri);
+            if !diagnostics.is_empty() {
+                tracing::debug!(
+                    "[{}] Got {} diagnostics from publishDiagnostics for {}",
+                    C::SERVER_NAME,
+                    diagnostics.len(),
+                    uri
+                );
+                return Ok(diagnostics);
+            }
+        }
+
+        // Return whatever we have (might be empty if no errors)
+        Ok(self.get_stored_diagnostics(uri))
     }
 
     /// Check if server is available
     pub fn is_available(&self) -> bool {
         self.available.load(Ordering::SeqCst)
+    }
+
+    /// Get stored diagnostics for a URI (from publishDiagnostics notifications)
+    pub fn get_stored_diagnostics(&self, uri: &str) -> Vec<LspDiagnostic> {
+        self.stored_diagnostics.get(uri).map(|d| d.clone()).unwrap_or_default()
+    }
+
+    /// Clear stored diagnostics for a URI
+    pub fn clear_stored_diagnostics(&self, uri: &str) {
+        self.stored_diagnostics.remove(uri);
     }
 
     /// Shutdown the server

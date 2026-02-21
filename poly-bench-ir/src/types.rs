@@ -36,6 +36,25 @@ impl AnvilConfigIR {
     }
 }
 
+/// Source location information for mapping generated code back to .bench files
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SourceLocation {
+    /// Line number in the original .bench file (1-indexed)
+    pub bench_file_line: usize,
+    /// Column number in the original .bench file (1-indexed)
+    pub bench_file_col: usize,
+}
+
+impl SourceLocation {
+    pub fn new(line: usize, col: usize) -> Self {
+        Self { bench_file_line: line, bench_file_col: col }
+    }
+
+    pub fn from_line(line: usize) -> Self {
+        Self { bench_file_line: line, bench_file_col: 1 }
+    }
+}
+
 /// A complete benchmark IR with all suites
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BenchmarkIR {
@@ -158,6 +177,16 @@ pub struct SuiteIR {
     /// Per-language helper functions
     pub helpers: HashMap<Lang, String>,
 
+    // Source location tracking for error mapping
+    /// Source locations for imports (line in .bench file)
+    pub imports_source: HashMap<Lang, SourceLocation>,
+    /// Source locations for declarations
+    pub declarations_source: HashMap<Lang, SourceLocation>,
+    /// Source locations for init code
+    pub init_source: HashMap<Lang, SourceLocation>,
+    /// Source locations for helpers
+    pub helpers_source: HashMap<Lang, SourceLocation>,
+
     /// Resolved fixtures
     pub fixtures: Vec<FixtureIR>,
     /// Benchmark specifications
@@ -198,6 +227,10 @@ impl SuiteIR {
             init_code: HashMap::new(),
             async_init: HashMap::new(),
             helpers: HashMap::new(),
+            imports_source: HashMap::new(),
+            declarations_source: HashMap::new(),
+            init_source: HashMap::new(),
+            helpers_source: HashMap::new(),
             fixtures: Vec::new(),
             benchmarks: Vec::new(),
         }

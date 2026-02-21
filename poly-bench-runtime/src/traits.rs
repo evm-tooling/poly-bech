@@ -18,6 +18,11 @@ pub trait Runtime: Send + Sync {
     /// Initialize the runtime with suite-level setup
     async fn initialize(&mut self, suite: &SuiteIR) -> Result<()>;
 
+    /// Compile-check a benchmark without running it.
+    /// Returns Ok(()) if compilation succeeds, or an error with compiler output.
+    /// This is used for pre-run validation to catch errors before executing benchmarks.
+    async fn compile_check(&self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<()>;
+
     /// Run a single benchmark and return measurements
     async fn run_benchmark(&mut self, spec: &BenchmarkSpec, suite: &SuiteIR)
         -> Result<Measurement>;
