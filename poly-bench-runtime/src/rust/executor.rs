@@ -59,53 +59,90 @@ impl Runtime for RustRuntime {
         Ok(())
     }
 
+    fn generate_check_source(&self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<String> {
+        generate_standalone_benchmark(spec, suite)
+    }
+
     async fn compile_check(&self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<()> {
-        let source = generate_standalone_benchmark(spec, suite)?;
+        let source = self.generate_check_source(spec, suite)?;
 
         // Build line mappings for error remapping
         let mappings = crate::build_rust_mappings(suite, &source);
 
-        // Always use a clean temp directory for compile checks to avoid interference
-        // from other files (like LSP virtual files) in the project
-        // Include benchmark name and timestamp to ensure uniqueness in parallel validation
-        let safe_name = spec.full_name.replace('.', "_").replace('/', "_");
-        let check_id = format!(
-            "{:x}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos() %
-                0xFFFFFFFF
-        );
-        let temp_dir =
-            std::env::temp_dir().join(format!("polybench-rust-check-{}-{}", safe_name, check_id));
-        std::fs::create_dir_all(&temp_dir)
-            .map_err(|e| miette!("Failed to create temp directory: {}", e))?;
+        // Generate Cargo.toml for this suite's dependencies
+        let cargo_toml = generate_cargo_toml(suite);
 
-        let src_dir = temp_dir.join("src");
+        // Use a persistent directory keyed by Cargo.toml hash to get incremental compilation
+        // while keeping different suites (with different dependencies) isolated
+        let (work_dir, cleanup) = if let Some(ref project_root) = self.project_root {
+            // Hash the Cargo.toml to create a unique directory per dependency set
+            use std::{
+                collections::hash_map::DefaultHasher,
+                hash::{Hash, Hasher},
+            };
+            let mut hasher = DefaultHasher::new();
+            cargo_toml.hash(&mut hasher);
+            let cargo_hash = hasher.finish();
+
+            let rust_dir =
+                project_root.join(".polybench").join("rust").join(format!("{:016x}", cargo_hash));
+            std::fs::create_dir_all(&rust_dir)
+                .map_err(|e| miette!("Failed to create .polybench/rust directory: {}", e))?;
+            (rust_dir, false)
+        } else {
+            // Fall back to temp directory with unique name
+            let safe_name = spec.full_name.replace('.', "_").replace('/', "_");
+            let check_id = format!(
+                "{:x}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos() %
+                    0xFFFFFFFF
+            );
+            let temp_dir = std::env::temp_dir()
+                .join(format!("polybench-rust-check-{}-{}", safe_name, check_id));
+            std::fs::create_dir_all(&temp_dir)
+                .map_err(|e| miette!("Failed to create temp directory: {}", e))?;
+            (temp_dir, true)
+        };
+
+        let src_dir = work_dir.join("src");
         std::fs::create_dir_all(&src_dir)
             .map_err(|e| miette!("Failed to create src directory: {}", e))?;
 
-        let cargo_toml = generate_cargo_toml(suite);
-        std::fs::write(temp_dir.join("Cargo.toml"), cargo_toml)
-            .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
+        // Write Cargo.toml (only if changed to preserve Cargo.lock)
+        let cargo_path = work_dir.join("Cargo.toml");
+        let should_write_cargo = if cargo_path.exists() {
+            let existing = std::fs::read_to_string(&cargo_path).unwrap_or_default();
+            existing != cargo_toml
+        } else {
+            true
+        };
+        if should_write_cargo {
+            std::fs::write(&cargo_path, &cargo_toml)
+                .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
+        }
 
-        let src_path = src_dir.join("main.rs");
-        std::fs::write(&src_path, &source)
-            .map_err(|e| miette!("Failed to write benchmark source: {}", e))?;
+        // Write source as main.rs
+        let main_path = src_dir.join("main.rs");
+        std::fs::write(&main_path, &source)
+            .map_err(|e| miette!("Failed to write main.rs: {}", e))?;
 
         let cargo_binary = which::which("cargo").map_err(|_| miette!("Cargo not found in PATH"))?;
 
         // Use 'cargo check' for fast compilation checking without codegen
         let output = tokio::process::Command::new(&cargo_binary)
             .args(["check", "--release", "--quiet"])
-            .current_dir(&temp_dir)
+            .current_dir(&work_dir)
             .output()
             .await
             .map_err(|e| miette!("Failed to compile Rust benchmark: {}", e))?;
 
-        // Clean up temp directory
-        let _ = std::fs::remove_dir_all(&temp_dir);
+        // Clean up temp directory only (keep persistent directory for incremental builds)
+        if cleanup {
+            let _ = std::fs::remove_dir_all(&work_dir);
+        }
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

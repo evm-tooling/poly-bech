@@ -2,12 +2,16 @@
 
 mod anvil;
 pub mod comparison;
+pub mod compile_cache;
 mod scheduler;
 mod validation;
+pub mod workspace;
 
 use std::path::PathBuf;
 
 pub use anvil::{AnvilConfig, AnvilService};
+pub use compile_cache::{CacheStats, CompileCache};
+pub use workspace::{format_size, CompileWorkspace};
 
 /// Project roots for different languages
 #[derive(Debug, Clone, Default)]
@@ -22,4 +26,6 @@ pub struct ProjectRoots {
 
 pub use comparison::{BenchmarkResult, BenchmarkResults, SuiteResults};
 pub use scheduler::run;
-pub use validation::{validate_benchmarks, CompileError};
+pub use validation::{
+    validate_benchmarks, validate_benchmarks_with_cache, CompileError, ValidationStats,
+};

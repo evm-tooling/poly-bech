@@ -64,6 +64,20 @@ enum Commands {
         /// Check only benchmarks for a specific language (go, ts, rust)
         #[arg(long, value_name = "LANG")]
         lang: Option<String>,
+
+        /// Disable compile result caching (always recompile)
+        #[arg(long)]
+        no_cache: bool,
+
+        /// Clear the compile cache before checking
+        #[arg(long)]
+        clear_cache: bool,
+    },
+
+    /// Manage the compile cache
+    Cache {
+        #[command(subcommand)]
+        action: CacheAction,
     },
 
     /// Run benchmarks from a DSL file or project
@@ -199,6 +213,16 @@ enum Commands {
     },
 }
 
+#[derive(Subcommand)]
+enum CacheAction {
+    /// Show cache statistics
+    Stats,
+    /// Clear all cached compile results
+    Clear,
+    /// Clean the entire .polybench workspace
+    Clean,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -236,8 +260,11 @@ async fn main() -> Result<()> {
         Commands::Check { file, show_ast } => {
             cmd_check(&file, show_ast).await?;
         }
-        Commands::Compile { file, lang } => {
-            cmd_compile(file, lang).await?;
+        Commands::Compile { file, lang, no_cache, clear_cache } => {
+            cmd_compile(file, lang, no_cache, clear_cache).await?;
+        }
+        Commands::Cache { action } => {
+            cmd_cache(action).await?;
         }
         Commands::Run { file, lang, iterations, report, output, go_project, ts_project } => {
             cmd_run(file, lang, iterations, &report, output, go_project, ts_project).await?;
@@ -326,10 +353,21 @@ async fn cmd_check(file: &PathBuf, show_ast: bool) -> Result<()> {
     }
 }
 
-async fn cmd_compile(file: Option<PathBuf>, lang: Option<String>) -> Result<()> {
+async fn cmd_compile(
+    file: Option<PathBuf>,
+    lang: Option<String>,
+    no_cache: bool,
+    clear_cache: bool,
+) -> Result<()> {
+    use colored::Colorize;
+
     // Get benchmark files to compile
-    let (files, run_parallel) = match file {
-        Some(f) => (vec![f], false),
+    let (files, run_parallel, project_root) = match file {
+        Some(f) => {
+            let root = project::find_project_root(f.parent().unwrap_or(&f))
+                .unwrap_or_else(|| f.parent().unwrap_or(&f).to_path_buf());
+            (vec![f], false, root)
+        }
         None => {
             let current_dir = std::env::current_dir()
                 .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
@@ -351,9 +389,19 @@ async fn cmd_compile(file: Option<PathBuf>, lang: Option<String>) -> Result<()> 
                 ));
             }
 
-            (bench_files, true)
+            (bench_files, true, project_root)
         }
     };
+
+    // Initialize compile cache
+    let cache_dir = project_root.join(".polybench").join("cache");
+    let cache = executor::CompileCache::new(&cache_dir, !no_cache);
+
+    // Clear cache if requested
+    if clear_cache {
+        cache.clear().await;
+        println!("{} Cleared compile cache", "✓".green());
+    }
 
     // Filter languages if specified
     let langs: Vec<dsl::Lang> = match lang.as_deref() {
@@ -365,19 +413,24 @@ async fn cmd_compile(file: Option<PathBuf>, lang: Option<String>) -> Result<()> 
     };
 
     if run_parallel && files.len() > 1 {
-        compile_files_parallel(&files, &langs).await
+        compile_files_parallel_cached(&files, &langs, &cache).await
     } else {
-        compile_files_sequential(&files, &langs).await
+        compile_files_sequential_cached(&files, &langs, &cache).await
     }
 }
 
-struct CompileResult {
+struct CompileResultCached {
     file: PathBuf,
     bench_count: usize,
     errors: Vec<executor::CompileError>,
+    stats: executor::ValidationStats,
 }
 
-async fn compile_single_file(bench_file: PathBuf, langs: Vec<dsl::Lang>) -> Result<CompileResult> {
+async fn compile_single_file_cached(
+    bench_file: PathBuf,
+    langs: Vec<dsl::Lang>,
+    cache: &executor::CompileCache,
+) -> Result<CompileResultCached> {
     let source = std::fs::read_to_string(&bench_file)
         .map_err(|e| miette::miette!("Failed to read file {}: {}", bench_file.display(), e))?;
 
@@ -389,27 +442,37 @@ async fn compile_single_file(bench_file: PathBuf, langs: Vec<dsl::Lang>) -> Resu
     let bench_count: usize = ir_result.suites.iter().map(|s| s.benchmarks.len()).sum();
     let project_roots = resolve_project_roots(None, None, &bench_file)?;
 
-    let compile_errors = executor::validate_benchmarks(&ir_result, &langs, &project_roots).await?;
+    let (compile_errors, stats) =
+        executor::validate_benchmarks_with_cache(&ir_result, &langs, &project_roots, cache).await?;
 
-    Ok(CompileResult { file: bench_file, bench_count, errors: compile_errors })
+    Ok(CompileResultCached { file: bench_file, bench_count, errors: compile_errors, stats })
 }
 
-async fn compile_files_parallel(files: &[PathBuf], langs: &[dsl::Lang]) -> Result<()> {
+async fn compile_files_parallel_cached(
+    files: &[PathBuf],
+    langs: &[dsl::Lang],
+    cache: &executor::CompileCache,
+) -> Result<()> {
     use colored::Colorize;
     use futures::future::join_all;
 
-    println!("{} Compiling {} file(s) in parallel...\n", "⚡".cyan(), files.len());
+    let cache_status = if cache.is_enabled() { " (with caching)" } else { "" };
+    println!("{} Compiling {} file(s) in parallel{}...\n", "⚡".cyan(), files.len(), cache_status);
 
     let spinner = create_compiling_spinner();
 
-    let futures: Vec<_> =
-        files.iter().map(|f| compile_single_file(f.clone(), langs.to_vec())).collect();
+    let futures: Vec<_> = files
+        .iter()
+        .map(|f| compile_single_file_cached(f.clone(), langs.to_vec(), cache))
+        .collect();
 
     let results = join_all(futures).await;
     spinner.finish_and_clear();
 
     let mut total_errors = 0;
     let mut total_benchmarks = 0;
+    let mut total_cache_hits = 0;
+    let mut total_cache_misses = 0;
     let mut failed_results = Vec::new();
     let mut success_results = Vec::new();
 
@@ -417,6 +480,8 @@ async fn compile_files_parallel(files: &[PathBuf], langs: &[dsl::Lang]) -> Resul
         match result {
             Ok(compile_result) => {
                 total_benchmarks += compile_result.bench_count;
+                total_cache_hits += compile_result.stats.cache_hits;
+                total_cache_misses += compile_result.stats.cache_misses;
                 if compile_result.errors.is_empty() {
                     success_results.push(compile_result);
                 } else {
@@ -431,11 +496,17 @@ async fn compile_files_parallel(files: &[PathBuf], langs: &[dsl::Lang]) -> Resul
     }
 
     for result in &success_results {
+        let cache_info = if result.stats.cache_hits > 0 {
+            format!(" ({} cached)", result.stats.cache_hits)
+        } else {
+            String::new()
+        };
         println!(
-            "{} {} - {} benchmark(s) compiled successfully",
+            "{} {} - {} benchmark(s) compiled successfully{}",
             "✓".green().bold(),
             result.file.display(),
-            result.bench_count
+            result.bench_count,
+            cache_info.dimmed()
         );
     }
 
@@ -488,22 +559,34 @@ async fn compile_files_parallel(files: &[PathBuf], langs: &[dsl::Lang]) -> Resul
     }
 
     if files.len() > 1 {
+        let cache_summary = if total_cache_hits > 0 {
+            format!(" ({} cached, {} compiled)", total_cache_hits, total_cache_misses)
+        } else {
+            String::new()
+        };
         println!(
-            "\n{} All {} benchmark(s) across {} file(s) compiled successfully",
+            "\n{} All {} benchmark(s) across {} file(s) compiled successfully{}",
             "✓".green().bold(),
             total_benchmarks,
-            files.len()
+            files.len(),
+            cache_summary.dimmed()
         );
     }
 
     Ok(())
 }
 
-async fn compile_files_sequential(files: &[PathBuf], langs: &[dsl::Lang]) -> Result<()> {
+async fn compile_files_sequential_cached(
+    files: &[PathBuf],
+    langs: &[dsl::Lang],
+    cache: &executor::CompileCache,
+) -> Result<()> {
     use colored::Colorize;
 
     let mut total_errors = 0;
     let mut total_benchmarks = 0;
+    let mut total_cache_hits = 0;
+    let mut total_cache_misses = 0;
 
     for bench_file in files {
         let source = std::fs::read_to_string(bench_file)
@@ -520,9 +603,13 @@ async fn compile_files_sequential(files: &[PathBuf], langs: &[dsl::Lang]) -> Res
         let project_roots = resolve_project_roots(None, None, bench_file)?;
 
         let spinner = create_compiling_spinner();
-        let compile_errors =
-            executor::validate_benchmarks(&ir_result, langs, &project_roots).await?;
+        let (compile_errors, stats) =
+            executor::validate_benchmarks_with_cache(&ir_result, langs, &project_roots, cache)
+                .await?;
         spinner.finish_and_clear();
+
+        total_cache_hits += stats.cache_hits;
+        total_cache_misses += stats.cache_misses;
 
         if !compile_errors.is_empty() {
             total_errors += compile_errors.len();
@@ -564,11 +651,17 @@ async fn compile_files_sequential(files: &[PathBuf], langs: &[dsl::Lang]) -> Res
                 eprintln!();
             }
         } else {
+            let cache_info = if stats.cache_hits > 0 {
+                format!(" ({} cached)", stats.cache_hits)
+            } else {
+                String::new()
+            };
             println!(
-                "{} {} - {} benchmark(s) compiled successfully",
+                "{} {} - {} benchmark(s) compiled successfully{}",
                 "✓".green().bold(),
                 bench_file.display(),
-                bench_count
+                bench_count,
+                cache_info.dimmed()
             );
         }
     }
@@ -582,12 +675,60 @@ async fn compile_files_sequential(files: &[PathBuf], langs: &[dsl::Lang]) -> Res
     }
 
     if files.len() > 1 {
+        let cache_summary = if total_cache_hits > 0 {
+            format!(" ({} cached, {} compiled)", total_cache_hits, total_cache_misses)
+        } else {
+            String::new()
+        };
         println!(
-            "\n{} All {} benchmark(s) across {} file(s) compiled successfully",
+            "\n{} All {} benchmark(s) across {} file(s) compiled successfully{}",
             "✓".green().bold(),
             total_benchmarks,
-            files.len()
+            files.len(),
+            cache_summary.dimmed()
         );
+    }
+
+    Ok(())
+}
+
+async fn cmd_cache(action: CacheAction) -> Result<()> {
+    use colored::Colorize;
+
+    let current_dir = std::env::current_dir()
+        .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+
+    let project_root = project::find_project_root(&current_dir).ok_or_else(|| {
+        miette::miette!("Not in a poly-bench project. Run from a project directory.")
+    })?;
+
+    match action {
+        CacheAction::Stats => {
+            let cache_dir = project_root.join(".polybench").join("cache");
+            let cache = executor::CompileCache::new(&cache_dir, true);
+            let stats = cache.stats().await;
+
+            println!("{}", "Compile Cache Statistics".bold());
+            println!("  Location: {}", cache_dir.display());
+            println!("  {}", stats);
+
+            // Also show workspace size
+            let workspace = executor::CompileWorkspace::new(&project_root)?;
+            let size = workspace.size();
+            println!("\n{}", "Workspace Size".bold());
+            println!("  .polybench/: {}", executor::format_size(size));
+        }
+        CacheAction::Clear => {
+            let cache_dir = project_root.join(".polybench").join("cache");
+            let cache = executor::CompileCache::new(&cache_dir, true);
+            cache.clear().await;
+            println!("{} Cleared compile cache", "✓".green());
+        }
+        CacheAction::Clean => {
+            let workspace = executor::CompileWorkspace::new(&project_root)?;
+            workspace.clean()?;
+            println!("{} Cleaned .polybench/ workspace", "✓".green());
+        }
     }
 
     Ok(())
