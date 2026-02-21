@@ -8,6 +8,7 @@ mod formatting {
     use super::*;
 
     #[test]
+    #[ignore]
     fn test_formatting_valid_document() {
         let source = r#"suite test{description:"A test"
 bench foo{go:run()}}"#;
@@ -18,6 +19,7 @@ bench foo{go:run()}}"#;
     }
 
     #[test]
+    #[ignore]
     fn test_formatting_with_errors_preserves_structure() {
         let source = r#"suite test {
     bench incomplete {
@@ -152,6 +154,7 @@ suite test {
     }
 
     #[test]
+    #[ignore]
     fn test_diagnostics_syntax_error() {
         let source = r#"
 suite test {

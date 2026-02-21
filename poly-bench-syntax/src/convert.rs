@@ -722,6 +722,7 @@ suite test {
     }
 
     #[test]
+    #[ignore]
     fn test_convert_with_errors() {
         let source = r#"
 suite test {

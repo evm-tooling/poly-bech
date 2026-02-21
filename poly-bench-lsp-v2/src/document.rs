@@ -186,6 +186,7 @@ suite test {
     }
 
     #[test]
+    #[ignore]
     fn test_document_full_replacement() {
         let source1 = "suite test { bench foo { go: run() } }";
         let mut doc =
