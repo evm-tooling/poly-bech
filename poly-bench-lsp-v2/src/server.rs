@@ -251,6 +251,35 @@ impl LanguageServer for PolyBenchLanguageServer {
         self.client.publish_diagnostics(uri, vec![], None).await;
     }
 
+    async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
+        for change in &params.changes {
+            let path = change.uri.path();
+            let filename = Path::new(path).file_name().and_then(|s| s.to_str()).unwrap_or("");
+
+            match filename {
+                "package.json" | "package-lock.json" | ".package-lock.json" => {
+                    info!("Detected {} change, clearing TypeScript caches", filename);
+                    self.virtual_file_managers.ts.clear_caches();
+                }
+                "Cargo.toml" | "Cargo.lock" => {
+                    info!("Detected {} change, clearing Rust caches", filename);
+                    self.virtual_file_managers.rust.clear_caches();
+                }
+                "go.mod" | "go.sum" => {
+                    info!("Detected {} change, clearing Go caches", filename);
+                    self.virtual_file_managers.go.clear_caches();
+                }
+                _ => {}
+            }
+        }
+
+        // Re-run diagnostics for all open documents to pick up new modules
+        for entry in self.documents.iter() {
+            let uri = entry.key().clone();
+            self.publish_diagnostics_with_embedded(&uri).await;
+        }
+    }
+
     async fn semantic_tokens_full(
         &self,
         params: SemanticTokensParams,
