@@ -304,6 +304,9 @@ async fn main() -> Result<()> {
         }
     }
 
+    // Check for updates after command completes (non-blocking, best-effort)
+    version_check::warn_if_outdated(VERSION);
+
     Ok(())
 }
 
@@ -1124,7 +1127,7 @@ fn cmd_upgrade() -> Result<()> {
                 "{} No pre-built binary available for this platform. Build from source:",
                 "⚠".yellow()
             );
-            eprintln!("    git clone https://github.com/evanmcgrane/poly-bench");
+            eprintln!("    git clone https://github.com/evm-tooling/poly-bench");
             eprintln!("    cd poly-bench && cargo build --release");
             return Ok(());
         }
