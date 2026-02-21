@@ -509,6 +509,9 @@ impl Parser {
                 }));
             }
 
+            // Track parameter order for formatting
+            directive.param_order.push(param_name.clone());
+
             // Parse value based on expected type for each parameter
             match param_name.as_str() {
                 // String parameters

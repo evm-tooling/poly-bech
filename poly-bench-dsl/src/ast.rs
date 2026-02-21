@@ -522,6 +522,10 @@ pub struct ChartDirective {
     pub ci_level: Option<u32>,
     /// Show standard deviation band on line charts (default: false)
     pub show_std_dev_band: Option<bool>,
+
+    /// Order of parameters as they appeared in source (for formatting)
+    #[serde(default)]
+    pub param_order: Vec<String>,
 }
 
 impl ChartDirective {
@@ -603,6 +607,8 @@ impl ChartDirective {
             // Error bars enhancements
             ci_level: None,
             show_std_dev_band: None,
+            // Parameter order tracking
+            param_order: Vec::new(),
         }
     }
 
