@@ -12,21 +12,8 @@ suite concatN {
 
     setup go {
         import (
-        "encoding/binary"
+            "encoding/binary"
         )
-
-        init {
-
-
-
-
-
-
-
-
-
-
-        }
 
         helpers {
             func concatGo(data []byte) []byte {
@@ -41,19 +28,6 @@ suite concatN {
     }
 
     setup ts {
-        init {
-
-
-
-
-
-
-
-
-
-
-        }
-
         helpers {
             function concatTs(data: Uint8Array): Uint8Array {
                 const n = new DataView(data.buffer, data.byteOffset, 4).getUint32(0, true)
@@ -65,19 +39,6 @@ suite concatN {
     }
 
     setup rust {
-        init {
-
-
-
-
-
-
-
-
-
-
-        }
-
         helpers {
             fn concat_rust(data: &[u8]) -> Vec<u8> {
                 let n = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
@@ -197,55 +158,13 @@ suite concatN {
             output: "concat-line.svg",
             xlabel: "String Length (n)",
             ylabel: "Time (ns/op)",
-         height: 460,
-     width: 615,
-            axisThickness: 1.5,
-            showGrid: true,
-            gridOpacity: 0.2,
-            titleFontSize: 18,
-            subtitleFontSize: 12,
-            axisLabelFontSize: 12,
-            tickLabelFontSize: 10,
-            legendPosition: "top-left",
-            showErrorBars: true,
-            errorBarOpacity: 0.4,
-            errorBarThickness: 1.5,
-            showRegression: true,
-            regressionStyle: "dotted",
-            showRegressionLabel: true,
-            timeUnit: "auto",
-            roundTicks: true  
         )
-
         charting.drawBarChart(
             title: "String Concatenation Comparison",
             description: "Vertical grouped bars showing quadratic growth",
             output: "concat-bar.svg",
             xlabel: "Input Size",
             ylabel: "Time (ns/op)",
-     height: 460,
-     width: 720,
-            axisThickness: 1.5,
-            showGrid: true,
-            gridOpacity: 0.15,
-            titleFontSize: 18,
-            subtitleFontSize: 12,
-            axisLabelFontSize: 12,
-            tickLabelFontSize: 10,
-            legendPosition: "bottom-left",
-            showErrorBars: true,
-            errorBarOpacity: 0.4,
-            errorBarThickness: 1.5,
-            barWidth: 10,
-            barGroupGap: 12,
-            barWithinGroupGap: 1,
-            timeUnit: "auto",
-            roundTicks: true,
-             showRegression: true,
-            regressionStyle: "dotted",
-            showRegressionLabel: true,
-            yScale: "symlog"
         )
     }
-
 }

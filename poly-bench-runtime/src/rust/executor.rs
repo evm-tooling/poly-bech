@@ -67,6 +67,8 @@ impl Runtime for RustRuntime {
 
         // Always use a clean temp directory for compile checks to avoid interference
         // from other files (like LSP virtual files) in the project
+        // Include benchmark name and timestamp to ensure uniqueness in parallel validation
+        let safe_name = spec.full_name.replace('.', "_").replace('/', "_");
         let check_id = format!(
             "{:x}",
             std::time::SystemTime::now()
@@ -75,7 +77,8 @@ impl Runtime for RustRuntime {
                 .as_nanos() %
                 0xFFFFFFFF
         );
-        let temp_dir = std::env::temp_dir().join(format!("polybench-rust-check-{}", check_id));
+        let temp_dir =
+            std::env::temp_dir().join(format!("polybench-rust-check-{}-{}", safe_name, check_id));
         std::fs::create_dir_all(&temp_dir)
             .map_err(|e| miette!("Failed to create temp directory: {}", e))?;
 
@@ -312,9 +315,20 @@ serde_json = "1"
                     "hex" => "hex = \"0.4\"",
                     "rand" => "rand = \"0.8\"",
                     "tokio" => "tokio = \"1\"",
+                    "regex" => "regex = \"1\"",
+                    "once_cell" => "once_cell = \"1\"",
+                    "lazy_static" => "lazy_static = \"1\"",
+                    "itertools" => "itertools = \"0.12\"",
+                    "num" => "num = \"0.4\"",
+                    "num_traits" => "num-traits = \"0.2\"",
+                    "byteorder" => "byteorder = \"1\"",
+                    "base64" => "base64 = \"0.21\"",
+                    "chrono" => "chrono = \"0.4\"",
+                    "uuid" => "uuid = \"1\"",
                     "alloy_primitives" | "alloy" => continue, // Complex deps, skip for now
                     _ => {
-                        cargo.push_str(&format!("{} = \"0.1\"\n", crate_name));
+                        // Default to version 1.0 for unknown crates (safer than 0.1)
+                        cargo.push_str(&format!("{} = \"*\"\n", crate_name));
                         continue;
                     }
                 };

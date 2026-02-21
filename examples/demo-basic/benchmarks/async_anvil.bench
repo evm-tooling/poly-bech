@@ -32,7 +32,7 @@ suite evmBench {
 
             _publicClient, err := client.CreatePublicClient(client.PublicClientConfig{
              Chain:     &definitions.Mainnet,
-             Transport: transport.HTTP(ANVIL_RPC_URL),
+             Transport: transport.HTTP(""),
             })
 
             if err != nil {

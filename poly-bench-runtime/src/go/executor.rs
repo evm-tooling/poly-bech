@@ -79,21 +79,25 @@ impl Runtime for GoRuntime {
         // Build line mappings for error remapping
         let mappings = crate::build_go_mappings(suite, &source);
 
+        // Use a unique filename per benchmark to avoid race conditions in parallel validation
+        let safe_name = spec.full_name.replace('.', "_").replace('/', "_");
+        let filename = format!("bench_check_{}.go", safe_name);
+
         let (src_path, working_dir) = if let Some(ref module_root) = self.module_root {
             let is_runtime_env = module_root.as_os_str().to_string_lossy().contains("runtime-env");
             let src_path = if is_runtime_env {
-                module_root.join("bench_standalone.go")
+                module_root.join(&filename)
             } else {
                 let bench_dir = module_root.join(".polybench");
                 std::fs::create_dir_all(&bench_dir)
                     .map_err(|e| miette!("Failed to create .polybench directory: {}", e))?;
-                bench_dir.join("bench_standalone.go")
+                bench_dir.join(&filename)
             };
             (src_path, module_root.clone())
         } else {
             let compiler =
                 self.compiler.as_ref().ok_or_else(|| miette!("Compiler not initialized"))?;
-            let src_path = compiler.temp_path().join("bench_standalone.go");
+            let src_path = compiler.temp_path().join(&filename);
             (src_path, compiler.temp_path().to_path_buf())
         };
 

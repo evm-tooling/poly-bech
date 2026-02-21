@@ -142,27 +142,40 @@ impl Runtime for JsRuntime {
         }
 
         // Add the benchmark implementation wrapped in a function
-        script.push_str(&format!(
-            "\nfunction __benchmark() {{\n    {};\n}}\n__benchmark();\n",
-            impl_code
-        ));
+        // If the implementation contains 'await', make it an async function
+        let is_async = impl_code.contains("await ");
+        if is_async {
+            script.push_str(&format!(
+                "\nasync function __benchmark() {{\n    {};\n}}\n__benchmark();\n",
+                impl_code
+            ));
+        } else {
+            script.push_str(&format!(
+                "\nfunction __benchmark() {{\n    {};\n}}\n__benchmark();\n",
+                impl_code
+            ));
+        }
+
+        // Use a unique filename per benchmark to avoid race conditions in parallel validation
+        let safe_name = spec.name.replace('.', "_").replace('/', "_");
+        let filename = format!("bench_check_{}.ts", safe_name);
 
         // Determine where to write the file
         let (script_path, working_dir) = if let Some(ref project_root) = self.project_root {
             let is_runtime_env = project_root.as_os_str().to_string_lossy().contains("runtime-env");
             let script_path = if is_runtime_env {
-                project_root.join("bench_check.ts")
+                project_root.join(&filename)
             } else {
                 let bench_dir = project_root.join(".polybench");
                 std::fs::create_dir_all(&bench_dir)
                     .map_err(|e| miette!("Failed to create .polybench directory: {}", e))?;
-                bench_dir.join("bench_check.ts")
+                bench_dir.join(&filename)
             };
             (script_path, project_root.clone())
         } else {
             let temp_dir =
                 self.temp_dir.as_ref().ok_or_else(|| miette!("Runtime not initialized"))?;
-            (temp_dir.path().join("bench_check.ts"), temp_dir.path().to_path_buf())
+            (temp_dir.path().join(&filename), temp_dir.path().to_path_buf())
         };
 
         std::fs::write(&script_path, &script)
@@ -173,8 +186,24 @@ impl Runtime for JsRuntime {
 
         // Try to use tsc if available, otherwise use node --check for basic syntax
         if let Ok(tsc_binary) = which::which("tsc") {
+            // Use modern TypeScript settings that support async/await and modern JS features
+            // We can't use --project with explicit files, so we pass compiler options directly
+            let args = vec![
+                "--noEmit",
+                "--skipLibCheck",
+                "--target",
+                "ES2022",
+                "--module",
+                "ESNext",
+                "--moduleResolution",
+                "bundler",
+                "--esModuleInterop",
+                "--allowSyntheticDefaultImports",
+                script_path.to_str().unwrap(),
+            ];
+
             let output = tokio::process::Command::new(&tsc_binary)
-                .args(["--noEmit", "--skipLibCheck", script_path.to_str().unwrap()])
+                .args(&args)
                 .current_dir(&working_dir)
                 .output()
                 .await

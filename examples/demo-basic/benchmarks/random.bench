@@ -13,33 +13,26 @@ suite randomN {
 
     setup go {
         import (
-        "encoding/binary"
-        "math"
+            "encoding/binary"
+            "math"
         )
-
-        init {
-
-
-
-
-        }
 
         helpers {
             func randomStatsGo(data []byte) float64 {
                 n := len(data) / 4
                 arr := make([]float64, n)
                 sum := 0.0
-                
+
                 // Convert bytes to floats and calculate sum
                 for i := 0; i < n; i++ {
                     val := int32(binary.BigEndian.Uint32(data[i*4 : (i+1)*4]))
                     arr[i] = float64(val)
                     sum += arr[i]
                 }
-                
+
                 // Calculate mean
                 mean := sum / float64(n)
-                
+
                 // Calculate variance (which produces Gaussian-like distribution)
                 variance := 0.0
                 for i := 0; i < n; i++ {
@@ -47,7 +40,7 @@ suite randomN {
                     variance += diff * diff
                 }
                 variance /= float64(n)
-                
+
                 // Return standard deviation (square root of variance)
                 return math.Sqrt(variance)
             }
@@ -55,19 +48,12 @@ suite randomN {
     }
 
     setup ts {
-        init {
-
-
-
-
-        }
-
         helpers {
             function randomStatsTs(data: Uint8Array): number {
                 const n = data.length / 4
                 const arr = []
                 let sum = 0
-                
+
                 // Convert bytes to numbers and calculate sum
                 for (let i = 0; i < n; i++) {
                     const val = (data[i*4]<<24) | (data[i*4+1]<<16) | (data[i*4+2]<<8) | data[i*4+3]
@@ -75,10 +61,10 @@ suite randomN {
                     arr.push(signedVal)
                     sum += signedVal
                 }
-                
+
                 // Calculate mean
                 const mean = sum / n
-                
+
                 // Calculate variance
                 let variance = 0
                 for (let i = 0; i < n; i++) {
@@ -86,7 +72,7 @@ suite randomN {
                     variance += diff * diff
                 }
                 variance /= n
-                
+
                 // Return standard deviation
                 return Math.sqrt(variance)
             }
@@ -94,19 +80,12 @@ suite randomN {
     }
 
     setup rust {
-        init {
-
-
-
-
-        }
-
         helpers {
             fn random_stats_rust(data: &[u8]) -> f64 {
                 let n = data.len() / 4;
                 let mut arr: Vec<f64> = Vec::with_capacity(n);
                 let mut sum = 0.0;
-                
+
                 // Convert bytes to floats and calculate sum
                 for i in 0..n {
                     let j = i * 4;
@@ -114,10 +93,10 @@ suite randomN {
                     arr.push(val);
                     sum += val;
                 }
-                
+
                 // Calculate mean
                 let mean = sum / n as f64;
-                
+
                 // Calculate variance
                 let variance: f64 = arr.iter()
                     .map(|&x| {
@@ -125,7 +104,7 @@ suite randomN {
                         diff * diff
                     })
                     .sum::<f64>() / n as f64;
-                
+
                 // Return standard deviation
                 variance.sqrt()
             }
@@ -239,46 +218,13 @@ suite randomN {
             output: "random-line.svg",
             xlabel: "Array Size (n elements)",
             ylabel: "Time (ns/op)",
-            axisThickness: 1.5,
-            showGrid: true,
-            gridOpacity: 0.2,
-            titleFontSize: 18,
-            subtitleFontSize: 12,
-            axisLabelFontSize: 12,
-            tickLabelFontSize: 10,
-            legendPosition: "top-left",
-            showErrorBars: true,
-            errorBarOpacity: 0.4,
-            errorBarThickness: 1.5,
-            showRegression: true,
-            regressionStyle: "solid",
-            showRegressionLabel: true,
-            timeUnit: "auto",
-            precision: 2
         )
-
         charting.drawBarChart(
             title: "Random Statistics Comparison",
             description: "Vertical grouped bars - linear growth pattern",
             output: "random-bar.svg",
             xlabel: "Array Size",
             ylabel: "Time (ns/op)",
-            axisThickness: 1.5,
-            showGrid: true,
-            gridOpacity: 0.15,
-            titleFontSize: 18,
-            subtitleFontSize: 12,
-            axisLabelFontSize: 12,
-            tickLabelFontSize: 10,
-            legendPosition: "top-right",
-            showErrorBars: true,
-            errorBarOpacity: 0.5,
-            errorBarThickness: 1.5,
-            barGroupGap: 25,
-            barWithinGroupGap: 3,
-            timeUnit: "auto",
-            precision: 2
         )
     }
-
 }
