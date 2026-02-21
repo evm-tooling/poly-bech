@@ -99,4 +99,15 @@ mod tests {
         assert!(!is_older("0.1.0", "0.1.0"));
         assert!(!is_older("0.2.0", "0.1.0"));
     }
+
+    #[test]
+    fn test_fetch_latest_version_returns_semver() {
+        let version = fetch_latest_version()
+            .expect("fetch_latest_version returned None — TLS or network issue");
+        assert!(
+            parse_semver(&version).is_some(),
+            "returned version '{}' is not valid semver",
+            version
+        );
+    }
 }
