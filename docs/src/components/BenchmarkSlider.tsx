@@ -19,7 +19,7 @@ export default function BenchmarkSlider({
   slides = [],
 }: BenchmarkSliderProps) {
   const safeSlides = slides ?? []
-  if (safeSlides.length === 0) return null
+
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: false,
     align: 'center',
@@ -79,6 +79,8 @@ export default function BenchmarkSlider({
     return () =>
       container.removeEventListener('keydown', handleKey as EventListener)
   }, [emblaApi])
+
+  if (safeSlides.length === 0) return null
 
   return (
     <div
