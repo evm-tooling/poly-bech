@@ -4,7 +4,7 @@
 
 .PHONY: help check check-compile build build-debug watch release release-build release-both clean install-tools reload cli run \
         cli-release init add install pb-build pb-run fmt fmt-check lint test test-cover oncommit install-hooks \
-        grammar grammar-wasm
+        grammar grammar-wasm vscode-publish
 
 # Default target
 help:
@@ -46,9 +46,10 @@ help:
 	@echo "    make pb-run PROJECT=examples/demo"
 	@echo ""
 	@echo "Release:"
-	@echo "  make release       - Tag, prerelease, open PR to production (VERSION=v0.0.1)"
-	@echo "  make release-build - Build single release binary (poly-bench)"
-	@echo "  make release-both  - Build poly-bench + poly-bench-lsp (legacy)"
+	@echo "  make release         - Tag, prerelease, open PR to production (VERSION=v0.0.1)"
+	@echo "  make release-build   - Build single release binary (poly-bench)"
+	@echo "  make release-both    - Build poly-bench + poly-bench-lsp (legacy)"
+	@echo "  make vscode-publish  - Publish VSCode extension to marketplace (requires VSCE_PAT)"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean         - Clean build artifacts"
@@ -234,6 +235,17 @@ endif
 		--title "Release $(VERSION)" \
 		--body "## Release $(VERSION)$$( echo )$$( echo )This PR releases $(VERSION) to production.$$( echo )$$( echo )When merged, comment \`/release\` on this PR to promote the prerelease to the latest release."
 	@echo "==> Done! Review and merge the PR to publish the release."
+
+# Publish the VSCode extension to the marketplace
+# Requires VSCE_PAT env var (your Azure DevOps personal access token)
+# Usage: VSCE_PAT=<token> make vscode-publish
+vscode-publish:
+ifndef VSCE_PAT
+	$(error VSCE_PAT is required. Usage: VSCE_PAT=<token> make vscode-publish)
+endif
+	@echo "==> Publishing VSCode extension..."
+	@cd extensions/vscode && npm run publish:ci
+	@echo "==> VSCode extension published!"
 
 # Clean build artifacts
 clean:
