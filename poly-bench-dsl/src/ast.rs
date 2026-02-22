@@ -497,6 +497,10 @@ pub struct ChartDirective {
     /// Chart mode: "performance" (ns/op vs size) or "throughput" (iterations vs time)
     pub chart_mode: Option<String>,
 
+    // Theme
+    /// Color theme: "dark" (default) or "light"
+    pub theme: Option<String>,
+
     /// Order of parameters as they appeared in source (for formatting)
     #[serde(default)]
     pub param_order: Vec<String>,
@@ -578,6 +582,8 @@ impl ChartDirective {
             ci_level: None,
             // Chart mode
             chart_mode: None,
+            // Theme
+            theme: None,
             // Parameter order tracking
             param_order: Vec::new(),
         }

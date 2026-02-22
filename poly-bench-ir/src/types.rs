@@ -603,6 +603,10 @@ pub struct ChartDirectiveIR {
     // Chart mode
     /// Chart mode: "performance" (ns/op vs size) or "throughput" (iterations vs time)
     pub chart_mode: Option<String>,
+
+    // Theme
+    /// Color theme: "dark" (default) or "light"
+    pub theme: Option<String>,
 }
 
 impl ChartDirectiveIR {
@@ -679,6 +683,8 @@ impl ChartDirectiveIR {
             symlog_threshold: None,
             // Chart mode
             chart_mode: None,
+            // Theme
+            theme: None,
         }
     }
 

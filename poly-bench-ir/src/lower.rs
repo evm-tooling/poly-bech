@@ -356,6 +356,9 @@ fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -
     // Chart mode
     ir.chart_mode = directive.chart_mode.clone();
 
+    // Theme
+    ir.theme = directive.theme.clone();
+
     ir
 }
 

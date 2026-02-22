@@ -999,6 +999,9 @@ fn format_single_param(directive: &ChartDirective, name: &str, indent: &str) -> 
             .baseline_benchmark
             .as_ref()
             .map(|v| format!("{}baselineBenchmark: \"{}\"", indent, escape_string(v))),
+        "theme" => {
+            directive.theme.as_ref().map(|v| format!("{}theme: \"{}\"", indent, escape_string(v)))
+        }
 
         // Boolean parameters (only output non-default values)
         "showStats" => {
@@ -1278,6 +1281,9 @@ fn format_params_default_order(directive: &ChartDirective, inner2: &str) -> Vec<
     }
     if let Some(symlog_threshold) = directive.symlog_threshold {
         params.push(format!("{}symlogThreshold: {}", inner2, symlog_threshold));
+    }
+    if let Some(ref theme) = directive.theme {
+        params.push(format!("{}theme: \"{}\"", inner2, escape_string(theme)));
     }
 
     // Grid

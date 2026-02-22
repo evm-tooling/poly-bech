@@ -534,6 +534,7 @@ impl Parser {
                     directive.baseline_benchmark = Some(self.expect_string()?)
                 }
                 "chartMode" => directive.chart_mode = Some(self.expect_string()?),
+                "theme" => directive.theme = Some(self.expect_string()?),
 
                 // Boolean parameters
                 "showStats" => directive.show_stats = self.expect_bool()?,

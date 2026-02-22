@@ -1160,6 +1160,10 @@
         },
         {
           "type": "STRING",
+          "value": "theme"
+        },
+        {
+          "type": "STRING",
           "value": "showStats"
         },
         {
