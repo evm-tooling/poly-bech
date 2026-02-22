@@ -9,7 +9,7 @@ use poly_bench_executor::BenchmarkResults;
 use poly_bench_ir::ChartDirectiveIR;
 use std::path::Path;
 
-use crate::charts::{bar_chart, line_chart, speedup_chart, table};
+use crate::charts::{speedup_chart, table};
 
 /// Information about a generated chart
 #[derive(Debug, Clone)]
@@ -53,8 +53,6 @@ fn execute_single_directive(
 
     // Generate the SVG content based on chart type
     let svg_content = match directive.chart_type {
-        ChartType::BarChart => generate_bar_chart(directive, &filtered_results)?,
-        ChartType::LineChart => generate_line_chart(directive, &filtered_results)?,
         ChartType::SpeedupChart => generate_speedup_chart(directive, &filtered_results)?,
         ChartType::Table => generate_table(directive, &filtered_results)?,
     };
@@ -81,16 +79,6 @@ fn filter_results_by_suite(results: &BenchmarkResults, suite_name: &str) -> Benc
         results.suites.iter().filter(|s| s.name == suite_name).cloned().collect();
 
     BenchmarkResults::new(filtered_suites)
-}
-
-/// Generate a bar chart SVG
-fn generate_bar_chart(directive: &ChartDirectiveIR, results: &BenchmarkResults) -> Result<String> {
-    bar_chart::generate(results, directive)
-}
-
-/// Generate a line chart SVG
-fn generate_line_chart(directive: &ChartDirectiveIR, results: &BenchmarkResults) -> Result<String> {
-    line_chart::generate(results, directive)
 }
 
 /// Generate a speedup chart SVG

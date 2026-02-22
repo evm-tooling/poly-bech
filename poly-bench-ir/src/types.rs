@@ -565,8 +565,6 @@ pub struct ChartDirectiveIR {
     pub error_bar_thickness: Option<f32>,
     /// Confidence interval level: 90, 95, or 99 (default: 95)
     pub ci_level: Option<u32>,
-    /// Show standard deviation band on line charts (default: false)
-    pub show_std_dev_band: Option<bool>,
 
     // Regression
     /// Toggle regression line (default: false)
@@ -586,14 +584,6 @@ pub struct ChartDirectiveIR {
     pub show_regression_band: Option<bool>,
     /// Opacity of regression confidence band (default: 0.15)
     pub regression_band_opacity: Option<f32>,
-
-    // Bar chart specific
-    /// Gap between benchmark groups (default: 20)
-    pub bar_group_gap: Option<i32>,
-    /// Gap between bars within a group (default: 2)
-    pub bar_within_group_gap: Option<i32>,
-    /// Width of individual bars (default: 20)
-    pub bar_width: Option<i32>,
 
     // Tick label formatting
     /// Round tick labels to whole numbers when appropriate (default: false)
@@ -672,7 +662,6 @@ impl ChartDirectiveIR {
             error_bar_opacity: None,
             error_bar_thickness: None,
             ci_level: None,
-            show_std_dev_band: None,
             // Regression
             show_regression: None,
             regression_style: None,
@@ -682,10 +671,6 @@ impl ChartDirectiveIR {
             show_equation: None,
             show_regression_band: None,
             regression_band_opacity: None,
-            // Bar chart specific
-            bar_group_gap: None,
-            bar_within_group_gap: None,
-            bar_width: None,
             // Tick label formatting
             round_ticks: None,
             // Y-axis scale
@@ -700,8 +685,6 @@ impl ChartDirectiveIR {
     /// Get the title to display, with a sensible default
     pub fn get_title(&self) -> String {
         self.title.clone().unwrap_or_else(|| match self.chart_type {
-            ChartType::BarChart => "Benchmark Results".to_string(),
-            ChartType::LineChart => "Performance Trend".to_string(),
             ChartType::SpeedupChart => "Speedup vs Baseline".to_string(),
             ChartType::Table => "Benchmark Results".to_string(),
         })
@@ -710,8 +693,6 @@ impl ChartDirectiveIR {
     /// Get the x-axis label with a sensible default
     pub fn get_x_label(&self) -> String {
         self.x_label.clone().unwrap_or_else(|| match self.chart_type {
-            ChartType::BarChart => "Time".to_string(),
-            ChartType::LineChart => "Benchmark".to_string(),
             ChartType::SpeedupChart => "Speedup".to_string(),
             ChartType::Table => "".to_string(),
         })
@@ -720,8 +701,6 @@ impl ChartDirectiveIR {
     /// Get the y-axis label with a sensible default
     pub fn get_y_label(&self) -> String {
         self.y_label.clone().unwrap_or_else(|| match self.chart_type {
-            ChartType::BarChart => "Benchmark".to_string(),
-            ChartType::LineChart => "Time".to_string(),
             ChartType::SpeedupChart => "Benchmark".to_string(),
             ChartType::Table => "".to_string(),
         })

@@ -635,13 +635,8 @@ fn has_stdlib_import(source: &ropey::Rope, module: &str) -> bool {
 
 /// Check if cursor is inside charting function arguments
 fn is_inside_charting_function_args(text: &str) -> bool {
-    // Match patterns like "charting.drawBarChart(" with unclosed paren
-    let patterns = [
-        "charting.drawBarChart(",
-        "charting.drawLineChart(",
-        "charting.drawSpeedupChart(",
-        "charting.drawTable(",
-    ];
+    // Match patterns like "charting.drawSpeedupChart(" with unclosed paren
+    let patterns = ["charting.drawSpeedupChart(", "charting.drawTable("];
 
     for pattern in patterns {
         if text.contains(pattern) {
@@ -732,22 +727,6 @@ fn get_module_member_completions(module: &str) -> Vec<CompletionItem> {
         ],
         "charting" => vec![
             CompletionItem {
-                label: "drawBarChart".to_string(),
-                kind: Some(CompletionItemKind::FUNCTION),
-                insert_text: Some("drawBarChart($0)".to_string()),
-                insert_text_format: Some(InsertTextFormat::SNIPPET),
-                detail: Some("Draw a bar chart of benchmark results".to_string()),
-                ..Default::default()
-            },
-            CompletionItem {
-                label: "drawLineChart".to_string(),
-                kind: Some(CompletionItemKind::FUNCTION),
-                insert_text: Some("drawLineChart($0)".to_string()),
-                insert_text_format: Some(InsertTextFormat::SNIPPET),
-                detail: Some("Draw a line chart for trends".to_string()),
-                ..Default::default()
-            },
-            CompletionItem {
                 label: "drawSpeedupChart".to_string(),
                 kind: Some(CompletionItemKind::FUNCTION),
                 insert_text: Some("drawSpeedupChart($0)".to_string()),
@@ -799,7 +778,7 @@ fn get_stdlib_module_completions() -> Vec<CompletionItem> {
             kind: Some(CompletionItemKind::MODULE),
             detail: Some("Chart generation module".to_string()),
             documentation: Some(Documentation::String(
-                "Provides drawBarChart, drawLineChart, drawSpeedupChart, drawTable.".to_string(),
+                "Provides drawSpeedupChart, drawTable.".to_string(),
             )),
             ..Default::default()
         },
@@ -905,7 +884,6 @@ fn get_charting_param_completions() -> Vec<CompletionItem> {
         param_completion("errorBarOpacity", "number", "Error bar opacity"),
         param_completion("errorBarThickness", "number", "Error bar stroke width"),
         enum_param_completion("ciLevel", &["90", "95", "99"], "Confidence interval level"),
-        bool_param_completion("showStdDevBand", "Show standard deviation band (line charts)"),
         // Regression
         bool_param_completion("showRegression", "Toggle regression line"),
         enum_param_completion(
@@ -927,10 +905,6 @@ fn get_charting_param_completions() -> Vec<CompletionItem> {
             "number",
             "Opacity of regression confidence band",
         ),
-        // Bar chart specific
-        param_completion("barWidth", "number", "Width of individual bars"),
-        param_completion("barGroupGap", "number", "Gap between benchmark groups"),
-        param_completion("barWithinGroupGap", "number", "Gap between bars within a group"),
         // Tick formatting
         bool_param_completion("roundTicks", "Round tick labels to whole numbers"),
     ]
@@ -1498,9 +1472,6 @@ fn get_charting_completions() -> Vec<CompletionItem> {
         detail: Some("Chart generation module - type '.' for methods".to_string()),
         documentation: Some(Documentation::String(
             "Type charting. to see available chart functions:\n\
-                 - drawBarChart()\n\
-                 - drawLineChart()\n\
-                 - drawPieChart()\n\
                  - drawSpeedupChart()\n\
                  - drawTable()"
                 .to_string(),

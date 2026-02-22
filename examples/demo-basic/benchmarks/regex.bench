@@ -163,14 +163,14 @@ suite regexN {
     }
 
     after {
-        charting.drawLineChart(
+        charting.drawSpeedupChart(
             title: "Regex Matching Performance",
             description: "Email regex matching across input lengths",
             output: "regex-line.svg",
             xlabel: "Input Length (chars)"
         )
 
-        charting.drawBarChart(
+        charting.drawTable(
             title: "Regex Matching Comparison",
             description: "Vertical grouped bars - regex engine comparison",
             output: "regex-bar.svg",

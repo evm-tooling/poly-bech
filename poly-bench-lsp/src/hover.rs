@@ -1091,7 +1091,7 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             **Benchmark-level hook:**\n\
             ```\nbench test {\n    after go: { cleanup() }\n}\n```\n\n\
             **Suite-level charting block:**\n\
-            ```\nafter {\n    charting.drawBarChart(title: \"Results\")\n}\n```"
+            ```\nafter {\n    charting.drawSpeedupChart(title: \"Results\")\n}\n```"
         ),
         "each" => Some(
             "**each** `<lang>:` `{ ... }`\n\n\
@@ -1144,7 +1144,7 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             Import a module from the poly-bench standard library.\n\n\
             Available modules:\n\
             - `anvil` - Anvil node integration (ANVIL_RPC_URL)\n\
-            - `charting` - Chart generation (drawBarChart, drawLineChart, drawSpeedupChart, drawTable)\n\
+            - `charting` - Chart generation (drawSpeedupChart, drawTable)\n\
             - `constants` - Mathematical constants (std_PI, std_E)"
         ),
 
@@ -1203,12 +1203,10 @@ fn stdlib_module_docs(module: &str) -> Option<&'static str> {
             Chart generation from benchmark results.\n\n\
             Use in a suite-level `after { }` block to generate charts after benchmarks complete.\n\n\
             **Provided functions:**\n\
-            - `charting.drawBarChart()` - Generate a bar chart comparing benchmark times\n\
-            - `charting.drawLineChart()` - Generate a line chart for trend visualization\n\
             - `charting.drawSpeedupChart()` - Generate a speedup comparison chart\n\
             - `charting.drawTable()` - Generate a data table\n\n\
             **Example:**\n\
-            ```\nafter {\n    charting.drawBarChart(\n        title: \"Performance Comparison\",\n        xlabel: \"Benchmark\"\n    )\n}\n```"
+            ```\nafter {\n    charting.drawSpeedupChart(\n        title: \"Speedup Comparison\"\n    )\n}\n```"
         ),
         "constants" => Some(
             "**std::constants**\n\n\
@@ -1238,7 +1236,7 @@ fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
             **Options:**\n\
             - `fork: \"url\"` - Fork from an existing chain\n\n\
             **Example:**\n\
-            ```\nglobalSetup {\n    anvil.spawnAnvil()\n}\n```"
+            ```\nglobalSetup {\n    anvil.spawnAnvil()\n}\n```",
         ),
         // Legacy std::anvil symbols (still supported)
         "ANVIL_RPC_URL" => Some(
@@ -1249,97 +1247,36 @@ fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
             to its RPC URL (e.g., `http://127.0.0.1:8545`).\n\n\
             **Example:**\n\
             ```go\nhttp.Post(anvil.ANVIL_RPC_URL, \"application/json\", body)\n```\n\n\
-            *From `std::anvil`*"
+            *From `std::anvil`*",
         ),
         // std::charting symbols
-        "drawBarChart" => Some(
-            "**charting.drawBarChart** `(...params)`\n\n\
-            Generate a bar chart comparing benchmark execution times.\n\n\
-            **Basic Parameters:**\n\
-            - `title` - Chart title (string)\n\
-            - `description` - Chart description (string)\n\
-            - `xlabel` - X-axis label (string)\n\
-            - `output` - Output filename (default: bar-chart.svg)\n\n\
-            **Chart Mode:**\n\
-            - `chartMode` - \"performance\" (default) or \"throughput\"\n\
-              - `\"performance\"`: Y-axis = \"Time (ns/op)\"\n\
-              - `\"throughput\"`: Y-axis = \"Iterations\"\n\
-            - Y-axis label is auto-determined by chartMode\n\n\
-            **Display Toggles:** (default: true unless noted)\n\
-            - `showStats` - Show ops/sec and time per op\n\
-            - `showConfig` - Show iterations/warmup/timeout\n\
-            - `showWinCounts` - Show win counts in legend\n\
-            - `showGeoMean` - Show geometric mean speedup\n\
-            - `showDistribution` - Show p50/p99 (default: false)\n\
-            - `compact` - Minimal chart mode (default: false)\n\n\
-            **Filtering:**\n\
-            - `minSpeedup` - Only show benchmarks with speedup >= N (number)\n\
-            - `filterWinner` - Filter by winner: \"go\", \"ts\", \"all\"\n\
-            - `includeBenchmarks`, `excludeBenchmarks` - Filter by name (array)\n\
-            - `limit` - Max benchmarks to show (number)\n\n\
-            **Sorting:**\n\
-            - `sortBy` - \"speedup\", \"name\", \"time\", \"ops\"\n\
-            - `sortOrder` - \"asc\" or \"desc\"\n\n\
-            **Layout:**\n\
-            - `width`, `barHeight`, `barGap`, `marginLeft` (pixels)\n\n\
-            **Data Display:**\n\
-            - `precision` - Decimal places (default: 2)\n\
-            - `timeUnit` - \"auto\", \"ns\", \"us\", \"ms\", \"s\"\n\n\
-            **Example:**\n\
-            ```\nafter {\n    charting.drawBarChart(\n        title: \"Performance Comparison\",\n        chartMode: \"performance\",\n        sortBy: \"speedup\",\n        sortOrder: \"desc\",\n        limit: 10\n    )\n}\n```\n\n\
-            *From `std::charting`*"
-        ),
-        "drawLineChart" => Some(
-            "**charting.drawLineChart** `(...params)`\n\n\
-            Generate a line chart for trend visualization.\n\n\
-            **Basic Parameters:**\n\
-            - `title` - Chart title (string)\n\
-            - `description` - Chart description (string)\n\
-            - `xlabel` - X-axis label (string)\n\
-            - `output` - Output filename (default: line-chart.svg)\n\n\
-            **Chart Mode:**\n\
-            - `chartMode` - \"performance\" (default) or \"throughput\"\n\
-              - `\"performance\"`: Y-axis = \"Time (ns/op)\"\n\
-              - `\"throughput\"`: Y-axis = \"Iterations\"\n\
-            - Y-axis label is auto-determined by chartMode\n\n\
-            **Display Toggles:**\n\
-            - `showStats` - Show timing tooltips on hover (default: true)\n\
-            - `compact` - Minimal mode (default: false)\n\n\
-            **Filtering & Sorting:** Same as drawBarChart\n\n\
-            **Data Display:**\n\
-            - `precision` - Decimal places (default: 2)\n\
-            - `timeUnit` - \"auto\", \"ns\", \"us\", \"ms\", \"s\"\n\n\
-            **Example:**\n\
-            ```\nafter {\n    charting.drawLineChart(\n        title: \"Performance Trends\",\n        chartMode: \"throughput\",\n        sortBy: \"name\"\n    )\n}\n```\n\n\
-            *From `std::charting`*"
-        ),
         // Namespaced std::constants symbols (new preferred style)
         "PI" => Some(
             "```go\nconst constants.PI float64 = 3.14159265358979323846\n```\n\n\
             **constants.PI** - Pi (π), the ratio of a circle's circumference to its diameter.\n\n\
             **Example:**\n\
             ```go\narea := constants.PI * radius * radius\n```\n\n\
-            *From `std::constants`*"
+            *From `std::constants`*",
         ),
         "E" => Some(
             "```go\nconst constants.E float64 = 2.71828182845904523536\n```\n\n\
             **constants.E** - Euler's number (e), the base of natural logarithms.\n\n\
             **Example:**\n\
             ```go\nresult := math.Pow(constants.E, x)\n```\n\n\
-            *From `std::constants`*"
+            *From `std::constants`*",
         ),
         // Legacy std::constants symbols (still supported)
         "std_PI" => Some(
             "```go\nconst std_PI float64 = 3.14159265358979323846\n```\n\n\
             **Pi (π)** - The ratio of a circle's circumference to its diameter.\n\n\
             *Legacy: consider using `constants.PI` instead.*\n\n\
-            *From `std::constants`*"
+            *From `std::constants`*",
         ),
         "std_E" => Some(
             "```go\nconst std_E float64 = 2.71828182845904523536\n```\n\n\
             **Euler's number (e)** - The base of natural logarithms.\n\n\
             *Legacy: consider using `constants.E` instead.*\n\n\
-            *From `std::constants`*"
+            *From `std::constants`*",
         ),
         _ => None,
     }

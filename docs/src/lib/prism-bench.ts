@@ -63,7 +63,7 @@ Prism.languages.bench = {
 
   function: {
     pattern:
-      /\b(?:spawnAnvil|keccak256_rust|keccak256Go|keccak256Ts|tiny_keccak|stopAnvil|drawBarChart|drawLineChart|drawPieChart|drawScatterPlot|drawHistogram|drawHeatmap|drawBoxPlot|drawAreaChart)\s*\(?/,
+      /\b(?:spawnAnvil|keccak256_rust|keccak256Go|keccak256Ts|tiny_keccak|stopAnvil|drawTable|drawSpeedupChart)\s*\(?/,
     greedy: true,
   },
 

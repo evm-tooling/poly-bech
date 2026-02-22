@@ -154,7 +154,7 @@ dd if=/dev/urandom bs=1024 count=1 2>/dev/null | xxd -p | tr -d '\n' > fixtures/
 
 ### Multiple Fixtures for Scaling Benchmarks
 
-The most common fixture pattern is a series of fixtures with increasing sizes, paired with a `bench` block for each. poly-bench's line chart extracts the numeric suffix from benchmark names for the x-axis.
+The most common fixture pattern is a series of fixtures with increasing sizes, paired with a `bench` block for each. poly-bench's speedup chart extracts the numeric suffix from benchmark names for the x-axis.
 
 <CodeGroup
   tabs={[
@@ -243,7 +243,7 @@ suite sortN {
     fixture s900  { hex: @file("fixtures/sort/sort_900.hex") }
     fixture s1000 { hex: @file("fixtures/sort/sort_1000.hex") }
 
-    # Benchmark names encode the size — drawLineChart uses this for the x-axis
+    # Benchmark names encode the size — drawSpeedupChart uses this for the x-axis
     bench n100  { go: sortGo(s100)   ts: sortTs(s100)   rust: sort_rust(&s100) }
     bench n200  { go: sortGo(s200)   ts: sortTs(s200)   rust: sort_rust(&s200) }
     bench n300  { go: sortGo(s300)   ts: sortTs(s300)   rust: sort_rust(&s300) }
@@ -256,13 +256,13 @@ suite sortN {
     bench n1000 { go: sortGo(s1000)  ts: sortTs(s1000)  rust: sort_rust(&s1000) }
 
     after {
-        charting.drawLineChart(
+        charting.drawSpeedupChart(
             title: "Sort Performance — O(n log n)",
             output: "sort-line.svg",
             xlabel: "Array Size (n elements)"
         )
 
-        charting.drawBarChart(
+        charting.drawTable(
             title: "Sort Comparison",
             output: "sort-bar.svg",
             xlabel: "Array Size"
@@ -364,7 +364,7 @@ A fixture defined once in a suite is available to every `bench` block in that su
 | `r100`, `r200`, ..., `r1000` | Random data series |
 
 <Aside type="tip">
-<span>When using <code>drawLineChart</code>, name your <code>bench</code> blocks (not the fixtures) with a numeric suffix — e.g. <code>bench n100</code>, <code>bench n200</code>. poly-bench extracts the number from the benchmark name for the x-axis, not from the fixture name.</span>
+<span>When using <code>drawSpeedupChart</code>, name your <code>bench</code> blocks (not the fixtures) with a numeric suffix — e.g. <code>bench n100</code>, <code>bench n200</code>. poly-bench extracts the number from the benchmark name for the x-axis, not from the fixture name.</span>
 </Aside>
 
 ---
@@ -372,5 +372,5 @@ A fixture defined once in a suite is available to every `bench` block in that su
 ### Further Reading
 
 - [DSL Reference — Fixtures](/docs/core/dsl-reference#fixture-blocks) — Full fixture syntax reference
-- [Charting Guide](/docs/guides/charting) — Using scaling fixtures with `drawLineChart`
+- [Charting Guide](/docs/guides/charting) — Using scaling fixtures with `drawSpeedupChart`
 - [Examples](/docs/examples) — Real-world fixture usage patterns

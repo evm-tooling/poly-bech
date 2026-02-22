@@ -3,7 +3,6 @@
 import { motion } from 'framer-motion'
 import {
   ArrowRight,
-  BarChart3,
   BookOpen,
   Braces,
   Bug,
@@ -15,7 +14,6 @@ import {
   Gauge,
   Heart,
   Layers,
-  LineChart,
   MessageSquare,
   Play,
   Settings2,
@@ -56,7 +54,7 @@ suite keccakBench {
     targetTime: 3000ms
 
     after {
-        charting.drawBarChart(
+        charting.drawSpeedupChart(
             title: "Keccak256 Performance",
             xlabel: "Time (ns)"
         )
@@ -188,7 +186,7 @@ const pipeline = [
     step: '05',
     title: 'Report',
     desc: 'Console tables, markdown docs, JSON, SVG charts',
-    icon: LineChart,
+    icon: Gauge,
     color: 'from-emerald-500 to-green-400',
   },
 ]
@@ -215,9 +213,9 @@ const features = [
     desc: 'Share hex-encoded test data across all language implementations',
   },
   {
-    icon: BarChart3,
+    icon: Layers,
     title: 'Chart Generation',
-    desc: 'SVG bar charts, pie charts, and line charts from results',
+    desc: 'SVG speedup charts and tables from results',
   },
   {
     icon: Settings2,

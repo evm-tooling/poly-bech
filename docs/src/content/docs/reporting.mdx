@@ -232,7 +232,7 @@ suite keccak {
     }
 
     after {
-        charting.drawBarChart(
+        charting.drawTable(
             title: "Keccak256 Performance",
             xlabel: "Implementation"
         )
@@ -260,9 +260,8 @@ This generates `results/keccak256-performance.svg`.
 
 | Directive | Description |
 |-----------|-------------|
-| `charting.drawBarChart(...)` | Horizontal or vertical bar chart comparing languages |
-| `charting.drawPieChart(...)` | Pie chart showing relative performance distribution |
-| `charting.drawLineChart(...)` | Line chart for scaling benchmarks (e.g., by input size) |
+| `charting.drawTable(...)` | Horizontal or vertical table comparing languages |
+| `charting.drawSpeedupChart(...)` | Line chart for scaling benchmarks (e.g., by input size) |
 
 <Aside type="tip">
 <span>Charts are styled automatically with a clean, readable design. They work well in both light and dark documentation themes.</span>

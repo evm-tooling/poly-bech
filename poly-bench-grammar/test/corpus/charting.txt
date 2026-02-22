@@ -1,5 +1,5 @@
 ================================================================================
-Simple after block with bar chart
+Simple after block with speedup chart
 ================================================================================
 
 use std::charting
@@ -10,7 +10,7 @@ suite test {
     }
 
     after {
-        charting.drawBarChart(
+        charting.drawSpeedupChart(
             title: "Performance"
         )
     }
@@ -52,18 +52,14 @@ suite test {
     }
 
     after {
-        charting.drawBarChart(
-            title: "Bar Chart",
-            output: "bar.svg"
+        charting.drawSpeedupChart(
+            title: "Speedup Chart",
+            output: "speedup.svg"
         )
 
-        charting.drawLineChart(
-            title: "Line Chart",
-            xlabel: "Size"
-        )
-
-        charting.drawPieChart(
-            title: "Distribution"
+        charting.drawTable(
+            title: "Table",
+            sortBy: "name"
         )
     }
 }
@@ -105,17 +101,6 @@ suite test {
               (chart_param
                 name: (chart_param_name)
                 value: (string
-                  (string_content)))
-              (chart_param
-                name: (chart_param_name)
-                value: (string
-                  (string_content)))))
-          (chart_directive
-            function: (chart_function_name)
-            (chart_params
-              (chart_param
-                name: (chart_param_name)
-                value: (string
                   (string_content))))))))))
 
 ================================================================================
@@ -130,7 +115,7 @@ suite test {
     }
 
     after {
-        charting.drawBarChart(
+        charting.drawSpeedupChart(
             title: "Full Example",
             showStats: true,
             showMemory: false,

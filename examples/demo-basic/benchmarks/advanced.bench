@@ -257,22 +257,22 @@ suite example {
     }
 
     after {
-        charting.drawBarChart(
+        charting.drawTable(
             title: "Performance Comparison",
             description: "Go vs TypeScript Benchmark Results",
             sortBy: "speedup",
             sortOrder: "desc"
         )
 
-        charting.drawLineChart(
+        charting.drawSpeedupChart(
             title: "Performance Trends",
             description: "Timing across all benchmarks",
             xlabel: "Benchmark",
             timeUnit: "auto"
         )
 
-        charting.drawPieChart(
-            title: "Time Distribution",
+        charting.drawTable(
+            title: "Detailed Results",
             description: "Relative time spent in each benchmark",
             showTotalTime: true
         )

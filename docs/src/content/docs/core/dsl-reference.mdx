@@ -672,14 +672,14 @@ suite example {
     # ... benchmarks ...
 
     after {
-        charting.drawBarChart(
+        charting.drawTable(
             title: "Performance Comparison",
             output: "results-bar.svg",
             sortBy: "speedup",
             sortOrder: "desc"
         )
 
-        charting.drawLineChart(
+        charting.drawSpeedupChart(
             title: "Scaling Behavior",
             output: "results-line.svg",
             xlabel: "Input Size"
@@ -858,7 +858,7 @@ suite keccakBenchmarks {
     }
 
     after {
-        charting.drawBarChart(
+        charting.drawTable(
             title: "Keccak256 Performance",
             description: "Go vs TypeScript vs Rust",
             output: "keccak-bar.svg",
@@ -868,7 +868,7 @@ suite keccakBenchmarks {
             showMemory: true
         )
 
-        charting.drawLineChart(
+        charting.drawSpeedupChart(
             title: "Keccak256 Scaling",
             output: "keccak-line.svg",
             xlabel: "Input Size"

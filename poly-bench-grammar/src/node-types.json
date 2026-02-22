@@ -1151,18 +1151,6 @@
     "named": false
   },
   {
-    "type": "barGroupGap",
-    "named": false
-  },
-  {
-    "type": "barWidth",
-    "named": false
-  },
-  {
-    "type": "barWithinGroupGap",
-    "named": false
-  },
-  {
     "type": "baseline",
     "named": false
   },
@@ -1220,34 +1208,6 @@
   },
   {
     "type": "description",
-    "named": false
-  },
-  {
-    "type": "drawAreaChart",
-    "named": false
-  },
-  {
-    "type": "drawBarChart",
-    "named": false
-  },
-  {
-    "type": "drawBoxPlot",
-    "named": false
-  },
-  {
-    "type": "drawHeatmap",
-    "named": false
-  },
-  {
-    "type": "drawHistogram",
-    "named": false
-  },
-  {
-    "type": "drawLineChart",
-    "named": false
-  },
-  {
-    "type": "drawScatterPlot",
     "named": false
   },
   {
@@ -1504,10 +1464,6 @@
   },
   {
     "type": "showStats",
-    "named": false
-  },
-  {
-    "type": "showStdDevBand",
     "named": false
   },
   {

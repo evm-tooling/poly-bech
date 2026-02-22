@@ -164,7 +164,7 @@ pub fn get_completions(
     documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
         tower_lsp::lsp_types::MarkupContent {
             kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-            value: "**std::charting**\n\nType `charting.` to access chart functions:\n- `charting.drawBarChart()` - Bar chart\n- `charting.drawLineChart()` - Line chart\n- `charting.drawSpeedupChart()` - Speedup chart\n- `charting.drawTable()` - Data table".to_string(),
+            value: "**std::charting**\n\nType `charting.` to access chart functions:\n- `charting.drawSpeedupChart()` - Speedup chart\n- `charting.drawTable()` - Data table".to_string(),
         }
     )),
     insert_text: Some("charting".to_string()),
@@ -348,7 +348,7 @@ enum Context {
     InsideAfterBlock,
     /// After typing "charting." - suggests chart functions
     ChartingDotAccess,
-    /// Inside charting function arguments (e.g., "charting.drawBarChart(")
+    /// Inside charting function arguments (e.g., "charting.drawSpeedupChart(")
     InsideChartingFunctionArgs,
     Unknown,
 }
@@ -364,7 +364,7 @@ fn determine_context(doc: &ParsedDocument, position: Position, line_text: &str) 
         return Context::UseStdModule;
     }
 
-    // Check for charting function argument context (e.g., "charting.drawBarChart(")
+    // Check for charting function argument context (e.g., "charting.drawSpeedupChart(")
     if is_inside_chart_function_args(trimmed) {
         return Context::InsideChartingFunctionArgs;
     }
@@ -656,7 +656,7 @@ fn extract_keyword_before_colon(line_text: &str) -> Option<String> {
 }
 
 /// Check if cursor is inside charting function arguments
-/// e.g., "charting.drawBarChart(" or "charting.drawBarChart(title:"
+/// e.g., "charting.drawSpeedupChart(" or "charting.drawSpeedupChart(title:"
 fn is_inside_chart_function_args(text: &str) -> bool {
     // Check for unclosed charting.drawX( pattern
     let draw_pattern = Regex::new(r"charting\.draw\w+\([^)]*$").ok();
@@ -1297,11 +1297,11 @@ tower_lsp::lsp_types::MarkupContent {
 CompletionItem {
     label: "charting".to_string(),
     kind: Some(CompletionItemKind::MODULE),
-    detail: Some("Chart generation (drawBarChart, drawLineChart, drawSpeedupChart, drawTable)".to_string()),
+    detail: Some("Chart generation (drawSpeedupChart, drawTable)".to_string()),
     documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
 tower_lsp::lsp_types::MarkupContent {
     kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-    value: "**std::charting**\n\nGenerate charts from benchmark results:\n- `charting.drawBarChart()` - Bar chart comparison\n- `charting.drawLineChart()` - Line chart trends\n- `charting.drawSpeedupChart()` - Speedup comparison\n- `charting.drawTable()` - Data table\n\nUse in suite-level `after { }` block.".to_string(),
+    value: "**std::charting**\n\nGenerate charts from benchmark results:\n- `charting.drawSpeedupChart()` - Speedup comparison\n- `charting.drawTable()` - Data table\n\nUse in suite-level `after { }` block.".to_string(),
 }
     )),
     ..Default::default()
@@ -1325,30 +1325,30 @@ tower_lsp::lsp_types::MarkupContent {
 fn charting_function_completions() -> Vec<CompletionItem> {
     vec![
 CompletionItem {
-    label: "drawBarChart".to_string(),
+    label: "drawSpeedupChart".to_string(),
     kind: Some(CompletionItemKind::FUNCTION),
-    detail: Some("Draw a bar chart of benchmark results".to_string()),
+    detail: Some("Draw a speedup chart for benchmark comparisons".to_string()),
     documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
 tower_lsp::lsp_types::MarkupContent {
     kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-    value: "**charting.drawBarChart** `(title?, description?, xlabel?, output?)`\n\nGenerates a bar chart comparing benchmark execution times.\n\n**Parameters:**\n- `title` - Chart title\n- `description` - Chart description\n- `xlabel` - X-axis label\n- `output` - Output filename (default: bar-chart.svg)".to_string(),
+    value: "**charting.drawSpeedupChart** `(title?, description?, baseline?, output?)`\n\nGenerates a speedup chart showing relative performance against a baseline.".to_string(),
 }
     )),
-    insert_text: Some("drawBarChart($0)".to_string()),
+    insert_text: Some("drawSpeedupChart($0)".to_string()),
     insert_text_format: Some(InsertTextFormat::SNIPPET),
     ..Default::default()
 },
 CompletionItem {
-    label: "drawLineChart".to_string(),
+    label: "drawTable".to_string(),
     kind: Some(CompletionItemKind::FUNCTION),
-    detail: Some("Draw a line chart for trend visualization".to_string()),
+    detail: Some("Draw a table of benchmark results".to_string()),
     documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
 tower_lsp::lsp_types::MarkupContent {
     kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-    value: "**charting.drawLineChart** `(title?, description?, xlabel?, output?)`\n\nGenerates a line chart for visualizing benchmark trends.\n\n**Parameters:**\n- `title` - Chart title\n- `description` - Chart description\n- `xlabel` - X-axis label\n- `output` - Output filename (default: line-chart.svg)".to_string(),
+    value: "**charting.drawTable** `(title?, description?, output?)`\n\nGenerates a results table from benchmark data.".to_string(),
 }
     )),
-    insert_text: Some("drawLineChart($0)".to_string()),
+    insert_text: Some("drawTable($0)".to_string()),
     insert_text_format: Some(InsertTextFormat::SNIPPET),
     ..Default::default()
 },
@@ -1362,7 +1362,7 @@ fn charting_function_param_completions() -> Vec<CompletionItem> {
         chart_param_completion("title", "string", "Chart title", "The title displayed at the top of the chart.", "title: \"$0\""),
         chart_param_completion("description", "string", "Chart description", "A description shown below the chart title.", "description: \"$0\""),
         chart_param_completion("xlabel", "string", "X-axis label", "Label for the X-axis.\n\nCustomize to describe your benchmark inputs (e.g., \"Input Size\", \"Array Length\").", "xlabel: \"$0\""),
-        chart_param_completion("output", "string", "Output filename", "The output filename for the generated chart SVG.\n\nDefault: `bar-chart.svg` or `line-chart.svg` depending on chart type.", "output: \"$0\""),
+        chart_param_completion("output", "string", "Output filename", "The output filename for the generated chart SVG.\n\nDefault: depends on chart type.", "output: \"$0\""),
 
         // Display toggle parameters (boolean)
         chart_param_completion("showStats", "bool", "Show statistics", "Show ops/sec and time per op for each benchmark.\n\nDefault: `true`", "showStats: ${1|true,false|}"),
@@ -1424,7 +1424,6 @@ fn charting_function_param_completions() -> Vec<CompletionItem> {
         chart_param_completion("errorBarOpacity", "number", "Error bar opacity", "Error bar opacity.\n\nDefault: `0.3`", "errorBarOpacity: $0"),
         chart_param_completion("errorBarThickness", "number", "Error bar thickness", "Error bar stroke width.\n\nDefault: `1.0`", "errorBarThickness: $0"),
         chart_param_completion("ciLevel", "number", "Confidence interval", "Confidence interval level: 90, 95, or 99.\n\nDefault: `95`", "ciLevel: ${1|90,95,99|}"),
-        chart_param_completion("showStdDevBand", "bool", "Show std dev band", "Show standard deviation band on line charts.\n\nDefault: `false`", "showStdDevBand: ${1|true,false|}"),
 
         // Regression
         chart_param_completion("showRegression", "bool", "Show regression", "Toggle regression line.\n\nDefault: `false`", "showRegression: ${1|true,false|}"),
@@ -1436,16 +1435,11 @@ fn charting_function_param_completions() -> Vec<CompletionItem> {
         chart_param_completion("showRegressionBand", "bool", "Show regression band", "Show confidence band around regression line.\n\nDefault: `false`", "showRegressionBand: ${1|true,false|}"),
         chart_param_completion("regressionBandOpacity", "number", "Regression band opacity", "Opacity of regression confidence band.\n\nDefault: `0.15`", "regressionBandOpacity: $0"),
 
-        // Bar chart specific
-        chart_param_completion("barGroupGap", "number", "Bar group gap", "Gap between benchmark groups in pixels.\n\nDefault: `20`", "barGroupGap: $0"),
-        chart_param_completion("barWithinGroupGap", "number", "Bar within group gap", "Gap between bars within a group in pixels.\n\nDefault: `2`", "barWithinGroupGap: $0"),
-        chart_param_completion("barWidth", "number", "Bar width", "Width of individual bars in pixels.\n\nDefault: `20`", "barWidth: $0"),
-
         // Tick formatting
         chart_param_completion("roundTicks", "bool", "Round ticks", "Round tick labels to whole numbers when appropriate.\n\nDefault: `false`", "roundTicks: ${1|true,false|}"),
 
         // Chart mode
-        chart_param_completion("chartMode", "string", "Chart plotting mode", "Controls what data is plotted:\n\n- `\"performance\"` (default): Y-axis = ns/op, X-axis = input size\n- `\"throughput\"`: Y-axis = iterations, X-axis = benchmark\n\nUse `\"performance\"` to compare how fast operations run at different input sizes.\nUse `\"throughput\"` to compare how many operations completed in the benchmark time.\n\n**Available for:** Bar charts and line charts only.", "chartMode: \"${1|performance,throughput|}\""),
+        chart_param_completion("chartMode", "string", "Chart plotting mode", "Controls what data is plotted:\n\n- `\"performance\"` (default): Y-axis = ns/op, X-axis = input size\n- `\"throughput\"`: Y-axis = iterations, X-axis = benchmark\n\nUse `\"performance\"` to compare how fast operations run at different input sizes.\nUse `\"throughput\"` to compare how many operations completed in the benchmark time.", "chartMode: \"${1|performance,throughput|}\""),
     ]
 }
 

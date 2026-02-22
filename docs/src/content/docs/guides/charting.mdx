@@ -1,6 +1,6 @@
 ---
 title: Charting Guide
-description: How to generate bar charts, line charts, speedup charts, and tables from benchmark results
+description: How to generate tables, speedup charts, speedup charts, and tables from benchmark results
 ---
 
 <div data-pagefind-weight="10">
@@ -13,8 +13,8 @@ poly-bench generates SVG charts directly from your `.bench` file. Charts are pro
 
 | Chart | Best for |
 |-------|----------|
-| `drawBarChart` | Comparing all languages side-by-side across multiple benchmarks |
-| `drawLineChart` | Showing how performance scales as input size grows |
+| `drawTable` | Comparing all languages side-by-side across multiple benchmarks |
+| `drawSpeedupChart` | Showing how performance scales as input size grows |
 | `drawSpeedupChart` | Highlighting how much faster one language is relative to a baseline |
 | `drawTable` | Embedding a results summary in a README or report |
 
@@ -22,11 +22,11 @@ All four require `use std::charting` at the top of the file and must be called i
 
 ---
 
-### `drawBarChart`
+### `drawTable`
 
 #### Minimal example
 
-The simplest possible bar chart — just a title and output file.
+The simplest possible table — just a title and output file.
 
 <CodeGroup
   tabs={[
@@ -39,7 +39,7 @@ suite hashBench {
     # ... setup and benchmarks ...
 
     after {
-        charting.drawBarChart(
+        charting.drawTable(
             title: "Hash Performance",
             output: "hash-bar.svg"
         )
@@ -59,7 +59,7 @@ Sort by speedup descending and only show benchmarks where the fastest language i
       title: "bench",
       language: "bench",
       code: `after {
-    charting.drawBarChart(
+    charting.drawTable(
         title: "Hash Performance — Notable Differences",
         output: "hash-bar-filtered.svg",
         sortBy: "speedup",
@@ -87,7 +87,7 @@ Show memory allocation data alongside timing. Requires `memory: true` on the sui
     # ... benchmarks ...
 
     after {
-        charting.drawBarChart(
+        charting.drawTable(
             title: "Allocation Comparison",
             output: "alloc-bar.svg",
             showMemory: true,
@@ -113,7 +113,7 @@ Show 95% confidence interval error bars to communicate measurement uncertainty.
 
 
     after {
-        charting.drawBarChart(
+        charting.drawTable(
             title: "Keccak256 — 95% CI",
             output: "keccak-ci.svg",
             showErrorBars: true,
@@ -137,7 +137,7 @@ Fit a complexity curve to the bars. Useful when benchmarks encode input sizes in
       title: "bench",
       language: "bench",
       code: `after {
-    charting.drawBarChart(
+    charting.drawTable(
         title: "Sort Performance with Regression",
         output: "sort-regression.svg",
         xlabel: "Array Size",
@@ -164,7 +164,7 @@ When results span several orders of magnitude, a log scale prevents small values
       title: "bench",
       language: "bench",
       code: `after {
-    charting.drawBarChart(
+    charting.drawTable(
         title: "Mixed Complexity Benchmarks",
         output: "mixed-log.svg",
         yScale: "log",
@@ -186,7 +186,7 @@ Reduces padding and panel sizes — useful for README embeds or narrow viewports
       title: "bench",
       language: "bench",
       code: `after {
-    charting.drawBarChart(
+    charting.drawTable(
         title: "Quick Summary",
         output: "summary-compact.svg",
         compact: true,
@@ -211,14 +211,14 @@ Generate a focused chart from a subset of the suite's benchmarks.
       language: "bench",
       code: `after {
     # Only show the two most interesting benchmarks
-    charting.drawBarChart(
+    charting.drawTable(
         title: "Key Results",
         output: "key-results.svg",
         includeBenchmarks: ["hashShort", "hashLong"]
     )
 
     # Show everything except the trivial warmup bench
-    charting.drawBarChart(
+    charting.drawTable(
         title: "Full Suite",
         output: "full-suite.svg",
         excludeBenchmarks: ["trivialAdd"]
@@ -238,13 +238,13 @@ Only show benchmarks where a specific language wins.
       title: "bench",
       language: "bench",
       code: `after {
-    charting.drawBarChart(
+    charting.drawTable(
         title: "Benchmarks Go Wins",
         output: "go-wins.svg",
         filterWinner: "go"
     )
 
-    charting.drawBarChart(
+    charting.drawTable(
         title: "Benchmarks Rust Wins",
         output: "rust-wins.svg",
         filterWinner: "rust"
@@ -256,9 +256,9 @@ Only show benchmarks where a specific language wins.
 
 ---
 
-### `drawLineChart`
+### `drawSpeedupChart`
 
-Line charts are designed for scaling benchmarks where benchmark names encode a numeric size. poly-bench extracts the number from the name (e.g. `n100` → 100, `size1024` → 1024) and uses it as the x-axis value.
+Speedup charts are designed for scaling benchmarks where benchmark names encode a numeric size. poly-bench extracts the number from the name (e.g. `n100` → 100, `size1024` → 1024) and uses it as the x-axis value.
 
 #### Basic scaling chart
 
@@ -284,7 +284,7 @@ suite sortN {
     bench n1000 { go: sortGo(s1000)  ts: sortTs(s1000)  rust: sort_rust(&s1000) }
 
     after {
-        charting.drawLineChart(
+        charting.drawSpeedupChart(
             title: "Sort Performance — O(n log n)",
             output: "sort-line.svg",
             xlabel: "Array Size (n elements)"
@@ -310,11 +310,10 @@ Shade ±1 standard deviation around each line to show measurement spread. Requir
     # ... benchmarks ...
 
     after {
-        charting.drawLineChart(
+        charting.drawSpeedupChart(
             title: "Matrix Multiply — O(n³)",
             output: "matmul-line.svg",
             xlabel: "Matrix Size (n×n)",
-            showStdDevBand: true
         )
     }
 }`
@@ -332,7 +331,7 @@ Overlay a fitted complexity curve to confirm theoretical complexity.
       title: "bench",
       language: "bench",
       code: `after {
-    charting.drawLineChart(
+    charting.drawSpeedupChart(
         title: "Random Stats — O(n) Confirmed",
         output: "random-line.svg",
         xlabel: "Array Size",
@@ -357,7 +356,7 @@ Flip the y-axis to show operations per second instead of time per operation.
       title: "bench",
       language: "bench",
       code: `after {
-    charting.drawLineChart(
+    charting.drawSpeedupChart(
         title: "Throughput Scaling",
         output: "throughput-line.svg",
         xlabel: "Payload Size",
@@ -538,18 +537,17 @@ suite sortN {
     # ... setup, fixtures, benchmarks ...
 
     after {
-        charting.drawLineChart(
+        charting.drawSpeedupChart(
             title: "Sort Performance — O(n log n)",
             description: "Scaling behavior across Go, TypeScript, and Rust",
             output: "sort-line.svg",
             xlabel: "Array Size (n elements)",
-            showStdDevBand: true,
             showRegression: true,
             regressionModel: "nlogn",
             showRSquared: true
         )
 
-        charting.drawBarChart(
+        charting.drawTable(
             title: "Sort Comparison",
             description: "Grouped bars — all sizes",
             output: "sort-bar.svg",
@@ -612,11 +610,11 @@ The `output` parameter inside a chart directive sets the filename within that di
       title: "bench",
       language: "bench",
       code: `after {
-    charting.drawBarChart(
+    charting.drawTable(
         title: "Results",
         output: "sort-bar.svg"       # → results/sort-bar.svg
     )
-    charting.drawLineChart(
+    charting.drawSpeedupChart(
         title: "Scaling",
         output: "sort-line.svg"      # → results/sort-line.svg
     )

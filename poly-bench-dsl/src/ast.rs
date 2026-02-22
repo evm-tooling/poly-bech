@@ -307,10 +307,6 @@ impl GlobalSetup {
 /// Type of chart to generate
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ChartType {
-    /// Horizontal bar chart comparing benchmark times
-    BarChart,
-    /// Line chart for trend visualization
-    LineChart,
     /// Speedup chart showing relative performance vs baseline
     SpeedupChart,
     /// Data table rendered as SVG
@@ -320,8 +316,6 @@ pub enum ChartType {
 impl ChartType {
     pub fn from_function_name(name: &str) -> Option<Self> {
         match name {
-            "drawBarChart" => Some(ChartType::BarChart),
-            "drawLineChart" => Some(ChartType::LineChart),
             "drawSpeedupChart" => Some(ChartType::SpeedupChart),
             "drawTable" => Some(ChartType::Table),
             _ => None,
@@ -330,8 +324,6 @@ impl ChartType {
 
     pub fn as_str(&self) -> &'static str {
         match self {
-            ChartType::BarChart => "bar",
-            ChartType::LineChart => "line",
             ChartType::SpeedupChart => "speedup",
             ChartType::Table => "table",
         }
@@ -339,8 +331,6 @@ impl ChartType {
 
     pub fn default_filename(&self) -> &'static str {
         match self {
-            ChartType::BarChart => "bar-chart.svg",
-            ChartType::LineChart => "line-chart.svg",
             ChartType::SpeedupChart => "speedup-chart.svg",
             ChartType::Table => "table.svg",
         }
@@ -478,14 +468,6 @@ pub struct ChartDirective {
     /// Opacity of regression confidence band (default: 0.15)
     pub regression_band_opacity: Option<f32>,
 
-    // Bar chart specific
-    /// Gap between benchmark groups (default: 20)
-    pub bar_group_gap: Option<i32>,
-    /// Gap between bars within a group (default: 2)
-    pub bar_within_group_gap: Option<i32>,
-    /// Width of individual bars (default: 20)
-    pub bar_width: Option<i32>,
-
     // Tick label formatting
     /// Round tick labels to whole numbers when appropriate (default: false)
     pub round_ticks: Option<bool>,
@@ -510,8 +492,6 @@ pub struct ChartDirective {
     // Error bars enhancements
     /// Confidence interval level: 90, 95, or 99 (default: 95)
     pub ci_level: Option<u32>,
-    /// Show standard deviation band on line charts (default: false)
-    pub show_std_dev_band: Option<bool>,
 
     // Chart mode
     /// Chart mode: "performance" (ns/op vs size) or "throughput" (iterations vs time)
@@ -584,10 +564,6 @@ impl ChartDirective {
             show_equation: None,
             show_regression_band: None,
             regression_band_opacity: None,
-            // Bar chart specific
-            bar_group_gap: None,
-            bar_within_group_gap: None,
-            bar_width: None,
             // Tick label formatting
             round_ticks: None,
             // Y-axis scale
@@ -600,7 +576,6 @@ impl ChartDirective {
             show_vertical_grid: None,
             // Error bars enhancements
             ci_level: None,
-            show_std_dev_band: None,
             // Chart mode
             chart_mode: None,
             // Parameter order tracking

@@ -426,7 +426,7 @@ impl Parser {
     }
 
     /// Parse a suite-level after block containing chart directives
-    /// Syntax: after { charting.drawBarChart(...) }
+    /// Syntax: after { charting.drawSpeedupChart(...) }
     fn parse_suite_after_block(&mut self) -> Result<Vec<ChartDirective>> {
         let after_token = self.expect_keyword(TokenKind::After)?;
         self.expect(TokenKind::LBrace)?;
@@ -443,7 +443,7 @@ impl Parser {
         Ok(directives)
     }
 
-    /// Parse a chart directive: charting.drawBarChart(title: "...", ...)
+    /// Parse a chart directive: charting.drawSpeedupChart(title: "...", ...)
     fn parse_chart_directive(&mut self, _block_span: &Span) -> Result<ChartDirective> {
         let start_span = self.peek().span.clone();
 
@@ -464,7 +464,7 @@ impl Parser {
         // Expect "."
         self.expect(TokenKind::Dot)?;
 
-        // Expect function name (drawBarChart, drawPieChart, etc.)
+        // Expect function name (drawSpeedupChart, drawTable)
         let func_token = self.expect_identifier()?;
         let func_name = match &func_token.kind {
             TokenKind::Identifier(s) => s.clone(),
@@ -473,7 +473,10 @@ impl Parser {
 
         let chart_type = ChartType::from_function_name(&func_name).ok_or_else(|| {
             self.make_error(ParseError::InvalidProperty {
-                name: format!("Unknown charting function '{}'. Valid functions: drawBarChart, drawLineChart, drawSpeedupChart, drawTable", func_name),
+                name: format!(
+                    "Unknown charting function '{}'. Valid functions: drawSpeedupChart, drawTable",
+                    func_name
+                ),
                 span: func_token.span.clone(),
             })
         })?;
@@ -552,7 +555,6 @@ impl Parser {
                 "showEquation" => directive.show_equation = Some(self.expect_bool()?),
                 "showMinorGrid" => directive.show_minor_grid = Some(self.expect_bool()?),
                 "showVerticalGrid" => directive.show_vertical_grid = Some(self.expect_bool()?),
-                "showStdDevBand" => directive.show_std_dev_band = Some(self.expect_bool()?),
                 "showRegressionBand" => directive.show_regression_band = Some(self.expect_bool()?),
 
                 // Integer parameters
@@ -570,11 +572,6 @@ impl Parser {
                 "tickLabelFontSize" => {
                     directive.tick_label_font_size = Some(self.expect_number()? as i32)
                 }
-                "barGroupGap" => directive.bar_group_gap = Some(self.expect_number()? as i32),
-                "barWithinGroupGap" => {
-                    directive.bar_within_group_gap = Some(self.expect_number()? as i32)
-                }
-                "barWidth" => directive.bar_width = Some(self.expect_number()? as i32),
                 "ciLevel" => directive.ci_level = Some(self.expect_number()? as u32),
 
                 // Float parameters
