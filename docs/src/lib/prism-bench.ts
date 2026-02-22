@@ -69,7 +69,7 @@ Prism.languages.bench = {
 
   property: {
     pattern:
-      /\b(?:description|iterations|warmup|minIterations|maxIterations|concurrency|count|timeout|targetTime|cvThreshold|requires|tags|order|mode|compare|sink|memory|outlierDetection|baseline|hex|shape|title|xlabel|sortBy|sortOrder|timeUnit|showTotalTime|showLegend|showGrid|benchmark)\s*:/,
+      /\b(?:description|iterations|warmup|minIterations|maxIterations|concurrency|count|timeout|targetTime|cvThreshold|requires|tags|order|mode|compare|sink|memory|outlierDetection|baseline|hex|shape|showErrorBars|ciLevel|errorBarThickness|output|showRegression|showRSquared|showEquation|regressionModel|regressionStyle|yScale|gridOpacity|showRegressionBand|chartMode|regressionBandOpacity|minSpeedup|baselineBenchmark|legendPosition|errorBarOpacity|title|xlabel|sortBy|sortOrder|timeUnit|showTotalTime|showLegend|showGrid|benchmark)\s*:/,
     greedy: true,
     inside: {
       property: /^[a-zA-Z_][a-zA-Z0-9_]*/,

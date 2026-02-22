@@ -56,6 +56,20 @@ export const docsNav: NavItem[] = [
     ],
   },
   {
+    label: 'Guides',
+    items: [
+      {
+        label: 'Usage',
+        items: [
+          { label: 'Charting', slug: 'guides/charting' },
+          { label: 'Anvil & EVM', slug: 'guides/anvil' },
+          { label: 'Fixtures', slug: 'guides/fixtures' },
+          { label: 'CLI Recipes', slug: 'guides/cli-recipes' },
+        ],
+      },
+    ],
+  },
+  {
     label: 'Reference',
     items: [
       {

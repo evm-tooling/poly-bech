@@ -1,0 +1,636 @@
+---
+title: Charting Guide
+description: How to generate bar charts, line charts, speedup charts, and tables from benchmark results
+---
+
+<div data-pagefind-weight="10">
+
+poly-bench generates SVG charts directly from your `.bench` file. Charts are produced by calling directives inside a suite-level `after { }` block. This guide walks through every chart type with real examples and the most useful parameter combinations.
+
+</div>
+
+### When to Use Each Chart Type
+
+| Chart | Best for |
+|-------|----------|
+| `drawBarChart` | Comparing all languages side-by-side across multiple benchmarks |
+| `drawLineChart` | Showing how performance scales as input size grows |
+| `drawSpeedupChart` | Highlighting how much faster one language is relative to a baseline |
+| `drawTable` | Embedding a results summary in a README or report |
+
+All four require `use std::charting` at the top of the file and must be called inside an `after { }` block.
+
+---
+
+### `drawBarChart`
+
+#### Minimal example
+
+The simplest possible bar chart — just a title and output file.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `use std::charting
+
+suite hashBench {
+    # ... setup and benchmarks ...
+
+    after {
+        charting.drawBarChart(
+            title: "Hash Performance",
+            output: "hash-bar.svg"
+        )
+    }
+}`
+    },
+  ]}
+/>
+
+#### With sorting and filtering
+
+Sort by speedup descending and only show benchmarks where the fastest language is at least 1.5× faster than the slowest.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `after {
+    charting.drawBarChart(
+        title: "Hash Performance — Notable Differences",
+        output: "hash-bar-filtered.svg",
+        sortBy: "speedup",
+        sortOrder: "desc",
+        minSpeedup: 1.5,
+        limit: 10
+    )
+}`
+    },
+  ]}
+/>
+
+#### With memory overlay
+
+Show memory allocation data alongside timing. Requires `memory: true` on the suite or individual benchmarks.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `suite allocBench {
+    memory: true
+
+    # ... benchmarks ...
+
+    after {
+        charting.drawBarChart(
+            title: "Allocation Comparison",
+            output: "alloc-bar.svg",
+            showMemory: true,
+            showTotalTime: true
+        )
+    }
+}`
+    },
+  ]}
+/>
+
+#### With error bars and confidence intervals
+
+Show 95% confidence interval error bars to communicate measurement uncertainty.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `suite cryptoBench {
+    count: 10  
+
+
+    after {
+        charting.drawBarChart(
+            title: "Keccak256 — 95% CI",
+            output: "keccak-ci.svg",
+            showErrorBars: true,
+            ciLevel: 95,
+            errorBarOpacity: 0.8,
+            errorBarThickness: 1.5
+        )
+    }
+}`
+    },
+  ]}
+/>
+
+#### With regression overlay
+
+Fit a complexity curve to the bars. Useful when benchmarks encode input sizes in their names (e.g. `n100`, `n200`).
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `after {
+    charting.drawBarChart(
+        title: "Sort Performance with Regression",
+        output: "sort-regression.svg",
+        xlabel: "Array Size",
+        showRegression: true,
+        regressionModel: "nlogn",
+        showRSquared: true,
+        showEquation: true,
+        regressionStyle: "dashed"
+    )
+}`
+    },
+  ]}
+/>
+
+Available `regressionModel` values: `"auto"`, `"constant"`, `"log"`, `"linear"`, `"nlogn"`, `"quadratic"`, `"cubic"`. Use `"auto"` to let poly-bench pick the best fit.
+
+#### Log scale for wide-range data
+
+When results span several orders of magnitude, a log scale prevents small values from being invisible.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `after {
+    charting.drawBarChart(
+        title: "Mixed Complexity Benchmarks",
+        output: "mixed-log.svg",
+        yScale: "log",
+        showGrid: true,
+        gridOpacity: 0.15
+    )
+}`
+    },
+  ]}
+/>
+
+#### Compact mode for tight layouts
+
+Reduces padding and panel sizes — useful for README embeds or narrow viewports.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `after {
+    charting.drawBarChart(
+        title: "Quick Summary",
+        output: "summary-compact.svg",
+        compact: true,
+        showConfig: false,
+        showDistribution: false,
+        width: 800,
+        height: 400
+    )
+}`
+    },
+  ]}
+/>
+
+#### Include / exclude specific benchmarks
+
+Generate a focused chart from a subset of the suite's benchmarks.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `after {
+    # Only show the two most interesting benchmarks
+    charting.drawBarChart(
+        title: "Key Results",
+        output: "key-results.svg",
+        includeBenchmarks: ["hashShort", "hashLong"]
+    )
+
+    # Show everything except the trivial warmup bench
+    charting.drawBarChart(
+        title: "Full Suite",
+        output: "full-suite.svg",
+        excludeBenchmarks: ["trivialAdd"]
+    )
+}`
+    },
+  ]}
+/>
+
+#### Filter by winning language
+
+Only show benchmarks where a specific language wins.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `after {
+    charting.drawBarChart(
+        title: "Benchmarks Go Wins",
+        output: "go-wins.svg",
+        filterWinner: "go"
+    )
+
+    charting.drawBarChart(
+        title: "Benchmarks Rust Wins",
+        output: "rust-wins.svg",
+        filterWinner: "rust"
+    )
+}`
+    },
+  ]}
+/>
+
+---
+
+### `drawLineChart`
+
+Line charts are designed for scaling benchmarks where benchmark names encode a numeric size. poly-bench extracts the number from the name (e.g. `n100` → 100, `size1024` → 1024) and uses it as the x-axis value.
+
+#### Basic scaling chart
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `use std::charting
+
+suite sortN {
+    mode: "auto"
+    targetTime: 500ms
+
+    # ... setup ...
+
+    fixture s100  { hex: @file("fixtures/sort/sort_100.hex") }
+    fixture s500  { hex: @file("fixtures/sort/sort_500.hex") }
+    fixture s1000 { hex: @file("fixtures/sort/sort_1000.hex") }
+
+    bench n100  { go: sortGo(s100)   ts: sortTs(s100)   rust: sort_rust(&s100) }
+    bench n500  { go: sortGo(s500)   ts: sortTs(s500)   rust: sort_rust(&s500) }
+    bench n1000 { go: sortGo(s1000)  ts: sortTs(s1000)  rust: sort_rust(&s1000) }
+
+    after {
+        charting.drawLineChart(
+            title: "Sort Performance — O(n log n)",
+            output: "sort-line.svg",
+            xlabel: "Array Size (n elements)"
+        )
+    }
+}`
+    },
+  ]}
+/>
+
+#### With standard deviation band
+
+Shade ±1 standard deviation around each line to show measurement spread. Requires `count: 3` or higher.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `suite matmulN {
+    count: 5
+
+    # ... benchmarks ...
+
+    after {
+        charting.drawLineChart(
+            title: "Matrix Multiply — O(n³)",
+            output: "matmul-line.svg",
+            xlabel: "Matrix Size (n×n)",
+            showStdDevBand: true
+        )
+    }
+}`
+    },
+  ]}
+/>
+
+#### With regression curve
+
+Overlay a fitted complexity curve to confirm theoretical complexity.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `after {
+    charting.drawLineChart(
+        title: "Random Stats — O(n) Confirmed",
+        output: "random-line.svg",
+        xlabel: "Array Size",
+        showRegression: true,
+        regressionModel: "linear",
+        showRSquared: true,
+        showRegressionBand: true,
+        regressionBandOpacity: 0.12
+    )
+}`
+    },
+  ]}
+/>
+
+#### Throughput mode
+
+Flip the y-axis to show operations per second instead of time per operation.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `after {
+    charting.drawLineChart(
+        title: "Throughput Scaling",
+        output: "throughput-line.svg",
+        xlabel: "Payload Size",
+        chartMode: "throughput",
+        timeUnit: "s"
+    )
+}`
+    },
+  ]}
+/>
+
+---
+
+### `drawSpeedupChart`
+
+Shows the speedup ratio of each language relative to a baseline. A value of 2.0× means that language is twice as fast as the baseline for that benchmark.
+
+#### Basic speedup chart
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `suite cryptoBench {
+    baseline: "go"
+
+    # ... benchmarks ...
+
+    after {
+        charting.drawSpeedupChart(
+            title: "Speedup vs Go",
+            output: "speedup.svg"
+        )
+    }
+}`
+    },
+  ]}
+/>
+
+#### With baseline benchmark and sorting
+
+Use a specific benchmark as the 1× reference point, and sort by speedup.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `after {
+    charting.drawSpeedupChart(
+        title: "Speedup vs hashShort Baseline",
+        output: "speedup-sorted.svg",
+        baselineBenchmark: "hashShort",
+        sortBy: "speedup",
+        sortOrder: "desc",
+        showGrid: true,
+        gridOpacity: 0.15,
+        legendPosition: "top-right"
+    )
+}`
+    },
+  ]}
+/>
+
+#### Filtered to only show significant speedups
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `after {
+    charting.drawSpeedupChart(
+        title: "Significant Speedups Only (>2×)",
+        output: "speedup-significant.svg",
+        minSpeedup: 2.0,
+        sortBy: "speedup",
+        sortOrder: "desc"
+    )
+}`
+    },
+  ]}
+/>
+
+---
+
+### `drawTable`
+
+Generates an SVG table — useful for embedding in GitHub READMEs, reports, or CI artifacts.
+
+#### Basic table
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `after {
+    charting.drawTable(
+        title: "Benchmark Results",
+        output: "results-table.svg"
+    )
+}`
+    },
+  ]}
+/>
+
+#### Full-featured table
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `after {
+    charting.drawTable(
+        title: "Keccak256 Suite — Full Results",
+        output: "keccak-table.svg",
+        showStats: true,
+        showConfig: true,
+        showWinCounts: true,
+        showGeoMean: true,
+        sortBy: "speedup",
+        sortOrder: "desc",
+        timeUnit: "auto",
+        precision: 2
+    )
+}`
+    },
+  ]}
+/>
+
+#### Compact table for CI artifacts
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `after {
+    charting.drawTable(
+        title: "Results",
+        output: "ci-table.svg",
+        compact: true,
+        showConfig: false,
+        showStats: false,
+        width: 700
+    )
+}`
+    },
+  ]}
+/>
+
+---
+
+### Generating Multiple Charts
+
+You can call any number of chart directives in a single `after` block. Each produces a separate SVG file.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `use std::charting
+
+suite sortN {
+    description: "O(n log n) sort — stdlib sort on int32 array"
+    warmup: 50
+    compare: true
+    baseline: "go"
+    mode: "auto"
+    targetTime: 500ms
+    count: 3
+    memory: true
+
+    # ... setup, fixtures, benchmarks ...
+
+    after {
+        charting.drawLineChart(
+            title: "Sort Performance — O(n log n)",
+            description: "Scaling behavior across Go, TypeScript, and Rust",
+            output: "sort-line.svg",
+            xlabel: "Array Size (n elements)",
+            showStdDevBand: true,
+            showRegression: true,
+            regressionModel: "nlogn",
+            showRSquared: true
+        )
+
+        charting.drawBarChart(
+            title: "Sort Comparison",
+            description: "Grouped bars — all sizes",
+            output: "sort-bar.svg",
+            xlabel: "Array Size",
+            sortBy: "speedup",
+            sortOrder: "desc",
+            showMemory: true,
+            showErrorBars: true,
+            ciLevel: 95
+        )
+
+        charting.drawSpeedupChart(
+            title: "Speedup vs Go",
+            output: "sort-speedup.svg",
+            sortBy: "speedup",
+            sortOrder: "desc"
+        )
+
+        charting.drawTable(
+            title: "Sort Results Summary",
+            output: "sort-table.svg",
+            showStats: true,
+            showGeoMean: true,
+            compact: false
+        )
+    }
+}`
+    },
+  ]}
+/>
+
+---
+
+### Output Files and the `--output` Flag
+
+Chart files are written to the directory specified by `--output` on the CLI. Without it, charts are not generated even if `after { }` directives are present.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Charts saved to results/
+poly-bench run benchmarks/sort.bench --output results/
+
+# Charts saved alongside the bench file
+poly-bench run benchmarks/sort.bench --output benchmarks/out/
+
+# Run without saving charts (console output only)
+poly-bench run benchmarks/sort.bench`
+    },
+  ]}
+/>
+
+The `output` parameter inside a chart directive sets the filename within that directory:
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `after {
+    charting.drawBarChart(
+        title: "Results",
+        output: "sort-bar.svg"       # → results/sort-bar.svg
+    )
+    charting.drawLineChart(
+        title: "Scaling",
+        output: "sort-line.svg"      # → results/sort-line.svg
+    )
+}`
+    },
+  ]}
+/>
+
+If `output` is omitted from a directive, poly-bench generates a filename from the `title` (lowercased, spaces replaced with hyphens).
+
+---
+
+### Further Reading
+
+- [Standard Library — std::charting](/docs/core/standard-library#stdcharting) — Full parameter reference for all chart functions
+- [DSL Reference — after block](/docs/core/dsl-reference#after--block-suite-level) — Suite-level `after { }` syntax
+- [CLI Reference](/docs/tools/cli) — `--output` and `--report` flags
