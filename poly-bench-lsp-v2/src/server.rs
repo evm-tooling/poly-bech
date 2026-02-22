@@ -171,11 +171,7 @@ impl LanguageServer for PolyBenchLanguageServer {
                 document_formatting_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions {
-                    trigger_characters: Some(vec![
-                        ".".to_string(),
-                        ":".to_string(),
-                        "\"".to_string(),
-                    ]),
+                    trigger_characters: Some(completion_trigger_characters()),
                     ..Default::default()
                 }),
                 definition_provider: Some(OneOf::Left(true)),
@@ -363,6 +359,21 @@ impl LanguageServer for PolyBenchLanguageServer {
             // Extract current prefix being typed
             let prefix = extract_current_prefix(trimmed);
 
+            // Setup keyword completions should remain available while editing incomplete code.
+            // This line-based fast path avoids depending solely on parser context.
+            if is_likely_inside_unclosed_setup(&doc.source, position) &&
+                is_setup_top_level_scope(&doc.source, position) &&
+                should_suggest_setup_keywords_from_line(&line_text)
+            {
+                let completions = get_setup_body_completions();
+                let filtered = if prefix.is_empty() {
+                    completions
+                } else {
+                    filter_completions_by_prefix(completions, &prefix, 1)
+                };
+                return Ok(Some(exclusive_list(filtered)));
+            }
+
             // Check for stdlib import context (e.g., "use ", "use st", "use std::ch")
             if let Some(module_prefix) = extract_stdlib_module_prefix(&line_text) {
                 let completions = get_stdlib_module_completions();
@@ -408,13 +419,22 @@ impl LanguageServer for PolyBenchLanguageServer {
 
                 // Walk up to find the containing block
                 let mut context = determine_completion_context(node, &doc.source);
-                if context == CompletionContext::TopLevel &&
-                    (is_position_inside_any_suite_span(&doc.partial_ast, position) ||
-                        is_likely_inside_unclosed_suite(&doc.source, position))
+                if context == CompletionContext::TopLevel || context == CompletionContext::SuiteBody
                 {
-                    // Tree-sitter can temporarily lose precise block context while typing.
-                    // Fall back to partial AST span information so suite completions remain stable.
-                    context = CompletionContext::SuiteBody;
+                    if is_position_inside_any_setup_span(&doc.partial_ast, position) ||
+                        is_likely_inside_unclosed_setup(&doc.source, position)
+                    {
+                        // Keep setup completions stable even when parser context degrades.
+                        context = CompletionContext::SetupBody;
+                    } else if context == CompletionContext::TopLevel &&
+                        (is_position_inside_any_suite_span(&doc.partial_ast, position) ||
+                            is_likely_inside_unclosed_suite(&doc.source, position))
+                    {
+                        // Tree-sitter can temporarily lose precise block context while typing.
+                        // Fall back to partial AST span information so suite completions remain
+                        // stable.
+                        context = CompletionContext::SuiteBody;
+                    }
                 }
 
                 match context {
@@ -432,6 +452,9 @@ impl LanguageServer for PolyBenchLanguageServer {
                         completions.extend(get_imported_module_completions(&doc.source));
                     }
                     CompletionContext::SetupBody => {
+                        if !is_setup_top_level_scope(&doc.source, position) {
+                            return Ok(Some(exclusive_list(vec![])));
+                        }
                         completions.extend(get_setup_body_completions());
                     }
                     CompletionContext::BenchmarkBody => {
@@ -464,9 +487,32 @@ impl LanguageServer for PolyBenchLanguageServer {
                 return Ok(Some(exclusive_list(completions)));
             }
 
-            // If no AST node was found, still return an exclusive empty list to prevent
-            // editor fallback word completions from showing irrelevant suggestions.
-            return Ok(Some(exclusive_list(vec![])));
+            // If no AST node was found (common while editing incomplete code),
+            // fall back to text-based block heuristics so completion still works
+            // without requiring a save.
+            let mut completions = if is_likely_inside_unclosed_setup(&doc.source, position) {
+                if is_setup_top_level_scope(&doc.source, position) {
+                    get_setup_body_completions()
+                } else {
+                    vec![]
+                }
+            } else if is_likely_inside_unclosed_suite(&doc.source, position) {
+                if is_suite_param_value_context(&line_text) {
+                    vec![]
+                } else {
+                    let mut items = get_suite_body_completions();
+                    items.extend(get_imported_module_completions(&doc.source));
+                    items
+                }
+            } else {
+                get_top_level_completions()
+            };
+
+            if trigger_char.is_none() && !prefix.is_empty() {
+                completions = filter_completions_by_prefix(completions, &prefix, 1);
+            }
+
+            return Ok(Some(exclusive_list(completions)));
         }
 
         Ok(None)
@@ -581,6 +627,13 @@ fn find_rust_project_root(start_path: &str) -> Option<String> {
             None => return None,
         }
     }
+}
+
+fn completion_trigger_characters() -> Vec<String> {
+    let mut chars = vec![".".to_string(), ":".to_string(), "\"".to_string(), "_".to_string()];
+    chars.extend(('a'..='z').map(|c| c.to_string()));
+    chars.extend(('A'..='Z').map(|c| c.to_string()));
+    chars
 }
 
 /// Completion context determined from tree-sitter AST
@@ -768,6 +821,23 @@ fn is_position_inside_any_suite_span(
     })
 }
 
+fn is_position_inside_any_setup_span(
+    partial_file: &poly_bench_syntax::PartialFile,
+    position: Position,
+) -> bool {
+    partial_file.suites.iter().any(|suite_node| match suite_node {
+        AstNode::Valid(suite) => suite.setups.values().any(|setup_node| {
+            let span = match setup_node {
+                AstNode::Valid(setup) => setup.span,
+                AstNode::Error { span, .. } => *span,
+                AstNode::Missing { span, .. } => *span,
+            };
+            is_position_in_span(position, span)
+        }),
+        AstNode::Error { .. } | AstNode::Missing { .. } => false,
+    })
+}
+
 fn is_position_in_span(position: Position, span: poly_bench_syntax::Span) -> bool {
     let line = position.line as usize;
     let col = position.character as usize;
@@ -808,6 +878,70 @@ fn is_suite_param_value_context(line_text: &str) -> bool {
             "memory" |
             "concurrency"
     )
+}
+
+fn is_likely_inside_unclosed_setup(source: &ropey::Rope, position: Position) -> bool {
+    setup_brace_depth_at_cursor(source, position).is_some_and(|depth| depth > 0)
+}
+
+fn is_setup_top_level_scope(source: &ropey::Rope, position: Position) -> bool {
+    setup_brace_depth_at_cursor(source, position) == Some(1)
+}
+
+fn setup_brace_depth_at_cursor(source: &ropey::Rope, position: Position) -> Option<isize> {
+    let cursor_line = position.line as usize;
+    let cursor_col = position.character as usize;
+
+    let mut setup_start_line = None;
+    for line_idx in 0..=cursor_line.min(source.len_lines().saturating_sub(1)) {
+        let line: String = source.line(line_idx).chars().collect();
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("setup ") && trimmed.contains('{') {
+            setup_start_line = Some(line_idx);
+        }
+    }
+
+    let Some(start_line) = setup_start_line else {
+        return None;
+    };
+
+    let mut balance: isize = 0;
+    for line_idx in start_line..=cursor_line.min(source.len_lines().saturating_sub(1)) {
+        let mut line: String = source.line(line_idx).chars().collect();
+        if line_idx == cursor_line && cursor_col < line.len() {
+            line.truncate(cursor_col);
+        }
+        for ch in line.chars() {
+            if ch == '{' {
+                balance += 1;
+            } else if ch == '}' {
+                balance -= 1;
+            }
+        }
+    }
+
+    Some(balance)
+}
+
+fn should_suggest_setup_keywords_from_line(line_text: &str) -> bool {
+    let trimmed = line_text.trim_start();
+    if trimmed.is_empty() {
+        return true;
+    }
+
+    // If the user is clearly writing code/config punctuation, defer to other contexts.
+    if trimmed.contains(':') ||
+        trimmed.contains('.') ||
+        trimmed.contains('(') ||
+        trimmed.contains(')') ||
+        trimmed.contains('{') ||
+        trimmed.contains('}')
+    {
+        return false;
+    }
+
+    // Setup keywords are identifiers; show completions for identifier-like input.
+    trimmed.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c.is_whitespace())
 }
 
 fn is_likely_inside_unclosed_suite(source: &ropey::Rope, position: Position) -> bool {
@@ -1697,5 +1831,76 @@ mod tests {
             &doc_closed.source,
             Position { line: 3, character: 0 },
         ));
+    }
+
+    #[test]
+    fn detects_position_inside_setup_span() {
+        let source = "suite demo {\n    setup go {\n        helpers {\n        }\n    }\n}\n";
+        let doc = crate::document::Document::new(
+            Url::parse("file:///setup_span.bench").expect("valid file URL"),
+            source.to_string(),
+            1,
+        );
+
+        assert!(is_position_inside_any_setup_span(
+            &doc.partial_ast,
+            Position { line: 2, character: 8 },
+        ));
+        assert!(!is_position_inside_any_setup_span(
+            &doc.partial_ast,
+            Position { line: 0, character: 1 },
+        ));
+    }
+
+    #[test]
+    fn detects_unclosed_setup_by_text_fallback() {
+        let source = "suite demo {\n    setup go {\n        he\n";
+        let doc = crate::document::Document::new(
+            Url::parse("file:///setup_unclosed.bench").expect("valid file URL"),
+            source.to_string(),
+            1,
+        );
+        assert!(is_likely_inside_unclosed_setup(&doc.source, Position { line: 2, character: 10 },));
+
+        let source_closed =
+            "suite demo {\n    setup go {\n        helpers {\n        }\n    }\n}\n";
+        let doc_closed = crate::document::Document::new(
+            Url::parse("file:///setup_closed.bench").expect("valid file URL"),
+            source_closed.to_string(),
+            1,
+        );
+        assert!(!is_likely_inside_unclosed_setup(
+            &doc_closed.source,
+            Position { line: 5, character: 0 },
+        ));
+    }
+
+    #[test]
+    fn setup_keyword_line_heuristic() {
+        assert!(should_suggest_setup_keywords_from_line("    im"));
+        assert!(should_suggest_setup_keywords_from_line("helpers"));
+        assert!(should_suggest_setup_keywords_from_line("    "));
+        assert!(!should_suggest_setup_keywords_from_line("charting.drawTable("));
+        assert!(!should_suggest_setup_keywords_from_line("targetTime: 3000"));
+    }
+
+    #[test]
+    fn setup_top_level_scope_detection() {
+        let source = r#"suite demo {
+    setup go {
+        im
+        helpers {
+            im
+        }
+    }
+}"#;
+        let doc = crate::document::Document::new(
+            Url::parse("file:///setup_scope.bench").expect("valid file URL"),
+            source.to_string(),
+            1,
+        );
+
+        assert!(is_setup_top_level_scope(&doc.source, Position { line: 2, character: 10 },));
+        assert!(!is_setup_top_level_scope(&doc.source, Position { line: 4, character: 12 },));
     }
 }

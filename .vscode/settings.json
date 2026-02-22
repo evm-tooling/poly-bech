@@ -48,7 +48,13 @@
     "editor.defaultFormatter": "biomejs.biome"
   },
   "[polybench]": {
-    "editor.defaultFormatter": "evm-tooling.poly-bench",
-    "editor.formatOnSave": true
-  },
+  "editor.defaultFormatter": "evm-tooling.poly-bench",
+  "editor.formatOnSave": true,
+  "editor.suggestOnTriggerCharacters": true,
+  "editor.quickSuggestions": {
+    "other": "on",
+    "comments": "off",
+    "strings": "on"
+  }
+}
 }
