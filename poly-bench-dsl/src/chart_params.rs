@@ -86,6 +86,9 @@ pub enum ChartParam {
 
     // Chart mode (performance vs throughput)
     ChartMode,
+
+    // Theme
+    Theme,
 }
 
 impl ChartParam {
@@ -145,6 +148,7 @@ impl ChartParam {
             ChartParam::RegressionBandOpacity => "regressionBandOpacity",
             ChartParam::RoundTicks => "roundTicks",
             ChartParam::ChartMode => "chartMode",
+            ChartParam::Theme => "theme",
         }
     }
 
@@ -204,6 +208,7 @@ impl ChartParam {
             "regressionBandOpacity" => Some(ChartParam::RegressionBandOpacity),
             "roundTicks" => Some(ChartParam::RoundTicks),
             "chartMode" => Some(ChartParam::ChartMode),
+            "theme" => Some(ChartParam::Theme),
             _ => None,
         }
     }
@@ -325,6 +330,7 @@ pub fn get_valid_params(chart_type: ChartType) -> HashSet<ChartParam> {
             params.extend([ChartParam::ShowGrid, ChartParam::GridOpacity]);
             params.extend(typography_params());
             params.insert(ChartParam::LegendPosition);
+            params.insert(ChartParam::Theme);
         }
         ChartType::Table => {
             params.extend([

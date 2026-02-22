@@ -383,6 +383,7 @@ module.exports = grammar({
       'baseline',
       'filterWinner',
       'chartMode',
+      'theme',
       'showStats',
       'showConfig',
       'showWinCounts',

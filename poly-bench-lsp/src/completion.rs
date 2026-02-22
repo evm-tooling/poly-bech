@@ -1440,6 +1440,9 @@ fn charting_function_param_completions() -> Vec<CompletionItem> {
 
         // Chart mode
         chart_param_completion("chartMode", "string", "Chart plotting mode", "Controls what data is plotted:\n\n- `\"performance\"` (default): Y-axis = ns/op, X-axis = input size\n- `\"throughput\"`: Y-axis = iterations, X-axis = benchmark\n\nUse `\"performance\"` to compare how fast operations run at different input sizes.\nUse `\"throughput\"` to compare how many operations completed in the benchmark time.", "chartMode: \"${1|performance,throughput|}\""),
+
+        // Theme
+        chart_param_completion("theme", "string", "Color theme", "Controls the chart color scheme:\n\n- `\"dark\"` (default): Dark background with light text\n- `\"light\"`: Light/white background with dark text\n\nBoth themes use the same vibrant language colors (Go cyan, TypeScript blue, Rust orange).", "theme: \"${1|dark,light|}\""),
     ]
 }
 

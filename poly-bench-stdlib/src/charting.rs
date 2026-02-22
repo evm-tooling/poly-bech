@@ -67,8 +67,10 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             **Data Display:**\n\
             - `precision` - Decimal places (default: 2)\n\
             - `timeUnit` - \"auto\", \"ns\", \"us\", \"ms\", \"s\"\n\n\
+            **Theme:**\n\
+            - `theme` - Color theme: \"dark\" (default) or \"light\"\n\n\
             **Example:**\n\
-            ```\nafter {\n    charting.drawSpeedupChart(\n        title: \"TypeScript vs Go Speedup\",\n        baseline: \"go\",\n        sortBy: \"speedup\",\n        sortOrder: \"desc\"\n    )\n}\n```",
+            ```\nafter {\n    charting.drawSpeedupChart(\n        title: \"TypeScript vs Go Speedup\",\n        baseline: \"go\",\n        sortBy: \"speedup\",\n        sortOrder: \"desc\",\n        theme: \"light\"\n    )\n}\n```",
     },
     StdlibSymbol {
         name: "drawTable",

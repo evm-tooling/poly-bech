@@ -1523,6 +1523,10 @@
     "named": false
   },
   {
+    "type": "theme",
+    "named": false
+  },
+  {
     "type": "tickLabelFontSize",
     "named": false
   },

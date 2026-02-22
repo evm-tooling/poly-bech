@@ -13,10 +13,10 @@ use poly_bench_runtime::measurement::ComparisonWinner;
 
 // Default chart dimensions
 pub const DEFAULT_WIDTH: i32 = 880;
-pub const DEFAULT_MARGIN_TOP: i32 = 60;
-pub const DEFAULT_MARGIN_BOTTOM: i32 = 50;
-pub const DEFAULT_MARGIN_LEFT: i32 = 70;
-pub const DEFAULT_MARGIN_RIGHT: i32 = 30;
+pub const DEFAULT_MARGIN_TOP: i32 = 56;
+pub const DEFAULT_MARGIN_BOTTOM: i32 = 44;
+pub const DEFAULT_MARGIN_LEFT: i32 = 20;
+pub const DEFAULT_MARGIN_RIGHT: i32 = 20;
 
 // Default colors
 pub const GO_COLOR: &str = "#00ADD8";

@@ -5,10 +5,10 @@ suite bubbleN {
     warmup: 50
     compare: true
     baseline: "go"
-    mode: "auto"
-    targetTime: 100ms
+    mode: "fixed"
+    iterations: 1000
     cvThreshold: 5
-    count: 2
+    count: 1
     memory: true
 
     setup go {
@@ -192,6 +192,7 @@ suite bubbleN {
             title: "Bubble Sort - O(n²)",
             description: "Classic bubble sort - quadratic complexity comparison",
             output: "bubble-line.svg",
+            theme: "light"
         )
         charting.drawTable(
             title: "Bubble Sort Comparison",
