@@ -280,6 +280,153 @@ pub fn add_rust_dependency_with_features(spec: &str, features: Option<&[String]>
     Ok(())
 }
 
+/// Remove a Go dependency from the project
+pub fn remove_go_dependency(package: &str) -> Result<()> {
+    let current_dir = std::env::current_dir()
+        .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+
+    let project_root = crate::find_project_root(&current_dir)
+        .ok_or_else(|| miette::miette!("Not in a poly-bench project"))?;
+
+    let mut manifest = crate::load_manifest(&project_root)?;
+
+    if !manifest.has_go() {
+        return Err(miette::miette!("Go is not enabled in this project"));
+    }
+
+    // Check if dependency exists in manifest
+    let go_config = manifest.go.as_ref().unwrap();
+    if !go_config.dependencies.contains_key(package) {
+        return Err(miette::miette!(
+            "Dependency '{}' is not installed. Check polybench.toml for installed Go dependencies.",
+            package
+        ));
+    }
+
+    // Remove from manifest
+    manifest.remove_go_dependency(package)?;
+    crate::save_manifest(&project_root, &manifest)?;
+
+    let go_root = resolve_go_root(&project_root);
+
+    // Run go mod tidy to clean up go.mod and go.sum
+    let spinner = terminal::step_spinner(&format!("Removing {}...", package));
+
+    let output = terminal::run_command_with_spinner(
+        &spinner,
+        Command::new("go").args(["mod", "tidy"]).current_dir(&go_root),
+    )
+    .map_err(|e| miette::miette!("Failed to run go mod tidy: {}", e))?;
+
+    if !output.status.success() {
+        let err_msg = terminal::first_error_line(&output.stderr);
+        terminal::finish_failure(&spinner, &format!("go mod tidy failed: {}", err_msg));
+        return Err(miette::miette!("go mod tidy failed"));
+    }
+
+    terminal::finish_success(&spinner, &format!("Removed {} from polybench.toml", package));
+
+    Ok(())
+}
+
+/// Remove a TypeScript dependency from the project
+pub fn remove_ts_dependency(package: &str) -> Result<()> {
+    let current_dir = std::env::current_dir()
+        .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+
+    let project_root = crate::find_project_root(&current_dir)
+        .ok_or_else(|| miette::miette!("Not in a poly-bench project"))?;
+
+    let mut manifest = crate::load_manifest(&project_root)?;
+
+    if !manifest.has_ts() {
+        return Err(miette::miette!("TypeScript is not enabled in this project"));
+    }
+
+    // Check if dependency exists in manifest
+    let ts_config = manifest.ts.as_ref().unwrap();
+    if !ts_config.dependencies.contains_key(package) {
+        return Err(miette::miette!(
+            "Dependency '{}' is not installed. Check polybench.toml for installed TypeScript dependencies.",
+            package
+        ));
+    }
+
+    // Remove from manifest
+    manifest.remove_ts_dependency(package)?;
+    crate::save_manifest(&project_root, &manifest)?;
+
+    let ts_root = resolve_ts_root(&project_root);
+
+    // Run npm uninstall
+    let spinner = terminal::step_spinner(&format!("Removing {}...", package));
+
+    let output = terminal::run_command_with_spinner(
+        &spinner,
+        Command::new("npm").args(["uninstall", package]).current_dir(&ts_root),
+    )
+    .map_err(|e| miette::miette!("Failed to run npm uninstall: {}", e))?;
+
+    if !output.status.success() {
+        let err_msg = terminal::first_error_line(&output.stderr);
+        terminal::finish_failure(&spinner, &format!("npm uninstall failed: {}", err_msg));
+        return Err(miette::miette!("npm uninstall failed"));
+    }
+
+    terminal::finish_success(&spinner, &format!("Removed {} from polybench.toml", package));
+
+    Ok(())
+}
+
+/// Remove a Rust dependency from the project
+pub fn remove_rust_dependency(crate_name: &str) -> Result<()> {
+    let current_dir = std::env::current_dir()
+        .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+
+    let project_root = crate::find_project_root(&current_dir)
+        .ok_or_else(|| miette::miette!("Not in a poly-bench project"))?;
+
+    let mut manifest = crate::load_manifest(&project_root)?;
+
+    if !manifest.has_rust() {
+        return Err(miette::miette!("Rust is not enabled in this project"));
+    }
+
+    // Check if dependency exists in manifest
+    let rust_config = manifest.rust.as_ref().unwrap();
+    if !rust_config.dependencies.contains_key(crate_name) {
+        return Err(miette::miette!(
+            "Dependency '{}' is not installed. Check polybench.toml for installed Rust dependencies.",
+            crate_name
+        ));
+    }
+
+    // Remove from manifest
+    manifest.remove_rust_dependency(crate_name)?;
+    crate::save_manifest(&project_root, &manifest)?;
+
+    let rust_root = resolve_rust_root(&project_root);
+
+    // Run cargo remove
+    let spinner = terminal::step_spinner(&format!("Removing {}...", crate_name));
+
+    let output = terminal::run_command_with_spinner(
+        &spinner,
+        Command::new("cargo").args(["remove", crate_name]).current_dir(&rust_root),
+    )
+    .map_err(|e| miette::miette!("Failed to run cargo remove: {}", e))?;
+
+    if !output.status.success() {
+        let err_msg = terminal::first_error_line(&output.stderr);
+        terminal::finish_failure(&spinner, &format!("cargo remove failed: {}", err_msg));
+        return Err(miette::miette!("cargo remove failed"));
+    }
+
+    terminal::finish_success(&spinner, &format!("Removed {} from polybench.toml", crate_name));
+
+    Ok(())
+}
+
 /// Read a dependency version from Cargo.toml
 fn read_cargo_dep_version(rust_root: &Path, crate_name: &str) -> Option<String> {
     let cargo_toml_path = rust_root.join("Cargo.toml");

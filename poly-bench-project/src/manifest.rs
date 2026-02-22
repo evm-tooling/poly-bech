@@ -357,6 +357,34 @@ impl Manifest {
         );
         Ok(())
     }
+
+    /// Remove a Go dependency
+    pub fn remove_go_dependency(&mut self, package: &str) -> Result<()> {
+        let go =
+            self.go.as_mut().ok_or_else(|| miette::miette!("Go is not enabled in this project"))?;
+        go.dependencies.remove(package);
+        Ok(())
+    }
+
+    /// Remove a TypeScript dependency
+    pub fn remove_ts_dependency(&mut self, package: &str) -> Result<()> {
+        let ts = self
+            .ts
+            .as_mut()
+            .ok_or_else(|| miette::miette!("TypeScript is not enabled in this project"))?;
+        ts.dependencies.remove(package);
+        Ok(())
+    }
+
+    /// Remove a Rust dependency
+    pub fn remove_rust_dependency(&mut self, crate_name: &str) -> Result<()> {
+        let rust = self
+            .rust
+            .as_mut()
+            .ok_or_else(|| miette::miette!("Rust is not enabled in this project"))?;
+        rust.dependencies.remove(crate_name);
+        Ok(())
+    }
 }
 
 /// Load a manifest from a file
