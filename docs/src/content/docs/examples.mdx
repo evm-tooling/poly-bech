@@ -12,7 +12,7 @@ A minimal benchmark suite comparing a single operation across Go, TypeScript, an
   tabs={[
     {
       title: "basic.bench",
-      language: "rust",
+      language: "bench",
       code: `suite basic {
     description: "Basic benchmark example"
     warmup: 100
@@ -66,7 +66,7 @@ A real-world cryptographic benchmark comparing Keccak256 implementations. This p
   tabs={[
     {
       title: "keccak.bench",
-      language: "rust",
+      language: "bench",
       code: `use std::charting
 
 suite keccak {
@@ -151,7 +151,7 @@ Group related benchmarks together to share setup code. This is useful for compar
   tabs={[
     {
       title: "hash-suite.bench",
-      language: "rust",
+      language: "bench",
       code: `suite hashBenchmarks {
     description: "Hash function benchmarks with varying input sizes"
     warmup: 50
@@ -235,7 +235,7 @@ The `std::anvil` module spawns a local Anvil node for Ethereum RPC benchmarks. T
   tabs={[
     {
       title: "rpc.bench",
-      language: "rust",
+      language: "bench",
       code: `use std::anvil
 
 suite rpcBenchmarks {
@@ -308,7 +308,7 @@ suite rpcBenchmarks {
 />
 
 <Aside type="tip">
-<span>The <code>anvil.ANVIL_RPC_URL</code> constant is automatically available after calling <code>anvil.spawnAnvil()</code>. It points to the local Anvil instance.</span>
+<span>The <code>ANVIL_RPC_URL</code> value is available after calling <code>anvil.spawnAnvil()</code> (injected directly for TypeScript and available via env var for Go/Rust).</span>
 </Aside>
 
 
@@ -320,7 +320,7 @@ Compare ABI encoding performance across different libraries. This is a common be
   tabs={[
     {
       title: "abi.bench",
-      language: "rust",
+      language: "bench",
       code: `use std::charting
 
 suite abiBenchmarks {
@@ -423,7 +423,7 @@ Enable memory profiling to track allocations alongside timing. This helps identi
   tabs={[
     {
       title: "memory.bench",
-      language: "rust",
+      language: "bench",
       code: `suite memoryBenchmarks {
     description: "Benchmarks with memory profiling"
     warmup: 50
@@ -507,7 +507,7 @@ Use `before`, `after`, and `each` hooks for setup and teardown. This is useful f
   tabs={[
     {
       title: "hooks.bench",
-      language: "rust",
+      language: "bench",
       code: `suite withHooks {
     description: "Demonstrating lifecycle hooks"
     warmup: 50
@@ -591,7 +591,7 @@ Generate multiple chart types for visual comparison. The `charting` module suppo
   tabs={[
     {
       title: "charts.bench",
-      language: "rust",
+      language: "bench",
       code: `use std::charting
 
 suite chartExamples {
@@ -691,7 +691,7 @@ You don't have to benchmark all three languages. poly-bench works with any subse
   tabs={[
     {
       title: "go-vs-ts.bench",
-      language: "rust",
+      language: "bench",
       code: `suite goVsTs {
     description: "Comparing only Go and TypeScript"
     warmup: 100

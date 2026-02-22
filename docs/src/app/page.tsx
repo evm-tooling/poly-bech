@@ -287,7 +287,13 @@ export default function Home() {
       <main className="relative overflow-x-clip">
         {/* ── HERO — asymmetric split with .bench file ── */}
         <section className="relative w-full overflow-hidden !border-b !border-border bg-background">
-          <div className="w-full max-w-7xl mx-auto px-6 py-28 lg:py-36">
+          {/* Subtle red bokeh / glow accents */}
+          <div className="pointer-events-none absolute inset-0 z-0" aria-hidden="true">
+            <div className="absolute top-[-5rem] left-[12%] h-80 w-80 rounded-full bg-[radial-gradient(circle,hsl(var(--primary)/0.24)_0%,hsl(var(--primary)/0.16)_26%,hsl(var(--primary)/0.09)_48%,hsl(var(--primary)/0.04)_66%,transparent_86%)] blur-[70px]" />
+            <div className="absolute top-[20%] right-[10%] h-[28rem] w-[28rem] rounded-full bg-[radial-gradient(circle,hsl(var(--primary)/0.2)_0%,hsl(var(--primary)/0.12)_28%,hsl(var(--primary)/0.07)_50%,hsl(var(--primary)/0.03)_68%,transparent_88%)] blur-[92px]" />
+            <div className="absolute bottom-[-9rem] left-[38%] h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,hsl(var(--primary)/0.16)_0%,hsl(var(--primary)/0.1)_28%,hsl(var(--primary)/0.06)_52%,hsl(var(--primary)/0.02)_70%,transparent_90%)] blur-[110px]" />
+          </div>
+          <div className="relative z-10 w-full max-w-7xl mx-auto px-6 py-28 lg:py-36">
             <div className="grid lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-16 items-start">
               <motion.div
                 initial="hidden"
@@ -299,7 +305,7 @@ export default function Home() {
                 <motion.div
                   variants={fadeUp}
                   custom={0}
-                  className="inline-flex items-center gap-2 text-xs font-medium px-3 py-1 mt-2 mb-6 rounded-full !border !border-border text-foreground-muted"
+                  className="relative z-20 inline-flex items-center gap-2 text-xs font-medium px-3 py-1 mt-2 mb-6 rounded-full !border !border-border bg-background/85 backdrop-blur-sm text-foreground-muted"
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   Built in Rust · Open Source · MIT
@@ -374,7 +380,7 @@ export default function Home() {
                 className="flex flex-col gap-4 w-full min-w-0 lg:max-w-2xl"
               >
                 {/* .bench file */}
-                <div className="rounded-2xl overflow-hidden !border !border-border bg-code-bg shadow-xl dark:shadow-none">
+                <div className="relative z-20 rounded-2xl overflow-hidden !border !border-border bg-code-bg shadow-xl dark:shadow-none">
                   <div className="flex items-center gap-2 px-4 py-3 bg-background-elevated !border-b !border-border">
                     <div className="flex gap-1.5">
                       <span className="w-3 h-3 rounded-full bg-red-400" />
@@ -406,7 +412,7 @@ export default function Home() {
                   </Highlight>
                 </div>
                 {/* Install terminal */}
-                <div className="rounded-2xl overflow-hidden !border !border-border bg-code-bg shadow-xl dark:shadow-none">
+                <div className="relative z-20 rounded-2xl overflow-hidden !border !border-border bg-code-bg shadow-xl dark:shadow-none">
                   <div className="flex items-center justify-between gap-2 px-4 py-1 bg-background-elevated !border-b !border-border">
                     <div className="flex items-center gap-2">
                       <span className="w-3 h-3 rounded-full bg-red-400" />

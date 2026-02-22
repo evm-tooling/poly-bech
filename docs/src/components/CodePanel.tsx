@@ -53,6 +53,37 @@ interface CodeGroupProps {
   title?: string
 }
 
+function looksLikeBenchCode(code: string, title?: string): boolean {
+  const normalizedTitle = (title || '').toLowerCase()
+  if (normalizedTitle.endsWith('.bench')) return true
+
+  // Heuristic: if multiple core DSL constructs appear, treat it as bench.
+  return /\b(?:suite|setup|bench|fixture|globalSetup)\b/.test(code) &&
+    /(?:\buse\s+std::|\b(?:go|ts|rust)\s*:)/.test(code)
+}
+
+function normalizeLanguage(
+  language: string | undefined,
+  code: string,
+  title?: string,
+): string {
+  const lang = (language || 'typescript').toLowerCase()
+  if (lang === 'bench') return 'bench'
+
+  if (
+    looksLikeBenchCode(code, title) &&
+    (lang === 'rust' ||
+      lang === 'go' ||
+      lang === 'ts' ||
+      lang === 'typescript' ||
+      lang === 'text')
+  ) {
+    return 'bench'
+  }
+
+  return lang
+}
+
 function parseCodeDirectives(code: string): ParsedCode {
   const lines = code.split('\n')
   const metaByLine: CodeLineMeta[] = Array.from(
@@ -134,7 +165,7 @@ export function CodeGroup({ tabs: tabsInput, title }: CodeGroupProps) {
   const tabs = (tabsInput ?? []).map((tab) => ({
     title:
       tab.title || languageNames[tab.language || ''] || tab.language || 'Code',
-    language: tab.language || 'typescript',
+    language: normalizeLanguage(tab.language, tab.code || '', tab.title),
     code: tab.code || '',
     showLineNumbers: tab.showLineNumbers ?? true,
   }))

@@ -4,8 +4,9 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
-import lockupHDark from '../assets/logo-lockup-horizontal-dark-trans.png'
-import lockupHLight from '../assets/logo-lockup-horizontal-light-trans.png'
+import benchLogo from '../assets/bench-logo-transparent.png'
+import lockupHDark from '../assets/logo-lockup-horizontal-dark-trans-crop.png'
+import lockupHLight from '../assets/logo-lockup-horizontal-light-trans-crop.png'
 import { Button } from '../components/ui/button'
 import SearchTrigger from './SearchTrigger'
 import SidebarToggle from './SidebarToggle'
@@ -24,7 +25,7 @@ function NavLink({
   const isActive = !external && pathname.startsWith(href)
 
   const base =
-    'hidden sm:flex items-center text-sm font-medium no-underline px-3 py-1 transition-all duration-150 relative'
+    'hidden md:flex items-center text-sm font-medium no-underline px-2.5 lg:px-3 py-1 transition-all duration-150 relative'
   const active = isActive
     ? 'text-primary after:absolute after:bottom-[-11px] after:left-0 after:right-0 after:h-[2px] after:bg-primary after:rounded-full'
     : 'text-foreground-secondary hover:text-primary'
@@ -50,36 +51,91 @@ function NavLink({
 
 export default function Header() {
   const pathname = usePathname()
+  const isHome = pathname === '/'
   return (
     <header className="sticky top-0 z-50 w-full bg-background/95 dark:bg-background backdrop-blur-sm">
       <div className="px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
         {/* Left: logo area + search */}
         <div className="flex items-center min-w-0">
           <div
-            className={`flex items-center gap-3 sm:gap-4 shrink-0 ${pathname === '/' ? '' : 'lg:w-[260px] xl:w-[320px] 2xl:w-[355px] xl:pl-12'} overflow-hidden`}
+            className={`flex items-center gap-2 sm:gap-3 shrink-0 ${pathname === '/' ? '' : 'lg:w-[220px] xl:w-[300px] 2xl:w-[355px] xl:pl-12'} overflow-hidden`}
           >
-            <SidebarToggle />
-            <Link
-              href="/"
-              className="flex items-center gap-2 shrink-0"
-              style={{ height: '1.25rem' }}
-            >
-              {/* Logo same height as nav text (text-sm line-height) so it doesn't go tiny */}
-              <Image
-                src={lockupHDark}
-                alt="poly-bench"
-                className="dark-only w-auto object-contain object-center"
-                style={{ height: '12rem', width: '17rem' }}
-                priority
-              />
-              <Image
-                src={lockupHLight}
-                alt="poly-bench"
-                className="light-only w-auto object-contain object-center"
-                style={{ height: '12rem', width: '17rem' }}
-                priority
-              />
-            </Link>
+            {isHome ? (
+              <>
+                <Link
+                  href="/"
+                  className="relative shrink-0 hidden max-[420px]:block h-10 w-10"
+                >
+                  <Image
+                    src={benchLogo}
+                    alt="poly-bench"
+                    fill
+                    sizes="40px"
+                    className="object-contain object-left"
+                    priority
+                  />
+                </Link>
+                <Link
+                  href="/"
+                  className="relative shrink-0 block max-[420px]:hidden"
+                >
+                  <span className="relative block h-6 w-[146px] md:w-[158px] lg:w-[168px] xl:w-[182px]">
+                    <Image
+                      src={lockupHDark}
+                      alt="poly-bench"
+                      fill
+                      sizes="(max-width: 768px) 146px, (max-width: 1024px) 158px, (max-width: 1280px) 168px, 182px"
+                      className="dark-only object-contain object-left"
+                      priority
+                    />
+                    <Image
+                      src={lockupHLight}
+                      alt="poly-bench"
+                      fill
+                      sizes="(max-width: 768px) 146px, (max-width: 1024px) 158px, (max-width: 1280px) 168px, 182px"
+                      className="light-only object-contain object-left"
+                      priority
+                    />
+                  </span>
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/"
+                  className="relative shrink-0 block lg:hidden h-12 w-12 mr-6"
+                >
+                  <Image
+                    src={benchLogo}
+                    alt="poly-bench"
+                    fill
+                    sizes="48px"
+                    className="object-contain object-left"
+                    priority
+                  />
+                </Link>
+                <Link href="/" className="relative shrink-0 hidden lg:block">
+                  <span className="relative block h-6 w-[148px] xl:w-[158px]">
+                    <Image
+                      src={lockupHDark}
+                      alt="poly-bench"
+                      fill
+                      sizes="(max-width: 1280px) 148px, 158px"
+                      className="dark-only object-contain object-left"
+                      priority
+                    />
+                    <Image
+                      src={lockupHLight}
+                      alt="poly-bench"
+                      fill
+                      sizes="(max-width: 1280px) 148px, 158px"
+                      className="light-only object-contain object-left"
+                      priority
+                    />
+                  </span>
+                </Link>
+              </>
+            )}
           </div>
           {pathname !== '/' && (
             <div className="hidden sm:block">
@@ -100,10 +156,11 @@ export default function Header() {
 
           <Link
             href="/docs/getting-started"
-            className="hidden sm:inline-flex text-sm font-medium px-4 py-2 rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary-hover"
+            className="hidden lg:inline-flex text-sm font-medium px-4 py-2 rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary-hover"
           >
             Get Started
           </Link>
+          <SidebarToggle className="ml-1" />
         </nav>
       </div>
     </header>

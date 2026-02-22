@@ -102,8 +102,9 @@ poly-bench run benchmarks/keccak.bench --report markdown --output results/
 # Save JSON (for programmatic processing)
 poly-bench run benchmarks/keccak.bench --report json --output results/
 
-# Save both markdown and JSON
-poly-bench run benchmarks/keccak.bench --report markdown --report json --output results/`
+# Save markdown then JSON (run twice)
+poly-bench run benchmarks/keccak.bench --report markdown --output results/
+poly-bench run benchmarks/keccak.bench --report json --output results/`
     },
   ]}
 />
@@ -219,17 +220,15 @@ done`
     {
       title: "Terminal",
       language: "bash",
-      code: `# Format a single file (in-place)
+      code: `# Print formatted output for a single file
 poly-bench fmt benchmarks/keccak.bench
 
-# Format all .bench files in benchmarks/
+# Format all .bench files in benchmarks/ (print to stdout)
 poly-bench fmt
 
-# Check formatting without modifying files (exit 1 if changes needed)
-poly-bench fmt --check
-
-# Show what would change without applying it
-poly-bench fmt --diff`
+# Write formatted output back to file(s)
+poly-bench fmt benchmarks/keccak.bench --write
+poly-bench fmt --write`
     },
   ]}
 />
@@ -241,8 +240,8 @@ poly-bench fmt --diff`
     {
       title: "GitHub Actions step",
       language: "yaml",
-      code: `- name: Check formatting
-  run: poly-bench fmt --check`
+      code: `- name: Format benchmark files
+  run: poly-bench fmt --write`
     },
   ]}
 />
@@ -268,15 +267,15 @@ poly-bench codegen benchmarks/keccak.bench --lang ts --output generated/
 poly-bench codegen benchmarks/keccak.bench --lang rust --output generated/
 
 # Inspect the output
-cat generated/benchmark_gen.go`
+cat generated/benchmark_plugin.go`
     },
   ]}
 />
 
 Generated files:
-- Go: `generated/benchmark_gen.go`
-- TypeScript: `generated/benchmark_gen.ts`
-- Rust: `generated/benchmark_gen.rs`
+- Go: `generated/benchmark_plugin.go`
+- TypeScript: `generated/benchmark.ts`
+- Rust: `generated/main.rs`
 
 <Aside type="note">
 <span>Generated code is a complete, standalone benchmark program. You can compile and run it directly to verify correctness before running through poly-bench.</span>
@@ -284,36 +283,37 @@ Generated files:
 
 ---
 
-### Verbose Output
+### Compile-First CI Checks
 
-Use `--verbose` to see per-iteration timing, calibration decisions, and other diagnostic information.
+Use `compile` to type-check generated code for each language before running benchmarks.
 
 <CodeGroup
   tabs={[
     {
       title: "Terminal",
       language: "bash",
-      code: `poly-bench run benchmarks/keccak.bench --verbose`
+      code: `# Compile-check all benchmark files (uses cache by default)
+poly-bench compile
+
+# Compile-check a single file/language
+poly-bench compile benchmarks/keccak.bench --lang go
+
+# Force cold compile-check
+poly-bench compile benchmarks/keccak.bench --no-cache --clear-cache`
     },
   ]}
 />
 
-Example verbose output:
+Cache housekeeping:
 
 <CodeGroup
   tabs={[
     {
       title: "Output",
       language: "text",
-      code: `[keccak] Calibrating go...
-  trial 1: 1000 iters → 2.3ms (target: 3000ms)
-  trial 2: 100000 iters → 231ms (target: 3000ms)
-  trial 3: 1300000 iters → 3001ms ✓
-[keccak] Running go: 1300000 iters × 3 runs
-  run 1: 2.31 ns/op (CV: 1.2%)
-  run 2: 2.29 ns/op (CV: 0.8%)
-  run 3: 2.33 ns/op (CV: 1.5%)
-  result: 2.31 ns/op (p50), 2.29 ns/op (p95)`
+      code: `poly-bench cache stats
+poly-bench cache clear
+poly-bench cache clean`
     },
   ]}
 />
@@ -363,8 +363,11 @@ jobs:
       - name: Install benchmark dependencies
         run: poly-bench install
 
-      - name: Check formatting
-        run: poly-bench fmt --check
+      - name: Format benchmark files
+        run: poly-bench fmt --write
+
+      - name: Compile-check benchmark files
+        run: poly-bench compile
 
       - name: Validate benchmark files
         run: |
@@ -372,9 +375,10 @@ jobs:
             poly-bench check "$f"
           done
 
-      - name: Run benchmarks
+      - name: Run benchmarks (markdown + json)
         run: |
-          poly-bench run --report markdown --report json --output results/
+          poly-bench run --report markdown --output results/
+          poly-bench run --report json --output results/
 
       - name: Upload results
         uses: actions/upload-artifact@v4
@@ -453,12 +457,12 @@ jobs:
 | Goal | Command |
 |------|---------|
 | Fast smoke test | `poly-bench run bench.bench --iterations 100 --lang go` |
-| Full run with all outputs | `poly-bench run bench.bench --report markdown --report json --output results/` |
-| CI format check | `poly-bench fmt --check` |
+| Full run with all outputs | `poly-bench run bench.bench --report markdown --output results/` then `poly-bench run bench.bench --report json --output results/` |
+| Format benchmark files | `poly-bench fmt --write` |
 | CI validation | `poly-bench check benchmarks/*.bench` |
-| Debug slow benchmark | `poly-bench run bench.bench --verbose --lang go` |
+| Compile-check before running | `poly-bench compile bench.bench --lang go` |
 | Inspect generated Go code | `poly-bench codegen bench.bench --lang go --output gen/` |
-| Run without charts | `poly-bench run bench.bench` (omit `--output`) |
+| Run with reduced logs | `poly-bench run bench.bench --quiet` |
 | Override iterations | `poly-bench run bench.bench --iterations 50000` |
 
 ---

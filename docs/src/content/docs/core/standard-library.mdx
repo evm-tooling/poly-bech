@@ -161,7 +161,7 @@ suite evmBench {
 
 ### std::charting
 
-The `charting` module generates SVG charts from benchmark results. All charting directives must be called inside a suite-level `after { }` block and require `use std::charting` at the top of the file.
+The `charting` module generates SVG output from benchmark results. Chart directives must be called inside a suite-level `after { }` block and require `use std::charting` at the top of the file.
 
 <CodeGroup 
   tabs={[
@@ -174,10 +174,13 @@ suite example {
     # ... setup, fixtures, benchmarks ...
 
     after {
+        // [!code focus:4]
         charting.drawTable(title: "Results", output: "results-bar.svg")
-        charting.drawSpeedupChart(title: "Scaling", output: "results-line.svg")
-        charting.drawSpeedupChart(title: "Speedup", output: "results-speedup.svg")
-        charting.drawTable(title: "Summary", output: "results-table.svg")
+        charting.drawSpeedupChart(
+            title: "Speedup vs baseline",
+            output: "results-speedup.svg",
+            baselineBenchmark: "hashShort"
+        )
     }
 }`
     },
@@ -185,14 +188,14 @@ suite example {
 />
 
 <Aside type="note">
-<span>The <code>output</code> parameter controls the filename. Files are written to the directory specified by <code>--output</code> on the CLI. If no output directory is given, charts are not generated.</span>
+<span>The <code>output</code> parameter controls the filename only. Files are written to the directory passed via <code>--output</code>, or to <code>out/</code> when omitted.</span>
 </Aside>
 
 ---
 
 #### `charting.drawTable(...)`
 
-Generates a grouped table comparing benchmark results across languages. This is the most feature-rich chart type with the full set of available parameters.
+Generates an SVG summary table for benchmark results.
 
 <CodeGroup 
   tabs={[
@@ -200,82 +203,14 @@ Generates a grouped table comparing benchmark results across languages. This is 
       title: "Full syntax",
       language: "bench",
       code: `charting.drawTable(
-    # ── Basic ─────────────────────────────────────────
+    // [!code focus:7]
     title: "Performance Comparison",
     description: "Go vs TypeScript vs Rust",
-    output: "results-bar.svg",
-    width: 1200,
-    height: 600,
-    xlabel: "Benchmark",
-
-    # ── Display toggles ───────────────────────────────
-    showStats: true,
-    showConfig: true,
-    showWinCounts: true,
-    showGeoMean: true,
-    showDistribution: true,
-    showMemory: false,
-    showTotalTime: false,
-    compact: false,
-
-    # ── Filtering ─────────────────────────────────────
-    minSpeedup: 1.5,
-    filterWinner: "all",
-    includeBenchmarks: ["hashShort", "hashLong"],
-    excludeBenchmarks: ["goOnly"],
-    limit: 20,
-
-    # ── Sorting ───────────────────────────────────────
+    output: "results-table.svg",
     sortBy: "speedup",
     sortOrder: "desc",
-
-    # ── Bar layout ────────────────────────────────────
-
-    # ── Axis styling ──────────────────────────────────
-    axisThickness: 1.5,
-    yAxisMin: 0.0,
-    yAxisMax: 100.0,
-    yScale: "linear",
-    baselineBenchmark: "hashShort",
-    symlogThreshold: 1.0,
-
-    # ── Grid ──────────────────────────────────────────
-    showGrid: true,
-    gridOpacity: 0.15,
-    showMinorGrid: false,
-    minorGridOpacity: 0.05,
-    showVerticalGrid: false,
-
-    # ── Typography ────────────────────────────────────
-    titleFontSize: 18,
-    subtitleFontSize: 13,
-    axisLabelFontSize: 12,
-    tickLabelFontSize: 11,
-
-    # ── Legend ────────────────────────────────────────
-    legendPosition: "top-right",
-
-    # ── Error bars ────────────────────────────────────
-    showErrorBars: true,
-    errorBarOpacity: 0.7,
-    errorBarThickness: 1.5,
-    ciLevel: 95,
-
-    # ── Regression ────────────────────────────────────
-    showRegression: false,
-    regressionStyle: "dashed",
-    regressionModel: "auto",
-    showRegressionLabel: true,
-    showRSquared: true,
-    showEquation: false,
-    showRegressionBand: false,
-    regressionBandOpacity: 0.15,
-
-    # ── Data display ──────────────────────────────────
-    precision: 2,
-    timeUnit: "auto",
-    roundTicks: true,
-    chartMode: "performance",
+    showStats: true,
+    showGeoMean: true,
 )`
     },
   ]}
@@ -292,7 +227,8 @@ Generates a grouped table comparing benchmark results across languages. This is 
 | `output` | string | — | Output filename (e.g. `"results.svg"`) |
 | `width` | integer | — | Chart width in pixels |
 | `height` | integer | — | Chart height in pixels |
-| `xlabel` | string | — | X-axis label |
+| `width` | integer | — | Output width in pixels |
+| `height` | integer | — | Output height in pixels |
 
 **Display Toggles**
 
@@ -302,9 +238,6 @@ Generates a grouped table comparing benchmark results across languages. This is 
 | `showConfig` | boolean | `true` | Show suite configuration panel |
 | `showWinCounts` | boolean | `true` | Show win-count badges per language |
 | `showGeoMean` | boolean | `true` | Show geometric mean bar |
-| `showDistribution` | boolean | `true` | Show distribution overlay |
-| `showMemory` | boolean | `false` | Show memory allocation data |
-| `showTotalTime` | boolean | `false` | Show total wall-clock time |
 | `compact` | boolean | `false` | Compact layout with reduced padding |
 
 **Filtering**
@@ -321,88 +254,23 @@ Generates a grouped table comparing benchmark results across languages. This is 
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `sortBy` | string | — | Sort key: `"speedup"`, `"name"`, `"time"`, `"ops"` |
+| `sortBy` | string | — | Sort key: `"speedup"`, `"name"`, `"time"`, `"ops"`, `"natural"` |
 | `sortOrder` | string | — | `"asc"` or `"desc"` |
 
-**Bar Layout**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-
-**Axis Styling**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `axisThickness` | float | — | Axis line thickness in pixels |
-| `yAxisMin` | float | — | Y-axis minimum value |
-| `yAxisMax` | float | — | Y-axis maximum value |
-| `yScale` | string | `"linear"` | Y-axis scale: `"linear"`, `"log"`, `"symlog"`, `"percent"` |
-| `baselineBenchmark` | string | — | Benchmark name to use as the baseline (also: `baseline`) |
-| `symlogThreshold` | float | — | Threshold for symlog scale linear region |
-
-**Grid**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `showGrid` | boolean | — | Show horizontal grid lines |
-| `gridOpacity` | float | — | Grid line opacity (0.0–1.0) |
-| `showMinorGrid` | boolean | — | Show minor grid lines |
-| `minorGridOpacity` | float | — | Minor grid line opacity (0.0–1.0) |
-| `showVerticalGrid` | boolean | — | Show vertical grid lines |
-
-**Typography**
+**Typography + Values**
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `titleFontSize` | integer | — | Title font size in points |
 | `subtitleFontSize` | integer | — | Subtitle/description font size in points |
-| `axisLabelFontSize` | integer | — | Axis label font size in points |
-| `tickLabelFontSize` | integer | — | Tick label font size in points |
-
-**Legend**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `legendPosition` | string | — | `"top-left"`, `"top-right"`, `"bottom-left"`, `"bottom-right"`, or `"hidden"` |
-
-**Error Bars**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `showErrorBars` | boolean | — | Show confidence interval error bars |
-| `errorBarOpacity` | float | — | Error bar opacity (0.0–1.0) |
-| `errorBarThickness` | float | — | Error bar line thickness in pixels |
-| `ciLevel` | integer | — | Confidence interval level: `90`, `95`, or `99` |
-
-**Regression**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `showRegression` | boolean | — | Overlay a regression curve |
-| `regressionStyle` | string | — | Line style: `"solid"`, `"dashed"`, `"dotted"` |
-| `regressionModel` | string | `"auto"` | Model: `"auto"`, `"constant"`, `"log"`, `"linear"`, `"nlogn"`, `"quadratic"`, `"cubic"` |
-| `showRegressionLabel` | boolean | — | Show the model name label |
-| `showRSquared` | boolean | — | Show R² value |
-| `showEquation` | boolean | — | Show the fitted equation |
-| `showRegressionBand` | boolean | — | Show confidence band around the regression |
-| `regressionBandOpacity` | float | — | Regression band opacity (0.0–1.0) |
-
-**Data Display**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
 | `precision` | integer | — | Decimal places for displayed values |
 | `timeUnit` | string | `"auto"` | Time unit: `"auto"`, `"ns"`, `"us"`, `"ms"`, `"s"` |
-| `roundTicks` | boolean | — | Round axis tick values to clean numbers |
-| `chartMode` | string | `"performance"` | `"performance"` (lower is better) or `"throughput"` (higher is better) |
 
 ---
 
 #### `charting.drawSpeedupChart(...)`
 
-Generates a speedup chart showing how performance scales across benchmarks. Works best when benchmark names encode a numeric size (e.g. `n100`, `n200`, `size8`, `size16`) — poly-bench extracts the number for the x-axis.
-
-`drawSpeedupChart` supports the same parameter groups as `drawTable` with the following differences:
+Generates a speedup chart for benchmark comparison views.
 
 <CodeGroup 
   tabs={[
@@ -410,54 +278,15 @@ Generates a speedup chart showing how performance scales across benchmarks. Work
       title: "Example",
       language: "bench",
       code: `charting.drawSpeedupChart(
-    title: "Sort Performance - O(n log n)",
-    description: "Stdlib sort comparison across Go, TypeScript, and Rust",
-    output: "sort-line.svg",
-    xlabel: "Array Size (n elements)",
-    showRegression: true,
-    regressionModel: "nlogn",
-    showRSquared: true,
-    yScale: "linear",
-    timeUnit: "auto",
-    legendPosition: "top-left"
-)`
-    },
-  ]}
-/>
-
-##### `drawSpeedupChart`-only Parameter
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-
-All other parameters from `drawTable` are available on `drawSpeedupChart` except the bar-specific and display-toggle ones listed above.
-
----
-
-#### `charting.drawSpeedupChart(...)`
-
-Generates a chart showing the speedup ratio of each language relative to a baseline. Useful for highlighting which benchmarks have the largest performance gaps.
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Example",
-      language: "bench",
-      code: `charting.drawSpeedupChart(
-    title: "Speedup vs Go Baseline",
-    description: "How much faster each language is relative to Go",
+    // [!code focus:7]
+    title: "Speedup vs Go baseline",
+    description: "How each benchmark compares to baseline",
     output: "results-speedup.svg",
-    width: 1000,
-    height: 500,
-    baselineBenchmark: "hashShort",
+    baselineBenchmark: "hashShort",  # alias: baseline
     sortBy: "speedup",
-    sortOrder: "desc",
     showGrid: true,
     gridOpacity: 0.15,
-    legendPosition: "top-right",
-    titleFontSize: 18,
-    timeUnit: "auto",
-    precision: 2
+    legendPosition: "top-right"
 )`
     },
   ]}
@@ -472,79 +301,22 @@ Generates a chart showing the speedup ratio of each language relative to a basel
 | `output` | string | Output filename |
 | `width` | integer | Chart width in pixels |
 | `height` | integer | Chart height in pixels |
-| `baselineBenchmark` | string | Benchmark to use as the 1× baseline (also: `baseline`) |
+| `baselineBenchmark` / `baseline` | string | Benchmark used as baseline |
 | `minSpeedup` | float | Minimum speedup threshold for inclusion |
 | `filterWinner` | string | Filter by winning language |
 | `includeBenchmarks` | string[] | Whitelist of benchmark names |
 | `excludeBenchmarks` | string[] | Blacklist of benchmark names |
 | `limit` | integer | Maximum benchmarks to display |
-| `sortBy` | string | Sort key: `"speedup"`, `"name"`, `"time"`, `"ops"` |
+| `sortBy` | string | Sort key: `"speedup"`, `"name"`, `"time"`, `"ops"`, `"natural"` |
 | `sortOrder` | string | `"asc"` or `"desc"` |
 | `showGrid` | boolean | Show horizontal grid lines |
-| `gridOpacity` | float | Grid line opacity (0.0–1.0) |
-| `legendPosition` | string | Legend placement |
+| `gridOpacity` | float | Grid line opacity (0.0-1.0) |
 | `titleFontSize` | integer | Title font size |
 | `subtitleFontSize` | integer | Subtitle font size |
 | `axisLabelFontSize` | integer | Axis label font size |
 | `tickLabelFontSize` | integer | Tick label font size |
-| `precision` | integer | Decimal places for values |
-| `timeUnit` | string | Time unit for display |
-
----
-
-#### `charting.drawTable(...)`
-
-Generates an SVG table summarizing benchmark results. Useful for embedding in reports or README files.
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Example",
-      language: "bench",
-      code: `charting.drawTable(
-    title: "Benchmark Summary",
-    description: "Go vs TypeScript vs Rust — keccak256 suite",
-    output: "results-table.svg",
-    width: 900,
-    showStats: true,
-    showConfig: true,
-    showWinCounts: true,
-    showGeoMean: true,
-    compact: false,
-    sortBy: "speedup",
-    sortOrder: "desc",
-    titleFontSize: 16,
-    subtitleFontSize: 12,
-    timeUnit: "auto",
-    precision: 2
-)`
-    },
-  ]}
-/>
-
-##### `drawTable` Parameter Reference
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `title` | string | Table title |
-| `description` | string | Subtitle text |
-| `output` | string | Output filename |
-| `width` | integer | Table width in pixels |
-| `height` | integer | Table height in pixels |
-| `showStats` | boolean | Show statistical summary row |
-| `showConfig` | boolean | Show suite configuration header |
-| `showWinCounts` | boolean | Show win-count column |
-| `showGeoMean` | boolean | Show geometric mean row |
-| `compact` | boolean | Compact layout |
-| `minSpeedup` | float | Minimum speedup threshold for inclusion |
-| `filterWinner` | string | Filter by winning language |
-| `includeBenchmarks` | string[] | Whitelist of benchmark names |
-| `excludeBenchmarks` | string[] | Blacklist of benchmark names |
-| `limit` | integer | Maximum benchmarks to display |
-| `sortBy` | string | Sort key |
-| `sortOrder` | string | `"asc"` or `"desc"` |
-| `titleFontSize` | integer | Title font size |
-| `subtitleFontSize` | integer | Subtitle font size |
+| `legendPosition` | string | `"top-left"`, `"top-right"`, `"bottom-left"`, `"bottom-right"`, `"hidden"` |
+| `theme` | string | `"dark"` or `"light"` |
 | `precision` | integer | Decimal places for values |
 | `timeUnit` | string | Time unit for display |
 
@@ -568,35 +340,18 @@ suite comprehensive {
         # Grouped table for overall comparison
         charting.drawTable(
             title: "Overall Performance",
-            output: "results-bar.svg",
+            output: "results-table.svg",
             sortBy: "speedup",
             sortOrder: "desc",
-            showMemory: true
+            showStats: true
         )
 
-        # Line chart for scaling analysis
+        # Speedup chart relative to a baseline benchmark
         charting.drawSpeedupChart(
-            title: "Scaling Behavior",
-            output: "results-line.svg",
-            xlabel: "Input Size",
-            showRegression: true,
-            regressionModel: "auto"
-        )
-
-        # Speedup chart relative to Go
-        charting.drawSpeedupChart(
-            title: "Speedup vs Go",
+            title: "Speedup vs baseline",
             output: "results-speedup.svg",
-            sortBy: "speedup",
-            sortOrder: "desc"
-        )
-
-        # Summary table
-        charting.drawTable(
-            title: "Summary",
-            output: "results-table.svg",
-            showStats: true,
-            compact: true
+            baselineBenchmark: "hashShort",
+            showGrid: true
         )
     }
 }`
@@ -614,11 +369,8 @@ The `constants` module provides common mathematical constants for use in benchma
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `constants.PI` | 3.14159265358979... | Pi (π) |
-| `constants.E` | 2.71828182845904... | Euler's number (e) |
-| `constants.TAU` | 6.28318530717958... | Tau (2π) |
-| `constants.PHI` | 1.61803398874989... | Golden ratio (φ) |
-| `constants.SQRT2` | 1.41421356237309... | Square root of 2 |
+| `std_PI` (Go/TS/Python), `STD_PI` (Rust) | 3.14159265358979... | Pi (π) |
+| `std_E` (Go/TS/Python), `STD_E` (Rust) | 2.71828182845904... | Euler's number (e) |
 
 <CodeGroup 
   tabs={[
@@ -629,17 +381,10 @@ The `constants` module provides common mathematical constants for use in benchma
 
 suite mathBenchmarks {
     setup go {
-        import (
-            "math"
-        )
-
         helpers {
             func circleArea(radius float64) float64 {
-                return constants.PI * radius * radius
-            }
-
-            func circleCircumference(radius float64) float64 {
-                return constants.TAU * radius
+                // [!code focus]
+                return std_PI * radius * radius
             }
         }
     }
@@ -647,7 +392,8 @@ suite mathBenchmarks {
     setup ts {
         helpers {
             function circleArea(radius: number): number {
-                return constants.PI * radius * radius
+                // [!code focus]
+                return std_PI * radius * radius
             }
         }
     }
@@ -655,7 +401,8 @@ suite mathBenchmarks {
     setup rust {
         helpers {
             fn circle_area(radius: f64) -> f64 {
-                constants::PI * radius * radius
+                // [!code focus]
+                STD_PI * radius * radius
             }
         }
     }
@@ -671,7 +418,7 @@ suite mathBenchmarks {
 />
 
 <Aside type="note">
-<span>The <code>constants</code> module is most useful for Go benchmarks. TypeScript has <code>Math.PI</code>, <code>Math.E</code>, and <code>Math.SQRT2</code> built-in, and Rust has <code>std::f64::consts::PI</code> and friends.</span>
+<span>Constant symbol names are language-specific in generated code: Go/TypeScript/Python use <code>std_PI</code>/<code>std_E</code>, while Rust uses <code>STD_PI</code>/<code>STD_E</code>.</span>
 </Aside>
 
 ---
@@ -681,8 +428,8 @@ suite mathBenchmarks {
 | Module | Import | Key Functions / Constants |
 |--------|--------|--------------------------|
 | `std::anvil` | `use std::anvil` | `spawnAnvil()`, `stopAnvil()`, `ANVIL_RPC_URL` |
-| `std::charting` | `use std::charting` | `drawTable()`, `drawSpeedupChart()`, `drawSpeedupChart()`, `drawTable()` |
-| `std::constants` | `use std::constants` | `PI`, `E`, `TAU`, `PHI`, `SQRT2` |
+| `std::charting` | `use std::charting` | `drawTable()`, `drawSpeedupChart()` |
+| `std::constants` | `use std::constants` | `std_PI`/`STD_PI`, `std_E`/`STD_E` |
 
 ---
 

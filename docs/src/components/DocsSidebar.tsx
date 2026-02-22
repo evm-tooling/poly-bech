@@ -451,7 +451,7 @@ function SidebarContent({ pathname }: { pathname: string }) {
         <motion.nav
           ref={scrollRef}
           layoutScroll
-          className="flex-1 overflow-y-auto py-4 px-3 hide-scrollbar"
+          className="flex-1 overflow-y-hidden py-4 px-3"
           onMouseLeave={() => setHoveredId(null)}
           onBlurCapture={() => setHoveredId(null)}
         >
@@ -480,7 +480,7 @@ export default function DocsSidebar() {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex w-[260px] xl:w-[320px] 2xl:w-[380px] pl-4 xl:pl-12 shrink-0 h-full flex-col bg-background overflow-y-auto">
+      <aside className="hidden lg:flex w-[260px] xl:w-[320px] 2xl:w-[380px] pl-4 xl:pl-12 shrink-0 h-full flex-col bg-background overflow-hidden">
         <SidebarContent pathname={pathname} />
       </aside>
 
@@ -491,7 +491,7 @@ export default function DocsSidebar() {
             className="fixed inset-0 z-40 bg-background/60 backdrop-blur-sm lg:hidden"
             onClick={close}
           />
-          <aside className="fixed top-12 left-0 z-50 w-[300px] max-w-[85vw] h-[calc(100vh-3rem)] bg-background border-r border-primary/15 flex flex-col lg:hidden shadow-2xl animate-slide-in">
+          <aside className="fixed top-14 left-0 z-50 w-[300px] max-w-[85vw] h-[calc(100dvh-3.5rem)] bg-background border-r border-primary/15 flex flex-col lg:hidden shadow-2xl animate-slide-in">
             <SidebarContent pathname={pathname} />
           </aside>
         </>

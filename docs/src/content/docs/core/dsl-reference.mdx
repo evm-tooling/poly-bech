@@ -128,11 +128,12 @@ A suite groups related benchmarks with shared configuration, setup code, fixture
 
     # ── Iteration control ─────────────────────────────
     iterations: 100000        # Fixed iteration count (used when mode: "fixed")
-    warmup: 50                # Warmup iterations before timing starts
+    // [!code focus:4]
+    warmup: 1000              # Warmup iterations before timing starts
     mode: "auto"              # "auto" (calibrate) or "fixed"
     targetTime: 3000ms        # Target wall-clock time for auto calibration
-    minIterations: 1000       # Floor for auto-calibrated iteration count
-    maxIterations: 10000000   # Ceiling for auto-calibrated iteration count
+    minIterations: 10         # Floor for auto-calibrated iteration count
+    maxIterations: 1000000    # Ceiling for auto-calibrated iteration count
 
     # ── Statistical controls ──────────────────────────
     count: 3                  # Number of timed runs per benchmark
@@ -174,11 +175,11 @@ A suite groups related benchmarks with shared configuration, setup code, fixture
 |-------|------|---------|-------------|
 | `description` | string | — | Human-readable description of the suite |
 | `iterations` | number | — | Fixed iteration count; required when `mode: "fixed"` |
-| `warmup` | number | `0` | Warmup iterations before timing |
+| `warmup` | number | `1000` | Warmup iterations before timing |
 | `mode` | string | `"auto"` | `"auto"` (calibrate to `targetTime`) or `"fixed"` |
 | `targetTime` | duration | `3000ms` | Target run time for auto calibration |
-| `minIterations` | number | `1` | Minimum iterations in auto mode |
-| `maxIterations` | number | `10000000` | Maximum iterations in auto mode |
+| `minIterations` | number | `10` | Minimum iterations in auto mode |
+| `maxIterations` | number | `1000000` | Maximum iterations in auto mode |
 | `count` | number | `1` | Number of timed runs per benchmark |
 | `cvThreshold` | number | `5.0` | Target coefficient of variation (%) |
 | `outlierDetection` | boolean | `true` | IQR-based outlier removal |
@@ -672,6 +673,7 @@ suite example {
     # ... benchmarks ...
 
     after {
+        // [!code focus:4]
         charting.drawTable(
             title: "Performance Comparison",
             output: "results-bar.svg",
@@ -679,20 +681,12 @@ suite example {
             sortOrder: "desc"
         )
 
-        charting.drawSpeedupChart(
-            title: "Scaling Behavior",
-            output: "results-line.svg",
-            xlabel: "Input Size"
-        )
-
+        // [!code focus:3]
         charting.drawSpeedupChart(
             title: "Speedup vs Go Baseline",
-            output: "results-speedup.svg"
-        )
-
-        charting.drawTable(
-            title: "Summary Table",
-            output: "results-table.svg"
+            output: "results-speedup.svg",
+            baselineBenchmark: "hashShort",
+            sortBy: "speedup"
         )
     }
 }`
@@ -734,13 +728,13 @@ A complete `.bench` file demonstrating all major features:
 
 suite keccakBenchmarks {
     description: "Keccak256 hashing across Go, TypeScript, and Rust"
-    warmup: 50
+    warmup: 1000
     compare: true
     baseline: "go"
     mode: "auto"
     targetTime: 3000ms
-    minIterations: 1000
-    maxIterations: 10000000
+    minIterations: 10
+    maxIterations: 1000000
     count: 3
     cvThreshold: 5.0
     outlierDetection: true

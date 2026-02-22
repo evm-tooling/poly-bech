@@ -48,9 +48,9 @@ Every benchmark flows through the same pipeline. Your `.bench` file is parsed in
       label: "Code Generation",
       sublabel: "poly-bench-runtime",
       items: [
-        "Go: Generate benchmark_gen.go",
-        "TypeScript: Generate benchmark_gen.ts",
-        "Rust: Generate benchmark_gen.rs"
+        "Go: Generate benchmark_plugin.go",
+        "TypeScript: Generate benchmark.ts",
+        "Rust: Generate main.rs"
       ]
     },
     {
@@ -278,7 +278,7 @@ Each language runs in its own isolated subprocess:
     },
     {
       condition: "TypeScript",
-      label: "node benchmark_gen.ts → collect timing + memory"
+      label: "node benchmark.ts → collect timing + memory"
     },
     {
       condition: "Rust",
@@ -377,7 +377,7 @@ Standard library modules are implemented in Rust and invoked via directives in `
   tabs={[
     {
       title: ".bench",
-      language: "rust",
+      language: "bench",
       code: `use std::anvil
 use std::charting
 

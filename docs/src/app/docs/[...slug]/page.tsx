@@ -169,8 +169,9 @@ export default async function DocPage({ params }: PageProps) {
           __html: JSON.stringify(jsonLd),
         }}
       />
-      <div className="flex gap-0">
-        <article className="flex-1 min-w-0 max-w-[80ch]">
+      <div className="flex flex-col xl:flex-row gap-0">
+        <TableOfContents headings={headings} />
+        <article className="xl:order-1 flex-1 min-w-0 max-w-[80ch]">
           <h1 className="heading-1 mb-2">{doc.meta.title}</h1>
           {doc.meta.description && (
             <p className="text-lead mb-8">{doc.meta.description}</p>
@@ -195,7 +196,6 @@ export default async function DocPage({ params }: PageProps) {
             lastModified={lastModified}
           />
         </article>
-        <TableOfContents headings={headings} />
       </div>
     </>
   )

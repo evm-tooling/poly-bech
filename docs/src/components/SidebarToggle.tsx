@@ -1,8 +1,9 @@
 'use client'
 
+import { cn } from '@/lib/cn'
 import { useSidebar } from './SidebarContext'
 
-export default function SidebarToggle() {
+export default function SidebarToggle({ className }: { className?: string }) {
   const { open, toggle, hasSidebar } = useSidebar()
 
   if (!hasSidebar) return null
@@ -10,7 +11,10 @@ export default function SidebarToggle() {
   return (
     <button
       onClick={toggle}
-      className="lg:hidden flex items-center justify-center w-9 h-9 rounded-md text-gray-3 hover:text-gray-1 hover:bg-gray-5/30 transition-colors shrink-0"
+      className={cn(
+        'lg:hidden flex items-center justify-center w-9 h-9 rounded-md text-gray-3 hover:text-gray-1 hover:bg-gray-5/30 transition-colors shrink-0',
+        className,
+      )}
       aria-label={open ? 'Close sidebar' : 'Open sidebar'}
       aria-expanded={open}
     >
