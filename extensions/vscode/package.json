@@ -2,7 +2,7 @@
   "name": "poly-bench",
   "displayName": "poly-bench",
   "description": "Language support for .bench files with embedded Go, TypeScript, and Rust - powered by poly-bench-lsp",
-  "version": "0.2.30",
+  "version": "0.0.30",
   "publisher": "evm-tooling",
   "repository": {
     "type": "git",
@@ -11,6 +11,7 @@
   "engines": {
     "vscode": "^1.74.0"
   },
+  "icon": "icon.png",
   "categories": [
     "Programming Languages"
   ],
