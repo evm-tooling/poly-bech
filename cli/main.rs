@@ -169,6 +169,21 @@ enum Commands {
         features: Option<Vec<String>>,
     },
 
+    /// Remove a dependency
+    Remove {
+        /// Go package to remove (e.g., "github.com/ethereum/go-ethereum")
+        #[arg(long)]
+        go: Option<String>,
+
+        /// NPM package to remove (e.g., "viem")
+        #[arg(long)]
+        ts: Option<String>,
+
+        /// Rust crate to remove (e.g., "sha2")
+        #[arg(long)]
+        rs: Option<String>,
+    },
+
     /// Install dependencies from polybench.toml
     Install,
 
@@ -281,6 +296,9 @@ async fn main() -> Result<()> {
         }
         Commands::Add { go, ts, rs, features } => {
             cmd_add(go, ts, rs, features)?;
+        }
+        Commands::Remove { go, ts, rs } => {
+            cmd_remove(go, ts, rs)?;
         }
         Commands::Install => {
             cmd_install()?;
@@ -1195,10 +1213,20 @@ fn cmd_init(name: Option<&str>, languages: Vec<String>, no_example: bool) -> Res
             (name, languages, true)
         }
     };
-    let options = project::init::InitOptions { name, languages, no_example, quiet };
+    let is_current_dir = name == ".";
+    let options = project::init::InitOptions { name: name.clone(), languages, no_example, quiet };
     project::init::init_project(&options)?;
     if quiet {
-        init_t3::print_init_success_block(&options.name);
+        if is_current_dir {
+            // Get actual directory name for display
+            let dir_name = std::env::current_dir()
+                .ok()
+                .and_then(|p| p.file_name().map(|s| s.to_string_lossy().to_string()))
+                .unwrap_or_else(|| ".".to_string());
+            init_t3::print_init_success_block_current_dir(&dir_name);
+        } else {
+            init_t3::print_init_success_block(&options.name);
+        }
     }
     Ok(())
 }
@@ -1307,6 +1335,28 @@ fn cmd_add(
 
     if let Some(ref spec) = rs {
         project::deps::add_rust_dependency_with_features(spec, features.as_deref())?;
+    }
+
+    Ok(())
+}
+
+fn cmd_remove(go: Option<String>, ts: Option<String>, rs: Option<String>) -> Result<()> {
+    if go.is_none() && ts.is_none() && rs.is_none() {
+        return Err(miette::miette!(
+            "No dependency specified. Use --go, --ts, or --rs to remove a dependency."
+        ));
+    }
+
+    if let Some(ref package) = go {
+        project::deps::remove_go_dependency(package)?;
+    }
+
+    if let Some(ref package) = ts {
+        project::deps::remove_ts_dependency(package)?;
+    }
+
+    if let Some(ref crate_name) = rs {
+        project::deps::remove_rust_dependency(crate_name)?;
     }
 
     Ok(())

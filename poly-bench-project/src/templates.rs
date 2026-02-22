@@ -1,15 +1,21 @@
 //! Template strings for generated project files
 
 /// Generate the example.bench file content
+/// Uses only standard library features - no external dependencies required
 pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool) -> String {
     let mut content = String::new();
 
-    content.push_str("suite example {\n");
-    content.push_str("    description: \"Example benchmark to get you started\"\n");
-    content.push_str("    iterations: 50\n");
-    content.push_str("    warmup: 100\n");
-    // Enable comparison if more than one language
+    // Add charting import for the after block
     let lang_count = has_go as i32 + has_ts as i32 + has_rust as i32;
+    if lang_count > 1 {
+        content.push_str("use std::charting\n\n");
+    }
+
+    content.push_str("suite example {\n");
+    content.push_str("    description: \"Fibonacci benchmark - no external dependencies\"\n");
+    content.push_str("    warmup: 10\n");
+
+    // Enable comparison if more than one language
     if lang_count > 1 {
         content.push_str("    compare: true\n");
         if has_go {
@@ -18,21 +24,26 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool) -> String {
             content.push_str("    baseline: \"rust\"\n");
         }
     }
+    content.push_str("    targetTime: 2000ms\n");
+    content.push_str("    mode: \"auto\"\n");
+    content.push_str("    count: 2\n");
+    content.push_str("    cvThreshold: 5\n");
     content.push('\n');
 
-    // Setup blocks with structured format
+    // Setup blocks - no imports needed, just helper functions
     if has_go {
         content.push_str("    setup go {\n");
-        content.push_str("        import (\n");
-        content.push_str("            \"crypto/sha256\"\n");
-        content.push_str("        )\n");
-        content.push('\n');
-        content.push_str("        init {\n");
-        content.push_str("        }\n");
-        content.push('\n');
         content.push_str("        helpers {\n");
-        content.push_str("            func sha256SumGo(data []byte) [32]byte {\n");
-        content.push_str("                return sha256.Sum256(data)\n");
+        content.push_str("            func fibGo(data []byte) []byte {\n");
+        content.push_str("                n := int(data[0])\n");
+        content.push_str("                if n <= 1 {\n");
+        content.push_str("                    return []byte{byte(n)}\n");
+        content.push_str("                }\n");
+        content.push_str("                a, b := 0, 1\n");
+        content.push_str("                for i := 2; i <= n; i++ {\n");
+        content.push_str("                    a, b = b, a+b\n");
+        content.push_str("                }\n");
+        content.push_str("                return []byte{byte(b & 0xFF)}\n");
         content.push_str("            }\n");
         content.push_str("        }\n");
         content.push_str("    }\n");
@@ -41,18 +52,15 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool) -> String {
 
     if has_ts {
         content.push_str("    setup ts {\n");
-        content.push_str("        import {\n");
-        content.push_str("            import { createHash } from 'node:crypto';\n");
-        content.push_str("        }\n");
-        content.push('\n');
-        content.push_str("        init {\n");
-        content.push_str("        }\n");
-        content.push('\n');
         content.push_str("        helpers {\n");
-        content.push_str("            function sha256SumTs(data: Uint8Array): Buffer {\n");
-        content.push_str(
-            "                return createHash('sha256').update(Buffer.from(data)).digest()\n",
-        );
+        content.push_str("            function fibTs(data: Uint8Array): Uint8Array {\n");
+        content.push_str("                const n = data[0]\n");
+        content.push_str("                if (n <= 1) return new Uint8Array([n])\n");
+        content.push_str("                let a = 0, b = 1\n");
+        content.push_str("                for (let i = 2; i <= n; i++) {\n");
+        content.push_str("                    [a, b] = [b, a + b]\n");
+        content.push_str("                }\n");
+        content.push_str("                return new Uint8Array([b & 0xFF])\n");
         content.push_str("            }\n");
         content.push_str("        }\n");
         content.push_str("    }\n");
@@ -61,53 +69,178 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool) -> String {
 
     if has_rust {
         content.push_str("    setup rust {\n");
-        content.push_str("        import {\n");
-        content.push_str("            use sha2::{Sha256, Digest};\n");
-        content.push_str("        }\n");
-        content.push('\n');
-        content.push_str("        init {\n");
-        content.push_str("        }\n");
-        content.push('\n');
         content.push_str("        helpers {\n");
-        content.push_str("            fn sha256_sum_rust(data: &[u8]) -> [u8; 32] {\n");
-        content.push_str("                let mut hasher = Sha256::new();\n");
-        content.push_str("                hasher.update(data);\n");
-        content.push_str("                hasher.finalize().into()\n");
+        content.push_str("            fn fib_rust(data: &[u8]) -> Vec<u8> {\n");
+        content.push_str("                let n = data[0] as usize;\n");
+        content.push_str("                if n <= 1 {\n");
+        content.push_str("                    return vec![n as u8];\n");
+        content.push_str("                }\n");
+        content.push_str("                let (mut a, mut b) = (0u64, 1u64);\n");
+        content.push_str("                for _ in 2..=n {\n");
+        content.push_str("                    let tmp = a + b;\n");
+        content.push_str("                    a = b;\n");
+        content.push_str("                    b = tmp;\n");
+        content.push_str("                }\n");
+        content.push_str("                vec![(b & 0xFF) as u8]\n");
         content.push_str("            }\n");
         content.push_str("        }\n");
         content.push_str("    }\n");
         content.push('\n');
     }
 
-    // Fixture
-    content.push_str("    fixture data {\n");
-    content.push_str("        hex: \"68656c6c6f20776f726c64\"\n");
+    // Fixtures with different input sizes (n values encoded as single bytes)
+    content.push_str("    fixture n20 {\n");
+    content.push_str("        hex: \"14\"\n");
+    content.push_str("    }\n");
+    content.push('\n');
+    content.push_str("    fixture n30 {\n");
+    content.push_str("        hex: \"1e\"\n");
+    content.push_str("    }\n");
+    content.push('\n');
+    content.push_str("    fixture n40 {\n");
+    content.push_str("        hex: \"28\"\n");
+    content.push_str("    }\n");
+    content.push('\n');
+    content.push_str("    fixture n50 {\n");
+    content.push_str("        hex: \"32\"\n");
+    content.push_str("    }\n");
+    content.push('\n');
+    content.push_str("    fixture n60 {\n");
+    content.push_str("        hex: \"3C\"\n");
+    content.push_str("    }\n");
+    content.push('\n');
+    content.push_str("    fixture n70 {\n");
+    content.push_str("        hex: \"46\"\n");
     content.push_str("    }\n");
     content.push('\n');
 
-    // Benchmark
-    content.push_str("    bench sha256Bench {\n");
+    // Benchmarks for each input size
+    content.push_str("    bench fib20 {\n");
     if has_go {
-        content.push_str("        go: sha256SumGo(data)\n");
+        content.push_str("        go: fibGo(n20)\n");
     }
     if has_ts {
-        content.push_str("        ts: sha256SumTs(data)\n");
+        content.push_str("        ts: fibTs(n20)\n");
     }
     if has_rust {
-        content.push_str("        rust: sha256_sum_rust(&data)\n");
+        content.push_str("        rust: fib_rust(&n20)\n");
     }
     content.push_str("    }\n");
     content.push('\n');
 
-    // Charting example (commented out)
+    content.push_str("    bench fib30 {\n");
+    if has_go {
+        content.push_str("        go: fibGo(n30)\n");
+    }
+    if has_ts {
+        content.push_str("        ts: fibTs(n30)\n");
+    }
+    if has_rust {
+        content.push_str("        rust: fib_rust(&n30)\n");
+    }
+    content.push_str("    }\n");
+    content.push('\n');
+
+    content.push_str("    bench fib40 {\n");
+    if has_go {
+        content.push_str("        go: fibGo(n40)\n");
+    }
+    if has_ts {
+        content.push_str("        ts: fibTs(n40)\n");
+    }
+    if has_rust {
+        content.push_str("        rust: fib_rust(&n40)\n");
+    }
+    content.push_str("    }\n");
+    content.push('\n');
+
+    content.push_str("    bench fib50 {\n");
+    if has_go {
+        content.push_str("        go: fibGo(n50)\n");
+    }
+    if has_ts {
+        content.push_str("        ts: fibTs(n50)\n");
+    }
+    if has_rust {
+        content.push_str("        rust: fib_rust(&n50)\n");
+    }
+    content.push_str("    }\n");
+    content.push('\n');
+
+    content.push_str("    bench fib60 {\n");
+    if has_go {
+        content.push_str("        go: fibGo(n60)\n");
+    }
+    if has_ts {
+        content.push_str("        ts: fibTs(n60)\n");
+    }
+    if has_rust {
+        content.push_str("        rust: fib_rust(&n60)\n");
+    }
+    content.push_str("    }\n");
+    content.push('\n');
+
+    content.push_str("    bench fib70 {\n");
+    if has_go {
+        content.push_str("        go: fibGo(n70)\n");
+    }
+    if has_ts {
+        content.push_str("        ts: fibTs(n70)\n");
+    }
+    if has_rust {
+        content.push_str("        rust: fib_rust(&n70)\n");
+    }
+    content.push_str("    }\n");
+
+    // Charting block with all chart types
     if lang_count > 1 {
-        content.push_str("    # Generate a bar chart after benchmarks complete:\n");
-        content.push_str("    # after {\n");
-        content.push_str("    #     charting.drawBarChart(\n");
-        content.push_str("    #         title: \"SHA256 Performance\",\n");
-        content.push_str("    #         xlabel: \"Benchmark\"\n");
-        content.push_str("    #     )\n");
-        content.push_str("    # }\n");
+        content.push('\n');
+        content.push_str("    after {\n");
+        content.push_str("        charting.drawBarChart(\n");
+        content.push_str("            title: \"Fibonacci Performance\",\n");
+        content.push_str("            description: \"Iterative fibonacci across languages\",\n");
+        content.push_str("            output: \"fib-bar.svg\",\n");
+        content.push_str("            xlabel: \"Input Size (n)\",\n");
+        content.push_str("            chartMode: \"performance\",\n");
+        content.push_str("            sortOrder: \"asc\",\n");
+        content.push_str("            sortBy: \"nameNumeric\",\n");
+        content.push_str("            showErrorBars: true,\n");
+        content.push_str("            errorBarOpacity: 0.5,\n");
+        content.push_str("            errorBarThickness: 1.5,\n");
+        content.push_str("            ciLevel: 90,\n");
+        content.push_str("            showRegression: true,\n");
+        content.push_str("            regressionStyle: \"dashed\",\n");
+        content.push_str("            regressionModel: \"auto\",\n");
+        content.push_str("            showRegressionLabel: true,\n");
+        content.push_str("            legendPosition: \"top-left\",\n");
+        content.push_str("        )\n");
+        content.push('\n');
+        content.push_str("        charting.drawLineChart(\n");
+        content.push_str("            title: \"Fibonacci Scaling\",\n");
+        content.push_str("            description: \"Performance across input sizes\",\n");
+        content.push_str("            output: \"fib-line.svg\",\n");
+        content.push_str("            xlabel: \"Input Size (n)\",\n");
+        content.push_str("            chartMode: \"performance\",\n");
+        content.push_str("            sortBy: \"nameNumeric\",\n");
+        content.push_str("            sortOrder: \"asc\",\n");
+        content.push_str("            showErrorBars: true,\n");
+        content.push_str("            errorBarOpacity: 0.5,\n");
+        content.push_str("            errorBarThickness: 1.5,\n");
+        content.push_str("            ciLevel: 90,\n");
+        content.push_str("            showStdDevBand: true,\n");
+        content.push_str("            showRegression: true,\n");
+        content.push_str("            regressionStyle: \"dashed\",\n");
+        content.push_str("            regressionModel: \"auto\",\n");
+        content.push_str("            showRegressionLabel: true,\n");
+        content.push_str("            legendPosition: \"top-left\",\n");
+        content.push_str("        )\n");
+        content.push('\n');
+        content.push_str("        charting.drawSpeedupChart(\n");
+        content.push_str("            title: \"Fibonacci Speedup\",\n");
+        content.push_str("            description: \"Relative performance vs baseline\",\n");
+        content.push_str("            output: \"fib-speedup.svg\",\n");
+        content.push_str("        )\n");
+        content.push_str("    }\n");
     }
 
     content.push_str("}\n");
@@ -469,11 +602,14 @@ mod tests {
         let content = example_bench(true, true, false);
         assert!(content.contains("setup go"));
         assert!(content.contains("setup ts"));
-        assert!(content.contains("sha256SumGo(data)"));
-        assert!(content.contains("sha256SumTs(data)"));
+        assert!(content.contains("fibGo(n20)"));
+        assert!(content.contains("fibTs(n20)"));
         assert!(content.contains("compare: true"));
         assert!(content.contains("baseline: \"go\""));
         assert!(content.contains("helpers {"));
+        assert!(content.contains("charting.drawBarChart"));
+        assert!(content.contains("charting.drawLineChart"));
+        assert!(content.contains("charting.drawSpeedupChart"));
     }
 
     #[test]
@@ -482,6 +618,7 @@ mod tests {
         assert!(content.contains("setup go"));
         assert!(!content.contains("setup ts"));
         assert!(!content.contains("compare: true")); // No comparison with single language
+        assert!(!content.contains("charting")); // No charting with single language
     }
 
     #[test]
@@ -490,11 +627,15 @@ mod tests {
         assert!(content.contains("setup go"));
         assert!(content.contains("setup ts"));
         assert!(content.contains("setup rust"));
-        assert!(content.contains("sha256SumGo(data)"));
-        assert!(content.contains("sha256SumTs(data)"));
-        assert!(content.contains("sha256_sum_rust(&data)"));
+        assert!(content.contains("fibGo(n20)"));
+        assert!(content.contains("fibTs(n20)"));
+        assert!(content.contains("fib_rust(&n20)"));
+        assert!(content.contains("fibGo(n70)"));
+        assert!(content.contains("fibTs(n70)"));
+        assert!(content.contains("fib_rust(&n70)"));
         assert!(content.contains("compare: true"));
         assert!(content.contains("baseline: \"go\""));
+        assert!(content.contains("use std::charting"));
     }
 
     #[test]
@@ -503,8 +644,20 @@ mod tests {
         assert!(!content.contains("setup go"));
         assert!(!content.contains("setup ts"));
         assert!(content.contains("setup rust"));
-        assert!(content.contains("sha256_sum_rust(&data)"));
+        assert!(content.contains("fib_rust(&n20)"));
         assert!(!content.contains("compare: true")); // No comparison with single language
+    }
+
+    #[test]
+    fn test_example_bench_no_external_deps() {
+        // Verify no external dependencies are required
+        let content = example_bench(true, true, true);
+        assert!(!content.contains("sha2"));
+        assert!(!content.contains("crypto/sha256"));
+        assert!(!content.contains("node:crypto"));
+        assert!(!content.contains("n10"));
+        assert!(content.contains("targetTime: 2000ms"));
+        assert!(content.contains("mode: \"auto\""));
     }
 
     #[test]

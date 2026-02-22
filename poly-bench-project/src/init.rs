@@ -228,12 +228,6 @@ pub fn new_benchmark(name: &str) -> Result<PathBuf> {
         miette::miette!("Not in a poly-bench project. Run 'poly-bench init' first.")
     })?;
 
-    // Load manifest to get enabled languages
-    let manifest = crate::load_manifest(&project_root)?;
-    let has_go = manifest.has_go();
-    let has_ts = manifest.has_ts();
-    let has_rust = manifest.has_rust();
-
     // Create benchmarks directory if it doesn't exist
     let benchmarks_dir = project_root.join(BENCHMARKS_DIR);
     std::fs::create_dir_all(&benchmarks_dir)
@@ -251,7 +245,8 @@ pub fn new_benchmark(name: &str) -> Result<PathBuf> {
         ));
     }
 
-    let content = templates::new_bench(name, has_go, has_ts, has_rust);
+    // Create a blank .bench file with just an empty suite
+    let content = format!("suite {} {{\n}}\n", name);
     std::fs::write(&bench_path, content)
         .map_err(|e| miette::miette!("Failed to write {}: {}", bench_filename, e))?;
 

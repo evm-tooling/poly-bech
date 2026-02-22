@@ -185,7 +185,24 @@ pub fn print_init_success_block(project_name: &str) {
     println!("{}", "✔ Successfully setup boilerplate for .polybench/".green());
     println!();
     println!("Next steps:");
-    println!("  cd {}", project_name);
+    println!("  {}", format!("cd {}", project_name).cyan());
+    println!("  poly-bench install    # Install dependencies");
+    println!("  poly-bench run        # Run benchmarks");
+    println!();
+}
+
+/// Print T3-style success block for init in current directory (no cd needed).
+pub fn print_init_success_block_current_dir(project_name: &str) {
+    use colored::Colorize;
+    println!();
+    println!("{}", format!("✔ {} scaffolded successfully!", project_name).green().bold());
+    println!();
+    println!("Adding boilerplate...");
+    println!("{}", "✔ Successfully setup boilerplate for polybench.toml".green());
+    println!("{}", "✔ Successfully setup boilerplate for benchmarks/".green());
+    println!("{}", "✔ Successfully setup boilerplate for .polybench/".green());
+    println!();
+    println!("Next steps:");
     println!("  poly-bench install    # Install dependencies");
     println!("  poly-bench run        # Run benchmarks");
     println!();
