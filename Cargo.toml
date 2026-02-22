@@ -18,7 +18,6 @@ poly-bench-project = { path = "poly-bench-project" }
 poly-bench-runtime = { path = "poly-bench-runtime" }
 poly-bench-executor = { path = "poly-bench-executor" }
 poly-bench-reporter = { path = "poly-bench-reporter" }
-poly-bench-lsp = { path = "poly-bench-lsp" }
 poly-bench-lsp-v2 = { path = "poly-bench-lsp-v2" }
 poly-bench-syntax = { path = "poly-bench-syntax" }
 tree-sitter-polybench = { path = "poly-bench-grammar" }
@@ -72,7 +71,6 @@ poly-bench-project.workspace = true
 poly-bench-runtime.workspace = true
 poly-bench-executor.workspace = true
 poly-bench-reporter.workspace = true
-poly-bench-lsp.workspace = true
 poly-bench-lsp-v2.workspace = true
 
 # CLI
@@ -123,10 +121,6 @@ pretty_assertions.workspace = true
 [[bin]]
 name = "poly-bench"
 path = "cli/main.rs"
-
-[[bin]]
-name = "poly-bench-lsp"
-path = "cli/lsp_main.rs"
 
 [profile.release]
 opt-level = 3

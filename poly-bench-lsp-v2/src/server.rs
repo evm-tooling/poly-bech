@@ -18,6 +18,8 @@ use crate::{
 };
 
 use dashmap::DashMap;
+use poly_bench_stdlib::VALID_MODULES;
+use poly_bench_syntax::Node as AstNode;
 use tower_lsp::{jsonrpc::Result, lsp_types::*, Client, LanguageServer};
 use tracing::{debug, info};
 
@@ -327,7 +329,9 @@ impl LanguageServer for PolyBenchLanguageServer {
 
         // Helper to create exclusive completion list (tells VS Code not to add word completions)
         let exclusive_list = |items: Vec<CompletionItem>| -> CompletionResponse {
-            CompletionResponse::List(CompletionList { is_incomplete: false, items })
+            // Mark as incomplete so the client re-requests as the user types.
+            // This keeps prefix filtering responsive and avoids stale cached suggestions.
+            CompletionResponse::List(CompletionList { is_incomplete: true, items })
         };
 
         if let Some(doc) = self.documents.get(&uri) {
@@ -358,6 +362,17 @@ impl LanguageServer for PolyBenchLanguageServer {
 
             // Extract current prefix being typed
             let prefix = extract_current_prefix(trimmed);
+
+            // Check for stdlib import context (e.g., "use ", "use st", "use std::ch")
+            if let Some(module_prefix) = extract_stdlib_module_prefix(&line_text) {
+                let completions = get_stdlib_module_completions();
+                let filtered = if module_prefix.is_empty() {
+                    completions
+                } else {
+                    filter_completions_by_prefix(completions, &module_prefix, 1)
+                };
+                return Ok(Some(exclusive_list(filtered)));
+            }
 
             // Check for charting function parameter context
             if is_inside_charting_function_args(trimmed) {
@@ -392,13 +407,26 @@ impl LanguageServer for PolyBenchLanguageServer {
                 let mut completions = Vec::new();
 
                 // Walk up to find the containing block
-                let context = determine_completion_context(node, &doc.source);
+                let mut context = determine_completion_context(node, &doc.source);
+                if context == CompletionContext::TopLevel &&
+                    (is_position_inside_any_suite_span(&doc.partial_ast, position) ||
+                        is_likely_inside_unclosed_suite(&doc.source, position))
+                {
+                    // Tree-sitter can temporarily lose precise block context while typing.
+                    // Fall back to partial AST span information so suite completions remain stable.
+                    context = CompletionContext::SuiteBody;
+                }
 
                 match context {
                     CompletionContext::TopLevel => {
                         completions.extend(get_top_level_completions());
                     }
                     CompletionContext::SuiteBody => {
+                        // When typing a suite parameter value, suppress key/block completions.
+                        // This avoids noisy generic suggestions and keeps completion DSL-specific.
+                        if is_suite_param_value_context(&line_text) {
+                            return Ok(Some(exclusive_list(vec![])));
+                        }
                         completions.extend(get_suite_body_completions());
                         // Add imported stdlib modules
                         completions.extend(get_imported_module_completions(&doc.source));
@@ -435,6 +463,10 @@ impl LanguageServer for PolyBenchLanguageServer {
                 // Even if empty, this tells VS Code we handled the request
                 return Ok(Some(exclusive_list(completions)));
             }
+
+            // If no AST node was found, still return an exclusive empty list to prevent
+            // editor fallback word completions from showing irrelevant suggestions.
+            return Ok(Some(exclusive_list(vec![])));
         }
 
         Ok(None)
@@ -603,10 +635,8 @@ fn extract_module_before_dot(line_text: &str) -> Option<String> {
         return None;
     }
 
-    let known_modules = ["anvil", "charting", "constants"];
-
     // Check for "module." at end or "module.partial" pattern
-    for module in known_modules {
+    for module in VALID_MODULES {
         let pattern = format!("{}.", module);
         if trimmed.contains(&pattern) {
             // Verify it's at a word boundary
@@ -616,6 +646,37 @@ fn extract_module_before_dot(line_text: &str) -> Option<String> {
                 }
             }
         }
+    }
+
+    None
+}
+
+/// Extract stdlib module prefix from a `use` statement being typed.
+///
+/// Examples:
+/// - `use ` -> Some("")
+/// - `use s` -> Some("")
+/// - `use std::ch` -> Some("ch")
+/// - `bench foo` -> None
+fn extract_stdlib_module_prefix(line_text: &str) -> Option<String> {
+    let trimmed = line_text.trim_start();
+    if !trimmed.starts_with("use") {
+        return None;
+    }
+
+    let after_use = trimmed.strip_prefix("use").unwrap_or_default().trim_start();
+    if after_use.is_empty() {
+        return Some(String::new());
+    }
+
+    if "std".starts_with(after_use) || "std::".starts_with(after_use) {
+        return Some(String::new());
+    }
+
+    if let Some(after_std) = after_use.strip_prefix("std::") {
+        let module_prefix: String =
+            after_std.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+        return Some(module_prefix);
     }
 
     None
@@ -693,6 +754,97 @@ fn determine_completion_context(
     CompletionContext::TopLevel
 }
 
+fn is_position_inside_any_suite_span(
+    partial_file: &poly_bench_syntax::PartialFile,
+    position: Position,
+) -> bool {
+    partial_file.suites.iter().any(|suite_node| {
+        let span = match suite_node {
+            AstNode::Valid(suite) => suite.span,
+            AstNode::Error { span, .. } => *span,
+            AstNode::Missing { span, .. } => *span,
+        };
+        is_position_in_span(position, span)
+    })
+}
+
+fn is_position_in_span(position: Position, span: poly_bench_syntax::Span) -> bool {
+    let line = position.line as usize;
+    let col = position.character as usize;
+    let starts_before =
+        line > span.start_line || (line == span.start_line && col >= span.start_col);
+    let ends_before = line < span.end_line || (line == span.end_line && col <= span.end_col);
+    starts_before && ends_before
+}
+
+fn is_suite_param_value_context(line_text: &str) -> bool {
+    let Some((before_colon, _after_colon)) = line_text.rsplit_once(':') else {
+        return false;
+    };
+
+    let key = before_colon.split_whitespace().last().unwrap_or("");
+    if key.is_empty() {
+        return false;
+    }
+
+    matches!(
+        key,
+        "description" |
+            "iterations" |
+            "warmup" |
+            "timeout" |
+            "requires" |
+            "order" |
+            "compare" |
+            "baseline" |
+            "mode" |
+            "targetTime" |
+            "minIterations" |
+            "maxIterations" |
+            "sink" |
+            "outlierDetection" |
+            "cvThreshold" |
+            "count" |
+            "memory" |
+            "concurrency"
+    )
+}
+
+fn is_likely_inside_unclosed_suite(source: &ropey::Rope, position: Position) -> bool {
+    let cursor_line = position.line as usize;
+    let cursor_col = position.character as usize;
+
+    let mut suite_start_line = None;
+    for line_idx in 0..=cursor_line.min(source.len_lines().saturating_sub(1)) {
+        let line: String = source.line(line_idx).chars().collect();
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("suite ") || trimmed.starts_with("suite\t") {
+            suite_start_line = Some(line_idx);
+        }
+    }
+
+    let Some(start_line) = suite_start_line else {
+        return false;
+    };
+
+    let mut balance: isize = 0;
+    for line_idx in start_line..=cursor_line.min(source.len_lines().saturating_sub(1)) {
+        let mut line: String = source.line(line_idx).chars().collect();
+        if line_idx == cursor_line && cursor_col < line.len() {
+            line.truncate(cursor_col);
+        }
+        for ch in line.chars() {
+            if ch == '{' {
+                balance += 1;
+            } else if ch == '}' {
+                balance -= 1;
+            }
+        }
+    }
+
+    balance > 0
+}
+
 /// Get completions for stdlib module members (after "module.")
 fn get_module_member_completions(module: &str) -> Vec<CompletionItem> {
     match module {
@@ -763,41 +915,24 @@ fn get_module_member_completions(module: &str) -> Vec<CompletionItem> {
 
 /// Get completions for stdlib modules (after "use std::")
 fn get_stdlib_module_completions() -> Vec<CompletionItem> {
-    vec![
-        CompletionItem {
-            label: "anvil".to_string(),
+    VALID_MODULES
+        .iter()
+        .map(|module| CompletionItem {
+            label: (*module).to_string(),
             kind: Some(CompletionItemKind::MODULE),
-            detail: Some("Anvil Ethereum node module".to_string()),
-            documentation: Some(Documentation::String(
-                "Provides ANVIL_RPC_URL and spawnAnvil() for Ethereum testing.".to_string(),
-            )),
+            detail: Some(stdlib_module_detail(module).to_string()),
+            documentation: Some(Documentation::String(stdlib_module_docs(module).to_string())),
+            insert_text: Some((*module).to_string()),
             ..Default::default()
-        },
-        CompletionItem {
-            label: "charting".to_string(),
-            kind: Some(CompletionItemKind::MODULE),
-            detail: Some("Chart generation module".to_string()),
-            documentation: Some(Documentation::String(
-                "Provides drawSpeedupChart, drawTable.".to_string(),
-            )),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "constants".to_string(),
-            kind: Some(CompletionItemKind::MODULE),
-            detail: Some("Mathematical constants module".to_string()),
-            documentation: Some(Documentation::String("Provides PI and E constants.".to_string())),
-            ..Default::default()
-        },
-    ]
+        })
+        .collect()
 }
 
 /// Get completions for imported stdlib modules (module names for dot access)
 fn get_imported_module_completions(source: &ropey::Rope) -> Vec<CompletionItem> {
     let mut items = Vec::new();
-    let modules = ["anvil", "charting", "constants"];
 
-    for module in modules {
+    for module in VALID_MODULES {
         if has_stdlib_import(source, module) {
             items.push(CompletionItem {
                 label: module.to_string(),
@@ -810,6 +945,24 @@ fn get_imported_module_completions(source: &ropey::Rope) -> Vec<CompletionItem> 
     }
 
     items
+}
+
+fn stdlib_module_detail(module: &str) -> &'static str {
+    match module {
+        "anvil" => "Anvil Ethereum node module",
+        "charting" => "Chart generation module",
+        "constants" => "Mathematical constants module",
+        _ => "Standard library module",
+    }
+}
+
+fn stdlib_module_docs(module: &str) -> &'static str {
+    match module {
+        "anvil" => "Provides ANVIL_RPC_URL and spawnAnvil() for Ethereum testing.",
+        "charting" => "Provides drawSpeedupChart(), drawTable().",
+        "constants" => "Provides PI and E constants.",
+        _ => "Standard library module for poly-bench.",
+    }
 }
 
 /// Get completions for charting function parameters
@@ -1026,27 +1179,13 @@ fn get_global_setup_completions(source: &ropey::Rope) -> Vec<CompletionItem> {
 }
 
 fn get_top_level_completions() -> Vec<CompletionItem> {
-    vec![
+    let mut items = vec![
         CompletionItem {
             label: "suite".to_string(),
             kind: Some(CompletionItemKind::KEYWORD),
             insert_text: Some("suite ${1:name} {\n\t$0\n}".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Define a benchmark suite".to_string()),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "use std::charting".to_string(),
-            kind: Some(CompletionItemKind::MODULE),
-            insert_text: Some("use std::charting".to_string()),
-            detail: Some("Import charting module".to_string()),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "use std::anvil".to_string(),
-            kind: Some(CompletionItemKind::MODULE),
-            insert_text: Some("use std::anvil".to_string()),
-            detail: Some("Import anvil module for Ethereum testing".to_string()),
             ..Default::default()
         },
         CompletionItem {
@@ -1057,7 +1196,17 @@ fn get_top_level_completions() -> Vec<CompletionItem> {
             detail: Some("Define global setup".to_string()),
             ..Default::default()
         },
-    ]
+    ];
+
+    items.extend(VALID_MODULES.iter().map(|module| CompletionItem {
+        label: format!("use std::{}", module),
+        kind: Some(CompletionItemKind::MODULE),
+        insert_text: Some(format!("use std::{}", module)),
+        detail: Some(format!("Import {} module", module)),
+        ..Default::default()
+    }));
+
+    items
 }
 
 fn get_suite_body_completions() -> Vec<CompletionItem> {
@@ -1130,7 +1279,7 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
         CompletionItem {
             label: "description".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("description: \"$0\"".to_string()),
+            insert_text: Some("description: \"\"".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Suite description".to_string()),
             ..Default::default()
@@ -1138,7 +1287,7 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
         CompletionItem {
             label: "iterations".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("iterations: ${1:1000}".to_string()),
+            insert_text: Some("iterations: 1000".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Default iteration count for benchmarks".to_string()),
             ..Default::default()
@@ -1146,23 +1295,15 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
         CompletionItem {
             label: "warmup".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("warmup: ${1:100}".to_string()),
+            insert_text: Some("warmup: 1000".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Warmup iterations before timing".to_string()),
             ..Default::default()
         },
         CompletionItem {
-            label: "timeout".to_string(),
-            kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("timeout: ${1:30s}".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            detail: Some("Suite-level timeout".to_string()),
-            ..Default::default()
-        },
-        CompletionItem {
             label: "requires".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("requires: [\"${1:go}\", \"${2:ts}\"]".to_string()),
+            insert_text: Some("requires: []".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Required language implementations".to_string()),
             ..Default::default()
@@ -1170,7 +1311,7 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
         CompletionItem {
             label: "order".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("order: ${1|sequential,parallel,random|}".to_string()),
+            insert_text: Some("order: sequential".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Benchmark execution order".to_string()),
             ..Default::default()
@@ -1178,32 +1319,16 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
         CompletionItem {
             label: "compare".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("compare: true".to_string()),
+            insert_text: Some("compare: false".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Enable comparison tables".to_string()),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "baseline".to_string(),
-            kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("baseline: \"${1|go,ts|}\"".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            detail: Some("Baseline language for comparison".to_string()),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "tags".to_string(),
-            kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("tags: [\"$0\"]".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            detail: Some("Suite-level tags".to_string()),
             ..Default::default()
         },
         // Auto-calibration settings
         CompletionItem {
             label: "mode".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("mode: ${1|auto,fixed|}".to_string()),
+            insert_text: Some("mode: \"auto\"".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some(
                 "Execution mode: auto (time-based) or fixed (iteration count)".to_string(),
@@ -1213,7 +1338,7 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
         CompletionItem {
             label: "targetTime".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("targetTime: ${1:3000ms}".to_string()),
+            insert_text: Some("targetTime: 3000".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Target duration for auto-calibration mode".to_string()),
             ..Default::default()
@@ -1221,7 +1346,7 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
         CompletionItem {
             label: "minIterations".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("minIterations: ${1:100}".to_string()),
+            insert_text: Some("minIterations: 10".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Minimum iterations for auto-calibration".to_string()),
             ..Default::default()
@@ -1229,7 +1354,7 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
         CompletionItem {
             label: "maxIterations".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("maxIterations: ${1:1000000}".to_string()),
+            insert_text: Some("maxIterations: 1000000".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Maximum iterations for auto-calibration".to_string()),
             ..Default::default()
@@ -1238,7 +1363,7 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
         CompletionItem {
             label: "sink".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("sink: ${1|true,false|}".to_string()),
+            insert_text: Some("sink: true".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Use sink/black-box pattern to prevent dead code elimination".to_string()),
             ..Default::default()
@@ -1247,7 +1372,7 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
         CompletionItem {
             label: "outlierDetection".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("outlierDetection: ${1|true,false|}".to_string()),
+            insert_text: Some("outlierDetection: true".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Enable IQR-based outlier detection and removal".to_string()),
             ..Default::default()
@@ -1255,7 +1380,7 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
         CompletionItem {
             label: "cvThreshold".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("cvThreshold: ${1:5}".to_string()),
+            insert_text: Some("cvThreshold: 5.0".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some(
                 "Coefficient of variation threshold (%) for stability warnings".to_string(),
@@ -1265,7 +1390,7 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
         CompletionItem {
             label: "count".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("count: ${1:10}".to_string()),
+            insert_text: Some("count: 1".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some(
                 "Number of times to run each benchmark for statistical consistency".to_string(),
@@ -1276,7 +1401,7 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
         CompletionItem {
             label: "memory".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("memory: ${1|true,false|}".to_string()),
+            insert_text: Some("memory: false".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Enable memory allocation profiling".to_string()),
             ..Default::default()
@@ -1479,4 +1604,98 @@ fn get_charting_completions() -> Vec<CompletionItem> {
         insert_text: Some("charting".to_string()),
         ..Default::default()
     }]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+    use tower_lsp::lsp_types::Url;
+
+    #[test]
+    fn stdlib_module_completions_include_all_valid_modules() {
+        let completion_labels: HashSet<String> =
+            get_stdlib_module_completions().into_iter().map(|item| item.label).collect();
+        let expected: HashSet<String> =
+            VALID_MODULES.iter().map(|module| module.to_string()).collect();
+        assert_eq!(completion_labels, expected);
+    }
+
+    #[test]
+    fn detects_use_std_prefix_context() {
+        assert_eq!(extract_stdlib_module_prefix("use "), Some(String::new()));
+        assert_eq!(extract_stdlib_module_prefix("use st"), Some(String::new()));
+        assert_eq!(extract_stdlib_module_prefix("use std::"), Some(String::new()));
+        assert_eq!(extract_stdlib_module_prefix("use std::ch"), Some("ch".to_string()));
+        assert_eq!(extract_stdlib_module_prefix("bench foo"), None);
+    }
+
+    #[test]
+    fn suite_completions_insert_runtime_defaults() {
+        let completions = get_suite_body_completions();
+        let mut inserts = std::collections::HashMap::new();
+        for item in completions {
+            if let Some(insert_text) = item.insert_text {
+                inserts.insert(item.label, insert_text);
+            }
+        }
+
+        assert_eq!(inserts.get("warmup"), Some(&"warmup: 1000".to_string()));
+        assert_eq!(inserts.get("mode"), Some(&"mode: \"auto\"".to_string()));
+        assert_eq!(inserts.get("targetTime"), Some(&"targetTime: 3000".to_string()));
+        assert_eq!(inserts.get("minIterations"), Some(&"minIterations: 10".to_string()));
+        assert_eq!(inserts.get("maxIterations"), Some(&"maxIterations: 1000000".to_string()));
+        assert_eq!(inserts.get("count"), Some(&"count: 1".to_string()));
+    }
+
+    #[test]
+    fn suite_value_context_detection() {
+        assert!(is_suite_param_value_context("warmup: "));
+        assert!(is_suite_param_value_context("    mode: \"a"));
+        assert!(is_suite_param_value_context("targetTime: 30"));
+        assert!(!is_suite_param_value_context("bench foo {"));
+        assert!(!is_suite_param_value_context("charting.drawTable("));
+    }
+
+    #[test]
+    fn detects_position_inside_suite_span() {
+        let source = "suite demo {\n    warmup: 1000\n}\n";
+        let doc = crate::document::Document::new(
+            Url::parse("file:///suite.bench").expect("valid file URL"),
+            source.to_string(),
+            1,
+        );
+
+        assert!(is_position_inside_any_suite_span(
+            &doc.partial_ast,
+            Position { line: 1, character: 8 },
+        ));
+        assert!(!is_position_inside_any_suite_span(
+            &doc.partial_ast,
+            Position { line: 3, character: 0 },
+        ));
+    }
+
+    #[test]
+    fn detects_unclosed_suite_by_text_fallback() {
+        let source = "suite demo {\n    warmup: 1000\n    target";
+        let doc = crate::document::Document::new(
+            Url::parse("file:///suite_unclosed.bench").expect("valid file URL"),
+            source.to_string(),
+            1,
+        );
+
+        assert!(is_likely_inside_unclosed_suite(&doc.source, Position { line: 2, character: 10 },));
+
+        let source_closed = "suite demo {\n    warmup: 1000\n}\n";
+        let doc_closed = crate::document::Document::new(
+            Url::parse("file:///suite_closed.bench").expect("valid file URL"),
+            source_closed.to_string(),
+            1,
+        );
+        assert!(!is_likely_inside_unclosed_suite(
+            &doc_closed.source,
+            Position { line: 3, character: 0 },
+        ));
+    }
 }

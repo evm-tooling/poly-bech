@@ -1,8 +1,8 @@
 {
   "name": "polybench-lsp",
   "displayName": "Poly Bench",
-  "description": "Language support for .bench files with embedded Go, TypeScript, and Rust - powered by poly-bench-lsp",
-  "version": "0.1.0",
+  "description": "Language support for .bench files with embedded Go, TypeScript, and Rust - powered by poly-bench LSP v2",
+  "version": "0.1.1",
   "publisher": "evm-tooling",
   "repository": {
     "type": "git",
@@ -20,13 +20,19 @@
     "onLanguage:polybench"
   ],
   "contributes": {
+    "configurationDefaults": {
+      "[polybench]": {
+        "editor.wordBasedSuggestions": "off",
+        "editor.suggest.showWords": false
+      }
+    },
     "configuration": {
       "title": "Poly Bench",
       "properties": {
         "poly-bench.lspPath": {
           "type": "string",
           "default": "",
-          "description": "Path to poly-bench (or poly-bench-lsp) binary. If empty, uses bundled binary or searches PATH for poly-bench."
+          "description": "Path to the poly-bench binary. If empty, uses bundled binary or searches PATH for poly-bench."
         },
         "poly-bench.trace.server": {
           "type": "string",
@@ -42,11 +48,6 @@
           "type": "boolean",
           "default": true,
           "description": "Format .bench files when you save (uses Poly-Bench LSP)."
-        },
-        "poly-bench.useNewLsp": {
-          "type": "boolean",
-          "default": true,
-          "description": "Use the new LSP v2 with Tree-sitter based parsing (experimental). Provides better error tolerance and incremental parsing."
         },
         "poly-bench.useTreeSitterHighlighting": {
           "type": "boolean",

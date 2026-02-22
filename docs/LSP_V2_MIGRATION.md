@@ -1,6 +1,6 @@
 # LSP v2 Migration Guide
 
-This document describes the migration path from the original poly-bench LSP to the new Tree-sitter based LSP v2.
+This document describes the completed migration to the Tree-sitter based LSP v2.
 
 ## Overview
 
@@ -33,61 +33,17 @@ LSP v2 is a complete rewrite of the language server that provides:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Enabling LSP v2
-
-### VSCode Extension
-
-1. Open VSCode Settings (Cmd/Ctrl + ,)
-2. Search for "poly-bench"
-3. Enable "Use New Lsp" option
-
-Or add to your `settings.json`:
-
-```json
-{
-  "poly-bench.useNewLsp": true
-}
-```
+## LSP v2 Is Default
 
 ### Command Line
 
-Use the `lsp-v2` subcommand instead of `lsp`:
+Use `lsp` (or `lsp-v2`, alias):
 
 ```bash
-poly-bench lsp-v2
+poly-bench lsp
 ```
 
-## Feature Comparison
-
-| Feature | LSP v1 | LSP v2 |
-|---------|--------|--------|
-| Syntax highlighting | TextMate + sparse semantic tokens | Full Tree-sitter coverage |
-| Error tolerance | Fails on syntax errors | Always produces partial AST |
-| Incremental parsing | No | Yes (Tree-sitter) |
-| Formatting | Whole-document replacement | Incremental edits |
-| Embedded code | Regex-based | Brace-counting scanner |
-| Multi-editor support | VSCode only | Tree-sitter works everywhere |
-
-## Migration Timeline
-
-### Phase 1: Opt-in (Current)
-- LSP v2 available via feature flag
-- Both versions maintained
-- Users can test and report issues
-
-### Phase 2: Default
-- LSP v2 becomes the default
-- LSP v1 still available via `poly-bench.useNewLsp: false`
-- Bug fixes only for v1
-
-### Phase 3: Deprecation
-- LSP v1 deprecated
-- Warning shown when using v1
-- Migration documentation updated
-
-### Phase 4: Removal
-- LSP v1 removed
-- Only LSP v2 available
+The VS Code extension now launches v2 only. There is no feature flag for switching LSP versions.
 
 ## Known Differences
 
@@ -120,15 +76,14 @@ LSP v2 provides more diagnostics:
 
 ### LSP v2 Not Starting
 
-1. Check that `poly-bench lsp-v2` works from command line
+1. Check that `poly-bench lsp` works from command line
 2. Verify the binary is up to date: `poly-bench upgrade`
 3. Check VSCode output panel for errors
 
 ### Highlighting Issues
 
-1. Ensure `poly-bench.useNewLsp` is `true`
-2. Reload VSCode window (Cmd/Ctrl + Shift + P → "Reload Window")
-3. Check that semantic tokens are enabled in VSCode
+1. Reload VSCode window (Cmd/Ctrl + Shift + P -> "Reload Window")
+2. Check that semantic tokens are enabled in VSCode
 
 ### Formatting Not Working
 
@@ -144,18 +99,6 @@ If you encounter issues with LSP v2:
 2. Reproduce the issue
 3. Copy the output from "Poly-Bench LSP" output panel
 4. Open an issue with the trace and a minimal reproduction
-
-## Reverting to LSP v1
-
-If you need to revert to the original LSP:
-
-```json
-{
-  "poly-bench.useNewLsp": false
-}
-```
-
-Then reload VSCode.
 
 ## Building the Grammar
 

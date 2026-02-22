@@ -4,10 +4,10 @@
 
 set -e
 
-echo "🔨 Building poly-bench-lsp (debug)..."
-cargo build --bin poly-bench-lsp
+echo "🔨 Building poly-bench (debug, includes LSP v2 command)..."
+cargo build --bin poly-bench
 
-echo "✅ Done! Binary at: target/debug/poly-bench-lsp"
+echo "✅ Done! Binary at: target/debug/poly-bench"
 echo ""
 echo "To apply changes in VS Code:"
 echo "  Cmd+Shift+P → 'Developer: Reload Window'"
