@@ -288,7 +288,10 @@ export default function Home() {
         {/* ── HERO — asymmetric split with .bench file ── */}
         <section className="relative w-full overflow-hidden !border-b !border-border bg-background">
           {/* Subtle red bokeh / glow accents */}
-          <div className="pointer-events-none absolute inset-0 z-0" aria-hidden="true">
+          <div
+            className="pointer-events-none absolute inset-0 z-0"
+            aria-hidden="true"
+          >
             <div className="absolute top-[-5rem] left-[12%] h-80 w-80 rounded-full bg-[radial-gradient(circle,hsl(var(--primary)/0.24)_0%,hsl(var(--primary)/0.16)_26%,hsl(var(--primary)/0.09)_48%,hsl(var(--primary)/0.04)_66%,transparent_86%)] blur-[70px]" />
             <div className="absolute top-[20%] right-[10%] h-[28rem] w-[28rem] rounded-full bg-[radial-gradient(circle,hsl(var(--primary)/0.2)_0%,hsl(var(--primary)/0.12)_28%,hsl(var(--primary)/0.07)_50%,hsl(var(--primary)/0.03)_68%,transparent_88%)] blur-[92px]" />
             <div className="absolute bottom-[-9rem] left-[38%] h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,hsl(var(--primary)/0.16)_0%,hsl(var(--primary)/0.1)_28%,hsl(var(--primary)/0.06)_52%,hsl(var(--primary)/0.02)_70%,transparent_90%)] blur-[110px]" />

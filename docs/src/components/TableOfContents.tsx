@@ -1,7 +1,7 @@
 'use client'
 
-import type { TocEntry } from '@/lib/mdx'
 import { useEffect, useRef, useState } from 'react'
+import type { TocEntry } from '@/lib/mdx'
 
 export default function TableOfContents({
   headings = [],

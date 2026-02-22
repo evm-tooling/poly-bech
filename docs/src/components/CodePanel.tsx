@@ -58,8 +58,10 @@ function looksLikeBenchCode(code: string, title?: string): boolean {
   if (normalizedTitle.endsWith('.bench')) return true
 
   // Heuristic: if multiple core DSL constructs appear, treat it as bench.
-  return /\b(?:suite|setup|bench|fixture|globalSetup)\b/.test(code) &&
+  return (
+    /\b(?:suite|setup|bench|fixture|globalSetup)\b/.test(code) &&
     /(?:\buse\s+std::|\b(?:go|ts|rust)\s*:)/.test(code)
+  )
 }
 
 function normalizeLanguage(
