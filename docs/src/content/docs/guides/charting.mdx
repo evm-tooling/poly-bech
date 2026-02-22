@@ -370,33 +370,6 @@ Flip the y-axis to show operations per second instead of time per operation.
 
 ---
 
-### `drawSpeedupChart`
-
-Shows the speedup ratio of each language relative to a baseline. A value of 2.0× means that language is twice as fast as the baseline for that benchmark.
-
-#### Basic speedup chart
-
-<CodeGroup
-  tabs={[
-    {
-      title: "bench",
-      language: "bench",
-      code: `suite cryptoBench {
-    baseline: "go"
-
-    # ... benchmarks ...
-
-    after {
-        charting.drawSpeedupChart(
-            title: "Speedup vs Go",
-            output: "speedup.svg"
-        )
-    }
-}`
-    },
-  ]}
-/>
-
 #### With baseline benchmark and sorting
 
 Use a specific benchmark as the 1× reference point, and sort by speedup.
