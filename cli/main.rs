@@ -15,7 +15,6 @@ use poly_bench_ir as ir;
 use poly_bench_project as project;
 use poly_bench_reporter as reporter;
 use poly_bench_runtime as runtime;
-use tower_lsp::{LspService, Server};
 
 /// Current binary version (set at compile time).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -212,14 +211,14 @@ enum Commands {
     /// Upgrade to the latest poly-bench binary
     Upgrade,
 
-    /// Start the language server (for editors)
+    /// Start the language server (for editors, v2)
     Lsp {
         /// Accepted for editor compatibility; stdio is always used
         #[arg(long, hide = true)]
         stdio: bool,
     },
 
-    /// Start the new LSP v2 server (experimental, with Tree-sitter parsing)
+    /// Start the language server (v2 alias)
     #[command(name = "lsp-v2")]
     LspV2 {
         /// Accepted for editor compatibility; stdio is always used
@@ -262,7 +261,7 @@ async fn main() -> Result<()> {
         return cmd_lsp().await;
     }
 
-    // LSP v2 mode: new Tree-sitter based server
+    // LSP v2 mode: alias of lsp command
     if let Commands::LspV2 { .. } = &command {
         return cmd_lsp_v2().await;
     }
@@ -329,11 +328,7 @@ async fn main() -> Result<()> {
 }
 
 async fn cmd_lsp() -> Result<()> {
-    let stdin = tokio::io::stdin();
-    let stdout = tokio::io::stdout();
-    let (service, socket) = LspService::new(poly_bench_lsp::Backend::new);
-    Server::new(stdin, stdout, socket).serve(service).await;
-    Ok(())
+    cmd_lsp_v2().await
 }
 
 async fn cmd_lsp_v2() -> Result<()> {

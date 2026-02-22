@@ -5,6 +5,6 @@
 set -e
 
 echo "🔍 Checking for compile errors..."
-cargo check --bin poly-bench-lsp
+cargo check --bin poly-bench
 
 echo "✅ No errors!"

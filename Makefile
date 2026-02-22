@@ -48,7 +48,7 @@ help:
 	@echo "Release:"
 	@echo "  make release         - Tag, prerelease, open PR to production (VERSION=v0.0.1)"
 	@echo "  make release-build   - Build single release binary (poly-bench)"
-	@echo "  make release-both    - Build poly-bench + poly-bench-lsp (legacy)"
+	@echo "  make release-both    - Build poly-bench (legacy alias; v2 only)"
 	@echo "  make vscode-publish  - Publish VSCode extension to marketplace (requires VSCE_PAT)"
 	@echo ""
 	@echo "Utilities:"
@@ -194,13 +194,13 @@ watch:
 release-build: cli-release
 	@echo "✅ Release binary: target/release/poly-bench"
 
-# Build both binaries (legacy: poly-bench + poly-bench-lsp)
+# Build binary (legacy alias retained for compatibility)
 release-both:
-	@echo "🔨 Building poly-bench + poly-bench-lsp (release)..."
-	@cargo build --release
+	@echo "🔨 Building poly-bench (release, LSP v2 only)..."
+	@cargo build --release --bin poly-bench
 	@echo "✅ Done!"
 	@echo "  CLI: target/release/poly-bench"
-	@echo "  LSP: target/release/poly-bench-lsp"
+	@echo "  LSP command: target/release/poly-bench lsp"
 
 # Release automation: bump versions, tag, prerelease, open PR to production
 # Usage: make release VERSION=v0.0.1

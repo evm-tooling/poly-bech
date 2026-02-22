@@ -2,7 +2,7 @@
  * Poly-Bench VS Code Extension
  *
  * This extension provides language support for .bench files by connecting
- * to the poly-bench language server (run via `poly-bench lsp` or legacy `poly-bench-lsp`).
+ * to the poly-bench language server (run via `poly-bench lsp`).
  *
  * Features provided by the language server:
  * - Diagnostics (parse errors, validation, embedded Go/TS checking)
@@ -11,9 +11,8 @@
  * - Semantic tokens for enhanced highlighting
  * - Document formatting
  *
- * New in v2:
- * - Optional Tree-sitter WASM for client-side highlighting
- * - New LSP v2 with error-tolerant parsing
+ * The language server uses the v2 implementation with error-tolerant parsing.
+ * Optional Tree-sitter WASM can be used for client-side highlighting.
  */
 
 import * as path from 'path';
@@ -48,13 +47,6 @@ let treeSitterParser: any = null;
 interface LspServerSpec {
   command: string;
   args: string[];
-}
-
-/**
- * Check if the new LSP v2 should be used
- */
-function shouldUseNewLsp(): boolean {
-  return workspace.getConfiguration('poly-bench').get<boolean>('useNewLsp', false);
 }
 
 /**
@@ -93,26 +85,17 @@ async function initTreeSitter(context: ExtensionContext): Promise<void> {
 }
 
 /**
- * Find the poly-bench LSP server (prefer `poly-bench lsp`, fallback to `poly-bench-lsp`).
+ * Find the poly-bench LSP server.
  *
  * Search order:
- * 1. User-configured path (poly-bench.lspPath) — if path looks like poly-bench (no -lsp), use args ['lsp']
- * 2. Bundled binary in extension: prefer poly-bench + lsp, then poly-bench-lsp
- * 3. PATH: prefer poly-bench with args ['lsp'], then poly-bench-lsp
- *
- * If useNewLsp is enabled, uses 'lsp-v2' subcommand instead of 'lsp'.
+ * 1. User-configured path (poly-bench.lspPath) - must be the poly-bench binary
+ * 2. Bundled binary in extension: poly-bench
+ * 3. PATH: poly-bench
  */
 function findLspServer(context: ExtensionContext): LspServerSpec | null {
-  const useNewLsp = shouldUseNewLsp();
-  const lspSubcommand = useNewLsp ? 'lsp-v2' : 'lsp';
-
   const useLspSubcommand = (cmd: string): LspServerSpec => ({
     command: cmd,
-    args: [lspSubcommand],
-  });
-  const useLegacyLsp = (cmd: string): LspServerSpec => ({
-    command: cmd,
-    args: [],
+    args: ['lsp'],
   });
 
   // 1. Check user configuration
@@ -124,14 +107,20 @@ function findLspServer(context: ExtensionContext): LspServerSpec | null {
       const base = path.basename(configured);
       const isMainBinary =
         base === 'poly-bench' || base === 'poly-bench.exe';
-      return isMainBinary ? useLspSubcommand(configured) : useLegacyLsp(configured);
+      if (isMainBinary) {
+        return useLspSubcommand(configured);
+      }
+      window.showWarningMessage(
+        'poly-bench.lspPath must point to the poly-bench binary. Legacy poly-bench-lsp is no longer supported.'
+      );
+      return null;
     }
     window.showWarningMessage(
       `Configured poly-bench.lspPath not found: ${configured}`
     );
   }
 
-  // 2. Check bundled binaries: prefer poly-bench (single binary with lsp subcommand)
+  // 2. Check bundled binaries
   const bundledPolyBench = [
     path.join(context.extensionPath, 'bin', 'poly-bench'),
     path.join(context.extensionPath, 'bin', 'poly-bench.exe'),
@@ -143,19 +132,8 @@ function findLspServer(context: ExtensionContext): LspServerSpec | null {
       return useLspSubcommand(bundled);
     }
   }
-  const bundledLsp = [
-    path.join(context.extensionPath, 'bin', 'poly-bench-lsp'),
-    path.join(context.extensionPath, 'bin', 'poly-bench-lsp.exe'),
-    path.join(context.extensionPath, 'poly-bench-lsp'),
-    path.join(context.extensionPath, 'poly-bench-lsp.exe'),
-  ];
-  for (const bundled of bundledLsp) {
-    if (fs.existsSync(bundled)) {
-      return useLegacyLsp(bundled);
-    }
-  }
 
-  // 3. PATH: prefer poly-bench with lsp subcommand
+  // 3. PATH
   return useLspSubcommand('poly-bench');
 }
 
@@ -186,15 +164,14 @@ export async function activate(context: ExtensionContext): Promise<void> {
     spec.args.length > 0
       ? `${spec.command} ${spec.args.join(' ')}`
       : spec.command;
-  const lspVersion = shouldUseNewLsp() ? 'v2' : 'v1';
-  outputChannel.appendLine(`[startup] Using LSP ${lspVersion} (${label}): ${desc}`);
-  console.log(`[Poly-Bench] Using LSP ${lspVersion}: ${label} → ${desc}`);
+  outputChannel.appendLine(`[startup] Using LSP v2 (${label}): ${desc}`);
+  console.log(`[Poly-Bench] Using LSP v2: ${label} → ${desc}`);
 
   if (treeSitterParser) {
     outputChannel.appendLine('[startup] Tree-sitter WASM highlighting enabled');
   }
 
-  // Server options - run poly-bench lsp or poly-bench-lsp
+  // Server options - run poly-bench lsp
   const serverOptions: ServerOptions = {
     run: {
       command: spec.command,

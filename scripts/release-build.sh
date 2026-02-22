@@ -4,7 +4,7 @@
 
 set -e
 
-echo "🔨 Building poly-bench-lsp (release)..."
-cargo build --release --bin poly-bench-lsp
+echo "🔨 Building poly-bench (release, includes LSP v2 command)..."
+cargo build --release --bin poly-bench
 
-echo "✅ Done! Binary at: target/release/poly-bench-lsp"
+echo "✅ Done! Binary at: target/release/poly-bench"
