@@ -13,7 +13,7 @@ poly-bench includes commands for validation, compilation, execution, project set
 |---------|-------------|
 | `poly-bench check <file>` | Parse and validate a `.bench` file |
 | `poly-bench compile [file]` | Compile-check benchmarks without running |
-| `poly-bench cache <stats|clear|clean>` | Inspect or manage compile cache/workspace |
+| `poly-bench cache <stats\|clear\|clean>` | Inspect or manage compile cache/workspace |
 | `poly-bench run [file]` | Execute benchmarks |
 | `poly-bench codegen <file>` | Generate runtime code without running |
 | `poly-bench fmt [files...]` | Format `.bench` files |
@@ -57,12 +57,18 @@ Execute benchmarks from a `.bench` file, or run all files in `benchmarks/` when 
 
 #### Example
 
-```bash
-poly-bench run benchmarks/hash.bench \
-  --lang go \
-  --report json \
-  --output out/
-```
+<CodeGroup
+  tabs={[
+    {
+      title: "terminal",
+      language: "bash",
+      code: `poly-bench run benchmarks/hash.bench \\
+  --lang go \\
+  --report json \\
+  --output out/`
+    },
+  ]}
+/>
 
 <Aside type="note">
 <span>Results are also auto-saved to <code>out/results.json</code> after each run.</span>
@@ -74,9 +80,15 @@ poly-bench run benchmarks/hash.bench \
 
 Parse and validate a benchmark DSL file.
 
-```bash
-poly-bench check <FILE> [--show-ast]
-```
+<CodeGroup
+  tabs={[
+    {
+      title: "terminal",
+      language: "bash",
+      code: `poly-bench check <FILE> [--show-ast]`
+    },
+  ]}
+/>
 
 ---
 
@@ -84,9 +96,15 @@ poly-bench check <FILE> [--show-ast]
 
 Compile-check benchmarks without running them.
 
-```bash
-poly-bench compile [FILE] [--lang <LANG>] [--no-cache] [--clear-cache]
-```
+<CodeGroup
+  tabs={[
+    {
+      title: "terminal",
+      language: "bash",
+      code: `poly-bench compile [FILE] [--lang <LANG>] [--no-cache] [--clear-cache]`
+    },
+  ]}
+/>
 
 #### Options
 
@@ -106,11 +124,17 @@ poly-bench compile [FILE] [--lang <LANG>] [--no-cache] [--clear-cache]
 
 Manage compile cache and workspace state.
 
-```bash
-poly-bench cache stats
+<CodeGroup
+  tabs={[
+    {
+      title: "terminal",
+      language: "bash",
+      code: `poly-bench cache stats
 poly-bench cache clear
-poly-bench cache clean
-```
+poly-bench cache clean`
+    },
+  ]}
+/>
 
 #### Subcommands
 
@@ -126,9 +150,15 @@ poly-bench cache clean
 
 Generate code from DSL without running.
 
-```bash
-poly-bench codegen <FILE> --lang <LANG> --output <DIR>
-```
+<CodeGroup
+  tabs={[
+    {
+      title: "terminal",
+      language: "bash",
+      code: `poly-bench codegen <FILE> --lang <LANG> --output <DIR>`
+    },
+  ]}
+/>
 
 `LANG` supports `go`, `ts`/`typescript`, `rust`/`rs`.
 
@@ -138,9 +168,15 @@ poly-bench codegen <FILE> --lang <LANG> --output <DIR>
 
 Format benchmark files.
 
-```bash
-poly-bench fmt [FILES...] [--write]
-```
+<CodeGroup
+  tabs={[
+    {
+      title: "terminal",
+      language: "bash",
+      code: `poly-bench fmt [FILES...] [--write]`
+    },
+  ]}
+/>
 
 | Option | Description |
 |--------|-------------|
@@ -152,43 +188,79 @@ poly-bench fmt [FILES...] [--write]
 
 #### `poly-bench init`
 
-```bash
-poly-bench init [NAME] [--languages go,ts,rust] [--no-example]
-```
+<CodeGroup
+  tabs={[
+    {
+      title: "terminal",
+      language: "bash",
+      code: `poly-bench init [NAME] [--languages go,ts,rust] [--no-example]`
+    },
+  ]}
+/>
 
 #### `poly-bench new`
 
-```bash
-poly-bench new <NAME>
-```
+<CodeGroup
+  tabs={[
+    {
+      title: "terminal",
+      language: "bash",
+      code: `poly-bench new <NAME>`
+    },
+  ]}
+/>
 
 #### `poly-bench add`
 
-```bash
-poly-bench add --go <PKG>
+<CodeGroup
+  tabs={[
+    {
+      title: "terminal",
+      language: "bash",
+      code: `poly-bench add --go <PKG>
 poly-bench add --ts <PKG>
-poly-bench add --rs <CRATE> [--features <F1,F2,...>]
-```
+poly-bench add --rs <CRATE> [--features <F1,F2,...>]`
+    },
+  ]}
+/>
 
 #### `poly-bench remove`
 
-```bash
-poly-bench remove --go <PKG>
+<CodeGroup
+  tabs={[
+    {
+      title: "terminal",
+      language: "bash",
+      code: `poly-bench remove --go <PKG>
 poly-bench remove --ts <PKG>
-poly-bench remove --rs <CRATE>
-```
+poly-bench remove --rs <CRATE>`
+    },
+  ]}
+/>
 
 #### `poly-bench install`
 
-```bash
-poly-bench install
-```
+<CodeGroup
+  tabs={[
+    {
+      title: "terminal",
+      language: "bash",
+      code: `poly-bench install`
+    },
+  ]}
+/>
 
 #### `poly-bench build`
 
-```bash
-poly-bench build [--force] [--skip-install]
-```
+<CodeGroup
+  tabs={[
+    {
+      title: "terminal",
+      language: "bash",
+      code: `poly-bench build [--force] [--skip-install]`
+    },
+  ]}
+/>
 
 ---
 
@@ -196,15 +268,27 @@ poly-bench build [--force] [--skip-install]
 
 #### `poly-bench lsp`
 
-```bash
-poly-bench lsp
-```
+<CodeGroup
+  tabs={[
+    {
+      title: "terminal",
+      language: "bash",
+      code: `poly-bench lsp`
+    },
+  ]}
+/>
 
 #### `poly-bench upgrade`
 
-```bash
-poly-bench upgrade
-```
+<CodeGroup
+  tabs={[
+    {
+      title: "terminal",
+      language: "bash",
+      code: `poly-bench upgrade`
+    },
+  ]}
+/>
 
 ---
 

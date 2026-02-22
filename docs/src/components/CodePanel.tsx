@@ -3,6 +3,7 @@
 import { Highlight } from 'prism-react-renderer'
 import * as React from 'react'
 import { useCodeTheme } from '@/lib/use-code-theme'
+import '../lib/prism-bash'
 import '../lib/prism-bench'
 
 const viemMonoFontFamily =
@@ -32,8 +33,10 @@ const languageNames: Record<string, string> = {
   javascript: 'JavaScript',
   typescript: 'TypeScript',
   go: 'Go',
-  bash: 'TypeScript',
-  shell: 'TypeScript',
+  bash: 'Bash',
+  shell: 'Shell',
+  sh: 'Shell',
+  zsh: 'Shell',
   json: 'JSON',
   yaml: 'YAML',
   css: 'CSS',
@@ -69,7 +72,11 @@ function normalizeLanguage(
   code: string,
   title?: string,
 ): string {
-  const lang = (language || 'typescript').toLowerCase()
+  const rawLang = (language || 'typescript').toLowerCase()
+  const lang =
+    rawLang === 'shell' || rawLang === 'sh' || rawLang === 'zsh'
+      ? 'bash'
+      : rawLang
   if (lang === 'bench') return 'bench'
 
   if (
@@ -84,6 +91,10 @@ function normalizeLanguage(
   }
 
   return lang
+}
+
+function isShellPromptLanguage(language: string): boolean {
+  return language === 'bash'
 }
 
 function parseCodeDirectives(code: string): ParsedCode {
@@ -206,6 +217,8 @@ export function CodeGroup({ tabs: tabsInput, title }: CodeGroupProps) {
             {tabs.map((tab, index) => {
               const parsed = parseCodeDirectives((tab.code || '').trim())
               const codeStr = parsed.cleanCode.trim()
+              const codeLines = codeStr.split('\n')
+              const showShellPrompt = isShellPromptLanguage(tab.language)
               return (
                 <TabPanel key={index}>
                   <Highlight
@@ -232,8 +245,14 @@ export function CodeGroup({ tabs: tabsInput, title }: CodeGroupProps) {
                               className={`transition-all duration-300 ${lineClassName(parsed.metaByLine[i], parsed.hasFocus, active)}`}
                             >
                               {tab.showLineNumbers && (
-                                <span className="table-cell pl-4 pr-3 text-right text-foreground-muted select-none min-w-6">
-                                  {i + 1}
+                                <span
+                                  className={`table-cell pl-4 pr-3 text-right select-none min-w-6 ${showShellPrompt ? 'text-[rgb(198,120,221)] font-medium' : 'text-foreground-muted'}`}
+                                >
+                                  {showShellPrompt
+                                    ? codeLines[i]?.trim()
+                                      ? '$'
+                                      : ''
+                                    : i + 1}
                                 </span>
                               )}
                               <span
