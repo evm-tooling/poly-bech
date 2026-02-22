@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { MDXRemote } from 'next-mdx-remote/rsc'
+import { Suspense } from 'react'
 import remarkGfm from 'remark-gfm'
 import Aside from '@/components/Aside'
 import BenchmarkSlider from '@/components/BenchmarkSlider'
@@ -86,7 +87,7 @@ function extractText(node: React.ReactNode): string {
   return ''
 }
 
-const mdxComponents = {
+export const mdxComponents = {
   CodeGroup,
   CopyButton,
   TerminalTyping,
@@ -175,11 +176,17 @@ export default async function DocPage({ params }: PageProps) {
             <p className="text-lead mb-8">{doc.meta.description}</p>
           )}
           <div className="docs-prose ">
-            <MDXRemote
-              source={doc.content}
-              components={mdxComponents}
-              options={{ mdxOptions: { remarkPlugins: [remarkGfm] } }}
-            />
+            <Suspense fallback={<>Loading...</>}>
+              <MDXRemote
+                source={doc.content}
+                components={mdxComponents}
+                options={{
+                  mdxOptions: { remarkPlugins: [remarkGfm] },
+                  parseFrontmatter: false,
+                  blockJS: false,
+                }}
+              />
+            </Suspense>
           </div>
           <DocsPageFooter
             slug={slugStr}
