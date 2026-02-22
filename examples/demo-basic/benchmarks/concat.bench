@@ -12,7 +12,7 @@ suite concatN {
 
     setup go {
         import (
-        "encoding/binary"
+            "encoding/binary"
         )
 
         helpers {
@@ -156,15 +156,13 @@ suite concatN {
             title: "String Concatenation - O(n²)",
             description: "Naive string concat s += 'x' - quadratic complexity",
             output: "concat-line.svg",
-            xlabel: "String Length (n)"
+            xlabel: "String Length (n)",
         )
-
         charting.drawTable(
             title: "String Concatenation Comparison",
             description: "Vertical grouped bars showing quadratic growth",
             output: "concat-bar.svg",
-            xlabel: "Input Size"
+            xlabel: "Input Size",
         )
     }
-
 }

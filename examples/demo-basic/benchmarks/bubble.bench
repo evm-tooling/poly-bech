@@ -7,8 +7,11 @@ suite nameT {
     mode: "auto"
     compare: false
     iterations: 1000
+    description: ""
+    concurrency: 1
+    sink: true
 
-    setup go {
+    setup ts {
     }
 
 }
