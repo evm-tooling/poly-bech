@@ -85,7 +85,8 @@
     "compile": "tsc -p .",
     "watch": "tsc -p . -w",
     "lint": "eslint src --ext ts",
-    "publish:dev": "npx ts-node ./scripts/publish-dev.ts"
+    "publish:dev": "npx ts-node ./scripts/publish-dev.ts",
+    "publish:ci": "npx ts-node ./scripts/publish-dev.ts && npx --yes @vscode/vsce publish --pat $VSCE_PAT"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1",

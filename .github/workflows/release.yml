@@ -55,6 +55,19 @@ jobs:
           merge: true
           comment: always
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Publish VSCode extension
+        working-directory: extensions/vscode
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          npm ci
+          npm run publish:ci
+
       - name: Publish prerelease as latest
         uses: actions/github-script@v7
         with:
