@@ -45,17 +45,26 @@ export default function Footer() {
               </h5>
               <ul className="space-y-2 text-sm text-foreground-secondary">
                 <li>
-                  <Link href="/docs/introduction" className="hover:text-primary transition-colors">
+                  <Link
+                    href="/docs/introduction"
+                    className="hover:text-primary transition-colors"
+                  >
                     Introduction
                   </Link>
                 </li>
                 <li>
-                  <Link href="/docs/getting-started" className="hover:text-primary transition-colors">
+                  <Link
+                    href="/docs/getting-started"
+                    className="hover:text-primary transition-colors"
+                  >
                     Getting Started
                   </Link>
                 </li>
                 <li>
-                  <Link href="/docs/tools/cli" className="hover:text-primary transition-colors">
+                  <Link
+                    href="/docs/tools/cli"
+                    className="hover:text-primary transition-colors"
+                  >
                     CLI Reference
                   </Link>
                 </li>
@@ -68,17 +77,26 @@ export default function Footer() {
               </h5>
               <ul className="space-y-2 text-sm text-foreground-secondary">
                 <li>
-                  <Link href="/docs/examples" className="hover:text-primary transition-colors">
+                  <Link
+                    href="/docs/examples"
+                    className="hover:text-primary transition-colors"
+                  >
                     Examples
                   </Link>
                 </li>
                 <li>
-                  <Link href="/docs/reporting" className="hover:text-primary transition-colors">
+                  <Link
+                    href="/docs/reporting"
+                    className="hover:text-primary transition-colors"
+                  >
                     Reporting
                   </Link>
                 </li>
                 <li>
-                  <Link href="/docs/core/architecture" className="hover:text-primary transition-colors">
+                  <Link
+                    href="/docs/core/architecture"
+                    className="hover:text-primary transition-colors"
+                  >
                     Architecture
                   </Link>
                 </li>
