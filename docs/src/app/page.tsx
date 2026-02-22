@@ -58,8 +58,7 @@ suite keccakBench {
     after {
         charting.drawBarChart(
             title: "Keccak256 Performance",
-            xlabel: "Time (ns)",
-            ylabel: "Benchmark"
+            xlabel: "Time (ns)"
         )
     }
 

@@ -1331,7 +1331,7 @@ CompletionItem {
     documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
 tower_lsp::lsp_types::MarkupContent {
     kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-    value: "**charting.drawBarChart** `(title?, description?, xlabel?, ylabel?, output?)`\n\nGenerates a bar chart comparing benchmark execution times.\n\n**Parameters:**\n- `title` - Chart title\n- `description` - Chart description\n- `xlabel` - X-axis label\n- `ylabel` - Y-axis label\n- `output` - Output filename (default: bar-chart.svg)".to_string(),
+    value: "**charting.drawBarChart** `(title?, description?, xlabel?, output?)`\n\nGenerates a bar chart comparing benchmark execution times.\n\n**Parameters:**\n- `title` - Chart title\n- `description` - Chart description\n- `xlabel` - X-axis label\n- `output` - Output filename (default: bar-chart.svg)".to_string(),
 }
     )),
     insert_text: Some("drawBarChart($0)".to_string()),
@@ -1345,7 +1345,7 @@ CompletionItem {
     documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
 tower_lsp::lsp_types::MarkupContent {
     kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-    value: "**charting.drawLineChart** `(title?, description?, xlabel?, ylabel?, output?)`\n\nGenerates a line chart for visualizing benchmark trends.\n\n**Parameters:**\n- `title` - Chart title\n- `description` - Chart description\n- `xlabel` - X-axis label\n- `ylabel` - Y-axis label\n- `output` - Output filename (default: line-chart.svg)".to_string(),
+    value: "**charting.drawLineChart** `(title?, description?, xlabel?, output?)`\n\nGenerates a line chart for visualizing benchmark trends.\n\n**Parameters:**\n- `title` - Chart title\n- `description` - Chart description\n- `xlabel` - X-axis label\n- `output` - Output filename (default: line-chart.svg)".to_string(),
 }
     )),
     insert_text: Some("drawLineChart($0)".to_string()),
@@ -1362,7 +1362,6 @@ fn charting_function_param_completions() -> Vec<CompletionItem> {
         chart_param_completion("title", "string", "Chart title", "The title displayed at the top of the chart.", "title: \"$0\""),
         chart_param_completion("description", "string", "Chart description", "A description shown below the chart title.", "description: \"$0\""),
         chart_param_completion("xlabel", "string", "X-axis label", "Label for the X-axis.\n\nCustomize to describe your benchmark inputs (e.g., \"Input Size\", \"Array Length\").", "xlabel: \"$0\""),
-        chart_param_completion("ylabel", "string", "Y-axis label", "Label for the Y-axis.\n\n**Note:** Not available for bar charts or line charts. For those chart types, the Y-axis label is automatically determined by `chartMode`:\n- `\"performance\"`: \"Time (ns/op)\"\n- `\"throughput\"`: \"Iterations\"", "ylabel: \"$0\""),
         chart_param_completion("output", "string", "Output filename", "The output filename for the generated chart SVG.\n\nDefault: `bar-chart.svg` or `line-chart.svg` depending on chart type.", "output: \"$0\""),
 
         // Display toggle parameters (boolean)

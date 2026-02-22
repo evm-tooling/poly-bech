@@ -197,7 +197,6 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
         // Charting keywords (used as parameters in charting calls)
         "title",
         "xlabel",
-        "ylabel",
         "sortBy",
         "sortOrder",
         "timeUnit",

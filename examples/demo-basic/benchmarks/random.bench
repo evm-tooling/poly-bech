@@ -216,16 +216,14 @@ suite randomN {
             title: "Random Statistics - O(n)",
             description: "Sum/mean/variance calculation - linear complexity",
             output: "random-line.svg",
-            xlabel: "Array Size (n elements)",
-            ylabel: "Time (ns/op)"
+            xlabel: "Array Size (n elements)"
         )
 
         charting.drawBarChart(
             title: "Random Statistics Comparison",
             description: "Vertical grouped bars - linear growth pattern",
             output: "random-bar.svg",
-            xlabel: "Array Size",
-            ylabel: "Time (ns/op)"
+            xlabel: "Array Size"
         )
     }
 

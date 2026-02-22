@@ -961,10 +961,6 @@ fn format_single_param(directive: &ChartDirective, name: &str, indent: &str) -> 
             .x_label
             .as_ref()
             .map(|v| format!("{}xlabel: \"{}\"", indent, escape_string(v))),
-        "ylabel" => directive
-            .y_label
-            .as_ref()
-            .map(|v| format!("{}ylabel: \"{}\"", indent, escape_string(v))),
         "output" => directive
             .output_file
             .as_ref()
@@ -1184,9 +1180,6 @@ fn format_params_default_order(directive: &ChartDirective, inner2: &str) -> Vec<
     // Axis labels (for line/bar charts)
     if let Some(ref xlabel) = directive.x_label {
         params.push(format!("{}xlabel: \"{}\"", inner2, escape_string(xlabel)));
-    }
-    if let Some(ref ylabel) = directive.y_label {
-        params.push(format!("{}ylabel: \"{}\"", inner2, escape_string(ylabel)));
     }
 
     // Output file

@@ -378,7 +378,6 @@ module.exports = grammar({
       'title',
       'description',
       'xlabel',
-      'ylabel',
       'output',
       'sortBy',
       'sortOrder',

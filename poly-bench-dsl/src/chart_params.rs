@@ -16,7 +16,6 @@ pub enum ChartParam {
     Width,
     Height,
     XLabel,
-    YLabel,
 
     // Display toggles
     ShowStats,
@@ -106,7 +105,6 @@ impl ChartParam {
             ChartParam::Width => "width",
             ChartParam::Height => "height",
             ChartParam::XLabel => "xlabel",
-            ChartParam::YLabel => "ylabel",
             ChartParam::ShowStats => "showStats",
             ChartParam::ShowConfig => "showConfig",
             ChartParam::ShowWinCounts => "showWinCounts",
@@ -170,7 +168,6 @@ impl ChartParam {
             "width" => Some(ChartParam::Width),
             "height" => Some(ChartParam::Height),
             "xlabel" => Some(ChartParam::XLabel),
-            "ylabel" => Some(ChartParam::YLabel),
             "showStats" => Some(ChartParam::ShowStats),
             "showConfig" => Some(ChartParam::ShowConfig),
             "showWinCounts" => Some(ChartParam::ShowWinCounts),
@@ -339,7 +336,6 @@ pub fn get_valid_params(chart_type: ChartType) -> HashSet<ChartParam> {
 
     match chart_type {
         ChartType::BarChart => {
-            // Note: YLabel is intentionally excluded - it's auto-determined by chartMode
             params.insert(ChartParam::XLabel);
             params.extend([
                 ChartParam::ShowStats,
@@ -366,7 +362,6 @@ pub fn get_valid_params(chart_type: ChartType) -> HashSet<ChartParam> {
             params.insert(ChartParam::ChartMode);
         }
         ChartType::LineChart => {
-            // Note: YLabel is intentionally excluded - it's auto-determined by chartMode
             params.insert(ChartParam::XLabel);
             params.insert(ChartParam::Compact);
             params.extend(axis_styling_params());

@@ -105,8 +105,7 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool) -> String {
         content.push_str("    # after {\n");
         content.push_str("    #     charting.drawBarChart(\n");
         content.push_str("    #         title: \"SHA256 Performance\",\n");
-        content.push_str("    #         xlabel: \"Time (ns)\",\n");
-        content.push_str("    #         ylabel: \"Benchmark\"\n");
+        content.push_str("    #         xlabel: \"Benchmark\"\n");
         content.push_str("    #     )\n");
         content.push_str("    # }\n");
     }

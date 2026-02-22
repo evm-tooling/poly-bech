@@ -186,16 +186,14 @@ suite matmulN {
             title: "Matrix Multiplication - O(n³)",
             description: "Naive n×n matrix multiply - cubic complexity",
             output: "matmul-line.svg",
-            xlabel: "Matrix Size (n×n)",
-            ylabel: "Time (ns/op)"
+            xlabel: "Matrix Size (n×n)"
         )
 
         charting.drawBarChart(
             title: "Matrix Multiplication Comparison",
             description: "Vertical grouped bars showing cubic growth",
             output: "matmul-bar.svg",
-            xlabel: "Matrix Size",
-            ylabel: "Time (ns/op)"
+            xlabel: "Matrix Size"
         )
     }
 

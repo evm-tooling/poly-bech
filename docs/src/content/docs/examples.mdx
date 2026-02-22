@@ -124,8 +124,7 @@ suite keccak {
     after {
         charting.drawBarChart(
             title: "Keccak256 Performance",
-            xlabel: "Implementation",
-            ylabel: "Time (ns/op)"
+            xlabel: "Implementation"
         )
     }
 }`
@@ -357,8 +356,7 @@ suite abiBenchmarks {
     after {
         charting.drawBarChart(
             title: "ABI Encoding Performance",
-            xlabel: "Implementation",
-            ylabel: "Time (ns/op)"
+            xlabel: "Implementation"
         )
     }
 }`
@@ -607,8 +605,7 @@ suite chartExamples {
         // Bar chart comparing all implementations
         charting.drawBarChart(
             title: "Compute Performance by Size",
-            xlabel: "Benchmark",
-            ylabel: "Time (ns/op)"
+            xlabel: "Benchmark"
         )
 
         // Pie chart showing relative time distribution
@@ -620,8 +617,7 @@ suite chartExamples {
         // Line chart showing scaling behavior
         charting.drawLineChart(
             title: "Scaling Behavior",
-            xlabel: "Input Size",
-            ylabel: "Time (ns/op)"
+            xlabel: "Input Size"
         )
     }
 }`

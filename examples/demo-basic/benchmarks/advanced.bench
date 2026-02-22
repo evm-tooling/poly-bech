@@ -268,7 +268,6 @@ suite example {
             title: "Performance Trends",
             description: "Timing across all benchmarks",
             xlabel: "Benchmark",
-            ylabel: "Time",
             timeUnit: "auto"
         )
 

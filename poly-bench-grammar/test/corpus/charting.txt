@@ -59,8 +59,7 @@ suite test {
 
         charting.drawLineChart(
             title: "Line Chart",
-            xlabel: "Size",
-            ylabel: "Time"
+            xlabel: "Size"
         )
 
         charting.drawPieChart(

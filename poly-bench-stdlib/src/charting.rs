@@ -62,7 +62,7 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             **Basic Parameters:**\n\
             - `title` - Chart title (default: \"Benchmark Results\")\n\
             - `description` - Subtitle/description text\n\
-            - `xlabel`, `ylabel` - Axis labels\n\
+            - `xlabel` - X-axis label\n\
             - `output` - Output filename (default: \"bar-chart.svg\")\n\n\
             **Dimensions:**\n\
             - `width` - Chart width in pixels (default: dynamic based on bar count)\n\
@@ -141,7 +141,7 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             **Basic Parameters:**\n\
             - `title` - Chart title (default: \"Performance Trend\")\n\
             - `description` - Subtitle/description text\n\
-            - `xlabel`, `ylabel` - Axis labels\n\
+            - `xlabel` - X-axis label\n\
             - `output` - Output filename (default: \"line-chart.svg\")\n\n\
             **Dimensions:**\n\
             - `width` - Chart width in pixels (default: 620)\n\

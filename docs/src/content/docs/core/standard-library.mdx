@@ -137,8 +137,7 @@ Generates a bar chart comparing benchmark results across languages.
       language: "rust",
       code: `charting.drawBarChart(
     title: "<chart-title>",
-    xlabel: "<x-axis-label>",
-    ylabel: "<y-axis-label>"
+    xlabel: "<x-axis-label>"
 )`
     },
   ]}
@@ -148,7 +147,6 @@ Generates a bar chart comparing benchmark results across languages.
 |-----------|------|----------|-------------|
 | `title` | string | Yes | Chart title |
 | `xlabel` | string | No | X-axis label |
-| `ylabel` | string | No | Y-axis label |
 
 ### Example
 
@@ -165,8 +163,7 @@ suite hashBenchmarks {
     after {
         charting.drawBarChart(
             title: "Hash Function Performance",
-            xlabel: "Implementation",
-            ylabel: "Time (ns/op)"
+            xlabel: "Implementation"
         )
     }
 }`
@@ -240,8 +237,7 @@ Generates a line chart showing scaling behavior across benchmarks. Useful when y
       language: "rust",
       code: `charting.drawLineChart(
     title: "<chart-title>",
-    xlabel: "<x-axis-label>",
-    ylabel: "<y-axis-label>"
+    xlabel: "<x-axis-label>"
 )`
     },
   ]}
@@ -251,7 +247,6 @@ Generates a line chart showing scaling behavior across benchmarks. Useful when y
 |-----------|------|----------|-------------|
 | `title` | string | Yes | Chart title |
 | `xlabel` | string | No | X-axis label |
-| `ylabel` | string | No | Y-axis label |
 
 ### Example
 
@@ -284,8 +279,7 @@ suite scalingBenchmarks {
     after {
         charting.drawLineChart(
             title: "Scaling Behavior",
-            xlabel: "Input Size",
-            ylabel: "Time (ns/op)"
+            xlabel: "Input Size"
         )
     }
 }`
@@ -316,8 +310,7 @@ suite comprehensive {
         // Bar chart for overall comparison
         charting.drawBarChart(
             title: "Overall Performance",
-            xlabel: "Benchmark",
-            ylabel: "Time (ns/op)"
+            xlabel: "Benchmark"
         )
 
         // Pie chart for specific benchmark
@@ -329,8 +322,7 @@ suite comprehensive {
         // Line chart for scaling
         charting.drawLineChart(
             title: "Scaling Analysis",
-            xlabel: "Input Size",
-            ylabel: "Time (ns/op)"
+            xlabel: "Input Size"
         )
     }
 }`
@@ -503,8 +495,7 @@ suite ethereumBenchmarks {
     after {
         charting.drawBarChart(
             title: "Ethereum Client Performance",
-            xlabel: "Operation",
-            ylabel: "Time (ns/op)"
+            xlabel: "Operation"
         )
         
         anvil.stopAnvil()
