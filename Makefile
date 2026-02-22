@@ -202,7 +202,7 @@ release-both:
 	@echo "  CLI: target/release/poly-bench"
 	@echo "  LSP command: target/release/poly-bench lsp"
 
-# Release automation: bump versions, tag, prerelease, open PR to production
+# Release automation: bump versions (Rust + VSCode extension), tag, prerelease, open PR to production
 # Usage: make release VERSION=v0.0.1
 # Requires: gh CLI authenticated, on main branch
 release:
@@ -214,10 +214,17 @@ endif
 	@echo "==> Ensuring we're on main branch..."
 	@git checkout main
 	@git pull origin main
-	@echo "==> Bumping Cargo.toml version to $(VERSION)..."
+	@echo "==> Bumping Cargo.toml to $(VERSION) and VSCode extension version independently..."
 	@VER=$$(echo $(VERSION) | sed 's/^v//'); \
+	EXT_VER_INPUT="$(VSCODE_VERSION)"; \
+	if [ -n "$$EXT_VER_INPUT" ]; then \
+		EXT_VER="$$EXT_VER_INPUT"; \
+	else \
+		EXT_VER=$$(node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('extensions/vscode/package.json','utf8'));const m=j.version.match(/^(\\d+)\\.(\\d+)\\.(\\d+)(-.+)?$$/);if(!m){process.exit(1)};const major=Number(m[1]);const minor=Number(m[2]);const patch=Number(m[3])+1;const pre=m[4]??'';process.stdout.write(major+'.'+minor+'.'+patch+pre);"); \
+	fi; \
 	sed -i.bak "s/^version = \".*\"/version = \"$$VER\"/" Cargo.toml && rm -f Cargo.toml.bak; \
-	git add Cargo.toml && \
+	node -e "const fs=require('fs');const p='extensions/vscode/package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version='$$EXT_VER';fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');console.log('VSCode extension version -> '+j.version);" && \
+	git add Cargo.toml extensions/vscode/package.json && \
 	git diff --staged --quiet && echo "==> No version changes (already at $(VERSION)?)" || (git commit -m "chore: release $(VERSION)" && git push origin main)
 	@echo "==> Creating tag $(VERSION)..."
 	@git tag -a $(VERSION) -m "Release $(VERSION)"
