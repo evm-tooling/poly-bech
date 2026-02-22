@@ -214,11 +214,10 @@ endif
 	@echo "==> Ensuring we're on main branch..."
 	@git checkout main
 	@git pull origin main
-	@echo "==> Bumping versions to $(VERSION)..."
+	@echo "==> Bumping Cargo.toml version to $(VERSION)..."
 	@VER=$$(echo $(VERSION) | sed 's/^v//'); \
 	sed -i.bak "s/^version = \".*\"/version = \"$$VER\"/" Cargo.toml && rm -f Cargo.toml.bak; \
-	sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$$VER\"/" extensions/vscode/package.json && rm -f extensions/vscode/package.json.bak; \
-	git add Cargo.toml extensions/vscode/package.json && \
+	git add Cargo.toml && \
 	git diff --staged --quiet && echo "==> No version changes (already at $(VERSION)?)" || (git commit -m "chore: release $(VERSION)" && git push origin main)
 	@echo "==> Creating tag $(VERSION)..."
 	@git tag -a $(VERSION) -m "Release $(VERSION)"
