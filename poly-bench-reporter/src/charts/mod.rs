@@ -1,9 +1,7 @@
 //! Modular chart generators for benchmark visualization
 //!
-//! Provides bar charts, line charts, speedup charts, and tables for visualizing benchmark results.
+//! Provides speedup charts and tables for visualizing benchmark results.
 
-pub mod bar_chart;
-pub mod line_chart;
 pub mod regression;
 pub mod speedup_chart;
 pub mod table;

@@ -1025,34 +1025,6 @@
       "members": [
         {
           "type": "STRING",
-          "value": "drawBarChart"
-        },
-        {
-          "type": "STRING",
-          "value": "drawLineChart"
-        },
-        {
-          "type": "STRING",
-          "value": "drawScatterPlot"
-        },
-        {
-          "type": "STRING",
-          "value": "drawHistogram"
-        },
-        {
-          "type": "STRING",
-          "value": "drawHeatmap"
-        },
-        {
-          "type": "STRING",
-          "value": "drawBoxPlot"
-        },
-        {
-          "type": "STRING",
-          "value": "drawAreaChart"
-        },
-        {
-          "type": "STRING",
           "value": "drawSpeedupChart"
         },
         {
@@ -1256,10 +1228,6 @@
         },
         {
           "type": "STRING",
-          "value": "showStdDevBand"
-        },
-        {
-          "type": "STRING",
           "value": "roundTicks"
         },
         {
@@ -1297,18 +1265,6 @@
         {
           "type": "STRING",
           "value": "tickLabelFontSize"
-        },
-        {
-          "type": "STRING",
-          "value": "barGroupGap"
-        },
-        {
-          "type": "STRING",
-          "value": "barWithinGroupGap"
-        },
-        {
-          "type": "STRING",
-          "value": "barWidth"
         },
         {
           "type": "STRING",

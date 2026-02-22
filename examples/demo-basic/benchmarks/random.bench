@@ -212,14 +212,14 @@ suite randomN {
     }
 
     after {
-        charting.drawLineChart(
+        charting.drawSpeedupChart(
             title: "Random Statistics - O(n)",
             description: "Sum/mean/variance calculation - linear complexity",
             output: "random-line.svg",
             xlabel: "Array Size (n elements)"
         )
 
-        charting.drawBarChart(
+        charting.drawTable(
             title: "Random Statistics Comparison",
             description: "Vertical grouped bars - linear growth pattern",
             output: "random-bar.svg",

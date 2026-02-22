@@ -4,6 +4,8 @@
   // Biome is in docs/; ensure docs has deps installed (bun install in docs/)
   "biome.lsp.bin": "${workspaceFolder}/docs/node_modules/.bin/biome",
   "biome.configurationPath": "${workspaceFolder}/docs/biome.json",
+   "poly-bench.useNewLsp": true,
+  "poly-bench.lspPath": "/Users/evanmcgrane/Documents/evm-tooling/poly-bench/target/debug/poly-bench",
   "editor.defaultFormatter": "biomejs.biome",
   "editor.quickSuggestions": {
     "strings": "on"

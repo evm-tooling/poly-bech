@@ -166,7 +166,7 @@ bench keccak256 {
     rust: keccak256(&data)
     
     after {
-        charting.drawBarChart(title: "Keccak256 Performance")
+        charting.drawTable(title: "Keccak256 Performance")
     }
     
     validate {
@@ -197,8 +197,8 @@ bench example {
     go: doSomething(anvil.ANVIL_RPC_URL)
     
     after {
-        charting.drawBarChart(title: "Results", horizontal: true)
-        charting.drawPieChart(title: "Distribution")
+        charting.drawTable(title: "Results", horizontal: true)
+        charting.drawSpeedupChart(title: "Speedup")
     }
 }
 ```

@@ -174,8 +174,8 @@ suite example {
     # ... setup, fixtures, benchmarks ...
 
     after {
-        charting.drawBarChart(title: "Results", output: "results-bar.svg")
-        charting.drawLineChart(title: "Scaling", output: "results-line.svg")
+        charting.drawTable(title: "Results", output: "results-bar.svg")
+        charting.drawSpeedupChart(title: "Scaling", output: "results-line.svg")
         charting.drawSpeedupChart(title: "Speedup", output: "results-speedup.svg")
         charting.drawTable(title: "Summary", output: "results-table.svg")
     }
@@ -190,16 +190,16 @@ suite example {
 
 ---
 
-#### `charting.drawBarChart(...)`
+#### `charting.drawTable(...)`
 
-Generates a grouped bar chart comparing benchmark results across languages. This is the most feature-rich chart type with the full set of available parameters.
+Generates a grouped table comparing benchmark results across languages. This is the most feature-rich chart type with the full set of available parameters.
 
 <CodeGroup 
   tabs={[
     {
       title: "Full syntax",
       language: "bench",
-      code: `charting.drawBarChart(
+      code: `charting.drawTable(
     # ── Basic ─────────────────────────────────────────
     title: "Performance Comparison",
     description: "Go vs TypeScript vs Rust",
@@ -230,9 +230,6 @@ Generates a grouped bar chart comparing benchmark results across languages. This
     sortOrder: "desc",
 
     # ── Bar layout ────────────────────────────────────
-    barWidth: 20,
-    barGroupGap: 20,
-    barWithinGroupGap: 2,
 
     # ── Axis styling ──────────────────────────────────
     axisThickness: 1.5,
@@ -284,7 +281,7 @@ Generates a grouped bar chart comparing benchmark results across languages. This
   ]}
 />
 
-##### `drawBarChart` Parameter Reference
+##### `drawTable` Parameter Reference
 
 **Basic**
 
@@ -331,9 +328,6 @@ Generates a grouped bar chart comparing benchmark results across languages. This
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `barWidth` | integer | `20` | Width of each individual bar in pixels |
-| `barGroupGap` | integer | `20` | Gap between benchmark groups in pixels |
-| `barWithinGroupGap` | integer | `2` | Gap between bars within a group in pixels |
 
 **Axis Styling**
 
@@ -404,25 +398,22 @@ Generates a grouped bar chart comparing benchmark results across languages. This
 
 ---
 
-#### `charting.drawLineChart(...)`
+#### `charting.drawSpeedupChart(...)`
 
-Generates a line chart showing how performance scales across benchmarks. Works best when benchmark names encode a numeric size (e.g. `n100`, `n200`, `size8`, `size16`) — poly-bench extracts the number for the x-axis.
+Generates a speedup chart showing how performance scales across benchmarks. Works best when benchmark names encode a numeric size (e.g. `n100`, `n200`, `size8`, `size16`) — poly-bench extracts the number for the x-axis.
 
-`drawLineChart` supports the same parameter groups as `drawBarChart` with the following differences:
-- **Not available**: `showConfig`, `showWinCounts`, `showGeoMean`, `showDistribution`, `showMemory`, `showTotalTime`, `barWidth`, `barGroupGap`, `barWithinGroupGap`
-- **Only on line chart**: `showStdDevBand`
+`drawSpeedupChart` supports the same parameter groups as `drawTable` with the following differences:
 
 <CodeGroup 
   tabs={[
     {
       title: "Example",
       language: "bench",
-      code: `charting.drawLineChart(
+      code: `charting.drawSpeedupChart(
     title: "Sort Performance - O(n log n)",
     description: "Stdlib sort comparison across Go, TypeScript, and Rust",
     output: "sort-line.svg",
     xlabel: "Array Size (n elements)",
-    showStdDevBand: true,
     showRegression: true,
     regressionModel: "nlogn",
     showRSquared: true,
@@ -434,13 +425,12 @@ Generates a line chart showing how performance scales across benchmarks. Works b
   ]}
 />
 
-##### `drawLineChart`-only Parameter
+##### `drawSpeedupChart`-only Parameter
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `showStdDevBand` | boolean | — | Shade a ±1 standard deviation band around each line |
 
-All other parameters from `drawBarChart` are available on `drawLineChart` except the bar-specific and display-toggle ones listed above.
+All other parameters from `drawTable` are available on `drawSpeedupChart` except the bar-specific and display-toggle ones listed above.
 
 ---
 
@@ -575,8 +565,8 @@ suite comprehensive {
     # ... benchmarks ...
 
     after {
-        # Grouped bar chart for overall comparison
-        charting.drawBarChart(
+        # Grouped table for overall comparison
+        charting.drawTable(
             title: "Overall Performance",
             output: "results-bar.svg",
             sortBy: "speedup",
@@ -585,11 +575,10 @@ suite comprehensive {
         )
 
         # Line chart for scaling analysis
-        charting.drawLineChart(
+        charting.drawSpeedupChart(
             title: "Scaling Behavior",
             output: "results-line.svg",
             xlabel: "Input Size",
-            showStdDevBand: true,
             showRegression: true,
             regressionModel: "auto"
         )
@@ -692,7 +681,7 @@ suite mathBenchmarks {
 | Module | Import | Key Functions / Constants |
 |--------|--------|--------------------------|
 | `std::anvil` | `use std::anvil` | `spawnAnvil()`, `stopAnvil()`, `ANVIL_RPC_URL` |
-| `std::charting` | `use std::charting` | `drawBarChart()`, `drawLineChart()`, `drawSpeedupChart()`, `drawTable()` |
+| `std::charting` | `use std::charting` | `drawTable()`, `drawSpeedupChart()`, `drawSpeedupChart()`, `drawTable()` |
 | `std::constants` | `use std::constants` | `PI`, `E`, `TAU`, `PHI`, `SQRT2` |
 
 ---

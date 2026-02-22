@@ -131,7 +131,7 @@ suite keccak {
     }
 
     after {
-        charting.drawBarChart(
+        charting.drawTable(
             title: "Keccak256 Performance",
             output: "keccak-bar.svg",
             xlabel: "Implementation"
@@ -404,7 +404,7 @@ suite abiBenchmarks {
     }
 
     after {
-        charting.drawBarChart(
+        charting.drawTable(
             title: "ABI Encoding Performance",
             xlabel: "Implementation"
         )
@@ -585,7 +585,7 @@ Use `before`, `after`, and `each` hooks for setup and teardown. This is useful f
 
 ### Chart Generation
 
-Generate multiple chart types for visual comparison. The `charting` module supports bar charts, line charts, speedup charts, and tables.
+Generate multiple chart types for visual comparison. The `charting` module supports tables, speedup charts, speedup charts, and tables.
 
 <CodeGroup 
   tabs={[
@@ -654,14 +654,14 @@ suite chartExamples {
 
     after {
         # Bar chart comparing all implementations
-        charting.drawBarChart(
+        charting.drawTable(
             title: "Compute Performance by Size",
             output: "compute-bar.svg",
             xlabel: "Benchmark"
         )
 
         # Line chart showing scaling behavior
-        charting.drawLineChart(
+        charting.drawSpeedupChart(
             title: "Scaling Behavior",
             output: "compute-line.svg",
             xlabel: "Input Size"

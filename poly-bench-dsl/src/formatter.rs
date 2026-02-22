@@ -898,8 +898,6 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
 
         // Determine function name based on chart type
         let func_name = match directive.chart_type {
-            ChartType::BarChart => "drawBarChart",
-            ChartType::LineChart => "drawLineChart",
             ChartType::SpeedupChart => "drawSpeedupChart",
             ChartType::Table => "drawTable",
         };
@@ -1080,9 +1078,6 @@ fn format_single_param(directive: &ChartDirective, name: &str, indent: &str) -> 
         "showVerticalGrid" => {
             directive.show_vertical_grid.map(|v| format!("{}showVerticalGrid: {}", indent, v))
         }
-        "showStdDevBand" => {
-            directive.show_std_dev_band.map(|v| format!("{}showStdDevBand: {}", indent, v))
-        }
         "showRegressionBand" => {
             directive.show_regression_band.map(|v| format!("{}showRegressionBand: {}", indent, v))
         }
@@ -1104,11 +1099,6 @@ fn format_single_param(directive: &ChartDirective, name: &str, indent: &str) -> 
         "tickLabelFontSize" => {
             directive.tick_label_font_size.map(|v| format!("{}tickLabelFontSize: {}", indent, v))
         }
-        "barGroupGap" => directive.bar_group_gap.map(|v| format!("{}barGroupGap: {}", indent, v)),
-        "barWithinGroupGap" => {
-            directive.bar_within_group_gap.map(|v| format!("{}barWithinGroupGap: {}", indent, v))
-        }
-        "barWidth" => directive.bar_width.map(|v| format!("{}barWidth: {}", indent, v)),
         "ciLevel" => directive.ci_level.map(|v| format!("{}ciLevel: {}", indent, v)),
 
         // Float parameters
@@ -1177,7 +1167,7 @@ fn format_params_default_order(directive: &ChartDirective, inner2: &str) -> Vec<
         params.push(format!("{}description: \"{}\"", inner2, escape_string(desc)));
     }
 
-    // Axis labels (for line/bar charts)
+    // Axis labels
     if let Some(ref xlabel) = directive.x_label {
         params.push(format!("{}xlabel: \"{}\"", inner2, escape_string(xlabel)));
     }
@@ -1339,10 +1329,6 @@ fn format_params_default_order(directive: &ChartDirective, inner2: &str) -> Vec<
     if let Some(ci_level) = directive.ci_level {
         params.push(format!("{}ciLevel: {}", inner2, ci_level));
     }
-    if let Some(show_std_dev_band) = directive.show_std_dev_band {
-        params.push(format!("{}showStdDevBand: {}", inner2, show_std_dev_band));
-    }
-
     // Regression
     if let Some(show_regression) = directive.show_regression {
         params.push(format!("{}showRegression: {}", inner2, show_regression));
@@ -1367,17 +1353,6 @@ fn format_params_default_order(directive: &ChartDirective, inner2: &str) -> Vec<
     }
     if let Some(regression_band_opacity) = directive.regression_band_opacity {
         params.push(format!("{}regressionBandOpacity: {}", inner2, regression_band_opacity));
-    }
-
-    // Bar chart specific
-    if let Some(bar_group_gap) = directive.bar_group_gap {
-        params.push(format!("{}barGroupGap: {}", inner2, bar_group_gap));
-    }
-    if let Some(bar_within_group_gap) = directive.bar_within_group_gap {
-        params.push(format!("{}barWithinGroupGap: {}", inner2, bar_within_group_gap));
-    }
-    if let Some(bar_width) = directive.bar_width {
-        params.push(format!("{}barWidth: {}", inner2, bar_width));
     }
 
     // Tick formatting
@@ -1411,13 +1386,9 @@ suite example {
     }
 
     after {
-        charting.drawBarChart(
-            title: "Performance Comparison",
+        charting.drawSpeedupChart(
+            title: "Speedup Comparison",
             sortBy: "speedup"
-        )
-        
-        charting.drawLineChart(
-            title: "Performance Trends"
         )
         
         charting.drawTable(
@@ -1428,18 +1399,11 @@ suite example {
 }"#;
         let ast = parse(input, "test.bench").unwrap();
         assert_eq!(ast.suites.len(), 1);
-        assert_eq!(ast.suites[0].chart_directives.len(), 3, "Expected 3 chart directives");
+        assert_eq!(ast.suites[0].chart_directives.len(), 2, "Expected 2 chart directives");
 
         let formatted = format_file(&ast);
         assert!(formatted.contains("after {"), "Expected 'after {{' block in output");
-        assert!(
-            formatted.contains("charting.drawBarChart"),
-            "Expected drawBarChart call in output"
-        );
-        assert!(
-            formatted.contains("charting.drawLineChart"),
-            "Expected drawLineChart call in output"
-        );
+        assert!(formatted.contains("charting.drawSpeedupChart"), "Expected drawSpeedupChart call");
         assert!(formatted.contains("charting.drawTable"), "Expected drawTable call in output");
         // Verify non-default values are preserved
         assert!(formatted.contains("sortBy: \"speedup\""), "Expected sortBy parameter");

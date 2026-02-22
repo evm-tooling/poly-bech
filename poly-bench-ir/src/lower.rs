@@ -337,11 +337,6 @@ fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -
     ir.show_regression_band = directive.show_regression_band;
     ir.regression_band_opacity = directive.regression_band_opacity;
 
-    // Bar chart specific
-    ir.bar_group_gap = directive.bar_group_gap;
-    ir.bar_within_group_gap = directive.bar_within_group_gap;
-    ir.bar_width = directive.bar_width;
-
     // Tick label formatting
     ir.round_ticks = directive.round_ticks;
 
@@ -357,7 +352,6 @@ fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -
 
     // Error bars enhancements
     ir.ci_level = directive.ci_level;
-    ir.show_std_dev_band = directive.show_std_dev_band;
 
     // Chart mode
     ir.chart_mode = directive.chart_mode.clone();

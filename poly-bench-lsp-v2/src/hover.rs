@@ -588,17 +588,6 @@ fn get_property_documentation(name: &str) -> String {
 /// Get documentation for a chart function
 fn get_chart_function_documentation(name: &str) -> String {
     match name {
-        "drawBarChart" => "**drawBarChart**\n\nDraw a bar chart comparing benchmark results.\n\n\
-            **Parameters:**\n\
-            - `title` - Chart title\n\
-            - `output` - Output filename\n\
-            - `sortBy` - Sort by: speedup, name, time, ops\n\
-            - `sortOrder` - asc or desc"
-            .to_string(),
-        "drawLineChart" => {
-            "**drawLineChart**\n\nDraw a line chart showing performance over time or input size."
-                .to_string()
-        }
         "drawSpeedupChart" => {
             "**drawSpeedupChart**\n\nDraw a chart showing relative speedup compared to baseline."
                 .to_string()
@@ -799,7 +788,7 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             **Benchmark-level hook:**\n\
             ```\nbench test {\n    after go: { cleanup() }\n}\n```\n\n\
             **Suite-level charting block:**\n\
-            ```\nafter {\n    charting.drawBarChart(title: \"Results\")\n}\n```",
+            ```\nafter {\n    charting.drawSpeedupChart(title: \"Results\")\n}\n```",
         ),
         "each" => Some(
             "**each** `<lang>:` `{ ... }`\n\n\
@@ -846,7 +835,7 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             Import a module from the poly-bench standard library.\n\n\
             Available modules:\n\
             - `anvil` - Anvil node integration (ANVIL_RPC_URL)\n\
-            - `charting` - Chart generation (drawBarChart, drawLineChart, drawSpeedupChart, drawTable)\n\
+            - `charting` - Chart generation (drawSpeedupChart, drawTable)\n\
             - `constants` - Mathematical constants (std_PI, std_E)",
         ),
         "globalSetup" => Some(
@@ -894,8 +883,6 @@ fn stdlib_module_docs(module: &str) -> Option<&'static str> {
             Chart generation from benchmark results.\n\n\
             Use in a suite-level `after { }` block to generate charts after benchmarks complete.\n\n\
             **Provided functions:**\n\
-            - `charting.drawBarChart()` - Generate a bar chart comparing benchmark times\n\
-            - `charting.drawLineChart()` - Generate a line chart for trend visualization\n\
             - `charting.drawSpeedupChart()` - Generate a speedup comparison chart\n\
             - `charting.drawTable()` - Generate a data table",
         ),
@@ -937,31 +924,6 @@ fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
             poly-bench automatically starts an Anvil node and sets this variable\n\
             to its RPC URL (e.g., `http://127.0.0.1:8545`).\n\n\
             *From `std::anvil`*",
-        ),
-        "drawBarChart" => Some(
-            "**charting.drawBarChart** `(...params)`\n\n\
-            Generate a bar chart comparing benchmark execution times.\n\n\
-            **Basic Parameters:**\n\
-            - `title` - Chart title (string)\n\
-            - `description` - Chart description (string)\n\
-            - `xlabel` - X-axis label (string)\n\
-            - `output` - Output filename (default: bar-chart.svg)\n\n\
-            **Filtering:**\n\
-            - `minSpeedup` - Only show benchmarks with speedup >= N (number)\n\
-            - `filterWinner` - Filter by winner: \"go\", \"ts\", \"all\"\n\
-            - `includeBenchmarks`, `excludeBenchmarks` - Filter by name (array)\n\
-            - `limit` - Max benchmarks to show (number)\n\n\
-            *From `std::charting`*",
-        ),
-        "drawLineChart" => Some(
-            "**charting.drawLineChart** `(...params)`\n\n\
-            Generate a line chart for trend visualization.\n\n\
-            **Basic Parameters:**\n\
-            - `title` - Chart title (string)\n\
-            - `description` - Chart description (string)\n\
-            - `xlabel` - X-axis label (string)\n\
-            - `output` - Output filename (default: line-chart.svg)\n\n\
-            *From `std::charting`*",
         ),
         "drawSpeedupChart" => Some(
             "**charting.drawSpeedupChart** `(...params)`\n\n\

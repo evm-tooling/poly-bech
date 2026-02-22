@@ -295,7 +295,7 @@ suite test {
     }
 
     after {
-        charting.drawBarChart(
+        charting.drawTable(
             title: "Results"
         )
     }

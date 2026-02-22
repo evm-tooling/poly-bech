@@ -38,11 +38,6 @@ pub enum ChartParam {
     SortBy,
     SortOrder,
 
-    // Bar chart specific layout
-    BarWidth,
-    BarGroupGap,
-    BarWithinGroupGap,
-
     // Data display
     Precision,
     TimeUnit,
@@ -76,8 +71,6 @@ pub enum ChartParam {
     ErrorBarOpacity,
     ErrorBarThickness,
     CiLevel,
-    ShowStdDevBand,
-
     // Regression
     ShowRegression,
     RegressionStyle,
@@ -120,9 +113,6 @@ impl ChartParam {
             ChartParam::Limit => "limit",
             ChartParam::SortBy => "sortBy",
             ChartParam::SortOrder => "sortOrder",
-            ChartParam::BarWidth => "barWidth",
-            ChartParam::BarGroupGap => "barGroupGap",
-            ChartParam::BarWithinGroupGap => "barWithinGroupGap",
             ChartParam::Precision => "precision",
             ChartParam::TimeUnit => "timeUnit",
             ChartParam::AxisThickness => "axisThickness",
@@ -145,7 +135,6 @@ impl ChartParam {
             ChartParam::ErrorBarOpacity => "errorBarOpacity",
             ChartParam::ErrorBarThickness => "errorBarThickness",
             ChartParam::CiLevel => "ciLevel",
-            ChartParam::ShowStdDevBand => "showStdDevBand",
             ChartParam::ShowRegression => "showRegression",
             ChartParam::RegressionStyle => "regressionStyle",
             ChartParam::RegressionModel => "regressionModel",
@@ -183,9 +172,6 @@ impl ChartParam {
             "limit" => Some(ChartParam::Limit),
             "sortBy" => Some(ChartParam::SortBy),
             "sortOrder" => Some(ChartParam::SortOrder),
-            "barWidth" => Some(ChartParam::BarWidth),
-            "barGroupGap" => Some(ChartParam::BarGroupGap),
-            "barWithinGroupGap" => Some(ChartParam::BarWithinGroupGap),
             "precision" => Some(ChartParam::Precision),
             "timeUnit" => Some(ChartParam::TimeUnit),
             "axisThickness" => Some(ChartParam::AxisThickness),
@@ -208,7 +194,6 @@ impl ChartParam {
             "errorBarOpacity" => Some(ChartParam::ErrorBarOpacity),
             "errorBarThickness" => Some(ChartParam::ErrorBarThickness),
             "ciLevel" => Some(ChartParam::CiLevel),
-            "showStdDevBand" => Some(ChartParam::ShowStdDevBand),
             "showRegression" => Some(ChartParam::ShowRegression),
             "regressionStyle" => Some(ChartParam::RegressionStyle),
             "regressionModel" => Some(ChartParam::RegressionModel),
@@ -335,45 +320,6 @@ pub fn get_valid_params(chart_type: ChartType) -> HashSet<ChartParam> {
     params.extend(data_display_params());
 
     match chart_type {
-        ChartType::BarChart => {
-            params.insert(ChartParam::XLabel);
-            params.extend([
-                ChartParam::ShowStats,
-                ChartParam::ShowConfig,
-                ChartParam::ShowWinCounts,
-                ChartParam::ShowGeoMean,
-                ChartParam::ShowDistribution,
-                ChartParam::ShowMemory,
-                ChartParam::ShowTotalTime,
-                ChartParam::Compact,
-            ]);
-            params.extend([
-                ChartParam::BarWidth,
-                ChartParam::BarGroupGap,
-                ChartParam::BarWithinGroupGap,
-            ]);
-            params.extend(axis_styling_params());
-            params.extend(grid_params());
-            params.extend(typography_params());
-            params.insert(ChartParam::LegendPosition);
-            params.extend(error_bar_params());
-            params.extend(regression_params());
-            params.insert(ChartParam::RoundTicks);
-            params.insert(ChartParam::ChartMode);
-        }
-        ChartType::LineChart => {
-            params.insert(ChartParam::XLabel);
-            params.insert(ChartParam::Compact);
-            params.extend(axis_styling_params());
-            params.extend(grid_params());
-            params.extend(typography_params());
-            params.insert(ChartParam::LegendPosition);
-            params.extend(error_bar_params());
-            params.insert(ChartParam::ShowStdDevBand);
-            params.extend(regression_params());
-            params.insert(ChartParam::RoundTicks);
-            params.insert(ChartParam::ChartMode);
-        }
         ChartType::SpeedupChart => {
             params.insert(ChartParam::BaselineBenchmark);
             params.extend([ChartParam::ShowGrid, ChartParam::GridOpacity]);
@@ -435,8 +381,7 @@ pub fn validate_param(chart_type: ChartType, param_name: &str) -> Result<(), Par
 
         // Parameter exists but not valid for this chart type
         // Find which chart types it IS valid for
-        let all_chart_types =
-            [ChartType::BarChart, ChartType::LineChart, ChartType::SpeedupChart, ChartType::Table];
+        let all_chart_types = [ChartType::SpeedupChart, ChartType::Table];
 
         let valid_chart_types: Vec<_> = all_chart_types
             .into_iter()
@@ -463,44 +408,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_bar_chart_params() {
-        let params = get_valid_params(ChartType::BarChart);
+    fn test_speedup_chart_params() {
+        let params = get_valid_params(ChartType::SpeedupChart);
         assert!(params.contains(&ChartParam::Title));
-        assert!(params.contains(&ChartParam::ShowStats));
-        assert!(params.contains(&ChartParam::ShowConfig));
-        assert!(params.contains(&ChartParam::BarWidth));
-        assert!(params.contains(&ChartParam::ShowRegression));
-        assert!(!params.contains(&ChartParam::ShowStdDevBand)); // Line chart only
+        assert!(params.contains(&ChartParam::BaselineBenchmark));
+        assert!(params.contains(&ChartParam::ShowGrid));
+        assert!(!params.contains(&ChartParam::ShowConfig));
     }
 
     #[test]
-    fn test_line_chart_params() {
-        let params = get_valid_params(ChartType::LineChart);
+    fn test_table_chart_params() {
+        let params = get_valid_params(ChartType::Table);
         assert!(params.contains(&ChartParam::Title));
-        assert!(params.contains(&ChartParam::ShowStdDevBand));
-        assert!(params.contains(&ChartParam::ShowRegression));
-        assert!(!params.contains(&ChartParam::ShowConfig)); // Bar/Table only
-        assert!(!params.contains(&ChartParam::BarWidth)); // Bar only
+        assert!(params.contains(&ChartParam::ShowConfig));
+        assert!(params.contains(&ChartParam::ShowStats));
+        assert!(!params.contains(&ChartParam::ShowGrid));
     }
 
     #[test]
     fn test_validate_valid_param() {
-        assert!(validate_param(ChartType::BarChart, "showStats").is_ok());
-        assert!(validate_param(ChartType::LineChart, "showStdDevBand").is_ok());
+        assert!(validate_param(ChartType::Table, "showStats").is_ok());
+        assert!(validate_param(ChartType::SpeedupChart, "baseline").is_ok());
     }
 
     #[test]
     fn test_validate_invalid_param() {
-        let result = validate_param(ChartType::LineChart, "showConfig");
+        let result = validate_param(ChartType::SpeedupChart, "showConfig");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.valid_chart_types.contains(&ChartType::BarChart));
         assert!(err.valid_chart_types.contains(&ChartType::Table));
     }
 
     #[test]
     fn test_validate_unknown_param() {
-        let result = validate_param(ChartType::BarChart, "unknownParam");
+        let result = validate_param(ChartType::Table, "unknownParam");
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.valid_chart_types.is_empty());
@@ -511,8 +452,8 @@ mod tests {
         let params = [
             ChartParam::Title,
             ChartParam::ShowStats,
-            ChartParam::BarWidth,
-            ChartParam::ShowStdDevBand,
+            ChartParam::BaselineBenchmark,
+            ChartParam::ChartMode,
         ];
         for param in params {
             let name = param.dsl_name();

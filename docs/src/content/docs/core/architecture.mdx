@@ -368,7 +368,7 @@ The standard library (`poly-bench-stdlib`) provides built-in modules:
 | Module | Purpose | Key Features |
 |--------|---------|--------------|
 | `std::anvil` | Ethereum development | Spawn local Anvil node, provide RPC URL |
-| `std::charting` | Visualization | Bar charts, pie charts, line charts as SVG |
+| `std::charting` | Visualization | Tables, pie charts, speedup charts as SVG |
 | `std::constants` | Math constants | Pi, E, and other common values |
 
 Standard library modules are implemented in Rust and invoked via directives in `before`/`after` blocks:
@@ -389,7 +389,7 @@ suite example {
     // ... benchmarks ...
 
     after {
-        charting.drawBarChart(title: "Results")
+        charting.drawTable(title: "Results")
         anvil.stopAnvil()
     }
 }`

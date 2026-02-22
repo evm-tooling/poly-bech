@@ -6,7 +6,7 @@
 - **Current**: Shows CI 95% as simple vertical bars
 - **Improvements**:
   - Support **different CI levels** (90%, 99%) via `ciLevel: 95`
-  - Show **standard deviation bands** as shaded regions on line charts
+  - Show **standard deviation bands** as shaded regions on charts
 
 ### Regression Analysis
 - **Current**: Auto-selects best model (O(1) through O(n³)) using BIC, shows dashed line + label
@@ -50,10 +50,9 @@ charting.drawSpeedupChart(
 
 #### Scaling Efficiency
 ```
-charting.drawScalingChart(
+charting.drawSpeedupChart(
     title: "Parallel Scaling Efficiency",
-    output: "scaling.svg",
-    idealLine: true  // Show linear scaling reference
+    output: "speedup.svg"
 )
 ```
 - Shows how performance scales with input size

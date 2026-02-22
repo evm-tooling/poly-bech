@@ -213,17 +213,7 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
     let order_values = ["sequential", "parallel", "random", "auto", "fixed"];
 
     // Charting library methods get FUNCTION highlighting
-    let charting_methods = [
-        "drawBarChart",
-        "drawLineChart",
-        "drawSpeedupChart",
-        "drawTable",
-        "drawScatterPlot",
-        "drawHistogram",
-        "drawHeatmap",
-        "drawBoxPlot",
-        "drawAreaChart",
-    ];
+    let charting_methods = ["drawSpeedupChart", "drawTable"];
 
     // Simple tokenizer
     let mut line = 0u32;
