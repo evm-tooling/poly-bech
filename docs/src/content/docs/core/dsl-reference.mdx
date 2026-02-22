@@ -528,8 +528,7 @@ after {
       code: `after {
     charting.drawBarChart(
         title: "Performance Comparison",
-        xlabel: "Implementation",
-        ylabel: "Time (ns/op)"
+        xlabel: "Implementation"
     )
     
     charting.drawPieChart(
@@ -658,8 +657,7 @@ suite cryptoBenchmarks {
     after {
         charting.drawBarChart(
             title: "Keccak256 Performance",
-            xlabel: "Input Size",
-            ylabel: "Time (ns/op)"
+            xlabel: "Input Size"
         )
         
         anvil.stopAnvil()

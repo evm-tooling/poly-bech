@@ -1631,10 +1631,6 @@
     "named": false
   },
   {
-    "type": "ylabel",
-    "named": false
-  },
-  {
     "type": "{",
     "named": false
   },

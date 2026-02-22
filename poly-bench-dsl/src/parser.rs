@@ -518,7 +518,6 @@ impl Parser {
                 "title" => directive.title = Some(self.expect_string()?),
                 "description" => directive.description = Some(self.expect_string()?),
                 "xlabel" => directive.x_label = Some(self.expect_string()?),
-                "ylabel" => directive.y_label = Some(self.expect_string()?),
                 "output" => directive.output_file = Some(self.expect_string()?),
                 "filterWinner" => directive.filter_winner = Some(self.expect_string()?),
                 "sortBy" => directive.sort_by = Some(self.expect_string()?),

@@ -178,7 +178,6 @@ suite sortN {
     after {
         charting.drawLineChart(
             output: "sort-line-all-options.svg",
-            ylabel: "Time (ns/op)",
             description: "Stdlib sort comparison across Go, TypeScript, and Rust",
             title: "Sort Performance - O(n log n) [All Options]",
             xlabel: "Array Size (n elements)"
@@ -187,7 +186,6 @@ suite sortN {
         charting.drawBarChart(
             xlabel: "Benchmark",
             output: "sort-bar-all-options.svg",
-            ylabel: "Time (ns/op)",
             description: "Vertical grouped bars - Go vs TypeScript vs Rust",
             showTotalTime: true,
             showMemory: true,

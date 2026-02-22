@@ -167,16 +167,14 @@ suite regexN {
             title: "Regex Matching Performance",
             description: "Email regex matching across input lengths",
             output: "regex-line.svg",
-            xlabel: "Input Length (chars)",
-            ylabel: "Time (ns/op)"
+            xlabel: "Input Length (chars)"
         )
 
         charting.drawBarChart(
             title: "Regex Matching Comparison",
             description: "Vertical grouped bars - regex engine comparison",
             output: "regex-bar.svg",
-            xlabel: "Input Length",
-            ylabel: "Time (ns/op)"
+            xlabel: "Input Length"
         )
     }
 

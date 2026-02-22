@@ -843,7 +843,6 @@ fn get_charting_param_completions() -> Vec<CompletionItem> {
         param_completion("width", "number", "Chart width in pixels"),
         param_completion("height", "number", "Chart height in pixels"),
         param_completion("xlabel", "string", "X-axis label"),
-        param_completion("ylabel", "string", "Y-axis label"),
         // Display toggles
         bool_param_completion("showStats", "Show ops/sec and time per op"),
         bool_param_completion("showConfig", "Show config in footer"),

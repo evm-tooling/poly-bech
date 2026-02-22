@@ -1208,7 +1208,7 @@ fn stdlib_module_docs(module: &str) -> Option<&'static str> {
             - `charting.drawSpeedupChart()` - Generate a speedup comparison chart\n\
             - `charting.drawTable()` - Generate a data table\n\n\
             **Example:**\n\
-            ```\nafter {\n    charting.drawBarChart(\n        title: \"Performance Comparison\",\n        xlabel: \"Benchmark\",\n        ylabel: \"Time (ns)\"\n    )\n}\n```"
+            ```\nafter {\n    charting.drawBarChart(\n        title: \"Performance Comparison\",\n        xlabel: \"Benchmark\"\n    )\n}\n```"
         ),
         "constants" => Some(
             "**std::constants**\n\n\

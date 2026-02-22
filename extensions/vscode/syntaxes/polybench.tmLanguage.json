@@ -205,7 +205,7 @@
     "charting-params": {
       "patterns": [
         {
-          "match": "\\b(title|description|xlabel|ylabel|sortBy|sortOrder|timeUnit|output|filterWinner|legendPosition|regressionStyle|regressionModel|yScale|baselineBenchmark|chartMode|baseline)\\s*:\\s*",
+          "match": "\\b(title|description|xlabel|sortBy|sortOrder|timeUnit|output|filterWinner|legendPosition|regressionStyle|regressionModel|yScale|baselineBenchmark|chartMode|baseline)\\s*:\\s*",
           "captures": {
             "1": {
               "name": "keyword.other.bench"

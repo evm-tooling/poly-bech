@@ -944,7 +944,7 @@ fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
             **Basic Parameters:**\n\
             - `title` - Chart title (string)\n\
             - `description` - Chart description (string)\n\
-            - `xlabel`, `ylabel` - Axis labels (string)\n\
+            - `xlabel` - X-axis label (string)\n\
             - `output` - Output filename (default: bar-chart.svg)\n\n\
             **Filtering:**\n\
             - `minSpeedup` - Only show benchmarks with speedup >= N (number)\n\
@@ -959,7 +959,7 @@ fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
             **Basic Parameters:**\n\
             - `title` - Chart title (string)\n\
             - `description` - Chart description (string)\n\
-            - `xlabel`, `ylabel` - Axis labels (string)\n\
+            - `xlabel` - X-axis label (string)\n\
             - `output` - Output filename (default: line-chart.svg)\n\n\
             *From `std::charting`*",
         ),
