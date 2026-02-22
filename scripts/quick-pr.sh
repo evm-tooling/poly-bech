@@ -100,7 +100,7 @@ success "Created temporary worktree"
 info "Applying staged changes to new branch..."
 
 # Get the staged content as a patch and apply it in the worktree
-git diff --cached > "$WORKTREE_DIR/.staged.patch"
+git diff --cached --binary > "$WORKTREE_DIR/.staged.patch"
 
 if [ -s "$WORKTREE_DIR/.staged.patch" ]; then
     (
