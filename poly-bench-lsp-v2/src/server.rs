@@ -379,7 +379,8 @@ impl LanguageServer for PolyBenchLanguageServer {
                 is_suite_top_level_scope(&doc.source, position) &&
                 should_suggest_block_keywords_from_line(&line_text)
             {
-                let completions = get_suite_top_level_block_completions();
+                let mut completions = get_suite_body_completions();
+                completions.extend(get_imported_module_completions(&doc.source));
                 let filtered = if prefix.is_empty() {
                     completions
                 } else {
@@ -1098,18 +1099,6 @@ fn should_suggest_block_keywords_from_line(line_text: &str) -> bool {
     }
 
     trimmed.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c.is_whitespace())
-}
-
-fn get_suite_top_level_block_completions() -> Vec<CompletionItem> {
-    get_suite_body_completions()
-        .into_iter()
-        .filter(|item| {
-            matches!(
-                item.label.as_str(),
-                "bench" | "fixture" | "after" | "before" | "setup go" | "setup ts" | "setup rust"
-            )
-        })
-        .collect()
 }
 
 fn is_suite_top_level_scope(source: &ropey::Rope, position: Position) -> bool {
