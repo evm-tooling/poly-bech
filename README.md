@@ -33,7 +33,7 @@ use std::charting
 suite hash {
     description: "Hash function benchmarks"
     iterations: 5000
-    warmup: 100
+    warmup: 1000
     baseline: "go"
     
     setup go {
@@ -79,11 +79,12 @@ suite hash {
 suite example {
     description: "Suite description"
     iterations: 5000           # Default iteration count
-    warmup: 100                # Warmup iterations before timing
+    // [!code focus:4]
+    warmup: 1000               # Warmup iterations before timing
     baseline: "go"             # Baseline language for comparisons
     mode: "auto"               # "auto" (calibrate to targetTime) or "fixed"
     targetTime: 3000ms         # Target time for auto mode
-    minIterations: 100         # Min iterations (auto mode)
+    minIterations: 10          # Min iterations (auto mode)
     maxIterations: 1000000     # Max iterations (auto mode)
     count: 3                   # Runs per benchmark for statistics
     memory: true               # Enable memory allocation profiling
@@ -166,7 +167,8 @@ bench keccak256 {
     rust: keccak256(&data)
     
     after {
-        charting.drawTable(title: "Keccak256 Performance")
+        go: logResult()
+        ts: logResult()
     }
     
     validate {
@@ -179,7 +181,7 @@ bench keccak256 {
 ### Lifecycle Hooks
 
 - `before` — Runs once before benchmark iterations
-- `after` — Runs once after iterations (useful for charting)
+- `after` — Runs once after iterations (per-language teardown/inspection)
 - `each` — Runs before each iteration (outside timing)
 
 ### Standard Library
@@ -194,10 +196,11 @@ globalSetup {
 }
 
 bench example {
-    go: doSomething(anvil.ANVIL_RPC_URL)
+    go: doSomething(os.Getenv("ANVIL_RPC_URL"))
     
     after {
-        charting.drawTable(title: "Results", horizontal: true)
+        // [!code focus]
+        charting.drawTable(title: "Results", output: "results-table.svg", sortBy: "speedup")
         charting.drawSpeedupChart(title: "Speedup")
     }
 }
@@ -235,6 +238,10 @@ poly-bench lsp  # Starts language server on stdio
 
 ```bash
 poly-bench check <file>           # Parse and validate
+poly-bench compile [<file>]       # Compile-check without running
+poly-bench cache stats            # Show compile cache/workspace stats
+poly-bench cache clear            # Clear compile cache
+poly-bench cache clean            # Clean .polybench workspace
 poly-bench run [<file>]           # Execute benchmarks
 poly-bench codegen <file>         # Generate code without running
 poly-bench fmt [<files>...]       # Format .bench files
@@ -248,6 +255,9 @@ poly-bench new <name>             # Create benchmark template
 poly-bench add --go <pkg>         # Add Go dependency
 poly-bench add --ts <pkg>         # Add npm dependency  
 poly-bench add --rs <crate>       # Add Rust crate
+poly-bench remove --go <pkg>      # Remove Go dependency
+poly-bench remove --ts <pkg>      # Remove npm dependency
+poly-bench remove --rs <crate>    # Remove Rust crate
 poly-bench install                # Install dependencies
 poly-bench build                  # Build runtime environment
 ```

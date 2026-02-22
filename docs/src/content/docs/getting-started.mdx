@@ -15,7 +15,7 @@ Install poly-bench using Cargo:
     {
       title: "Cargo",
       language: "bash",
-      code: `cargo install poly-bench`
+      code: `curl -sSL https://install.evm-tooling.tools | bash`
     },
   ]}
 />
@@ -119,7 +119,7 @@ Create a new `.bench` file in the `benchmarks/` directory:
   tabs={[
     {
       title: "benchmarks/keccak.bench",
-      language: "rust",
+      language: "bench",
       code: `suite keccak {
     description: "Keccak256 hash benchmark"
     warmup: 100

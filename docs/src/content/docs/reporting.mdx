@@ -67,7 +67,7 @@ The default console output provides a formatted, colored view of benchmark resul
 />
 
 <Aside type="tip">
-<span>The console output is automatically colored when running in a terminal. Use <code>--no-color</code> to disable colors for piping to files or logs.</span>
+<span>The console output is automatically colored when running in a terminal. Use <code>--color never</code> to force plain output for logs or piping.</span>
 </Aside>
 
 
@@ -100,7 +100,7 @@ This generates `results/benchmark-report.md`:
 
 **Configuration:**
 - Mode: auto (target: 3000ms)
-- Warmup: 100 iterations
+- Warmup: 1000 iterations
 - Runs: 3
 - Baseline: go
 
@@ -161,7 +161,7 @@ This generates `results/benchmark-results.json`:
       "config": {
         "mode": "auto",
         "targetTime": 3000,
-        "warmup": 100,
+        "warmup": 1000,
         "count": 3,
         "baseline": "go"
       },
@@ -213,13 +213,13 @@ This generates `results/benchmark-results.json`:
 
 poly-bench can generate SVG charts directly from benchmark results using the `charting` standard library module.
 
-Add chart directives to your benchmark's `after` block:
+Add chart directives to your suite-level `after` block:
 
 <CodeGroup 
   tabs={[
     {
       title: ".bench",
-      language: "rust",
+      language: "bench",
       code: `use std::charting
 
 suite keccak {
@@ -232,9 +232,10 @@ suite keccak {
     }
 
     after {
+        // [!code focus:2]
         charting.drawTable(
             title: "Keccak256 Performance",
-            xlabel: "Implementation"
+            output: "keccak-table.svg"
         )
     }
 }`
@@ -254,14 +255,14 @@ Run with an output directory to generate the chart:
   ]}
 />
 
-This generates `results/keccak256-performance.svg`.
+This generates `results/keccak-table.svg`.
 
 ### Available Chart Types
 
 | Directive | Description |
 |-----------|-------------|
-| `charting.drawTable(...)` | Horizontal or vertical table comparing languages |
-| `charting.drawSpeedupChart(...)` | Line chart for scaling benchmarks (e.g., by input size) |
+| `charting.drawTable(...)` | SVG results table for benchmark comparisons |
+| `charting.drawSpeedupChart(...)` | SVG speedup chart relative to a baseline benchmark |
 
 <Aside type="tip">
 <span>Charts are styled automatically with a clean, readable design. They work well in both light and dark documentation themes.</span>
@@ -276,7 +277,7 @@ Enable automatic comparison tables with the `compare` and `baseline` options:
   tabs={[
     {
       title: ".bench",
-      language: "rust",
+      language: "bench",
       code: `suite myBenchmarks {
     compare: true       // Enable comparison table
     baseline: "go"      // Use Go as the baseline (1.0x)
@@ -308,21 +309,21 @@ Control the statistical rigor of your benchmarks:
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `warmup` | Iterations before timing starts | 0 |
+| `warmup` | Iterations before timing starts | 1000 |
 | `count` | Number of runs per benchmark | 1 |
-| `outlierDetection` | IQR-based outlier removal | false |
-| `cvThreshold` | Target coefficient of variation (%) | - |
+| `outlierDetection` | IQR-based outlier removal | true |
+| `cvThreshold` | Target coefficient of variation (%) | 5.0 |
 
 <CodeGroup 
   tabs={[
     {
       title: ".bench",
-      language: "rust",
+      language: "bench",
       code: `suite rigorous {
     warmup: 1000              // 1000 warmup iterations
     count: 5                  // 5 runs per benchmark
     outlierDetection: true    // Remove statistical outliers
-    cvThreshold: 5            // Re-run if CV > 5%
+    cvThreshold: 5            // Stability target (coefficient of variation %)
     
     // ... rest of suite
 }`
@@ -331,7 +332,7 @@ Control the statistical rigor of your benchmarks:
 />
 
 <Aside type="note">
-<span>Setting <code>cvThreshold</code> will cause poly-bench to re-run benchmarks until the coefficient of variation is below the threshold, ensuring more stable results.</span>
+<span><code>cvThreshold</code> is used as the suite's stability target for benchmark variance analysis.</span>
 </Aside>
 
 
@@ -343,7 +344,7 @@ Track memory allocations alongside timing:
   tabs={[
     {
       title: ".bench",
-      language: "rust",
+      language: "bench",
       code: `suite withMemory {
     memory: true    // Enable memory profiling
     

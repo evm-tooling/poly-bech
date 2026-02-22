@@ -23,18 +23,17 @@ function stripToPlainText(mdx: string): string {
       .replace(/^---[\s\S]*?---/m, '')
       // Remove JSX/HTML tags
       .replace(/<[^>]+>/g, ' ')
-      // Remove JSX expressions { ... }
-      .replace(/\{[\s\S]*?\}/g, ' ')
       // Remove markdown syntax
       .replace(/#{1,6}\s+/g, '')
       .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')
-      .replace(/`{1,3}[^`]*`{1,3}/g, '')
+      // Preserve code text while removing backtick wrappers
+      .replace(/```([\s\S]*?)```/g, ' $1 ')
+      .replace(/`([^`]+)`/g, ' $1 ')
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
       // Collapse whitespace
       .replace(/\s+/g, ' ')
       .trim()
-      .slice(0, 500)
-  ) // keep first 500 chars for search
+  )
 }
 
 /** Resolve which top-level nav section a slug belongs to */
