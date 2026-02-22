@@ -290,7 +290,7 @@ export default function Home() {
         {/* ── HERO — asymmetric split with .bench file ── */}
         <section className="relative w-full overflow-hidden !border-b !border-border bg-background">
           <div className="w-full max-w-7xl mx-auto px-6 py-28 lg:py-36">
-            <div className="grid lg:grid-cols-[1fr_1.1fr] gap-16 items-start">
+            <div className="grid lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-16 items-start">
               <motion.div
                 initial="hidden"
                 animate="visible"
@@ -373,7 +373,7 @@ export default function Home() {
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4, duration: 0.6 }}
-                className="flex flex-col gap-4 max-w-2xl"
+                className="flex flex-col gap-4 w-full min-w-0 lg:max-w-2xl"
               >
                 {/* .bench file */}
                 <div className="rounded-2xl overflow-hidden !border !border-border bg-code-bg shadow-xl dark:shadow-none">
@@ -393,7 +393,7 @@ export default function Home() {
                     language="bench"
                   >
                     {({ tokens, getLineProps, getTokenProps }) => (
-                      <pre className="p-5 text-[13px] leading-relaxed font-mono overflow-x-auto max-h-[380px] overflow-y-auto">
+                      <pre className="p-4 sm:p-5 text-[12px] sm:text-[13px] leading-relaxed font-mono overflow-x-auto max-h-[260px] sm:max-h-[380px] overflow-y-auto">
                         <code>
                           {tokens.map((line, i) => (
                             <div key={i} {...getLineProps({ line })}>
@@ -420,12 +420,14 @@ export default function Home() {
                     </div>
                     <CopyButton text={installCommand} />
                   </div>
-                  <pre className="p-5 text-[13px] leading-relaxed font-mono overflow-x-auto">
+                  <pre className="p-4 sm:p-5 text-[12px] sm:text-[13px] leading-relaxed font-mono overflow-x-auto w-full min-w-0">
                     <code>
                       <span className="text-foreground-muted">$</span>{' '}
                       <span className="text-primary">curl</span>{' '}
                       <span className="text-tertiary">-L</span>{' '}
-                      <span className="text-amber-400">{installScriptUrl}</span>{' '}
+                      <span className="text-amber-400 break-all">
+                        {installScriptUrl}
+                      </span>{' '}
                       <span className="text-foreground-muted">|</span>{' '}
                       <span className="text-success">bash</span>
                     </code>

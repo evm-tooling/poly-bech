@@ -1,0 +1,470 @@
+---
+title: CLI Recipes
+description: Practical command-line workflows for running, checking, formatting, and integrating poly-bench
+---
+
+<div data-pagefind-weight="10">
+
+This page covers practical CLI workflows — from first-run setup through CI integration. For the full flag reference, see the [CLI Reference](/docs/tools/cli).
+
+</div>
+
+---
+
+### First-Run Workflow
+
+The standard sequence for a new project from scratch:
+
+<CodeGroup
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# 1. Create a new project
+poly-bench init my-benchmarks
+cd my-benchmarks
+
+# 2. Add dependencies for each language you'll use
+poly-bench add --go golang.org/x/crypto
+poly-bench add --ts viem
+poly-bench add --rs tiny-keccak
+
+# 3. Install all dependencies
+poly-bench install
+
+# 4. Create a benchmark file
+poly-bench new keccak
+
+# 5. Run it
+poly-bench run benchmarks/keccak.bench --output results/`
+    },
+  ]}
+/>
+
+After `poly-bench init`, the project looks like this:
+
+<CodeGroup
+  tabs={[
+    {
+      title: "Structure",
+      language: "text",
+      code: `my-benchmarks/
+├── polybench.toml           # Project config and dependencies
+├── benchmarks/
+│   └── example.bench        # Template benchmark
+└── .polybench/
+    └── runtime-env/         # Installed dependencies (gitignore this)`
+    },
+  ]}
+/>
+
+---
+
+### Running Benchmarks
+
+#### Run a single file
+
+<CodeGroup
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `poly-bench run benchmarks/keccak.bench`
+    },
+  ]}
+/>
+
+#### Run all `.bench` files in `benchmarks/`
+
+<CodeGroup
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `poly-bench run`
+    },
+  ]}
+/>
+
+#### Run and save output
+
+<CodeGroup
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Save charts and reports to results/
+poly-bench run benchmarks/keccak.bench --output results/
+
+# Save markdown report
+poly-bench run benchmarks/keccak.bench --report markdown --output results/
+
+# Save JSON (for programmatic processing)
+poly-bench run benchmarks/keccak.bench --report json --output results/
+
+# Save both markdown and JSON
+poly-bench run benchmarks/keccak.bench --report markdown --report json --output results/`
+    },
+  ]}
+/>
+
+---
+
+### Language Filtering
+
+Run only the languages you care about. Useful during development when you're iterating on one implementation.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Run all languages (default)
+poly-bench run benchmarks/keccak.bench
+
+# Run only Go
+poly-bench run benchmarks/keccak.bench --lang go
+
+# Run only TypeScript
+poly-bench run benchmarks/keccak.bench --lang ts
+
+# Run only Rust
+poly-bench run benchmarks/keccak.bench --lang rust
+
+# Run Go and TypeScript, skip Rust
+poly-bench run benchmarks/keccak.bench --lang go --lang ts
+
+# Run Go and Rust, skip TypeScript
+poly-bench run benchmarks/keccak.bench --lang go --lang rust`
+    },
+  ]}
+/>
+
+<Aside type="tip">
+<span>Use <code>--lang go</code> during development to get fast feedback on your Go implementation before wiring up TypeScript and Rust. Add the other languages once the benchmark logic is correct.</span>
+</Aside>
+
+---
+
+### Quick Smoke Tests
+
+Override the iteration count to run a fast sanity check without waiting for full auto-calibration.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Run exactly 100 iterations per benchmark (fast smoke test)
+poly-bench run benchmarks/keccak.bench --iterations 100
+
+# Combine with language filter for maximum speed
+poly-bench run benchmarks/keccak.bench --iterations 100 --lang go`
+    },
+  ]}
+/>
+
+---
+
+### Validating Files Without Running
+
+Use `check` to parse and validate a `.bench` file without compiling or executing anything. It catches syntax errors, undefined fixtures, and type mismatches.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Validate a single file
+poly-bench check benchmarks/keccak.bench
+
+# Success output
+✓ benchmarks/keccak.bench is valid
+
+# Error output
+error: undefined fixture 'data' at line 42
+  --> benchmarks/keccak.bench:42:9
+   |
+42 |     go: keccak256(data)
+   |         ^^^^^^^^^^^^^^
+   = help: define a fixture named 'data' before using it`
+    },
+  ]}
+/>
+
+#### In a pre-commit hook
+
+<CodeGroup
+  tabs={[
+    {
+      title: ".git/hooks/pre-commit",
+      language: "bash",
+      code: `#!/bin/sh
+# Validate all .bench files before committing
+for f in benchmarks/*.bench; do
+    poly-bench check "$f" || exit 1
+done`
+    },
+  ]}
+/>
+
+---
+
+### Formatting
+
+`poly-bench fmt` formats `.bench` files with consistent indentation and spacing.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Format a single file (in-place)
+poly-bench fmt benchmarks/keccak.bench
+
+# Format all .bench files in benchmarks/
+poly-bench fmt
+
+# Check formatting without modifying files (exit 1 if changes needed)
+poly-bench fmt --check
+
+# Show what would change without applying it
+poly-bench fmt --diff`
+    },
+  ]}
+/>
+
+#### In CI — enforce formatting
+
+<CodeGroup
+  tabs={[
+    {
+      title: "GitHub Actions step",
+      language: "yaml",
+      code: `- name: Check formatting
+  run: poly-bench fmt --check`
+    },
+  ]}
+/>
+
+---
+
+### Inspecting Generated Code
+
+`codegen` generates the benchmark harness code for a language without running it. Use this to debug what poly-bench is producing or to understand the generated structure.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `# Generate Go harness
+poly-bench codegen benchmarks/keccak.bench --lang go --output generated/
+
+# Generate TypeScript harness
+poly-bench codegen benchmarks/keccak.bench --lang ts --output generated/
+
+# Generate Rust harness
+poly-bench codegen benchmarks/keccak.bench --lang rust --output generated/
+
+# Inspect the output
+cat generated/benchmark_gen.go`
+    },
+  ]}
+/>
+
+Generated files:
+- Go: `generated/benchmark_gen.go`
+- TypeScript: `generated/benchmark_gen.ts`
+- Rust: `generated/benchmark_gen.rs`
+
+<Aside type="note">
+<span>Generated code is a complete, standalone benchmark program. You can compile and run it directly to verify correctness before running through poly-bench.</span>
+</Aside>
+
+---
+
+### Verbose Output
+
+Use `--verbose` to see per-iteration timing, calibration decisions, and other diagnostic information.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `poly-bench run benchmarks/keccak.bench --verbose`
+    },
+  ]}
+/>
+
+Example verbose output:
+
+<CodeGroup
+  tabs={[
+    {
+      title: "Output",
+      language: "text",
+      code: `[keccak] Calibrating go...
+  trial 1: 1000 iters → 2.3ms (target: 3000ms)
+  trial 2: 100000 iters → 231ms (target: 3000ms)
+  trial 3: 1300000 iters → 3001ms ✓
+[keccak] Running go: 1300000 iters × 3 runs
+  run 1: 2.31 ns/op (CV: 1.2%)
+  run 2: 2.29 ns/op (CV: 0.8%)
+  run 3: 2.33 ns/op (CV: 1.5%)
+  result: 2.31 ns/op (p50), 2.29 ns/op (p95)`
+    },
+  ]}
+/>
+
+---
+
+### Full CI Workflow
+
+A complete GitHub Actions workflow that runs benchmarks, saves results, and uploads artifacts.
+
+<CodeGroup
+  tabs={[
+    {
+      title: ".github/workflows/bench.yml",
+      language: "yaml",
+      code: `name: Benchmarks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install poly-bench
+        run: curl -L https://install.evm-tooling.tools | bash
+
+      - name: Install benchmark dependencies
+        run: poly-bench install
+
+      - name: Check formatting
+        run: poly-bench fmt --check
+
+      - name: Validate benchmark files
+        run: |
+          for f in benchmarks/*.bench; do
+            poly-bench check "$f"
+          done
+
+      - name: Run benchmarks
+        run: |
+          poly-bench run --report markdown --report json --output results/
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: results/`
+    },
+  ]}
+/>
+
+#### PR comparison workflow
+
+Run benchmarks on both the base branch and the PR branch, then compare:
+
+<CodeGroup
+  tabs={[
+    {
+      title: ".github/workflows/bench-compare.yml",
+      language: "yaml",
+      code: `name: Benchmark Comparison
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  bench-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install poly-bench
+        run: curl -L https://install.evm-tooling.tools | bash
+
+      - name: Install dependencies
+        run: poly-bench install
+
+      - name: Run benchmarks (PR)
+        run: poly-bench run --report json --output results-pr/
+
+      - name: Upload PR results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-pr
+          path: results-pr/
+
+  bench-base:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: $\{{ github.base_ref }}
+
+      - name: Install poly-bench
+        run: curl -L https://install.evm-tooling.tools | bash
+
+      - name: Install dependencies
+        run: poly-bench install
+
+      - name: Run benchmarks (base)
+        run: poly-bench run --report json --output results-base/
+
+      - name: Upload base results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-base
+          path: results-base/`
+    },
+  ]}
+/>
+
+---
+
+### Useful Flag Combinations
+
+| Goal | Command |
+|------|---------|
+| Fast smoke test | `poly-bench run bench.bench --iterations 100 --lang go` |
+| Full run with all outputs | `poly-bench run bench.bench --report markdown --report json --output results/` |
+| CI format check | `poly-bench fmt --check` |
+| CI validation | `poly-bench check benchmarks/*.bench` |
+| Debug slow benchmark | `poly-bench run bench.bench --verbose --lang go` |
+| Inspect generated Go code | `poly-bench codegen bench.bench --lang go --output gen/` |
+| Run without charts | `poly-bench run bench.bench` (omit `--output`) |
+| Override iterations | `poly-bench run bench.bench --iterations 50000` |
+
+---
+
+### Further Reading
+
+- [CLI Reference](/docs/tools/cli) — Full flag and option reference for every command
+- [Getting Started](/docs/getting-started) — Step-by-step first benchmark walkthrough
+- [Reporting](/docs/reporting) — Output formats, chart generation, and CI integration details

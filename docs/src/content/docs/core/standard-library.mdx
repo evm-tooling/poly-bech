@@ -1,367 +1,656 @@
 ---
 title: Standard Library
-description: Built-in modules for common benchmarking tasks
+description: Built-in modules for Ethereum node spawning, chart generation, and mathematical constants
 ---
 
 <div data-pagefind-weight="10">
 
-poly-bench includes a standard library with modules for common benchmarking tasks. Import them at the top of your `.bench` file with the `use` keyword.
+poly-bench includes a standard library with modules for common benchmarking tasks. Import them at the top of your `.bench` file with the `use` keyword before any suite or globalSetup blocks.
 
 <CodeGroup 
   tabs={[
     {
       title: "Imports",
-      language: "rust",
-      code: `use std::anvil      // Ethereum node spawning
-use std::charting   // Chart generation
-use std::constants  // Mathematical constants`
+      language: "bench",
+      code: `use std::anvil      # Ethereum node spawning
+use std::charting   # SVG chart generation
+use std::constants  # Mathematical constants`
     },
   ]}
 />
 
 </div>
 
+---
+
 ### std::anvil
 
-The `anvil` module provides Ethereum node spawning for RPC benchmarks. It manages a local Anvil instance that all languages can connect to.
+The `anvil` module provides Ethereum node spawning for RPC benchmarks. It manages a local [Anvil](https://book.getfoundry.sh/anvil/) instance that all languages can connect to via a shared RPC URL.
 
 <Aside type="note">
-<span>Anvil is a fast local Ethereum node from the Foundry toolkit. poly-bench automatically handles spawning and cleanup — you just call the directives.</span>
+<span>Anvil is a fast local Ethereum node from the Foundry toolkit. poly-bench handles spawning, port allocation, and cleanup automatically — you only need to call the directives.</span>
 </Aside>
 
-### spawnAnvil
+#### `anvil.spawnAnvil()`
 
-Spawns a local Anvil instance. Call this in a `before` block.
+Spawns a local Anvil instance. Call this inside a `globalSetup` block (file-level or suite-level).
 
 <CodeGroup 
   tabs={[
     {
       title: "Syntax",
-      language: "rust",
-      code: `anvil.spawnAnvil(
-    fork: "<rpc-url>"    // Optional: Fork from this RPC endpoint
-)`
+      language: "bench",
+      code: `globalSetup {
+    anvil.spawnAnvil()                           # Local node, no fork
+    anvil.spawnAnvil(fork: "https://rpc.url")    # Fork from an RPC endpoint
+}`
     },
   ]}
 />
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `fork` | string | No | RPC URL to fork from (e.g., mainnet, Sepolia) |
+| `fork` | string | No | RPC URL to fork from (e.g. mainnet, Sepolia, Arbitrum) |
 
-### Example
+#### `ANVIL_RPC_URL`
 
-<CodeGroup 
-  tabs={[
-    {
-      title: ".bench",
-      language: "rust",
-      code: `use std::anvil
+After `spawnAnvil()` is called, the local RPC endpoint is automatically injected into your setup code. The typical value is `http://127.0.0.1:8545`.
 
-suite rpcBenchmarks {
-    before {
-        // Fork from mainnet
-        anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
-    }
+| Language | Access |
+|----------|--------|
+| TypeScript | `ANVIL_RPC_URL` — injected as a module-level constant in `declare` scope |
+| Go | `os.Getenv("ANVIL_RPC_URL")` or pass directly as a string |
+| Rust | `std::env::var("ANVIL_RPC_URL").unwrap()` |
 
-    setup go {
-        import "github.com/ethereum/go-ethereum/ethclient"
-        init {
-            // Connect using the provided URL
-            client, _ := ethclient.Dial(anvil.ANVIL_RPC_URL)
-        }
-    }
+#### `anvil.stopAnvil()`
 
-    setup ts {
-        import { createPublicClient, http } from 'viem';
-        init {
-            const client = createPublicClient({
-                transport: http(process.env.ANVIL_RPC_URL)
-            })
-        }
-    }
-
-    // ... benchmarks ...
-
-    after {
-        anvil.stopAnvil()
-    }
-}`
-    },
-  ]}
-/>
-
-### ANVIL_RPC_URL
-
-After calling `spawnAnvil()`, the `anvil.ANVIL_RPC_URL` constant is available. It contains the local RPC endpoint (typically `http://127.0.0.1:8545`).
-
-| Language | Access Method |
-|----------|--------------|
-| Go | `anvil.ANVIL_RPC_URL` in init/helpers |
-| TypeScript | `process.env.ANVIL_RPC_URL` |
-| Rust | `std::env::var("ANVIL_RPC_URL")` |
-
-### stopAnvil
-
-Stops the running Anvil instance. Call this in an `after` block to clean up.
+Stops the running Anvil instance. Not required — poly-bench cleans up the process automatically — but useful for explicit teardown in long-running suites.
 
 <CodeGroup 
   tabs={[
     {
       title: "Syntax",
-      language: "rust",
-      code: `anvil.stopAnvil()`
+      language: "bench",
+      code: `after {
+    anvil.stopAnvil()
+}`
     },
   ]}
 />
 
-<Aside type="tip">
-<span>Always call <code>stopAnvil()</code> in your <code>after</code> block to ensure the Anvil process is cleaned up, even if benchmarks fail.</span>
-</Aside>
+#### Full Anvil Example
 
+<CodeGroup 
+  tabs={[
+    {
+      title: "anvil.bench",
+      language: "bench",
+      code: `use std::anvil
+
+globalSetup {
+    anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
+}
+
+suite evmBench {
+    description: "EVM RPC benchmarks against a forked mainnet node"
+    compare: true
+    baseline: "go"
+    mode: "auto"
+    targetTime: 10000ms
+    cvThreshold: 10
+
+    setup go {
+        import (
+            "context"
+            "github.com/ethereum/go-ethereum/ethclient"
+        )
+
+        declare {
+            var client *ethclient.Client
+            var ctx context.Context
+        }
+
+        init {
+            ctx = context.Background()
+            client, _ = ethclient.Dial(os.Getenv("ANVIL_RPC_URL"))
+        }
+
+        helpers {
+            func getBlockNumber() uint64 {
+                num, _ := client.BlockNumber(ctx)
+                return num
+            }
+        }
+    }
+
+    setup ts {
+        import {
+            import { createPublicClient, http } from 'viem'
+            import { mainnet } from 'viem/chains'
+        }
+
+        declare {
+            let client: any
+        }
+
+        init {
+            client = createPublicClient({
+                chain: mainnet,
+                transport: http(ANVIL_RPC_URL),
+            })
+        }
+
+        helpers {
+            async function getBlockNumber(): Promise<bigint> {
+                return await client.getBlockNumber()
+            }
+        }
+    }
+
+    bench getBlockNumber {
+        description: "Get the current block number via RPC"
+        go: getBlockNumber()
+        ts: await getBlockNumber()
+    }
+}`
+    },
+  ]}
+/>
 
 ---
 
 ### std::charting
 
-The `charting` module generates SVG charts from benchmark results. Call these directives in an `after` block.
-
-### drawBarChart
-
-Generates a bar chart comparing benchmark results across languages.
+The `charting` module generates SVG charts from benchmark results. All charting directives must be called inside a suite-level `after { }` block and require `use std::charting` at the top of the file.
 
 <CodeGroup 
   tabs={[
     {
-      title: "Syntax",
-      language: "rust",
-      code: `charting.drawBarChart(
-    title: "<chart-title>",
-    xlabel: "<x-axis-label>"
-)`
-    },
-  ]}
-/>
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `title` | string | Yes | Chart title |
-| `xlabel` | string | No | X-axis label |
-
-### Example
-
-<CodeGroup 
-  tabs={[
-    {
-      title: ".bench",
-      language: "rust",
-      code: `use std::charting
-
-suite hashBenchmarks {
-    // ... setup and benchmarks ...
-
-    after {
-        charting.drawBarChart(
-            title: "Hash Function Performance",
-            xlabel: "Implementation"
-        )
-    }
-}`
-    },
-  ]}
-/>
-
-This generates a file like `hash-function-performance.svg` in the output directory.
-
-<Aside type="note">
-<span>Run with <code>--output results/</code> to specify where chart files are saved. Without an output directory, charts won't be generated.</span>
-</Aside>
-
-### drawPieChart
-
-Generates a pie chart showing the relative time distribution for a specific benchmark.
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Syntax",
-      language: "rust",
-      code: `charting.drawPieChart(
-    title: "<chart-title>",
-    benchmark: "<benchmark-name>"
-)`
-    },
-  ]}
-/>
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `title` | string | Yes | Chart title |
-| `benchmark` | string | Yes | Name of the benchmark to visualize |
-
-### Example
-
-<CodeGroup 
-  tabs={[
-    {
-      title: ".bench",
-      language: "rust",
+      title: "Usage pattern",
+      language: "bench",
       code: `use std::charting
 
 suite example {
-    bench keccak256 {
-        go: keccak256(data)
-        ts: keccak256(data)
-        rust: keccak256(&data)
-    }
+    # ... setup, fixtures, benchmarks ...
 
     after {
-        charting.drawPieChart(
-            title: "Keccak256 Time Distribution",
-            benchmark: "keccak256"
-        )
+        charting.drawBarChart(title: "Results", output: "results-bar.svg")
+        charting.drawLineChart(title: "Scaling", output: "results-line.svg")
+        charting.drawSpeedupChart(title: "Speedup", output: "results-speedup.svg")
+        charting.drawTable(title: "Summary", output: "results-table.svg")
     }
 }`
     },
   ]}
 />
 
-### drawLineChart
+<Aside type="note">
+<span>The <code>output</code> parameter controls the filename. Files are written to the directory specified by <code>--output</code> on the CLI. If no output directory is given, charts are not generated.</span>
+</Aside>
 
-Generates a line chart showing scaling behavior across benchmarks. Useful when you have benchmarks with varying input sizes.
+---
+
+#### `charting.drawBarChart(...)`
+
+Generates a grouped bar chart comparing benchmark results across languages. This is the most feature-rich chart type with the full set of available parameters.
 
 <CodeGroup 
   tabs={[
     {
-      title: "Syntax",
-      language: "rust",
-      code: `charting.drawLineChart(
-    title: "<chart-title>",
-    xlabel: "<x-axis-label>"
+      title: "Full syntax",
+      language: "bench",
+      code: `charting.drawBarChart(
+    # ── Basic ─────────────────────────────────────────
+    title: "Performance Comparison",
+    description: "Go vs TypeScript vs Rust",
+    output: "results-bar.svg",
+    width: 1200,
+    height: 600,
+    xlabel: "Benchmark",
+
+    # ── Display toggles ───────────────────────────────
+    showStats: true,
+    showConfig: true,
+    showWinCounts: true,
+    showGeoMean: true,
+    showDistribution: true,
+    showMemory: false,
+    showTotalTime: false,
+    compact: false,
+
+    # ── Filtering ─────────────────────────────────────
+    minSpeedup: 1.5,
+    filterWinner: "all",
+    includeBenchmarks: ["hashShort", "hashLong"],
+    excludeBenchmarks: ["goOnly"],
+    limit: 20,
+
+    # ── Sorting ───────────────────────────────────────
+    sortBy: "speedup",
+    sortOrder: "desc",
+
+    # ── Bar layout ────────────────────────────────────
+    barWidth: 20,
+    barGroupGap: 20,
+    barWithinGroupGap: 2,
+
+    # ── Axis styling ──────────────────────────────────
+    axisThickness: 1.5,
+    yAxisMin: 0.0,
+    yAxisMax: 100.0,
+    yScale: "linear",
+    baselineBenchmark: "hashShort",
+    symlogThreshold: 1.0,
+
+    # ── Grid ──────────────────────────────────────────
+    showGrid: true,
+    gridOpacity: 0.15,
+    showMinorGrid: false,
+    minorGridOpacity: 0.05,
+    showVerticalGrid: false,
+
+    # ── Typography ────────────────────────────────────
+    titleFontSize: 18,
+    subtitleFontSize: 13,
+    axisLabelFontSize: 12,
+    tickLabelFontSize: 11,
+
+    # ── Legend ────────────────────────────────────────
+    legendPosition: "top-right",
+
+    # ── Error bars ────────────────────────────────────
+    showErrorBars: true,
+    errorBarOpacity: 0.7,
+    errorBarThickness: 1.5,
+    ciLevel: 95,
+
+    # ── Regression ────────────────────────────────────
+    showRegression: false,
+    regressionStyle: "dashed",
+    regressionModel: "auto",
+    showRegressionLabel: true,
+    showRSquared: true,
+    showEquation: false,
+    showRegressionBand: false,
+    regressionBandOpacity: 0.15,
+
+    # ── Data display ──────────────────────────────────
+    precision: 2,
+    timeUnit: "auto",
+    roundTicks: true,
+    chartMode: "performance",
 )`
     },
   ]}
 />
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `title` | string | Yes | Chart title |
-| `xlabel` | string | No | X-axis label |
+##### `drawBarChart` Parameter Reference
 
-### Example
+**Basic**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `title` | string | — | Chart title |
+| `description` | string | — | Subtitle / description text |
+| `output` | string | — | Output filename (e.g. `"results.svg"`) |
+| `width` | integer | — | Chart width in pixels |
+| `height` | integer | — | Chart height in pixels |
+| `xlabel` | string | — | X-axis label |
+
+**Display Toggles**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `showStats` | boolean | `true` | Show statistical summary panel |
+| `showConfig` | boolean | `true` | Show suite configuration panel |
+| `showWinCounts` | boolean | `true` | Show win-count badges per language |
+| `showGeoMean` | boolean | `true` | Show geometric mean bar |
+| `showDistribution` | boolean | `true` | Show distribution overlay |
+| `showMemory` | boolean | `false` | Show memory allocation data |
+| `showTotalTime` | boolean | `false` | Show total wall-clock time |
+| `compact` | boolean | `false` | Compact layout with reduced padding |
+
+**Filtering**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `minSpeedup` | float | — | Only include benchmarks where the fastest language is at least this much faster than the slowest |
+| `filterWinner` | string | `"all"` | Only include benchmarks won by this language (`"go"`, `"ts"`, `"rust"`, or `"all"`) |
+| `includeBenchmarks` | string[] | — | Whitelist of benchmark names to include |
+| `excludeBenchmarks` | string[] | — | Blacklist of benchmark names to exclude |
+| `limit` | integer | — | Maximum number of benchmarks to display |
+
+**Sorting**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `sortBy` | string | — | Sort key: `"speedup"`, `"name"`, `"time"`, `"ops"` |
+| `sortOrder` | string | — | `"asc"` or `"desc"` |
+
+**Bar Layout**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `barWidth` | integer | `20` | Width of each individual bar in pixels |
+| `barGroupGap` | integer | `20` | Gap between benchmark groups in pixels |
+| `barWithinGroupGap` | integer | `2` | Gap between bars within a group in pixels |
+
+**Axis Styling**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `axisThickness` | float | — | Axis line thickness in pixels |
+| `yAxisMin` | float | — | Y-axis minimum value |
+| `yAxisMax` | float | — | Y-axis maximum value |
+| `yScale` | string | `"linear"` | Y-axis scale: `"linear"`, `"log"`, `"symlog"`, `"percent"` |
+| `baselineBenchmark` | string | — | Benchmark name to use as the baseline (also: `baseline`) |
+| `symlogThreshold` | float | — | Threshold for symlog scale linear region |
+
+**Grid**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `showGrid` | boolean | — | Show horizontal grid lines |
+| `gridOpacity` | float | — | Grid line opacity (0.0–1.0) |
+| `showMinorGrid` | boolean | — | Show minor grid lines |
+| `minorGridOpacity` | float | — | Minor grid line opacity (0.0–1.0) |
+| `showVerticalGrid` | boolean | — | Show vertical grid lines |
+
+**Typography**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `titleFontSize` | integer | — | Title font size in points |
+| `subtitleFontSize` | integer | — | Subtitle/description font size in points |
+| `axisLabelFontSize` | integer | — | Axis label font size in points |
+| `tickLabelFontSize` | integer | — | Tick label font size in points |
+
+**Legend**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `legendPosition` | string | — | `"top-left"`, `"top-right"`, `"bottom-left"`, `"bottom-right"`, or `"hidden"` |
+
+**Error Bars**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `showErrorBars` | boolean | — | Show confidence interval error bars |
+| `errorBarOpacity` | float | — | Error bar opacity (0.0–1.0) |
+| `errorBarThickness` | float | — | Error bar line thickness in pixels |
+| `ciLevel` | integer | — | Confidence interval level: `90`, `95`, or `99` |
+
+**Regression**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `showRegression` | boolean | — | Overlay a regression curve |
+| `regressionStyle` | string | — | Line style: `"solid"`, `"dashed"`, `"dotted"` |
+| `regressionModel` | string | `"auto"` | Model: `"auto"`, `"constant"`, `"log"`, `"linear"`, `"nlogn"`, `"quadratic"`, `"cubic"` |
+| `showRegressionLabel` | boolean | — | Show the model name label |
+| `showRSquared` | boolean | — | Show R² value |
+| `showEquation` | boolean | — | Show the fitted equation |
+| `showRegressionBand` | boolean | — | Show confidence band around the regression |
+| `regressionBandOpacity` | float | — | Regression band opacity (0.0–1.0) |
+
+**Data Display**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `precision` | integer | — | Decimal places for displayed values |
+| `timeUnit` | string | `"auto"` | Time unit: `"auto"`, `"ns"`, `"us"`, `"ms"`, `"s"` |
+| `roundTicks` | boolean | — | Round axis tick values to clean numbers |
+| `chartMode` | string | `"performance"` | `"performance"` (lower is better) or `"throughput"` (higher is better) |
+
+---
+
+#### `charting.drawLineChart(...)`
+
+Generates a line chart showing how performance scales across benchmarks. Works best when benchmark names encode a numeric size (e.g. `n100`, `n200`, `size8`, `size16`) — poly-bench extracts the number for the x-axis.
+
+`drawLineChart` supports the same parameter groups as `drawBarChart` with the following differences:
+- **Not available**: `showConfig`, `showWinCounts`, `showGeoMean`, `showDistribution`, `showMemory`, `showTotalTime`, `barWidth`, `barGroupGap`, `barWithinGroupGap`
+- **Only on line chart**: `showStdDevBand`
 
 <CodeGroup 
   tabs={[
     {
-      title: ".bench",
-      language: "rust",
-      code: `use std::charting
-
-suite scalingBenchmarks {
-    bench size100 {
-        go: process(data100)
-        ts: process(data100)
-        rust: process(&data100)
-    }
-
-    bench size1000 {
-        go: process(data1000)
-        ts: process(data1000)
-        rust: process(&data1000)
-    }
-
-    bench size10000 {
-        go: process(data10000)
-        ts: process(data10000)
-        rust: process(&data10000)
-    }
-
-    after {
-        charting.drawLineChart(
-            title: "Scaling Behavior",
-            xlabel: "Input Size"
-        )
-    }
-}`
+      title: "Example",
+      language: "bench",
+      code: `charting.drawLineChart(
+    title: "Sort Performance - O(n log n)",
+    description: "Stdlib sort comparison across Go, TypeScript, and Rust",
+    output: "sort-line.svg",
+    xlabel: "Array Size (n elements)",
+    showStdDevBand: true,
+    showRegression: true,
+    regressionModel: "nlogn",
+    showRSquared: true,
+    yScale: "linear",
+    timeUnit: "auto",
+    legendPosition: "top-left"
+)`
     },
   ]}
 />
 
-<Aside type="tip">
-<span>Line charts work best when benchmark names follow a pattern with sizes (e.g., <code>size100</code>, <code>size1000</code>). The chart extracts numeric values from benchmark names for the x-axis.</span>
-</Aside>
+##### `drawLineChart`-only Parameter
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `showStdDevBand` | boolean | — | Shade a ±1 standard deviation band around each line |
 
-### Multiple Charts
+All other parameters from `drawBarChart` are available on `drawLineChart` except the bar-specific and display-toggle ones listed above.
 
-You can generate multiple charts in a single `after` block:
+---
+
+#### `charting.drawSpeedupChart(...)`
+
+Generates a chart showing the speedup ratio of each language relative to a baseline. Useful for highlighting which benchmarks have the largest performance gaps.
 
 <CodeGroup 
   tabs={[
     {
-      title: ".bench",
-      language: "rust",
+      title: "Example",
+      language: "bench",
+      code: `charting.drawSpeedupChart(
+    title: "Speedup vs Go Baseline",
+    description: "How much faster each language is relative to Go",
+    output: "results-speedup.svg",
+    width: 1000,
+    height: 500,
+    baselineBenchmark: "hashShort",
+    sortBy: "speedup",
+    sortOrder: "desc",
+    showGrid: true,
+    gridOpacity: 0.15,
+    legendPosition: "top-right",
+    titleFontSize: 18,
+    timeUnit: "auto",
+    precision: 2
+)`
+    },
+  ]}
+/>
+
+##### `drawSpeedupChart` Parameter Reference
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `title` | string | Chart title |
+| `description` | string | Subtitle text |
+| `output` | string | Output filename |
+| `width` | integer | Chart width in pixels |
+| `height` | integer | Chart height in pixels |
+| `baselineBenchmark` | string | Benchmark to use as the 1× baseline (also: `baseline`) |
+| `minSpeedup` | float | Minimum speedup threshold for inclusion |
+| `filterWinner` | string | Filter by winning language |
+| `includeBenchmarks` | string[] | Whitelist of benchmark names |
+| `excludeBenchmarks` | string[] | Blacklist of benchmark names |
+| `limit` | integer | Maximum benchmarks to display |
+| `sortBy` | string | Sort key: `"speedup"`, `"name"`, `"time"`, `"ops"` |
+| `sortOrder` | string | `"asc"` or `"desc"` |
+| `showGrid` | boolean | Show horizontal grid lines |
+| `gridOpacity` | float | Grid line opacity (0.0–1.0) |
+| `legendPosition` | string | Legend placement |
+| `titleFontSize` | integer | Title font size |
+| `subtitleFontSize` | integer | Subtitle font size |
+| `axisLabelFontSize` | integer | Axis label font size |
+| `tickLabelFontSize` | integer | Tick label font size |
+| `precision` | integer | Decimal places for values |
+| `timeUnit` | string | Time unit for display |
+
+---
+
+#### `charting.drawTable(...)`
+
+Generates an SVG table summarizing benchmark results. Useful for embedding in reports or README files.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Example",
+      language: "bench",
+      code: `charting.drawTable(
+    title: "Benchmark Summary",
+    description: "Go vs TypeScript vs Rust — keccak256 suite",
+    output: "results-table.svg",
+    width: 900,
+    showStats: true,
+    showConfig: true,
+    showWinCounts: true,
+    showGeoMean: true,
+    compact: false,
+    sortBy: "speedup",
+    sortOrder: "desc",
+    titleFontSize: 16,
+    subtitleFontSize: 12,
+    timeUnit: "auto",
+    precision: 2
+)`
+    },
+  ]}
+/>
+
+##### `drawTable` Parameter Reference
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `title` | string | Table title |
+| `description` | string | Subtitle text |
+| `output` | string | Output filename |
+| `width` | integer | Table width in pixels |
+| `height` | integer | Table height in pixels |
+| `showStats` | boolean | Show statistical summary row |
+| `showConfig` | boolean | Show suite configuration header |
+| `showWinCounts` | boolean | Show win-count column |
+| `showGeoMean` | boolean | Show geometric mean row |
+| `compact` | boolean | Compact layout |
+| `minSpeedup` | float | Minimum speedup threshold for inclusion |
+| `filterWinner` | string | Filter by winning language |
+| `includeBenchmarks` | string[] | Whitelist of benchmark names |
+| `excludeBenchmarks` | string[] | Blacklist of benchmark names |
+| `limit` | integer | Maximum benchmarks to display |
+| `sortBy` | string | Sort key |
+| `sortOrder` | string | `"asc"` or `"desc"` |
+| `titleFontSize` | integer | Title font size |
+| `subtitleFontSize` | integer | Subtitle font size |
+| `precision` | integer | Decimal places for values |
+| `timeUnit` | string | Time unit for display |
+
+---
+
+#### Multiple Charts
+
+You can generate any number of charts in a single `after` block. Each call produces a separate SVG file.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Multiple charts",
+      language: "bench",
       code: `use std::charting
 
 suite comprehensive {
-    // ... benchmarks ...
+    # ... benchmarks ...
 
     after {
-        // Bar chart for overall comparison
+        # Grouped bar chart for overall comparison
         charting.drawBarChart(
             title: "Overall Performance",
-            xlabel: "Benchmark"
+            output: "results-bar.svg",
+            sortBy: "speedup",
+            sortOrder: "desc",
+            showMemory: true
         )
 
-        // Pie chart for specific benchmark
-        charting.drawPieChart(
-            title: "Main Operation Distribution",
-            benchmark: "mainOperation"
-        )
-
-        // Line chart for scaling
+        # Line chart for scaling analysis
         charting.drawLineChart(
-            title: "Scaling Analysis",
-            xlabel: "Input Size"
+            title: "Scaling Behavior",
+            output: "results-line.svg",
+            xlabel: "Input Size",
+            showStdDevBand: true,
+            showRegression: true,
+            regressionModel: "auto"
+        )
+
+        # Speedup chart relative to Go
+        charting.drawSpeedupChart(
+            title: "Speedup vs Go",
+            output: "results-speedup.svg",
+            sortBy: "speedup",
+            sortOrder: "desc"
+        )
+
+        # Summary table
+        charting.drawTable(
+            title: "Summary",
+            output: "results-table.svg",
+            showStats: true,
+            compact: true
         )
     }
 }`
     },
   ]}
 />
-
 
 ---
 
 ### std::constants
 
-The `constants` module provides common mathematical constants. These are useful for numerical benchmarks.
+The `constants` module provides common mathematical constants for use in benchmark expressions and helper functions.
 
-### Available Constants
+#### Available Constants
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `constants.PI` | 3.14159265358979... | Pi |
-| `constants.E` | 2.71828182845904... | Euler's number |
-| `constants.TAU` | 6.28318530717958... | Tau (2 * Pi) |
-| `constants.PHI` | 1.61803398874989... | Golden ratio |
+| `constants.PI` | 3.14159265358979... | Pi (π) |
+| `constants.E` | 2.71828182845904... | Euler's number (e) |
+| `constants.TAU` | 6.28318530717958... | Tau (2π) |
+| `constants.PHI` | 1.61803398874989... | Golden ratio (φ) |
 | `constants.SQRT2` | 1.41421356237309... | Square root of 2 |
-
-### Example
 
 <CodeGroup 
   tabs={[
     {
-      title: ".bench",
-      language: "rust",
+      title: "Example",
+      language: "bench",
       code: `use std::constants
 
 suite mathBenchmarks {
     setup go {
-        import "math"
+        import (
+            "math"
+        )
+
         helpers {
             func circleArea(radius float64) float64 {
                 return constants.PI * radius * radius
+            }
+
+            func circleCircumference(radius float64) float64 {
+                return constants.TAU * radius
             }
         }
     }
@@ -369,7 +658,7 @@ suite mathBenchmarks {
     setup ts {
         helpers {
             function circleArea(radius: number): number {
-                return Math.PI * radius * radius
+                return constants.PI * radius * radius
             }
         }
     }
@@ -377,7 +666,7 @@ suite mathBenchmarks {
     setup rust {
         helpers {
             fn circle_area(radius: f64) -> f64 {
-                std::f64::consts::PI * radius * radius
+                constants::PI * radius * radius
             }
         }
     }
@@ -393,121 +682,23 @@ suite mathBenchmarks {
 />
 
 <Aside type="note">
-<span>The <code>constants</code> module is primarily for Go benchmarks. TypeScript has <code>Math.PI</code> and Rust has <code>std::f64::consts::PI</code> built-in.</span>
+<span>The <code>constants</code> module is most useful for Go benchmarks. TypeScript has <code>Math.PI</code>, <code>Math.E</code>, and <code>Math.SQRT2</code> built-in, and Rust has <code>std::f64::consts::PI</code> and friends.</span>
 </Aside>
-
 
 ---
 
 ### Module Summary
 
-| Module | Purpose | Key Functions |
-|--------|---------|---------------|
-| `std::anvil` | Ethereum development | `spawnAnvil()`, `stopAnvil()`, `ANVIL_RPC_URL` |
-| `std::charting` | Visualization | `drawBarChart()`, `drawPieChart()`, `drawLineChart()` |
-| `std::constants` | Math constants | `PI`, `E`, `TAU`, `PHI`, `SQRT2` |
+| Module | Import | Key Functions / Constants |
+|--------|--------|--------------------------|
+| `std::anvil` | `use std::anvil` | `spawnAnvil()`, `stopAnvil()`, `ANVIL_RPC_URL` |
+| `std::charting` | `use std::charting` | `drawBarChart()`, `drawLineChart()`, `drawSpeedupChart()`, `drawTable()` |
+| `std::constants` | `use std::constants` | `PI`, `E`, `TAU`, `PHI`, `SQRT2` |
 
-
-### Complete Example
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "full-example.bench",
-      language: "rust",
-      code: `use std::anvil
-use std::charting
-
-suite ethereumBenchmarks {
-    description: "Ethereum client library benchmarks"
-    warmup: 10
-    compare: true
-    baseline: "go"
-    mode: "auto"
-    targetTime: 5000ms
-    count: 3
-
-    before {
-        anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
-    }
-
-    setup go {
-        import "github.com/ethereum/go-ethereum/ethclient"
-        import "context"
-        
-        init {
-            client, _ := ethclient.Dial(anvil.ANVIL_RPC_URL)
-        }
-        
-        helpers {
-            func getBlockNumber() uint64 {
-                num, _ := client.BlockNumber(context.Background())
-                return num
-            }
-            
-            func getBalance(addr string) *big.Int {
-                balance, _ := client.BalanceAt(
-                    context.Background(),
-                    common.HexToAddress(addr),
-                    nil,
-                )
-                return balance
-            }
-        }
-    }
-
-    setup ts {
-        import { createPublicClient, http } from 'viem';
-        import { mainnet } from 'viem/chains';
-        
-        init {
-            const client = createPublicClient({
-                chain: mainnet,
-                transport: http(process.env.ANVIL_RPC_URL)
-            })
-        }
-        
-        helpers {
-            async function getBlockNumber(): Promise<bigint> {
-                return await client.getBlockNumber()
-            }
-            
-            async function getBalance(addr: string): Promise<bigint> {
-                return await client.getBalance({ address: addr as \`0x\${string}\` })
-            }
-        }
-    }
-
-    fixture vitalikAddress {
-        hex: "d8da6bf26964af9d7eed9e03e53415d37aa96045"
-    }
-
-    bench blockNumber {
-        go: getBlockNumber()
-        ts: await getBlockNumber()
-    }
-
-    bench balance {
-        go: getBalance("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
-        ts: await getBalance("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
-    }
-
-    after {
-        charting.drawBarChart(
-            title: "Ethereum Client Performance",
-            xlabel: "Operation"
-        )
-        
-        anvil.stopAnvil()
-    }
-}`
-    },
-  ]}
-/>
-
+---
 
 ### Further Reading
 
-- [DSL Reference](/docs/core/dsl-reference) — Complete syntax documentation
+- [DSL Reference](/docs/core/dsl-reference) — Complete `.bench` file syntax
 - [Examples](/docs/examples) — Real-world benchmark patterns
 - [CLI Reference](/docs/tools/cli) — Command-line options

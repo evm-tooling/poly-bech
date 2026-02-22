@@ -3,6 +3,7 @@
 import { Highlight } from 'prism-react-renderer'
 import * as React from 'react'
 import { useCodeTheme } from '@/lib/use-code-theme'
+import '../lib/prism-bench'
 
 const viemMonoFontFamily =
   'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
@@ -37,6 +38,7 @@ const languageNames: Record<string, string> = {
   yaml: 'YAML',
   css: 'CSS',
   html: 'HTML',
+  bench: 'bench',
 }
 
 interface CodeTab {

@@ -1,0 +1,528 @@
+---
+title: Anvil & EVM Benchmarks
+description: How to benchmark Ethereum client libraries using a local Anvil node
+---
+
+<div data-pagefind-weight="10">
+
+`std::anvil` lets you spawn a local [Anvil](https://book.getfoundry.sh/anvil/) node — a fast in-process Ethereum simulator from the Foundry toolkit — and benchmark RPC calls against it. poly-bench handles spawning, port allocation, URL injection, and cleanup automatically.
+
+</div>
+
+### Why Anvil?
+
+Benchmarking against a remote RPC endpoint introduces network jitter that drowns out the library overhead you actually want to measure. Anvil runs locally, responds in microseconds, and can fork mainnet state so your benchmarks operate on real chain data without hitting rate limits.
+
+---
+
+### Setup
+
+Import the module at the top of your `.bench` file:
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `use std::anvil`
+    },
+  ]}
+/>
+
+---
+
+### `globalSetup` vs Suite-level Setup
+
+Anvil should be spawned in a `globalSetup` block — either at the file level (shared across all suites) or inside a single suite. Both are equivalent when you have one suite.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "File-level (shared)",
+      language: "bench",
+      code: `use std::anvil
+
+# Spawned once — available to every suite in this file
+globalSetup {
+    anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
+}
+
+suite suiteA {
+    # ... can use ANVIL_RPC_URL here
+}
+
+suite suiteB {
+    # ... can also use ANVIL_RPC_URL here
+}`
+    },
+    {
+      title: "Suite-level (scoped)",
+      language: "bench",
+      code: `use std::anvil
+
+suite evmBench {
+    globalSetup {
+        anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
+    }
+
+    # ... setup, fixtures, benchmarks ...
+}`
+    },
+  ]}
+/>
+
+---
+
+### Local Node vs Forked Mainnet
+
+<CodeGroup
+  tabs={[
+    {
+      title: "Local node",
+      language: "bench",
+      code: `globalSetup {
+    # No fork — blank chain, no real state
+    anvil.spawnAnvil()
+}`
+    },
+    {
+      title: "Fork mainnet",
+      language: "bench",
+      code: `globalSetup {
+    # Fork from mainnet — real balances, contracts, block history
+    anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
+}`
+    },
+    {
+      title: "Fork Sepolia",
+      language: "bench",
+      code: `globalSetup {
+    anvil.spawnAnvil(fork: "https://rpc.sepolia.org")
+}`
+    },
+  ]}
+/>
+
+<Aside type="tip">
+<span>Use a forked node when your benchmarks call real contracts or read real state (e.g. <code>getBalance</code>, <code>getLogs</code>). Use a local node for pure transaction encoding/signing benchmarks that don't need chain state.</span>
+</Aside>
+
+---
+
+### `ANVIL_RPC_URL` — Connecting Your Clients
+
+After `spawnAnvil()` runs, the local RPC endpoint is injected into your setup code. The typical value is `http://127.0.0.1:8545`.
+
+#### TypeScript (viem)
+
+`ANVIL_RPC_URL` is available as a module-level constant in the `declare` scope — no `process.env` needed.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "setup ts",
+      language: "bench",
+      code: `setup ts {
+    import {
+        import { createPublicClient, http } from 'viem'
+        import { mainnet } from 'viem/chains'
+    }
+
+    declare {
+        let publicClient: any
+    }
+
+    init {
+        publicClient = createPublicClient({
+            chain: mainnet,
+            transport: http(ANVIL_RPC_URL),   # injected constant
+        })
+    }
+
+    helpers {
+        async function getBlockNumber(): Promise<bigint> {
+            return await publicClient.getBlockNumber()
+        }
+
+        async function getBalance(addr: string): Promise<bigint> {
+            return await publicClient.getBalance({
+                address: addr as \`0x\${string}\`
+            })
+        }
+    }
+}`
+    },
+  ]}
+/>
+
+#### Go (go-ethereum)
+
+Access via `os.Getenv("ANVIL_RPC_URL")` or pass the string directly.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "setup go",
+      language: "bench",
+      code: `setup go {
+    import (
+        "context"
+        "math/big"
+        "os"
+        "github.com/ethereum/go-ethereum/common"
+        "github.com/ethereum/go-ethereum/ethclient"
+    )
+
+    declare {
+        var ethClient *ethclient.Client
+        var ctx context.Context
+    }
+
+    init {
+        ctx = context.Background()
+        rpcURL := os.Getenv("ANVIL_RPC_URL")
+        ethClient, _ = ethclient.Dial(rpcURL)
+    }
+
+    helpers {
+        func getBlockNumber() uint64 {
+            num, _ := ethClient.BlockNumber(ctx)
+            return num
+        }
+
+        func getBalance(addr string) *big.Int {
+            balance, _ := ethClient.BalanceAt(
+                ctx,
+                common.HexToAddress(addr),
+                nil,
+            )
+            return balance
+        }
+    }
+}`
+    },
+  ]}
+/>
+
+#### Go (viem-go)
+
+<CodeGroup
+  tabs={[
+    {
+      title: "setup go (viem-go)",
+      language: "bench",
+      code: `setup go {
+    import (
+        "context"
+        "os"
+        "github.com/ChefBingbong/viem-go/chain/definitions"
+        "github.com/ChefBingbong/viem-go/client"
+        "github.com/ChefBingbong/viem-go/client/transport"
+    )
+
+    declare {
+        var publicClient *client.PublicClient
+        var ctx context.Context
+    }
+
+    init {
+        ctx = context.Background()
+        rpcURL := os.Getenv("ANVIL_RPC_URL")
+
+        _client, err := client.CreatePublicClient(client.PublicClientConfig{
+            Chain:     &definitions.Mainnet,
+            Transport: transport.HTTP(rpcURL),
+        })
+        if err != nil {
+            panic("failed to create client: " + err.Error())
+        }
+        publicClient = _client
+    }
+
+    helpers {
+        func getBlockNumber() any {
+            num, err := publicClient.GetBlockNumber(ctx)
+            if err != nil {
+                return err
+            }
+            return num
+        }
+    }
+}`
+    },
+  ]}
+/>
+
+#### Rust (alloy)
+
+<CodeGroup
+  tabs={[
+    {
+      title: "setup rust",
+      language: "bench",
+      code: `setup rust {
+    import {
+        use alloy::providers::{Provider, ProviderBuilder};
+        use alloy::primitives::Address;
+        use std::str::FromStr;
+    }
+
+    helpers {
+        fn get_rpc_url() -> String {
+            std::env::var("ANVIL_RPC_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:8545".to_string())
+        }
+
+        async fn get_block_number() -> u64 {
+            let provider = ProviderBuilder::new()
+                .on_http(get_rpc_url().parse().unwrap());
+            provider.get_block_number().await.unwrap()
+        }
+    }
+}`
+    },
+  ]}
+/>
+
+---
+
+### Multi-Bench RPC Suite
+
+A complete example benchmarking three RPC operations across Go and TypeScript.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "rpc.bench",
+      language: "bench",
+      code: `use std::anvil
+use std::charting
+
+globalSetup {
+    anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
+}
+
+suite rpcBench {
+    description: "Ethereum RPC benchmarks — go-ethereum vs viem"
+    compare: true
+    baseline: "go"
+    mode: "auto"
+    targetTime: 10000ms   # RPC calls are slow; give them time to stabilize
+    cvThreshold: 10       # Allow higher variance for network operations
+    sink: false           # RPC results are already side-effectful
+
+    setup go {
+        import (
+            "context"
+            "math/big"
+            "os"
+            "github.com/ethereum/go-ethereum/common"
+            "github.com/ethereum/go-ethereum/ethclient"
+        )
+
+        declare {
+            var ethClient *ethclient.Client
+            var ctx context.Context
+            var vitalik = common.HexToAddress("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
+        }
+
+        init {
+            ctx = context.Background()
+            ethClient, _ = ethclient.Dial(os.Getenv("ANVIL_RPC_URL"))
+        }
+
+        helpers {
+            func getBlockNumber() uint64 {
+                num, _ := ethClient.BlockNumber(ctx)
+                return num
+            }
+
+            func getBalance(addr common.Address) *big.Int {
+                bal, _ := ethClient.BalanceAt(ctx, addr, nil)
+                return bal
+            }
+
+            func getChainID() *big.Int {
+                id, _ := ethClient.ChainID(ctx)
+                return id
+            }
+        }
+    }
+
+    setup ts {
+        import {
+            import { createPublicClient, http } from 'viem'
+            import { mainnet } from 'viem/chains'
+        }
+
+        declare {
+            let client: any
+            const VITALIK = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
+        }
+
+        init {
+            client = createPublicClient({
+                chain: mainnet,
+                transport: http(ANVIL_RPC_URL),
+            })
+        }
+
+        helpers {
+            async function getBlockNumber(): Promise<bigint> {
+                return await client.getBlockNumber()
+            }
+
+            async function getBalance(addr: string): Promise<bigint> {
+                return await client.getBalance({ address: addr as \`0x\${string}\` })
+            }
+
+            async function getChainId(): Promise<number> {
+                return await client.getChainId()
+            }
+        }
+    }
+
+    bench getBlockNumber {
+        description: "Get the current block number"
+        go: getBlockNumber()
+        ts: await getBlockNumber()
+    }
+
+    bench getBalance {
+        description: "Get ETH balance of vitalik.eth"
+        go: getBalance(vitalik)
+        ts: await getBalance(VITALIK)
+    }
+
+    bench getChainId {
+        description: "Get the chain ID"
+        go: getChainID()
+        ts: await getChainId()
+    }
+
+    after {
+        charting.drawBarChart(
+            title: "RPC Performance — go-ethereum vs viem",
+            output: "rpc-bar.svg",
+            sortBy: "speedup",
+            sortOrder: "desc"
+        )
+    }
+}`
+    },
+  ]}
+/>
+
+---
+
+### `stopAnvil()` and Cleanup
+
+poly-bench automatically terminates the Anvil process when the run completes, so `stopAnvil()` is not required. Call it explicitly if you want to stop Anvil before the `after` block finishes — for example, to ensure it's stopped before chart generation.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `after {
+    anvil.stopAnvil()   # Optional — poly-bench cleans up automatically
+
+    charting.drawBarChart(
+        title: "RPC Results",
+        output: "rpc-bar.svg"
+    )
+}`
+    },
+  ]}
+/>
+
+---
+
+### Tips for RPC Benchmarks
+
+**Use a long `targetTime`**
+
+RPC calls are orders of magnitude slower than in-memory operations. Set `targetTime` to at least `5000ms`–`10000ms` so the auto-calibrator can gather enough samples.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `suite rpcBench {
+    mode: "auto"
+    targetTime: 10000ms   # 10 seconds per benchmark
+    minIterations: 50     # At least 50 RPC calls
+}`
+    },
+  ]}
+/>
+
+**Relax `cvThreshold`**
+
+Network operations have inherent variance. A `cvThreshold` of `10`–`15` is realistic for RPC benchmarks; the default of `5` may cause excessive re-runs.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `suite rpcBench {
+    cvThreshold: 10   # Accept up to 10% coefficient of variation
+}`
+    },
+  ]}
+/>
+
+**Disable `sink` for RPC calls**
+
+The black-box sink is designed to prevent dead-code elimination of pure computations. RPC calls have real side effects and don't need it.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `suite rpcBench {
+    sink: false
+}`
+    },
+  ]}
+/>
+
+**Use `declare` for client variables**
+
+Client objects must be declared at the module/package level so they're accessible from both `init` and `helpers`. Always use `declare` for this.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "bench",
+      language: "bench",
+      code: `setup ts {
+    declare {
+        let client: any   # declared at module level
+    }
+
+    init {
+        client = createPublicClient(...)   # assigned in init
+    }
+
+    helpers {
+        async function getBlock() {
+            return await client.getBlock()   # accessible here
+        }
+    }
+}`
+    },
+  ]}
+/>
+
+---
+
+### Further Reading
+
+- [Standard Library — std::anvil](/docs/core/standard-library#stdanvil) — Full API reference
+- [DSL Reference — globalSetup](/docs/core/dsl-reference#globalsetup-block) — Block syntax
+- [DSL Reference — setup blocks](/docs/core/dsl-reference#setup-lang-blocks) — `declare`, `init`, `helpers`
+- [Examples](/docs/examples) — Anvil example with full context
