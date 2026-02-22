@@ -374,6 +374,35 @@ impl LanguageServer for PolyBenchLanguageServer {
                 return Ok(Some(exclusive_list(filtered)));
             }
 
+            // Suite top-level block keywords should stay responsive while typing.
+            if is_likely_inside_unclosed_suite(&doc.source, position) &&
+                is_suite_top_level_scope(&doc.source, position) &&
+                should_suggest_block_keywords_from_line(&line_text)
+            {
+                let completions = get_suite_top_level_block_completions();
+                let filtered = if prefix.is_empty() {
+                    completions
+                } else {
+                    filter_completions_by_prefix(completions, &prefix, 1)
+                };
+                return Ok(Some(exclusive_list(filtered)));
+            }
+
+            // After top-level suggestions should stay responsive while typing.
+            if is_likely_inside_unclosed_after(&doc.source, position) &&
+                is_after_top_level_scope(&doc.source, position) &&
+                !is_inside_charting_function_args(&doc.source, position) &&
+                should_suggest_block_keywords_from_line(&line_text)
+            {
+                let completions = get_charting_completions();
+                let filtered = if prefix.is_empty() {
+                    completions
+                } else {
+                    filter_completions_by_prefix(completions, &prefix, 1)
+                };
+                return Ok(Some(exclusive_list(filtered)));
+            }
+
             // Check for stdlib import context (e.g., "use ", "use st", "use std::ch")
             if let Some(module_prefix) = extract_stdlib_module_prefix(&line_text) {
                 let completions = get_stdlib_module_completions();
@@ -386,7 +415,7 @@ impl LanguageServer for PolyBenchLanguageServer {
             }
 
             // Check for charting function parameter context
-            if is_inside_charting_function_args(trimmed) {
+            if is_inside_charting_function_args(&doc.source, position) {
                 let completions = get_charting_param_completions();
                 let filtered = if prefix.is_empty() {
                     completions
@@ -426,6 +455,11 @@ impl LanguageServer for PolyBenchLanguageServer {
                     {
                         // Keep setup completions stable even when parser context degrades.
                         context = CompletionContext::SetupBody;
+                    } else if is_position_inside_any_after_span(&doc.partial_ast, position) ||
+                        is_likely_inside_unclosed_after(&doc.source, position)
+                    {
+                        // Keep after-block completions stable even when parser context degrades.
+                        context = CompletionContext::AfterBody;
                     } else if context == CompletionContext::TopLevel &&
                         (is_position_inside_any_suite_span(&doc.partial_ast, position) ||
                             is_likely_inside_unclosed_suite(&doc.source, position))
@@ -464,6 +498,9 @@ impl LanguageServer for PolyBenchLanguageServer {
                         completions.extend(get_fixture_body_completions());
                     }
                     CompletionContext::AfterBody => {
+                        if !is_after_top_level_scope(&doc.source, position) {
+                            return Ok(Some(exclusive_list(vec![])));
+                        }
                         completions.extend(get_charting_completions());
                     }
                     CompletionContext::EmbeddedCode => {
@@ -493,6 +530,12 @@ impl LanguageServer for PolyBenchLanguageServer {
             let mut completions = if is_likely_inside_unclosed_setup(&doc.source, position) {
                 if is_setup_top_level_scope(&doc.source, position) {
                     get_setup_body_completions()
+                } else {
+                    vec![]
+                }
+            } else if is_likely_inside_unclosed_after(&doc.source, position) {
+                if is_after_top_level_scope(&doc.source, position) {
+                    get_charting_completions()
                 } else {
                     vec![]
                 }
@@ -747,23 +790,57 @@ fn has_stdlib_import(source: &ropey::Rope, module: &str) -> bool {
     false
 }
 
-/// Check if cursor is inside charting function arguments
-fn is_inside_charting_function_args(text: &str) -> bool {
-    // Match patterns like "charting.drawSpeedupChart(" with unclosed paren
+/// Get all text before cursor position (across multiple lines)
+fn get_text_before_cursor(source: &ropey::Rope, position: Position) -> String {
+    let cursor_line = position.line as usize;
+    let cursor_col = position.character as usize;
+    if source.len_lines() == 0 {
+        return String::new();
+    }
+
+    let last_line = cursor_line.min(source.len_lines().saturating_sub(1));
+    let mut out = String::new();
+    for line_idx in 0..=last_line {
+        let mut line: String = source.line(line_idx).chars().collect();
+        if line_idx == last_line && cursor_col < line.len() {
+            line.truncate(cursor_col);
+        }
+        out.push_str(&line);
+    }
+    out
+}
+
+/// Check if cursor is inside charting function arguments (supports multi-line args)
+fn is_inside_charting_function_args(source: &ropey::Rope, position: Position) -> bool {
+    let text = get_text_before_cursor(source, position);
     let patterns = ["charting.drawSpeedupChart(", "charting.drawTable("];
 
+    let mut latest_pattern_idx = None;
     for pattern in patterns {
-        if text.contains(pattern) {
-            // Check if there's an unclosed paren
-            let after_pattern = text.rsplit(pattern).next().unwrap_or("");
-            let open_parens = after_pattern.matches('(').count();
-            let close_parens = after_pattern.matches(')').count();
-            if open_parens >= close_parens {
-                return true;
+        if let Some(idx) = text.rfind(pattern) {
+            if latest_pattern_idx.is_none_or(|(prev_idx, _)| idx > prev_idx) {
+                latest_pattern_idx = Some((idx, pattern));
             }
         }
     }
-    false
+
+    let Some((idx, pattern)) = latest_pattern_idx else {
+        return false;
+    };
+
+    let mut depth: isize = 1;
+    let after_open = &text[idx + pattern.len()..];
+    for ch in after_open.chars() {
+        if ch == '(' {
+            depth += 1;
+        } else if ch == ')' {
+            depth -= 1;
+            if depth == 0 {
+                return false;
+            }
+        }
+    }
+    depth > 0
 }
 
 /// Determine completion context from tree-sitter node
@@ -829,6 +906,23 @@ fn is_position_inside_any_setup_span(
         AstNode::Valid(suite) => suite.setups.values().any(|setup_node| {
             let span = match setup_node {
                 AstNode::Valid(setup) => setup.span,
+                AstNode::Error { span, .. } => *span,
+                AstNode::Missing { span, .. } => *span,
+            };
+            is_position_in_span(position, span)
+        }),
+        AstNode::Error { .. } | AstNode::Missing { .. } => false,
+    })
+}
+
+fn is_position_inside_any_after_span(
+    partial_file: &poly_bench_syntax::PartialFile,
+    position: Position,
+) -> bool {
+    partial_file.suites.iter().any(|suite_node| match suite_node {
+        AstNode::Valid(suite) => suite.after_block.as_ref().is_some_and(|after_node| {
+            let span = match after_node {
+                AstNode::Valid(after) => after.span,
                 AstNode::Error { span, .. } => *span,
                 AstNode::Missing { span, .. } => *span,
             };
@@ -923,6 +1017,49 @@ fn setup_brace_depth_at_cursor(source: &ropey::Rope, position: Position) -> Opti
     Some(balance)
 }
 
+fn is_likely_inside_unclosed_after(source: &ropey::Rope, position: Position) -> bool {
+    after_brace_depth_at_cursor(source, position).is_some_and(|depth| depth > 0)
+}
+
+fn is_after_top_level_scope(source: &ropey::Rope, position: Position) -> bool {
+    after_brace_depth_at_cursor(source, position) == Some(1)
+}
+
+fn after_brace_depth_at_cursor(source: &ropey::Rope, position: Position) -> Option<isize> {
+    let cursor_line = position.line as usize;
+    let cursor_col = position.character as usize;
+
+    let mut after_start_line = None;
+    for line_idx in 0..=cursor_line.min(source.len_lines().saturating_sub(1)) {
+        let line: String = source.line(line_idx).chars().collect();
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("after") && trimmed.contains('{') {
+            after_start_line = Some(line_idx);
+        }
+    }
+
+    let Some(start_line) = after_start_line else {
+        return None;
+    };
+
+    let mut balance: isize = 0;
+    for line_idx in start_line..=cursor_line.min(source.len_lines().saturating_sub(1)) {
+        let mut line: String = source.line(line_idx).chars().collect();
+        if line_idx == cursor_line && cursor_col < line.len() {
+            line.truncate(cursor_col);
+        }
+        for ch in line.chars() {
+            if ch == '{' {
+                balance += 1;
+            } else if ch == '}' {
+                balance -= 1;
+            }
+        }
+    }
+
+    Some(balance)
+}
+
 fn should_suggest_setup_keywords_from_line(line_text: &str) -> bool {
     let trimmed = line_text.trim_start();
     if trimmed.is_empty() {
@@ -944,7 +1081,46 @@ fn should_suggest_setup_keywords_from_line(line_text: &str) -> bool {
     trimmed.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c.is_whitespace())
 }
 
+fn should_suggest_block_keywords_from_line(line_text: &str) -> bool {
+    let trimmed = line_text.trim_start();
+    if trimmed.is_empty() {
+        return true;
+    }
+
+    if trimmed.contains(':') ||
+        trimmed.contains('.') ||
+        trimmed.contains('(') ||
+        trimmed.contains(')') ||
+        trimmed.contains('{') ||
+        trimmed.contains('}')
+    {
+        return false;
+    }
+
+    trimmed.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c.is_whitespace())
+}
+
+fn get_suite_top_level_block_completions() -> Vec<CompletionItem> {
+    get_suite_body_completions()
+        .into_iter()
+        .filter(|item| {
+            matches!(
+                item.label.as_str(),
+                "bench" | "fixture" | "after" | "before" | "setup go" | "setup ts" | "setup rust"
+            )
+        })
+        .collect()
+}
+
+fn is_suite_top_level_scope(source: &ropey::Rope, position: Position) -> bool {
+    suite_brace_depth_at_cursor(source, position) == Some(1)
+}
+
 fn is_likely_inside_unclosed_suite(source: &ropey::Rope, position: Position) -> bool {
+    suite_brace_depth_at_cursor(source, position).is_some_and(|depth| depth > 0)
+}
+
+fn suite_brace_depth_at_cursor(source: &ropey::Rope, position: Position) -> Option<isize> {
     let cursor_line = position.line as usize;
     let cursor_col = position.character as usize;
 
@@ -958,7 +1134,7 @@ fn is_likely_inside_unclosed_suite(source: &ropey::Rope, position: Position) -> 
     }
 
     let Some(start_line) = suite_start_line else {
-        return false;
+        return None;
     };
 
     let mut balance: isize = 0;
@@ -976,7 +1152,7 @@ fn is_likely_inside_unclosed_suite(source: &ropey::Rope, position: Position) -> 
         }
     }
 
-    balance > 0
+    Some(balance)
 }
 
 /// Get completions for stdlib module members (after "module.")
@@ -1902,5 +2078,75 @@ mod tests {
 
         assert!(is_setup_top_level_scope(&doc.source, Position { line: 2, character: 10 },));
         assert!(!is_setup_top_level_scope(&doc.source, Position { line: 4, character: 12 },));
+    }
+
+    #[test]
+    fn suite_top_level_scope_detection() {
+        let source = r#"suite demo {
+    be
+    setup go {
+        be
+    }
+}"#;
+        let doc = crate::document::Document::new(
+            Url::parse("file:///suite_scope.bench").expect("valid file URL"),
+            source.to_string(),
+            1,
+        );
+
+        assert!(is_suite_top_level_scope(&doc.source, Position { line: 1, character: 6 },));
+        assert!(!is_suite_top_level_scope(&doc.source, Position { line: 3, character: 10 },));
+    }
+
+    #[test]
+    fn suite_block_keyword_line_heuristic() {
+        assert!(should_suggest_block_keywords_from_line("    be"));
+        assert!(should_suggest_block_keywords_from_line("after"));
+        assert!(should_suggest_block_keywords_from_line("    "));
+        assert!(!should_suggest_block_keywords_from_line("targetTime: 3000"));
+        assert!(!should_suggest_block_keywords_from_line("charting.drawSpeedupChart("));
+    }
+
+    #[test]
+    fn after_top_level_scope_detection() {
+        let source = r#"suite demo {
+    after {
+        charting
+        group {
+            charting
+        }
+    }
+}"#;
+        let doc = crate::document::Document::new(
+            Url::parse("file:///after_scope.bench").expect("valid file URL"),
+            source.to_string(),
+            1,
+        );
+
+        assert!(is_after_top_level_scope(&doc.source, Position { line: 2, character: 10 },));
+        assert!(!is_after_top_level_scope(&doc.source, Position { line: 4, character: 12 },));
+    }
+
+    #[test]
+    fn detects_multiline_charting_args_context() {
+        let source = r#"suite demo {
+    after {
+        charting.drawSpeedupChart(
+            ti
+        )
+    }
+}"#;
+        let doc = crate::document::Document::new(
+            Url::parse("file:///charting_args.bench").expect("valid file URL"),
+            source.to_string(),
+            1,
+        );
+
+        assert!(
+            is_inside_charting_function_args(&doc.source, Position { line: 3, character: 14 },)
+        );
+        assert!(
+            !is_inside_charting_function_args(&doc.source, Position { line: 5, character: 5 },)
+        );
     }
 }
