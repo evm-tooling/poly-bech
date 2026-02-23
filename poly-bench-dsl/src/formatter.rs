@@ -260,9 +260,6 @@ fn format_suite_with_source(
         };
         write!(out, "{}order: {}\n", inner, s).unwrap();
     }
-    if suite.compare {
-        write!(out, "{}compare: true\n", inner).unwrap();
-    }
     if let Some(baseline) = suite.baseline {
         write!(out, "{}baseline: \"{}\"\n", inner, baseline.as_str()).unwrap();
     }
@@ -273,12 +270,6 @@ fn format_suite_with_source(
     }
     if let Some(target_time) = suite.target_time_ms {
         write!(out, "{}targetTime: {}ms\n", inner, target_time).unwrap();
-    }
-    if let Some(min_iters) = suite.min_iterations {
-        write!(out, "{}minIterations: {}\n", inner, min_iters).unwrap();
-    }
-    if let Some(max_iters) = suite.max_iterations {
-        write!(out, "{}maxIterations: {}\n", inner, max_iters).unwrap();
     }
     if !suite.sink {
         write!(out, "{}sink: false\n", inner).unwrap();
@@ -294,9 +285,6 @@ fn format_suite_with_source(
     }
     if suite.memory {
         write!(out, "{}memory: true\n", inner).unwrap();
-    }
-    if suite.concurrency > 1 {
-        write!(out, "{}concurrency: {}\n", inner, suite.concurrency).unwrap();
     }
 
     // Add blank line after properties
@@ -458,9 +446,6 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
         };
         write!(out, "{}order: {}\n", inner, s).unwrap();
     }
-    if suite.compare {
-        write!(out, "{}compare: true\n", inner).unwrap();
-    }
     if let Some(baseline) = suite.baseline {
         write!(out, "{}baseline: \"{}\"\n", inner, baseline.as_str()).unwrap();
     }
@@ -471,12 +456,6 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
     }
     if let Some(target_time) = suite.target_time_ms {
         write!(out, "{}targetTime: {}ms\n", inner, target_time).unwrap();
-    }
-    if let Some(min_iters) = suite.min_iterations {
-        write!(out, "{}minIterations: {}\n", inner, min_iters).unwrap();
-    }
-    if let Some(max_iters) = suite.max_iterations {
-        write!(out, "{}maxIterations: {}\n", inner, max_iters).unwrap();
     }
     if !suite.sink {
         // Only output sink: false since true is the default
@@ -499,10 +478,6 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
     if suite.memory {
         // Only output memory: true since false is the default
         write!(out, "{}memory: true\n", inner).unwrap();
-    }
-    if suite.concurrency > 1 {
-        // Only output concurrency if > 1 (default is 1)
-        write!(out, "{}concurrency: {}\n", inner, suite.concurrency).unwrap();
     }
 
     // Add blank line after properties if there are any setups, fixtures, or benchmarks
@@ -726,12 +701,6 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
     if let Some(target_time) = bench.target_time_ms {
         write!(out, "{}targetTime: {}ms\n", inner, target_time).unwrap();
     }
-    if let Some(min_iters) = bench.min_iterations {
-        write!(out, "{}minIterations: {}\n", inner, min_iters).unwrap();
-    }
-    if let Some(max_iters) = bench.max_iterations {
-        write!(out, "{}maxIterations: {}\n", inner, max_iters).unwrap();
-    }
     if let Some(sink) = bench.sink {
         // Only output if explicitly set to override suite default
         write!(out, "{}sink: {}\n", inner, if sink { "true" } else { "false" }).unwrap();
@@ -756,9 +725,6 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
     // Observability settings (Phase 2B) - only output if explicitly set
     if let Some(memory) = bench.memory {
         write!(out, "{}memory: {}\n", inner, if memory { "true" } else { "false" }).unwrap();
-    }
-    if let Some(concurrency) = bench.concurrency {
-        write!(out, "{}concurrency: {}\n", inner, concurrency).unwrap();
     }
 
     // Skip and validate hooks (always flat syntax)

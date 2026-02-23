@@ -131,8 +131,6 @@ pub struct SuiteIR {
     pub requires: Vec<Lang>,
     /// Execution order for benchmarks
     pub order: ExecutionOrder,
-    /// Whether to enable comparison tables
-    pub compare: bool,
     /// Baseline language for comparison ratios
     pub baseline: Option<Lang>,
 
@@ -141,10 +139,6 @@ pub struct SuiteIR {
     pub mode: BenchMode,
     /// Target time for auto-calibration in milliseconds
     pub target_time_ms: u64,
-    /// Minimum iterations for auto-calibration
-    pub min_iterations: u64,
-    /// Maximum iterations for auto-calibration
-    pub max_iterations: u64,
     /// Enable sink/black-box pattern to prevent dead code elimination
     pub sink: bool,
 
@@ -159,8 +153,6 @@ pub struct SuiteIR {
     // Observability settings (Phase 2B)
     /// Enable memory allocation profiling
     pub memory: bool,
-    /// Number of concurrent goroutines/workers for parallel execution
-    pub concurrency: u32,
 
     /// Standard library modules imported (e.g., "constants", "anvil")
     pub stdlib_imports: HashSet<String>,
@@ -206,21 +198,17 @@ impl SuiteIR {
             timeout: None,
             requires: Vec::new(),
             order: ExecutionOrder::Sequential,
-            compare: false,
             baseline: None,
             // Benchmark accuracy defaults
-            mode: BenchMode::Auto,     // Auto-calibration by default
-            target_time_ms: 3000,      // 3 seconds target
-            min_iterations: 10,        // At least 10 iterations
-            max_iterations: 1_000_000, // Cap at 1M iterations
-            sink: true,                // Enabled by default to prevent DCE
+            mode: BenchMode::Auto, // Auto-calibration by default
+            target_time_ms: 3000,  // 3 seconds target
+            sink: true,            // Enabled by default to prevent DCE
             // Statistical analysis defaults
             outlier_detection: true, // Enabled by default for statistical accuracy
             cv_threshold: DEFAULT_CV_THRESHOLD, // 5% threshold
             count: 1,                // Single run by default (backward compatible)
             // Observability defaults
-            memory: false,  // Memory profiling disabled by default
-            concurrency: 1, // Single-threaded by default
+            memory: false, // Memory profiling disabled by default
             stdlib_imports: HashSet::new(),
             imports: HashMap::new(),
             declarations: HashMap::new(),
@@ -365,10 +353,6 @@ pub struct BenchmarkSpec {
     pub mode: BenchMode,
     /// Target time for auto-calibration in milliseconds
     pub target_time_ms: u64,
-    /// Minimum iterations for auto-calibration
-    pub min_iterations: u64,
-    /// Maximum iterations for auto-calibration
-    pub max_iterations: u64,
     /// Enable sink/black-box pattern
     pub use_sink: bool,
     /// Enable IQR-based outlier detection
@@ -381,8 +365,6 @@ pub struct BenchmarkSpec {
     // Observability settings (Phase 2B)
     /// Enable memory allocation profiling
     pub memory: bool,
-    /// Number of concurrent goroutines/workers for parallel execution
-    pub concurrency: u32,
 
     // Phase 3: Lifecycle hooks
     /// Pre-benchmark hook (runs once before iterations)
@@ -413,14 +395,11 @@ impl BenchmarkSpec {
             // Benchmark accuracy defaults (will be overwritten by lower.rs)
             mode: BenchMode::Auto,
             target_time_ms: 3000,
-            min_iterations: 10,
-            max_iterations: 1_000_000,
             use_sink: true,
             outlier_detection: true,
             cv_threshold: DEFAULT_CV_THRESHOLD,
             count: 1,
             memory: false,
-            concurrency: 1,
             before_hooks: HashMap::new(),
             after_hooks: HashMap::new(),
             each_hooks: HashMap::new(),

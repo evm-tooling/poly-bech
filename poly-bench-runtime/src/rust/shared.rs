@@ -273,53 +273,6 @@ pub fn generate_sample_collection(
     )
 }
 
-/// Generate concurrent execution code for Rust
-pub fn generate_concurrent_execution(
-    bench_call: &str,
-    _warmup_call: &str,
-    concurrency: u32,
-    iter_var: &str,
-) -> String {
-    format!(
-        r#"    // Concurrent benchmark: {concurrency} threads
-    let concurrency = {concurrency};
-    let iter_per_thread = {iter_var} / concurrency;
-    let iter_per_thread = if iter_per_thread < 1 {{ 1 }} else {{ iter_per_thread }};
-    let total_iterations = iter_per_thread * concurrency;
-    
-    // Concurrent warmup
-    let handles: Vec<_> = (0..concurrency)
-        .map(|_| {{
-            thread::spawn(move || {{
-                for _ in 0..10 {{
-                    {bench_call};
-                }}
-            }})
-        }})
-        .collect();
-    for h in handles {{
-        h.join().unwrap();
-    }}
-    
-    // Timed concurrent run
-    let start = Instant::now();
-    let handles: Vec<_> = (0..concurrency)
-        .map(|_| {{
-            thread::spawn(move || {{
-                for _ in 0..iter_per_thread {{
-                    {bench_call};
-                }}
-            }})
-        }})
-        .collect();
-    for h in handles {{
-        h.join().unwrap();
-    }}
-    let total_nanos = start.elapsed().as_nanos() as i64;
-"#
-    )
-}
-
 /// Generate suite-level code (declarations, init, helpers)
 pub fn generate_suite_code(suite: &SuiteIR, lang: Lang) -> String {
     let mut code = String::new();

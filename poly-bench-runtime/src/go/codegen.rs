@@ -38,14 +38,8 @@ pub fn generate(ir: &BenchmarkIR) -> Result<String> {
             .any(|bench| (bench.use_sink || bench.memory) && bench.has_lang(Lang::Go))
     });
 
-    // Check if any benchmark uses concurrency
-    let needs_sync = ir.suites.iter().any(|suite| {
-        suite.benchmarks.iter().any(|bench| bench.concurrency > 1 && bench.has_lang(Lang::Go))
-    });
-
     // Generate import block using shared utility
-    let imports =
-        CollectedImports::for_ir(&user_imports, &stdlib_imports, needs_runtime, needs_sync);
+    let imports = CollectedImports::for_ir(&user_imports, &stdlib_imports, needs_runtime, false);
     code.push_str(&imports.generate_import_block());
 
     // Inject stdlib code if any modules are imported
@@ -198,21 +192,6 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
     // Memory result fields
     let memory_result = SinkMemoryDecls::memory_result_fields(bench.memory, "totalIterations");
 
-    // Concurrent execution
-    if bench.concurrency > 1 {
-        return generate_concurrent_benchmark(
-            code,
-            bench,
-            &before_hook,
-            &after_hook,
-            &bench_call,
-            decls.sink_decl,
-            decls.memory_decl,
-            decls.memory_before,
-            decls.memory_after,
-        );
-    }
-
     match bench.mode {
         BenchMode::Auto => {
             code.push_str(&format!(
@@ -316,59 +295,6 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
             ));
         }
     }
-
-    Ok(())
-}
-
-/// Generate a concurrent benchmark function using goroutines
-fn generate_concurrent_benchmark(
-    code: &mut String,
-    bench: &BenchmarkSpec,
-    before_hook: &str,
-    after_hook: &str,
-    bench_call: &str,
-    sink_decl: &str,
-    memory_decl: &str,
-    memory_before: &str,
-    memory_after: &str,
-) -> Result<()> {
-    let concurrency = bench.concurrency;
-    let memory_result = SinkMemoryDecls::memory_result_fields(bench.memory, "totalIterations");
-    let sink_keepalive = if bench.use_sink { "\truntime.KeepAlive(__sink)\n" } else { "" };
-
-    code.push_str(&format!(
-        r#"func bench_{}(iterations int) BenchResult {{
-{}{}
-{}{}
-{}
-{}{}
-	nanosPerOp := float64(totalNanos) / float64(totalIterations)
-	opsPerSec := 1e9 / nanosPerOp
-	
-{}
-{}
-	return BenchResult{{
-		Iterations:  uint64(totalIterations),
-		TotalNanos:  uint64(totalNanos),
-		NanosPerOp:  nanosPerOp,
-		OpsPerSec:   opsPerSec,
-{}		Samples:     samples,
-	}}
-}}
-
-"#,
-        bench.full_name,
-        sink_decl,
-        memory_decl,
-        before_hook,
-        memory_before,
-        shared::generate_concurrent_execution(bench_call, bench_call, concurrency, "iterations"),
-        sink_keepalive,
-        memory_after,
-        shared::generate_sample_collection(bench_call, "", None, "100", "totalIterations"),
-        after_hook,
-        memory_result,
-    ));
 
     Ok(())
 }

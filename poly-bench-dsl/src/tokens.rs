@@ -35,15 +35,12 @@ pub enum TokenKind {
     // Phase 4: Suite configuration keywords
     Requires, // requires
     Order,    // order
-    Compare,  // compare
     Baseline, // baseline
 
     // Benchmark accuracy keywords
-    Mode,          // mode (auto/fixed)
-    Sink,          // sink (true/false)
-    TargetTime,    // targetTime
-    MinIterations, // minIterations
-    MaxIterations, // maxIterations
+    Mode,       // mode (auto/fixed)
+    Sink,       // sink (true/false)
+    TargetTime, // targetTime
 
     // Statistical analysis keywords
     OutlierDetection, // outlierDetection (true/false)
@@ -51,8 +48,7 @@ pub enum TokenKind {
     Count,            // count (number) - run benchmark N times for statistical consistency
 
     // Observability keywords (Phase 2B)
-    Memory,      // memory (true/false) - enable memory profiling
-    Concurrency, // concurrency (number) - concurrent goroutines/workers
+    Memory, // memory (true/false) - enable memory profiling
 
     // Phase 5: Fixture keywords
     Shape, // shape
@@ -131,18 +127,14 @@ impl TokenKind {
                 TokenKind::Each |
                 TokenKind::Requires |
                 TokenKind::Order |
-                TokenKind::Compare |
                 TokenKind::Baseline |
                 TokenKind::Mode |
                 TokenKind::Sink |
                 TokenKind::TargetTime |
-                TokenKind::MinIterations |
-                TokenKind::MaxIterations |
                 TokenKind::OutlierDetection |
                 TokenKind::CvThreshold |
                 TokenKind::Count |
                 TokenKind::Memory |
-                TokenKind::Concurrency |
                 TokenKind::Shape |
                 TokenKind::Async |
                 TokenKind::Use |
@@ -226,15 +218,12 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         // Phase 4: Suite configuration keywords
         "requires" => Some(TokenKind::Requires),
         "order" => Some(TokenKind::Order),
-        "compare" => Some(TokenKind::Compare),
         "baseline" => Some(TokenKind::Baseline),
 
         // Benchmark accuracy keywords
         "mode" => Some(TokenKind::Mode),
         "sink" => Some(TokenKind::Sink),
         "targetTime" => Some(TokenKind::TargetTime),
-        "minIterations" => Some(TokenKind::MinIterations),
-        "maxIterations" => Some(TokenKind::MaxIterations),
 
         // Statistical analysis keywords
         "outlierDetection" => Some(TokenKind::OutlierDetection),
@@ -243,7 +232,6 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
 
         // Observability keywords (Phase 2B)
         "memory" => Some(TokenKind::Memory),
-        "concurrency" => Some(TokenKind::Concurrency),
 
         // Phase 5: Fixture keywords
         "shape" => Some(TokenKind::Shape),

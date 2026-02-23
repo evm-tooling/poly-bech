@@ -114,18 +114,14 @@ suite fullExample {
     warmup: 100
     timeout: 30s
     order: sequential
-    compare: true
     baseline: "go"
     mode: "auto"
     targetTime: 5000ms
-    minIterations: 10
-    maxIterations: 10000
     sink: true
     outlierDetection: false
     cvThreshold: 5.0
     count: 3
     memory: true
-    concurrency: 4
 
     bench test {
         go: run()

@@ -645,8 +645,6 @@ pub struct Suite {
     pub requires: Vec<Lang>,
     /// Execution order for benchmarks
     pub order: Option<ExecutionOrder>,
-    /// Whether to enable comparison tables
-    pub compare: bool,
     /// Baseline language for comparison ratios
     pub baseline: Option<Lang>,
 
@@ -655,10 +653,6 @@ pub struct Suite {
     pub mode: Option<BenchMode>,
     /// Target time for auto-calibration in milliseconds (e.g., "3s" = 3000)
     pub target_time_ms: Option<u64>,
-    /// Minimum iterations for auto-calibration
-    pub min_iterations: Option<u64>,
-    /// Maximum iterations for auto-calibration
-    pub max_iterations: Option<u64>,
     /// Enable sink/black-box pattern to prevent dead code elimination (default: true)
     pub sink: bool,
 
@@ -673,8 +667,6 @@ pub struct Suite {
     // Observability settings (Phase 2B)
     /// Enable memory allocation profiling (default: false)
     pub memory: bool,
-    /// Number of concurrent goroutines/workers for parallel execution (default: 1)
-    pub concurrency: u32,
 
     /// Global setup block for suite-level initialization (runs once before all benchmarks)
     pub global_setup: Option<GlobalSetup>,
@@ -700,18 +692,14 @@ impl Suite {
             timeout: None,
             requires: Vec::new(),
             order: None,
-            compare: false,
             baseline: None,
             mode: None,
             target_time_ms: None,
-            min_iterations: None,
-            max_iterations: None,
             sink: true,              // Enabled by default to prevent DCE
             outlier_detection: true, // Enabled by default for statistical accuracy
             cv_threshold: None,      // Uses default (5.0%) when None
             count: None,             // Uses default (1) when None - single run
             memory: false,           // Memory profiling disabled by default
-            concurrency: 1,          // Single-threaded by default
             global_setup: None,
             setups: HashMap::new(),
             fixtures: Vec::new(),
@@ -796,10 +784,6 @@ pub struct Benchmark {
     pub mode: Option<BenchMode>,
     /// Override target time for auto-calibration
     pub target_time_ms: Option<u64>,
-    /// Override minimum iterations
-    pub min_iterations: Option<u64>,
-    /// Override maximum iterations
-    pub max_iterations: Option<u64>,
     /// Override sink/black-box setting (None = inherit from suite)
     pub sink: Option<bool>,
     /// Override outlier detection setting (None = inherit from suite)
@@ -812,8 +796,6 @@ pub struct Benchmark {
     // Observability settings (Phase 2B)
     /// Override memory profiling setting (None = inherit from suite)
     pub memory: Option<bool>,
-    /// Override concurrency setting (None = inherit from suite)
-    pub concurrency: Option<u32>,
 
     // Phase 3: Lifecycle hooks
     /// Pre-benchmark hook (runs once before iterations)
@@ -845,14 +827,11 @@ impl Benchmark {
             validate: HashMap::new(),
             mode: None,
             target_time_ms: None,
-            min_iterations: None,
-            max_iterations: None,
             sink: None,
             outlier_detection: None,
             cv_threshold: None,
             count: None,
             memory: None,
-            concurrency: None,
             before: HashMap::new(),
             after: HashMap::new(),
             each: HashMap::new(),

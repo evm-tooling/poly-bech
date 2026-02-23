@@ -569,9 +569,6 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     let mut all_imports: HashSet<&str> = HashSet::new();
     all_imports.insert("use std::time::Instant;");
 
-    if spec.concurrency > 1 {
-        all_imports.insert("use std::thread;");
-    }
     if let Some(user_imports) = suite.imports.get(&Lang::Rust) {
         for import_spec in user_imports {
             all_imports.insert(import_spec);
@@ -635,78 +632,59 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     code.push_str(decls.memory_before);
 
     // Generate based on mode
-    if spec.concurrency > 1 {
-        // Concurrent execution
-        code.push_str(&shared::generate_concurrent_execution(
-            &bench_call,
-            &bench_call,
-            spec.concurrency,
-            &spec.iterations.to_string(),
-        ));
+    match spec.mode {
+        BenchMode::Auto => {
+            // Warmup
+            code.push_str(&shared::generate_warmup_loop(
+                &bench_call,
+                decls.sink_keepalive,
+                each_hook,
+                &spec.warmup.to_string(),
+            ));
 
-        // Sample collection
-        code.push_str(&shared::generate_sample_collection(
-            &bench_call,
-            decls.sink_keepalive,
-            each_hook,
-            "100",
-            "total_iterations",
-        ));
-    } else {
-        match spec.mode {
-            BenchMode::Auto => {
-                // Warmup
-                code.push_str(&shared::generate_warmup_loop(
-                    &bench_call,
-                    decls.sink_keepalive,
-                    each_hook,
-                    &spec.warmup.to_string(),
-                ));
+            // Auto-calibration loop
+            code.push_str(&shared::generate_auto_mode_loop(
+                &bench_call,
+                decls.sink_keepalive,
+                each_hook,
+                spec.target_time_ms,
+            ));
 
-                // Auto-calibration loop
-                code.push_str(&shared::generate_auto_mode_loop(
-                    &bench_call,
-                    decls.sink_keepalive,
-                    each_hook,
-                    spec.target_time_ms,
-                ));
+            // Sample collection
+            code.push_str(&shared::generate_sample_collection(
+                &bench_call,
+                decls.sink_keepalive,
+                each_hook,
+                "1000",
+                "total_iterations",
+            ));
+        }
+        BenchMode::Fixed => {
+            let iterations = spec.iterations;
+            code.push_str(&format!("    let iterations: i64 = {};\n", iterations));
+            code.push_str(&format!(
+                "    let mut samples: Vec<u64> = vec![0; {} as usize];\n\n",
+                iterations
+            ));
 
-                // Sample collection
-                code.push_str(&shared::generate_sample_collection(
-                    &bench_call,
-                    decls.sink_keepalive,
-                    each_hook,
-                    "1000",
-                    "total_iterations",
-                ));
-            }
-            BenchMode::Fixed => {
-                let iterations = spec.iterations;
-                code.push_str(&format!("    let iterations: i64 = {};\n", iterations));
-                code.push_str(&format!(
-                    "    let mut samples: Vec<u64> = vec![0; {} as usize];\n\n",
-                    iterations
-                ));
+            // Warmup
+            code.push_str(&shared::generate_warmup_loop(
+                &bench_call,
+                decls.sink_keepalive,
+                each_hook,
+                &spec.warmup.to_string(),
+            ));
 
-                // Warmup
-                code.push_str(&shared::generate_warmup_loop(
-                    &bench_call,
-                    decls.sink_keepalive,
-                    each_hook,
-                    &spec.warmup.to_string(),
-                ));
+            // Fixed measurement loop
+            code.push_str(&shared::generate_fixed_mode_loop(
+                &bench_call,
+                decls.sink_keepalive,
+                each_hook,
+                "iterations",
+            ));
 
-                // Fixed measurement loop
-                code.push_str(&shared::generate_fixed_mode_loop(
-                    &bench_call,
-                    decls.sink_keepalive,
-                    each_hook,
-                    "iterations",
-                ));
-
-                // Use iterations as total for result
-                code.push_str("    let total_iterations = iterations;\n");
-            }
+            // Use iterations as total for result
+            code.push_str("    let total_iterations = iterations;\n");
         }
     }
 

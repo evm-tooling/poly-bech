@@ -3,12 +3,9 @@ use std::charting
 suite example {
     description: "Comprehensive benchmark showcasing all DSL features"
     warmup: 0
-    compare: true
     baseline: "go"
     mode: "auto"
     targetTime: 5000ms
-    minIterations: 1000
-    maxIterations: 10000000
     cvThreshold: 10
     count: 10
 
@@ -190,20 +187,18 @@ suite example {
     }
 
     bench concurrent_execution_example {
-        description: "Concurrent execution with 4 goroutines"
+        description: "Fixed execution example"
         iterations: 100000
         mode: "fixed"
-        concurrency: 1
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
     }
 
     bench concurrent_with_memory {
-        description: "Concurrent execution with memory profiling"
+        description: "Fixed execution with memory profiling"
         iterations: 50000
         mode: "fixed"
         memory: true
-        concurrency: 1
         go: allocateMemory(512)
         ts: allocateMemory(512)
     }
@@ -228,11 +223,9 @@ suite example {
     }
 
     bench iteration_bounds_example {
-        description: "Auto mode with min/max iteration bounds"
+        description: "Auto mode iteration example"
         mode: "auto"
         targetTime: 2000ms
-        minIterations: 5000
-        maxIterations: 500000
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
     }

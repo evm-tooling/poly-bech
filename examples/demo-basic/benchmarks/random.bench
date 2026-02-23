@@ -3,7 +3,6 @@ use std::charting
 suite randomN {
     description: "Random number generation and statistical operations - produces Gaussian distribution"
     warmup: 50
-    compare: true
     baseline: "go"
     mode: "auto"
     targetTime: 500ms

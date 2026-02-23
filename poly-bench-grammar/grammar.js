@@ -451,18 +451,14 @@ module.exports = grammar({
       'timeout',
       'requires',
       'order',
-      'compare',
       'baseline',
       'mode',
       'targetTime',
-      'minIterations',
-      'maxIterations',
       'sink',
       'outlierDetection',
       'cvThreshold',
       'count',
       'memory',
-      'concurrency',
     ),
 
     _value: $ => choice(

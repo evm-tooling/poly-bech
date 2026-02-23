@@ -538,9 +538,6 @@ fn get_property_documentation(name: &str) -> String {
             "**order**: `sequential | random`\n\nOrder in which benchmarks are executed."
                 .to_string()
         }
-        "compare" => {
-            "**compare**: `boolean`\n\nWhether to compare results across languages.".to_string()
-        }
         "baseline" => {
             "**baseline**: `string`\n\nLanguage to use as the baseline for comparison.".to_string()
         }
@@ -556,18 +553,6 @@ fn get_property_documentation(name: &str) -> String {
         }
         "memory" => {
             "**memory**: `boolean`\n\nEnable memory allocation profiling.".to_string()
-        }
-        "concurrency" => {
-            "**concurrency**: `number`\n\nNumber of concurrent workers for parallel execution."
-                .to_string()
-        }
-        "minIterations" => {
-            "**minIterations**: `number`\n\nMinimum iterations for auto-calibration mode."
-                .to_string()
-        }
-        "maxIterations" => {
-            "**maxIterations**: `number`\n\nMaximum iterations for auto-calibration mode."
-                .to_string()
         }
         "outlierDetection" => {
             "**outlierDetection**: `boolean`\n\nEnable IQR-based outlier detection and removal."
@@ -687,11 +672,6 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             - `parallel` - Run concurrently where supported\n\
             - `random` - Randomize order",
         ),
-        "compare" => Some(
-            "**compare:** `true | false`\n\n\
-            Enable comparison tables in output.\n\n\
-            Shows relative performance between languages.",
-        ),
         "baseline" => Some(
             "**baseline:** `\"go\" | \"ts\"`\n\n\
             Baseline language for comparison ratios.\n\n\
@@ -712,20 +692,6 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             scaling the iteration count.\n\n\
             Examples: `3000ms`, `10s`, `1m`\n\n\
             Default: `3000ms` (3 seconds)",
-        ),
-        "minIterations" => Some(
-            "**minIterations:** `<number>`\n\n\
-            Minimum iterations for auto-calibration mode.\n\n\
-            Even if targetTime is reached quickly, at least this many\n\
-            iterations will be run.\n\n\
-            Default: `10`",
-        ),
-        "maxIterations" => Some(
-            "**maxIterations:** `<number>`\n\n\
-            Maximum iterations for auto-calibration mode.\n\n\
-            The benchmark will not exceed this iteration count,\n\
-            even if targetTime hasn't been reached.\n\n\
-            Default: `1000000`",
         ),
         "sink" => Some(
             "**sink:** `true | false`\n\n\
@@ -758,15 +724,6 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             - **TypeScript:** Uses `process.memoryUsage()` to track heap usage\n\n\
             Results appear in output when `showMemory: true` is set on charts.\n\n\
             Default: `false`",
-        ),
-        "concurrency" => Some(
-            "**concurrency:** `<number>`\n\n\
-            Number of concurrent goroutines/workers for parallel execution.\n\n\
-            When set > 1, the benchmark runs with multiple parallel workers,\n\
-            measuring throughput instead of single-threaded latency.\n\n\
-            - **Go:** Uses goroutines with sync.WaitGroup\n\
-            - **TypeScript:** Not yet supported\n\n\
-            Default: `1` (single-threaded)",
         ),
         "skip" => Some(
             "**skip** `<lang>:` `<condition>`\n\n\

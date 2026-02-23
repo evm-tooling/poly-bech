@@ -260,11 +260,6 @@ pub async fn run(
                 args.push(format!("memory=true"));
             }
 
-            // Concurrency
-            if spec.concurrency > 1 {
-                args.push(format!("concurrency={}", spec.concurrency));
-            }
-
             // Use sink
             if spec.use_sink {
                 args.push(format!("sink=true"));

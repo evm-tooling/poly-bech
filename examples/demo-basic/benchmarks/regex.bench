@@ -3,7 +3,6 @@ use std::charting
 suite regexN {
     description: "Regex backtracking (a+)+b on string 'a'*n+'b'"
     warmup: 50
-    compare: true
     baseline: "go"
     mode: "auto"
     targetTime: 3000ms
