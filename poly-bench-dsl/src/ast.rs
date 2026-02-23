@@ -378,6 +378,8 @@ pub struct ChartDirective {
     // Layout
     /// Chart width in pixels
     pub width: Option<i32>,
+    /// Number of charts per row for combined speedup charts
+    pub row_count: Option<u32>,
 
     // === NEW PARAMETERS ===
 
@@ -416,6 +418,7 @@ impl ChartDirective {
             sort_order: None,
             // Layout - defaults (None means use chart defaults)
             width: None,
+            row_count: None,
             // Dimensions
             height: None,
             baseline_benchmark: None,

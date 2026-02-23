@@ -944,6 +944,7 @@ fn format_single_param(directive: &ChartDirective, name: &str, indent: &str) -> 
         // Integer parameters
         "limit" => directive.limit.map(|v| format!("{}limit: {}", indent, v)),
         "width" => directive.width.map(|v| format!("{}width: {}", indent, v)),
+        "rowCount" => directive.row_count.map(|v| format!("{}rowCount: {}", indent, v)),
         "height" => directive.height.map(|v| format!("{}height: {}", indent, v)),
 
         // Float parameters
@@ -1034,6 +1035,9 @@ fn format_params_default_order(directive: &ChartDirective, inner2: &str) -> Vec<
     // Layout
     if let Some(width) = directive.width {
         params.push(format!("{}width: {}", inner2, width));
+    }
+    if let Some(row_count) = directive.row_count {
+        params.push(format!("{}rowCount: {}", inner2, row_count));
     }
 
     // Dimensions

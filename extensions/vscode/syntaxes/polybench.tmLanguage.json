@@ -213,7 +213,7 @@
           }
         },
         {
-          "match": "\\b(width|height|limit)\\s*:\\s*(\\d+)",
+          "match": "\\b(width|rowCount|height|limit)\\s*:\\s*(\\d+)",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
