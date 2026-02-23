@@ -675,7 +675,7 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
     let inner = INDENT.repeat(indent_level + 1);
     let lang_order = [Lang::Go, Lang::TypeScript, Lang::Rust, Lang::Python];
 
-    write!(out, "{}bench {} {{\n", pad, bench.name).unwrap();
+    write!(out, "{}{} {} {{\n", pad, bench.kind.as_keyword(), bench.name).unwrap();
 
     if let Some(ref desc) = bench.description {
         write!(out, "{}description: \"{}\"\n", inner, escape_string(desc)).unwrap();

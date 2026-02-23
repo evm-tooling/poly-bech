@@ -6,7 +6,8 @@
 
 use crate::document::Document;
 use poly_bench_syntax::{
-    Node, PartialBenchmark, PartialFixture, PartialSuite, Property, PropertyValue, UseStd,
+    BenchmarkKind, Node, PartialBenchmark, PartialFixture, PartialSuite, Property, PropertyValue,
+    UseStd,
 };
 use tower_lsp::lsp_types::{Position, Range, TextEdit};
 
@@ -416,7 +417,21 @@ fn format_benchmark(
 
     // Benchmark header
     formatted.push_str(&indent);
-    formatted.push_str(&format!("bench {} {{\n", benchmark.name));
+    let has_non_empty_impl = benchmark.impl_order.iter().any(|lang| {
+        benchmark
+            .implementations
+            .get(lang)
+            .and_then(|impl_node| match impl_node {
+                Node::Valid(code) => Some(!code.code.trim().is_empty()),
+                _ => None,
+            })
+            .unwrap_or(false)
+    });
+    let keyword = match (benchmark.kind, has_non_empty_impl) {
+        (BenchmarkKind::Async, true) => "benchAsync",
+        _ => "bench",
+    };
+    formatted.push_str(&format!("{} {} {{\n", keyword, benchmark.name));
 
     // Properties
     for prop in &benchmark.properties {
@@ -649,5 +664,46 @@ bench foo{go:run()}}"#;
         let edits = format_document(&doc);
 
         // Formatting should preserve the embedded code structure
+    }
+
+    #[test]
+    fn test_format_preserves_bench_async_keyword_with_implementation() {
+        let source = r#"suite test {
+    benchAsync fetchBlock {
+        ts: await getBlockNumber()
+    }
+}
+"#;
+        let formatted = format_source(source);
+
+        assert!(formatted.contains("benchAsync fetchBlock {"));
+    }
+
+    #[test]
+    fn test_format_falls_back_to_bench_for_empty_bench_async() {
+        let source = r#"suite test {
+    benchAsync fetchBlock {
+        description: "no code yet"
+    }
+}
+"#;
+        let formatted = format_source(source);
+
+        assert!(formatted.contains("bench fetchBlock {"));
+        assert!(!formatted.contains("benchAsync fetchBlock {"));
+    }
+
+    #[test]
+    fn test_format_keeps_sync_bench_keyword() {
+        let source = r#"suite test {
+    bench hash {
+        go: run()
+    }
+}
+"#;
+        let formatted = format_source(source);
+
+        assert!(formatted.contains("bench hash {"));
+        assert!(!formatted.contains("benchAsync hash {"));
     }
 }

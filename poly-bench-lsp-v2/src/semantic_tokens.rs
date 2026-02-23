@@ -137,8 +137,9 @@ fn emit_token_for_node(node: Node, source: &str, builder: &mut TokenBuilder) {
 
     match kind {
         // Keywords
-        "suite" | "bench" | "fixture" | "setup" | "after" | "before" | "each" | "globalSetup" |
-        "import" | "declare" | "init" | "helpers" | "skip" | "validate" | "async" => {
+        "suite" | "bench" | "benchAsync" | "fixture" | "setup" | "after" | "before" | "each" |
+        "globalSetup" | "import" | "declare" | "init" | "helpers" | "skip" | "validate" |
+        "async" => {
             // Only emit for the actual keyword token, not the whole construct
             if node.child_count() == 0 || is_keyword_text(node, source) {
                 builder.push(line, start_col, length, KEYWORD, 0);
@@ -236,6 +237,7 @@ fn is_keyword_text(node: Node, source: &str) -> bool {
         text,
         "suite" |
             "bench" |
+            "benchAsync" |
             "fixture" |
             "setup" |
             "after" |

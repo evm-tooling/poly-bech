@@ -242,7 +242,7 @@ module.exports = grammar({
     // ============================================================
 
     benchmark: $ => seq(
-      'bench',
+      choice('bench', 'benchAsync'),
       field('name', $.identifier),
       $.benchmark_body,
     ),

@@ -205,6 +205,7 @@ fn generate_table(directive: &ChartDirectiveIR, results: &BenchmarkResults) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
+    use poly_bench_dsl::BenchmarkKind;
     use poly_bench_executor::comparison::BenchmarkResult;
     use std::collections::HashMap;
 
@@ -212,6 +213,7 @@ mod tests {
         let benchmarks = vec![BenchmarkResult::new(
             "bench1".to_string(),
             "suite_bench1".to_string(),
+            BenchmarkKind::Sync,
             None,
             HashMap::new(),
         )];

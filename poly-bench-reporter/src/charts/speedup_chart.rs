@@ -3,7 +3,7 @@
 //! Generates bar charts showing relative performance vs baseline with support for
 //! light and dark themes.
 
-use poly_bench_dsl::Lang;
+use poly_bench_dsl::{BenchmarkKind, Lang};
 use poly_bench_executor::comparison::BenchmarkResult;
 use poly_bench_ir::ChartDirectiveIR;
 
@@ -657,18 +657,31 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         &theme,
     ));
 
-    // Footer info - show run count if applicable
+    // Footer info - show run count and async metadata if applicable
+    let has_async = filtered.iter().any(|b| b.kind == BenchmarkKind::Async);
+    let mut footer_lines: Vec<String> = Vec::new();
+
     if let Some(run_count) = max_run_count {
         if run_count > 1 {
-            svg.push_str(&format!(
-                "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"9\" fill=\"{}\">averaged over {} runs</text>\n",
-                chart_width / 2,
-                chart_height - 8,
-                FONT_FAMILY,
-                theme.text_dim,
-                run_count
-            ));
+            footer_lines.push(format!("averaged over {} runs", run_count));
         }
+    }
+    if has_async {
+        footer_lines.push(
+            "contains async-sequential benchmarks (internal caps: warmup<=5, samples<=50)"
+                .to_string(),
+        );
+    }
+    for (idx, line) in footer_lines.iter().enumerate() {
+        let y = chart_height - 8 - ((footer_lines.len() as i32 - 1 - idx as i32) * 12);
+        svg.push_str(&format!(
+            "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"9\" fill=\"{}\">{}</text>\n",
+            chart_width / 2,
+            y,
+            FONT_FAMILY,
+            theme.text_dim,
+            escape_xml(line)
+        ));
     }
 
     svg.push_str("</svg>\n");

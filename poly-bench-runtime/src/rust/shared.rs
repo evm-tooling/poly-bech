@@ -19,6 +19,8 @@ struct BenchResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     allocs_per_op: Option<u64>,
     samples: Vec<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    raw_result: Option<String>,
 }
 "#;
 
@@ -342,6 +344,7 @@ pub fn generate_result_return(iter_var: &str, memory_result: &str) -> String {
         nanos_per_op,
         ops_per_sec,
 {memory_result}        samples,
+        raw_result: None,
     }};
     
     println!("{{}}", serde_json::to_string(&result).unwrap());

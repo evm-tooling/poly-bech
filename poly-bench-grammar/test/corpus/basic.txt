@@ -45,6 +45,29 @@ suite example {
             (inline_code)))))))
 
 ================================================================================
+Suite with async benchmark
+================================================================================
+
+suite asyncExample {
+    benchAsync rpcCall {
+        ts: await getBlockNumber()
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
 Use statement
 ================================================================================
 

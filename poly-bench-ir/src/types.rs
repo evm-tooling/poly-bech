@@ -1,6 +1,6 @@
 //! IR types - normalized benchmark specifications
 
-use poly_bench_dsl::{BenchMode, ChartType, ExecutionOrder, Lang};
+use poly_bench_dsl::{BenchMode, BenchmarkKind, ChartType, ExecutionOrder, Lang};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -329,6 +329,8 @@ impl FixtureIR {
 pub struct BenchmarkSpec {
     /// Benchmark name
     pub name: String,
+    /// Benchmark kind (sync `bench` vs async-sequential `benchAsync`)
+    pub kind: BenchmarkKind,
     /// Full qualified name (suite_name.bench_name)
     pub full_name: String,
     /// Optional description
@@ -385,6 +387,7 @@ impl BenchmarkSpec {
         Self {
             full_name: format!("{}_{}", suite_name, name),
             name,
+            kind: BenchmarkKind::Sync,
             description: None,
             iterations,
             warmup,

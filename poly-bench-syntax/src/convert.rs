@@ -452,7 +452,11 @@ fn convert_benchmark(node: TsNode, source: &str) -> Node<PartialBenchmark> {
         .map(|n| n.text(source).to_string())
         .unwrap_or_else(|| "<unnamed>".to_string());
 
-    let mut benchmark = PartialBenchmark::new(name, span);
+    let kind = match node.text(source).trim_start().starts_with("benchAsync") {
+        true => BenchmarkKind::Async,
+        false => BenchmarkKind::Sync,
+    };
+    let mut benchmark = PartialBenchmark::new(name, kind, span);
 
     // Find benchmark_body
     let mut cursor = node.walk();

@@ -35,6 +35,12 @@ pub struct Measurement {
     pub allocs_per_op: Option<u64>,
     /// Raw sample times in nanoseconds (for detailed analysis)
     pub raw_samples: Option<Vec<u64>>,
+    /// Raw result returned by the benchmarked function (serialized)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_result: Option<String>,
+    /// All successful benchmark return values captured during timed execution
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub successful_results: Option<Vec<String>>,
     /// Coefficient of variation (std_dev / mean * 100) - measures result stability
     pub cv_percent: Option<f64>,
     /// Number of outliers removed via IQR method
@@ -148,6 +154,8 @@ impl Measurement {
             bytes_per_op: None,
             allocs_per_op: None,
             raw_samples: Some(raw_samples),
+            raw_result: None,
+            successful_results: None,
             cv_percent,
             outliers_removed: Some(outliers_removed),
             is_stable,
@@ -181,6 +189,8 @@ impl Measurement {
             bytes_per_op: None,
             allocs_per_op: None,
             raw_samples: None,
+            raw_result: None,
+            successful_results: None,
             cv_percent: None,
             outliers_removed: None,
             is_stable: None,
@@ -323,6 +333,8 @@ impl Measurement {
             bytes_per_op,
             allocs_per_op,
             raw_samples: None, // Don't combine raw samples (too large)
+            raw_result: runs.last().and_then(|r| r.raw_result.clone()),
+            successful_results: runs.last().and_then(|r| r.successful_results.clone()),
             cv_percent,
             outliers_removed: Some(total_outliers),
             is_stable,

@@ -1440,6 +1440,16 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
             ..Default::default()
         },
         CompletionItem {
+            label: "benchAsync".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some(
+                "benchAsync ${1:name} {\n\t${2:ts}: ${3:await code()}\n}".to_string(),
+            ),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Define an async-sequential benchmark".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
             label: "fixture".to_string(),
             kind: Some(CompletionItemKind::KEYWORD),
             insert_text: Some("fixture ${1:name} {\n\t$0\n}".to_string()),
@@ -1829,6 +1839,10 @@ mod tests {
         assert_eq!(inserts.get("mode"), Some(&"mode: \"auto\"".to_string()));
         assert_eq!(inserts.get("targetTime"), Some(&"targetTime: 3000".to_string()));
         assert_eq!(inserts.get("count"), Some(&"count: 1".to_string()));
+        assert_eq!(
+            inserts.get("benchAsync"),
+            Some(&"benchAsync ${1:name} {\n\t${2:ts}: ${3:await code()}\n}".to_string())
+        );
     }
 
     #[test]

@@ -150,6 +150,25 @@ impl Default for BenchMode {
     }
 }
 
+/// Benchmark kind (sync vs async sequential)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum BenchmarkKind {
+    /// Traditional synchronous benchmark
+    #[default]
+    Sync,
+    /// Async sequential benchmark (one awaited completion per iteration)
+    Async,
+}
+
+impl BenchmarkKind {
+    pub fn as_keyword(&self) -> &'static str {
+        match self {
+            BenchmarkKind::Sync => "bench",
+            BenchmarkKind::Async => "benchAsync",
+        }
+    }
+}
+
 /// Style for lifecycle hooks (before/after/each) - tracks original syntax
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum HookStyle {
@@ -600,6 +619,8 @@ impl Fixture {
 pub struct Benchmark {
     /// Benchmark name (identifier)
     pub name: String,
+    /// Benchmark kind (bench vs benchAsync)
+    pub kind: BenchmarkKind,
     /// Source location
     pub span: Span,
     /// Optional description
@@ -654,9 +675,10 @@ pub struct Benchmark {
 }
 
 impl Benchmark {
-    pub fn new(name: String, span: Span) -> Self {
+    pub fn new(name: String, kind: BenchmarkKind, span: Span) -> Self {
         Self {
             name,
+            kind,
             span,
             description: None,
             iterations: None,

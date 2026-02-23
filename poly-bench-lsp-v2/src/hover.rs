@@ -440,7 +440,7 @@ fn get_dsl_hover(doc: &Document, position: Position, source: &str) -> Option<Hov
             };
             format!("**Suite**: `{}`\n\n{}", name, keyword_docs("suite").unwrap_or(""))
         }
-        "benchmark" | "bench_keyword" => {
+        "benchmark" | "bench_keyword" | "bench" | "benchAsync" => {
             let name = if kind == "benchmark" {
                 node.child_by_field_name("name")
                     .and_then(|n| n.utf8_text(source.as_bytes()).ok())
@@ -448,7 +448,22 @@ fn get_dsl_hover(doc: &Document, position: Position, source: &str) -> Option<Hov
             } else {
                 "<unnamed>"
             };
-            format!("**Benchmark**: `{}`\n\n{}", name, keyword_docs("bench").unwrap_or(""))
+            let bench_keyword = if kind == "benchmark" {
+                if let Ok(raw) = node.utf8_text(source.as_bytes()) {
+                    if raw.trim_start().starts_with("benchAsync ") {
+                        "benchAsync"
+                    } else {
+                        "bench"
+                    }
+                } else {
+                    "bench"
+                }
+            } else if text == "benchAsync" || kind == "benchAsync" {
+                "benchAsync"
+            } else {
+                "bench"
+            };
+            format!("**Benchmark**: `{}`\n\n{}", name, keyword_docs(bench_keyword).unwrap_or(""))
         }
         "fixture" | "fixture_keyword" => {
             let name = if kind == "fixture" {
@@ -594,6 +609,12 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             "**bench** `name { ... }`\n\n\
             Benchmark definition with language implementations.\n\n\
             ```\nbench encode {\n    go: encodeData(input)\n    ts: encodeData(input)\n}\n```",
+        ),
+        "benchAsync" => Some(
+            "**benchAsync** `name { ... }`\n\n\
+            Async-sequential benchmark definition.\n\n\
+            Each iteration awaits completion before the next starts (no framework-managed concurrency).\n\n\
+            ```\nbenchAsync fetchBlock {\n    ts: await getBlockNumber()\n}\n```",
         ),
         "setup" => Some(
             "**setup** `<lang> { ... }`\n\n\

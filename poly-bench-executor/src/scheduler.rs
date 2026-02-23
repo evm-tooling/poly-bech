@@ -620,6 +620,7 @@ pub async fn run(
             benchmark_results.push(BenchmarkResult::new(
                 spec.name.clone(),
                 spec.full_name.clone(),
+                spec.kind,
                 spec.description.clone(),
                 measurements,
             ));

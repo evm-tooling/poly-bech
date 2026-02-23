@@ -1,6 +1,6 @@
 //! SVG data table generator with conditional formatting
 
-use poly_bench_dsl::Lang;
+use poly_bench_dsl::{BenchmarkKind, Lang};
 use poly_bench_executor::comparison::BenchmarkResult;
 use poly_bench_ir::ChartDirectiveIR;
 
@@ -229,6 +229,17 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
 
             x += width;
         }
+    }
+
+    // Footer metadata for async charts
+    let has_async = filtered.iter().any(|b| b.kind == BenchmarkKind::Async);
+    if has_async {
+        svg.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"10\" fill=\"{}\">async-sequential benchmarks present (internal caps: warmup<=5, samples<=50)</text>\n",
+            chart_width / 2,
+            chart_height - 10,
+            TEXT_MUTED
+        ));
     }
 
     svg.push_str("</svg>\n");
