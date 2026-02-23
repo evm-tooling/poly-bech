@@ -49,7 +49,7 @@ sha2 = "0.10"
 pretty_assertions = "1"
 dialoguer = "0.11"
 console = "0.15"
-ureq = { version = "2", features = ["json", "tls"] }
+ureq = { version = "3", features = ["json", "tls"] }
 
 [package]
 name = "poly-bench"
