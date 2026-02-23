@@ -304,9 +304,8 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
 
     let num_benchmarks = speedups.len() as i32;
     let num_langs = all_langs.len() as i32;
-    let forced_row_count = directive
-        .row_count
-        .map(|c| (c as i32).max(1).min(num_benchmarks.max(1)));
+    let forced_row_count =
+        directive.row_count.map(|c| (c as i32).max(1).min(num_benchmarks.max(1)));
 
     let default_columns = forced_row_count.unwrap_or(MAX_GRID_COLUMNS).max(1);
     let combined_min_width = 40 +
@@ -378,12 +377,7 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
     };
 
     let grid_layout = if is_combined_chart {
-        Some(calculate_grid_layout(
-            num_benchmarks,
-            num_langs,
-            plot_width,
-            forced_row_count,
-        ))
+        Some(calculate_grid_layout(num_benchmarks, num_langs, plot_width, forced_row_count))
     } else {
         None
     };
