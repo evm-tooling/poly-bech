@@ -1,0 +1,78 @@
+name: Feature Request
+description: Suggest a new feature or enhancement.
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please provide as much detail as possible.
+        For significant changes, consider opening a Discussion first so we can align on scope and design.
+
+  - type: checkboxes
+    attributes:
+      label: Check existing issues
+      description: By submitting this issue, you checked there isn't already a request for this feature.
+      options:
+        - label: I checked there isn't already a request for this feature.
+          required: true
+
+  - type: textarea
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve in poly-bench?
+      placeholder: I'm always frustrated when...
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like. Include CLI/DSL/API examples if applicable.
+      placeholder: |
+        I would like a new capability that...
+
+        ```text
+        poly-bench run my-suite.bench --new-flag
+        ```
+    validations:
+      required: true
+
+  - type: dropdown
+    attributes:
+      label: Area
+      options:
+        - CLI
+        - DSL / Parser
+        - Runtime / Execution
+        - LSP / Editor integration
+        - VS Code extension
+        - Docs
+        - CI / Tooling
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Alternatives Considered
+      description: Have you considered any alternative solutions or workarounds?
+    validations:
+      required: false
+
+  - type: dropdown
+    attributes:
+      label: Would you be willing to contribute this feature?
+      options:
+        - "Yes, I'd like to implement this"
+        - "Yes, with some guidance"
+        - "No, but I can help test"
+        - "No"
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Additional Context
+      description: Any other context, screenshots, or examples about the feature request?
+    validations:
+      required: false

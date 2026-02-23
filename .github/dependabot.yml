@@ -1,0 +1,37 @@
+version: 2
+updates:
+  # Rust workspace dependencies
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Documentation site (Bun)
+  - package-ecosystem: "bun"
+    directory: "/docs"
+    schedule:
+      interval: "weekly"
+
+  # VS Code extension
+  - package-ecosystem: "npm"
+    directory: "/extensions/vscode"
+    schedule:
+      interval: "weekly"
+
+  # Tree-sitter grammar (Node package)
+  - package-ecosystem: "npm"
+    directory: "/poly-bench-grammar"
+    schedule:
+      interval: "weekly"
+
+  # Tree-sitter grammar Go bindings
+  - package-ecosystem: "gomod"
+    directory: "/poly-bench-grammar/bindings/go"
+    schedule:
+      interval: "weekly"
