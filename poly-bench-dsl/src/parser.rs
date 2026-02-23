@@ -496,80 +496,22 @@ impl Parser {
                 // String parameters
                 "title" => directive.title = Some(self.expect_string()?),
                 "description" => directive.description = Some(self.expect_string()?),
-                "xlabel" => directive.x_label = Some(self.expect_string()?),
                 "output" => directive.output_file = Some(self.expect_string()?),
                 "filterWinner" => directive.filter_winner = Some(self.expect_string()?),
                 "sortBy" => directive.sort_by = Some(self.expect_string()?),
                 "sortOrder" => directive.sort_order = Some(self.expect_string()?),
-                "timeUnit" => directive.time_unit = Some(self.expect_string()?),
-                "legendPosition" => directive.legend_position = Some(self.expect_string()?),
-                "regressionStyle" => directive.regression_style = Some(self.expect_string()?),
-                "yScale" => directive.y_scale = Some(self.expect_string()?),
-                "regressionModel" => directive.regression_model = Some(self.expect_string()?),
                 "baseline" | "baselineBenchmark" => {
                     directive.baseline_benchmark = Some(self.expect_string()?)
                 }
-                "chartMode" => directive.chart_mode = Some(self.expect_string()?),
                 "theme" => directive.theme = Some(self.expect_string()?),
-
-                // Boolean parameters
-                "showStats" => directive.show_stats = self.expect_bool()?,
-                "showConfig" => directive.show_config = self.expect_bool()?,
-                "showWinCounts" => directive.show_win_counts = self.expect_bool()?,
-                "showGeoMean" => directive.show_geo_mean = self.expect_bool()?,
-                "showDistribution" => directive.show_distribution = self.expect_bool()?,
-                "showMemory" => directive.show_memory = self.expect_bool()?,
-                "showTotalTime" => directive.show_total_time = self.expect_bool()?,
-                "compact" => directive.compact = self.expect_bool()?,
-                "showGrid" => directive.show_grid = Some(self.expect_bool()?),
-                "showErrorBars" => directive.show_error_bars = Some(self.expect_bool()?),
-                "showRegression" => directive.show_regression = Some(self.expect_bool()?),
-                "showRegressionLabel" => {
-                    directive.show_regression_label = Some(self.expect_bool()?)
-                }
-                "roundTicks" => directive.round_ticks = Some(self.expect_bool()?),
-                "showRSquared" => directive.show_r_squared = Some(self.expect_bool()?),
-                "showEquation" => directive.show_equation = Some(self.expect_bool()?),
-                "showMinorGrid" => directive.show_minor_grid = Some(self.expect_bool()?),
-                "showVerticalGrid" => directive.show_vertical_grid = Some(self.expect_bool()?),
-                "showRegressionBand" => directive.show_regression_band = Some(self.expect_bool()?),
 
                 // Integer parameters
                 "limit" => directive.limit = Some(self.expect_number()? as u32),
                 "width" => directive.width = Some(self.expect_number()? as i32),
-                "precision" => directive.precision = Some(self.expect_number()? as u32),
                 "height" => directive.height = Some(self.expect_number()? as i32),
-                "titleFontSize" => directive.title_font_size = Some(self.expect_number()? as i32),
-                "subtitleFontSize" => {
-                    directive.subtitle_font_size = Some(self.expect_number()? as i32)
-                }
-                "axisLabelFontSize" => {
-                    directive.axis_label_font_size = Some(self.expect_number()? as i32)
-                }
-                "tickLabelFontSize" => {
-                    directive.tick_label_font_size = Some(self.expect_number()? as i32)
-                }
-                "ciLevel" => directive.ci_level = Some(self.expect_number()? as u32),
 
                 // Float parameters
                 "minSpeedup" => directive.min_speedup = Some(self.expect_float()?),
-                "axisThickness" => directive.axis_thickness = Some(self.expect_float()? as f32),
-                "yAxisMin" => directive.y_axis_min = Some(self.expect_float()?),
-                "yAxisMax" => directive.y_axis_max = Some(self.expect_float()?),
-                "gridOpacity" => directive.grid_opacity = Some(self.expect_float()? as f32),
-                "errorBarOpacity" => {
-                    directive.error_bar_opacity = Some(self.expect_float()? as f32)
-                }
-                "errorBarThickness" => {
-                    directive.error_bar_thickness = Some(self.expect_float()? as f32)
-                }
-                "minorGridOpacity" => {
-                    directive.minor_grid_opacity = Some(self.expect_float()? as f32)
-                }
-                "regressionBandOpacity" => {
-                    directive.regression_band_opacity = Some(self.expect_float()? as f32)
-                }
-                "symlogThreshold" => directive.symlog_threshold = Some(self.expect_float()?),
 
                 // Array parameters
                 "includeBenchmarks" => directive.include_benchmarks = self.expect_string_array()?,

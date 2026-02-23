@@ -1263,98 +1263,28 @@ fn stdlib_module_docs(module: &str) -> &'static str {
 /// Get completions for charting function parameters
 fn get_charting_param_completions() -> Vec<CompletionItem> {
     vec![
-        // Basic parameters (all charts)
         param_completion("title", "string", "Chart title"),
         param_completion("description", "string", "Chart description"),
         param_completion("output", "string", "Output filename"),
         param_completion("width", "number", "Chart width in pixels"),
         param_completion("height", "number", "Chart height in pixels"),
-        param_completion("xlabel", "string", "X-axis label"),
-        // Display toggles
-        bool_param_completion("showStats", "Show ops/sec and time per op"),
-        bool_param_completion("showConfig", "Show config in footer"),
-        bool_param_completion("showWinCounts", "Show win counts in legend"),
-        bool_param_completion("showGeoMean", "Show geometric mean speedup"),
-        bool_param_completion("showDistribution", "Show min/max/p50/p99 distribution"),
-        bool_param_completion("showMemory", "Show bytes/allocs memory stats"),
-        bool_param_completion("showTotalTime", "Show total execution time"),
-        bool_param_completion("compact", "Minimal chart mode"),
-        // Filtering
         param_completion("minSpeedup", "number", "Only show benchmarks with speedup >= N"),
         enum_param_completion("filterWinner", &["go", "ts", "all"], "Filter by winner language"),
         array_param_completion("includeBenchmarks", "Only include these benchmark names"),
         array_param_completion("excludeBenchmarks", "Exclude these benchmark names"),
         param_completion("limit", "number", "Max benchmarks to show"),
-        // Sorting
         enum_param_completion(
             "sortBy",
             &["speedup", "name", "time", "ops", "natural"],
             "Sort benchmarks by",
         ),
         enum_param_completion("sortOrder", &["asc", "desc"], "Sort order"),
-        // Data display
-        param_completion("precision", "number", "Decimal places for numbers"),
-        enum_param_completion("timeUnit", &["auto", "ns", "us", "ms", "s"], "Time unit display"),
-        // Axis styling
-        param_completion("axisThickness", "number", "Stroke width for axes"),
-        param_completion("yAxisMin", "number", "Minimum y-axis value"),
-        param_completion("yAxisMax", "number", "Maximum y-axis value"),
-        enum_param_completion(
-            "yScale",
-            &["linear", "log", "symlog", "percent"],
-            "Y-axis scale type",
-        ),
         param_completion(
             "baselineBenchmark",
             "string",
             "Baseline benchmark name for percentage scale",
         ),
-        param_completion("symlogThreshold", "number", "Threshold for symlog scale"),
-        // Grid
-        bool_param_completion("showGrid", "Toggle grid lines"),
-        param_completion("gridOpacity", "number", "Grid line opacity (0.0-1.0)"),
-        bool_param_completion("showMinorGrid", "Show minor grid lines"),
-        param_completion("minorGridOpacity", "number", "Minor grid line opacity"),
-        bool_param_completion("showVerticalGrid", "Show vertical grid lines"),
-        // Typography
-        param_completion("titleFontSize", "number", "Title font size"),
-        param_completion("subtitleFontSize", "number", "Subtitle font size"),
-        param_completion("axisLabelFontSize", "number", "X/Y axis title font size"),
-        param_completion("tickLabelFontSize", "number", "Tick mark label font size"),
-        // Legend
-        enum_param_completion(
-            "legendPosition",
-            &["top-left", "top-right", "bottom-left", "bottom-right", "hidden"],
-            "Legend position",
-        ),
-        // Error bars
-        bool_param_completion("showErrorBars", "Toggle error bars"),
-        param_completion("errorBarOpacity", "number", "Error bar opacity"),
-        param_completion("errorBarThickness", "number", "Error bar stroke width"),
-        enum_param_completion("ciLevel", &["90", "95", "99"], "Confidence interval level"),
-        // Regression
-        bool_param_completion("showRegression", "Toggle regression line"),
-        enum_param_completion(
-            "regressionStyle",
-            &["solid", "dashed", "dotted"],
-            "Regression line style",
-        ),
-        enum_param_completion(
-            "regressionModel",
-            &["auto", "constant", "log", "linear", "nlogn", "quadratic", "cubic"],
-            "Regression model type",
-        ),
-        bool_param_completion("showRegressionLabel", "Show detected model label"),
-        bool_param_completion("showRSquared", "Show R² value"),
-        bool_param_completion("showEquation", "Show regression equation"),
-        bool_param_completion("showRegressionBand", "Show confidence band around regression"),
-        param_completion(
-            "regressionBandOpacity",
-            "number",
-            "Opacity of regression confidence band",
-        ),
-        // Tick formatting
-        bool_param_completion("roundTicks", "Round tick labels to whole numbers"),
+        enum_param_completion("theme", &["dark", "light"], "Chart color theme"),
     ]
 }
 
@@ -1364,17 +1294,6 @@ fn param_completion(name: &str, param_type: &str, description: &str) -> Completi
         kind: Some(CompletionItemKind::PROPERTY),
         detail: Some(format!("{} ({})", description, param_type)),
         insert_text: Some(format!("{}: $0", name)),
-        insert_text_format: Some(InsertTextFormat::SNIPPET),
-        ..Default::default()
-    }
-}
-
-fn bool_param_completion(name: &str, description: &str) -> CompletionItem {
-    CompletionItem {
-        label: name.to_string(),
-        kind: Some(CompletionItemKind::PROPERTY),
-        detail: Some(format!("{} (bool)", description)),
-        insert_text: Some(format!("{}: ${{1|true,false|}}", name)),
         insert_text_format: Some(InsertTextFormat::SNIPPET),
         ..Default::default()
     }

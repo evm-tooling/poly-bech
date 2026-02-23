@@ -15,17 +15,6 @@ pub enum ChartParam {
     Output,
     Width,
     Height,
-    XLabel,
-
-    // Display toggles
-    ShowStats,
-    ShowConfig,
-    ShowWinCounts,
-    ShowGeoMean,
-    ShowDistribution,
-    ShowMemory,
-    ShowTotalTime,
-    Compact,
 
     // Filtering
     MinSpeedup,
@@ -37,55 +26,7 @@ pub enum ChartParam {
     // Sorting
     SortBy,
     SortOrder,
-
-    // Data display
-    Precision,
-    TimeUnit,
-
-    // Axis styling
-    AxisThickness,
-    YAxisMin,
-    YAxisMax,
-    YScale,
     BaselineBenchmark,
-    SymlogThreshold,
-
-    // Grid
-    ShowGrid,
-    GridOpacity,
-    ShowMinorGrid,
-    MinorGridOpacity,
-    ShowVerticalGrid,
-
-    // Typography
-    TitleFontSize,
-    SubtitleFontSize,
-    AxisLabelFontSize,
-    TickLabelFontSize,
-
-    // Legend
-    LegendPosition,
-
-    // Error bars
-    ShowErrorBars,
-    ErrorBarOpacity,
-    ErrorBarThickness,
-    CiLevel,
-    // Regression
-    ShowRegression,
-    RegressionStyle,
-    RegressionModel,
-    ShowRegressionLabel,
-    ShowRSquared,
-    ShowEquation,
-    ShowRegressionBand,
-    RegressionBandOpacity,
-
-    // Tick formatting
-    RoundTicks,
-
-    // Chart mode (performance vs throughput)
-    ChartMode,
 
     // Theme
     Theme,
@@ -100,15 +41,6 @@ impl ChartParam {
             ChartParam::Output => "output",
             ChartParam::Width => "width",
             ChartParam::Height => "height",
-            ChartParam::XLabel => "xlabel",
-            ChartParam::ShowStats => "showStats",
-            ChartParam::ShowConfig => "showConfig",
-            ChartParam::ShowWinCounts => "showWinCounts",
-            ChartParam::ShowGeoMean => "showGeoMean",
-            ChartParam::ShowDistribution => "showDistribution",
-            ChartParam::ShowMemory => "showMemory",
-            ChartParam::ShowTotalTime => "showTotalTime",
-            ChartParam::Compact => "compact",
             ChartParam::MinSpeedup => "minSpeedup",
             ChartParam::FilterWinner => "filterWinner",
             ChartParam::IncludeBenchmarks => "includeBenchmarks",
@@ -116,38 +48,7 @@ impl ChartParam {
             ChartParam::Limit => "limit",
             ChartParam::SortBy => "sortBy",
             ChartParam::SortOrder => "sortOrder",
-            ChartParam::Precision => "precision",
-            ChartParam::TimeUnit => "timeUnit",
-            ChartParam::AxisThickness => "axisThickness",
-            ChartParam::YAxisMin => "yAxisMin",
-            ChartParam::YAxisMax => "yAxisMax",
-            ChartParam::YScale => "yScale",
             ChartParam::BaselineBenchmark => "baselineBenchmark",
-            ChartParam::SymlogThreshold => "symlogThreshold",
-            ChartParam::ShowGrid => "showGrid",
-            ChartParam::GridOpacity => "gridOpacity",
-            ChartParam::ShowMinorGrid => "showMinorGrid",
-            ChartParam::MinorGridOpacity => "minorGridOpacity",
-            ChartParam::ShowVerticalGrid => "showVerticalGrid",
-            ChartParam::TitleFontSize => "titleFontSize",
-            ChartParam::SubtitleFontSize => "subtitleFontSize",
-            ChartParam::AxisLabelFontSize => "axisLabelFontSize",
-            ChartParam::TickLabelFontSize => "tickLabelFontSize",
-            ChartParam::LegendPosition => "legendPosition",
-            ChartParam::ShowErrorBars => "showErrorBars",
-            ChartParam::ErrorBarOpacity => "errorBarOpacity",
-            ChartParam::ErrorBarThickness => "errorBarThickness",
-            ChartParam::CiLevel => "ciLevel",
-            ChartParam::ShowRegression => "showRegression",
-            ChartParam::RegressionStyle => "regressionStyle",
-            ChartParam::RegressionModel => "regressionModel",
-            ChartParam::ShowRegressionLabel => "showRegressionLabel",
-            ChartParam::ShowRSquared => "showRSquared",
-            ChartParam::ShowEquation => "showEquation",
-            ChartParam::ShowRegressionBand => "showRegressionBand",
-            ChartParam::RegressionBandOpacity => "regressionBandOpacity",
-            ChartParam::RoundTicks => "roundTicks",
-            ChartParam::ChartMode => "chartMode",
             ChartParam::Theme => "theme",
         }
     }
@@ -160,15 +61,6 @@ impl ChartParam {
             "output" => Some(ChartParam::Output),
             "width" => Some(ChartParam::Width),
             "height" => Some(ChartParam::Height),
-            "xlabel" => Some(ChartParam::XLabel),
-            "showStats" => Some(ChartParam::ShowStats),
-            "showConfig" => Some(ChartParam::ShowConfig),
-            "showWinCounts" => Some(ChartParam::ShowWinCounts),
-            "showGeoMean" => Some(ChartParam::ShowGeoMean),
-            "showDistribution" => Some(ChartParam::ShowDistribution),
-            "showMemory" => Some(ChartParam::ShowMemory),
-            "showTotalTime" => Some(ChartParam::ShowTotalTime),
-            "compact" => Some(ChartParam::Compact),
             "minSpeedup" => Some(ChartParam::MinSpeedup),
             "filterWinner" => Some(ChartParam::FilterWinner),
             "includeBenchmarks" => Some(ChartParam::IncludeBenchmarks),
@@ -176,38 +68,7 @@ impl ChartParam {
             "limit" => Some(ChartParam::Limit),
             "sortBy" => Some(ChartParam::SortBy),
             "sortOrder" => Some(ChartParam::SortOrder),
-            "precision" => Some(ChartParam::Precision),
-            "timeUnit" => Some(ChartParam::TimeUnit),
-            "axisThickness" => Some(ChartParam::AxisThickness),
-            "yAxisMin" => Some(ChartParam::YAxisMin),
-            "yAxisMax" => Some(ChartParam::YAxisMax),
-            "yScale" => Some(ChartParam::YScale),
             "baselineBenchmark" | "baseline" => Some(ChartParam::BaselineBenchmark),
-            "symlogThreshold" => Some(ChartParam::SymlogThreshold),
-            "showGrid" => Some(ChartParam::ShowGrid),
-            "gridOpacity" => Some(ChartParam::GridOpacity),
-            "showMinorGrid" => Some(ChartParam::ShowMinorGrid),
-            "minorGridOpacity" => Some(ChartParam::MinorGridOpacity),
-            "showVerticalGrid" => Some(ChartParam::ShowVerticalGrid),
-            "titleFontSize" => Some(ChartParam::TitleFontSize),
-            "subtitleFontSize" => Some(ChartParam::SubtitleFontSize),
-            "axisLabelFontSize" => Some(ChartParam::AxisLabelFontSize),
-            "tickLabelFontSize" => Some(ChartParam::TickLabelFontSize),
-            "legendPosition" => Some(ChartParam::LegendPosition),
-            "showErrorBars" => Some(ChartParam::ShowErrorBars),
-            "errorBarOpacity" => Some(ChartParam::ErrorBarOpacity),
-            "errorBarThickness" => Some(ChartParam::ErrorBarThickness),
-            "ciLevel" => Some(ChartParam::CiLevel),
-            "showRegression" => Some(ChartParam::ShowRegression),
-            "regressionStyle" => Some(ChartParam::RegressionStyle),
-            "regressionModel" => Some(ChartParam::RegressionModel),
-            "showRegressionLabel" => Some(ChartParam::ShowRegressionLabel),
-            "showRSquared" => Some(ChartParam::ShowRSquared),
-            "showEquation" => Some(ChartParam::ShowEquation),
-            "showRegressionBand" => Some(ChartParam::ShowRegressionBand),
-            "regressionBandOpacity" => Some(ChartParam::RegressionBandOpacity),
-            "roundTicks" => Some(ChartParam::RoundTicks),
-            "chartMode" => Some(ChartParam::ChartMode),
             "theme" => Some(ChartParam::Theme),
             _ => None,
         }
@@ -245,102 +106,19 @@ fn sorting_params() -> HashSet<ChartParam> {
     [ChartParam::SortBy, ChartParam::SortOrder].into_iter().collect()
 }
 
-/// Typography parameters
-fn typography_params() -> HashSet<ChartParam> {
-    [
-        ChartParam::TitleFontSize,
-        ChartParam::SubtitleFontSize,
-        ChartParam::AxisLabelFontSize,
-        ChartParam::TickLabelFontSize,
-    ]
-    .into_iter()
-    .collect()
-}
-
-/// Data display parameters
-fn data_display_params() -> HashSet<ChartParam> {
-    [ChartParam::Precision, ChartParam::TimeUnit].into_iter().collect()
-}
-
-/// Grid parameters
-fn grid_params() -> HashSet<ChartParam> {
-    [
-        ChartParam::ShowGrid,
-        ChartParam::GridOpacity,
-        ChartParam::ShowMinorGrid,
-        ChartParam::MinorGridOpacity,
-        ChartParam::ShowVerticalGrid,
-    ]
-    .into_iter()
-    .collect()
-}
-
-/// Axis styling parameters
-fn axis_styling_params() -> HashSet<ChartParam> {
-    [
-        ChartParam::AxisThickness,
-        ChartParam::YAxisMin,
-        ChartParam::YAxisMax,
-        ChartParam::YScale,
-        ChartParam::BaselineBenchmark,
-        ChartParam::SymlogThreshold,
-    ]
-    .into_iter()
-    .collect()
-}
-
-/// Error bar parameters
-fn error_bar_params() -> HashSet<ChartParam> {
-    [
-        ChartParam::ShowErrorBars,
-        ChartParam::ErrorBarOpacity,
-        ChartParam::ErrorBarThickness,
-        ChartParam::CiLevel,
-    ]
-    .into_iter()
-    .collect()
-}
-
-/// Regression parameters
-fn regression_params() -> HashSet<ChartParam> {
-    [
-        ChartParam::ShowRegression,
-        ChartParam::RegressionStyle,
-        ChartParam::RegressionModel,
-        ChartParam::ShowRegressionLabel,
-        ChartParam::ShowRSquared,
-        ChartParam::ShowEquation,
-        ChartParam::ShowRegressionBand,
-        ChartParam::RegressionBandOpacity,
-    ]
-    .into_iter()
-    .collect()
-}
-
 /// Get the set of valid parameters for a given chart type
 pub fn get_valid_params(chart_type: ChartType) -> HashSet<ChartParam> {
     let mut params = common_params();
     params.extend(filtering_params());
     params.extend(sorting_params());
-    params.extend(data_display_params());
 
     match chart_type {
         ChartType::SpeedupChart => {
             params.insert(ChartParam::BaselineBenchmark);
-            params.extend([ChartParam::ShowGrid, ChartParam::GridOpacity]);
-            params.extend(typography_params());
-            params.insert(ChartParam::LegendPosition);
             params.insert(ChartParam::Theme);
         }
         ChartType::Table => {
-            params.extend([
-                ChartParam::ShowStats,
-                ChartParam::ShowConfig,
-                ChartParam::ShowWinCounts,
-                ChartParam::ShowGeoMean,
-                ChartParam::Compact,
-            ]);
-            params.extend([ChartParam::TitleFontSize, ChartParam::SubtitleFontSize]);
+            // Table currently uses the shared/common params only.
         }
     }
 
@@ -418,31 +196,28 @@ mod tests {
         let params = get_valid_params(ChartType::SpeedupChart);
         assert!(params.contains(&ChartParam::Title));
         assert!(params.contains(&ChartParam::BaselineBenchmark));
-        assert!(params.contains(&ChartParam::ShowGrid));
-        assert!(!params.contains(&ChartParam::ShowConfig));
+        assert!(params.contains(&ChartParam::Theme));
     }
 
     #[test]
     fn test_table_chart_params() {
         let params = get_valid_params(ChartType::Table);
         assert!(params.contains(&ChartParam::Title));
-        assert!(params.contains(&ChartParam::ShowConfig));
-        assert!(params.contains(&ChartParam::ShowStats));
-        assert!(!params.contains(&ChartParam::ShowGrid));
+        assert!(!params.contains(&ChartParam::BaselineBenchmark));
     }
 
     #[test]
     fn test_validate_valid_param() {
-        assert!(validate_param(ChartType::Table, "showStats").is_ok());
+        assert!(validate_param(ChartType::Table, "title").is_ok());
         assert!(validate_param(ChartType::SpeedupChart, "baseline").is_ok());
     }
 
     #[test]
     fn test_validate_invalid_param() {
-        let result = validate_param(ChartType::SpeedupChart, "showConfig");
+        let result = validate_param(ChartType::SpeedupChart, "showStats");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.valid_chart_types.contains(&ChartType::Table));
+        assert!(err.valid_chart_types.is_empty());
     }
 
     #[test]
@@ -455,12 +230,7 @@ mod tests {
 
     #[test]
     fn test_param_dsl_name_roundtrip() {
-        let params = [
-            ChartParam::Title,
-            ChartParam::ShowStats,
-            ChartParam::BaselineBenchmark,
-            ChartParam::ChartMode,
-        ];
+        let params = [ChartParam::Title, ChartParam::BaselineBenchmark, ChartParam::Theme];
         for param in params {
             let name = param.dsl_name();
             let parsed = ChartParam::from_dsl_name(name);

@@ -117,11 +117,8 @@ suite test {
     after {
         charting.drawSpeedupChart(
             title: "Full Example",
-            showStats: true,
-            showMemory: false,
             width: 800,
             height: 600,
-            precision: 2,
             minSpeedup: 1.5,
             includeBenchmarks: ["foo", "bar"],
             sortBy: "speedup"

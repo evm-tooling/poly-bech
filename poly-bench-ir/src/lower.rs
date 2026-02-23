@@ -262,19 +262,7 @@ fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -
     let mut ir = ChartDirectiveIR::new(directive.chart_type, output_file);
     ir.title = directive.title.clone();
     ir.description = directive.description.clone();
-    ir.x_label = directive.x_label.clone();
-    ir.y_label = directive.y_label.clone();
     ir.suite_name = suite_name.map(|s| s.to_string());
-
-    // Display toggles
-    ir.show_stats = directive.show_stats;
-    ir.show_config = directive.show_config;
-    ir.show_win_counts = directive.show_win_counts;
-    ir.show_geo_mean = directive.show_geo_mean;
-    ir.show_distribution = directive.show_distribution;
-    ir.show_memory = directive.show_memory;
-    ir.show_total_time = directive.show_total_time;
-    ir.compact = directive.compact;
 
     // Filtering
     ir.min_speedup = directive.min_speedup;
@@ -290,64 +278,9 @@ fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -
     // Layout
     ir.width = directive.width;
 
-    // Data display
-    ir.precision = directive.precision;
-    ir.time_unit = directive.time_unit.clone();
-
     // Dimensions
     ir.height = directive.height;
-
-    // Axis styling
-    ir.axis_thickness = directive.axis_thickness;
-    ir.y_axis_min = directive.y_axis_min;
-    ir.y_axis_max = directive.y_axis_max;
-
-    // Grid
-    ir.show_grid = directive.show_grid;
-    ir.grid_opacity = directive.grid_opacity;
-
-    // Typography
-    ir.title_font_size = directive.title_font_size;
-    ir.subtitle_font_size = directive.subtitle_font_size;
-    ir.axis_label_font_size = directive.axis_label_font_size;
-    ir.tick_label_font_size = directive.tick_label_font_size;
-
-    // Legend
-    ir.legend_position = directive.legend_position.clone();
-
-    // Error bars
-    ir.show_error_bars = directive.show_error_bars;
-    ir.error_bar_opacity = directive.error_bar_opacity;
-    ir.error_bar_thickness = directive.error_bar_thickness;
-
-    // Regression
-    ir.show_regression = directive.show_regression;
-    ir.regression_style = directive.regression_style.clone();
-    ir.show_regression_label = directive.show_regression_label;
-    ir.show_r_squared = directive.show_r_squared;
-    ir.regression_model = directive.regression_model.clone();
-    ir.show_equation = directive.show_equation;
-    ir.show_regression_band = directive.show_regression_band;
-    ir.regression_band_opacity = directive.regression_band_opacity;
-
-    // Tick label formatting
-    ir.round_ticks = directive.round_ticks;
-
-    // Y-axis scale
-    ir.y_scale = directive.y_scale.clone();
     ir.baseline_benchmark = directive.baseline_benchmark.clone();
-    ir.symlog_threshold = directive.symlog_threshold;
-
-    // Grid enhancements
-    ir.show_minor_grid = directive.show_minor_grid;
-    ir.minor_grid_opacity = directive.minor_grid_opacity;
-    ir.show_vertical_grid = directive.show_vertical_grid;
-
-    // Error bars enhancements
-    ir.ci_level = directive.ci_level;
-
-    // Chart mode
-    ir.chart_mode = directive.chart_mode.clone();
 
     // Theme
     ir.theme = directive.theme.clone();

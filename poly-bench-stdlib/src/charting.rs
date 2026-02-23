@@ -54,19 +54,6 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             **Sorting:**\n\
             - `sortBy` - \"speedup\", \"name\", \"time\", \"ops\", or \"natural\"\n\
             - `sortOrder` - \"asc\" or \"desc\"\n\n\
-            **Grid:**\n\
-            - `showGrid` - Toggle grid lines (default: true)\n\
-            - `gridOpacity` - Grid line opacity (default: 0.3)\n\n\
-            **Typography:**\n\
-            - `titleFontSize` - Title font size (default: 16)\n\
-            - `subtitleFontSize` - Subtitle font size (default: 11)\n\
-            - `axisLabelFontSize` - Axis label font size (default: 11)\n\
-            - `tickLabelFontSize` - Tick label font size (default: 10)\n\n\
-            **Legend:**\n\
-            - `legendPosition` - \"top-left\", \"top-right\", \"bottom-left\", \"bottom-right\", \"hidden\"\n\n\
-            **Data Display:**\n\
-            - `precision` - Decimal places (default: 2)\n\
-            - `timeUnit` - \"auto\", \"ns\", \"us\", \"ms\", \"s\"\n\n\
             **Theme:**\n\
             - `theme` - Color theme: \"dark\" (default) or \"light\"\n\n\
             **Example:**\n\
@@ -86,12 +73,6 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             **Dimensions:**\n\
             - `width` - Table width in pixels\n\
             - `height` - Table height in pixels\n\n\
-            **Display Toggles:**\n\
-            - `showStats` - Show ops/sec column (default: true)\n\
-            - `showConfig` - Show iterations/warmup/timeout in footer\n\
-            - `showWinCounts` - Show win counts in legend\n\
-            - `showGeoMean` - Show geometric mean speedup\n\
-            - `compact` - Minimal mode (default: false)\n\n\
             **Filtering:**\n\
             - `minSpeedup` - Only include benchmarks with speedup >= N\n\
             - `filterWinner` - \"go\", \"ts\", or \"all\"\n\
@@ -101,14 +82,10 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             **Sorting:**\n\
             - `sortBy` - \"speedup\", \"name\", \"time\", \"ops\", or \"natural\"\n\
             - `sortOrder` - \"asc\" or \"desc\"\n\n\
-            **Typography:**\n\
-            - `titleFontSize` - Title font size (default: 16)\n\
-            - `subtitleFontSize` - Subtitle font size (default: 11)\n\n\
-            **Data Display:**\n\
-            - `precision` - Decimal places (default: 2)\n\
-            - `timeUnit` - \"auto\", \"ns\", \"us\", \"ms\", \"s\"\n\n\
+            **Theme:**\n\
+            - `theme` - Color theme: \"dark\" (default) or \"light\"\n\n\
             **Example:**\n\
-            ```\nafter {\n    charting.drawTable(\n        title: \"Detailed Results\",\n        sortBy: \"name\",\n        precision: 3\n    )\n}\n```",
+            ```\nafter {\n    charting.drawTable(\n        title: \"Detailed Results\",\n        sortBy: \"name\",\n        theme: \"light\"\n    )\n}\n```",
     },
 ];
 
