@@ -241,7 +241,7 @@ const crates = [
   { name: 'poly-bench-reporter', desc: 'Console, markdown, JSON, SVG output' },
   {
     name: 'poly-bench-lsp-v2',
-    desc: 'Language Server Protocol for editor support (v2)',
+    desc: 'Language Server Protocol for editor support',
   },
   {
     name: 'poly-bench-stdlib',

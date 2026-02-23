@@ -217,14 +217,6 @@ enum Commands {
         #[arg(long, hide = true)]
         stdio: bool,
     },
-
-    /// Start the language server (v2 alias)
-    #[command(name = "lsp-v2")]
-    LspV2 {
-        /// Accepted for editor compatibility; stdio is always used
-        #[arg(long, hide = true)]
-        stdio: bool,
-    },
 }
 
 #[derive(Subcommand)]
@@ -259,11 +251,6 @@ async fn main() -> Result<()> {
     // LSP mode: no welcome or other stdout; use stdio for LSP protocol
     if let Commands::Lsp { .. } = &command {
         return cmd_lsp().await;
-    }
-
-    // LSP v2 mode: alias of lsp command
-    if let Commands::LspV2 { .. } = &command {
-        return cmd_lsp_v2().await;
     }
 
     // First run: show welcome once, then proceed with the command
@@ -315,10 +302,6 @@ async fn main() -> Result<()> {
             // Handled above; unreachable here
             unreachable!()
         }
-        Commands::LspV2 { .. } => {
-            // Handled above; unreachable here
-            unreachable!()
-        }
     }
 
     // Check for updates after command completes (non-blocking, best-effort)
@@ -328,10 +311,6 @@ async fn main() -> Result<()> {
 }
 
 async fn cmd_lsp() -> Result<()> {
-    cmd_lsp_v2().await
-}
-
-async fn cmd_lsp_v2() -> Result<()> {
     poly_bench_lsp_v2::run_server().await;
     Ok(())
 }
@@ -1390,7 +1369,7 @@ async fn cmd_fmt(files: Vec<PathBuf>, write: bool) -> Result<()> {
         let source = std::fs::read_to_string(file)
             .map_err(|e| miette::miette!("Failed to read {}: {}", file.display(), e))?;
 
-        // Use the LSP v2 formatter for consistent behavior with on-save formatting.
+        // Use the LSP formatter for consistent behavior with on-save formatting.
         // This formatter correctly removes empty code blocks (init, declare, helpers, import)
         // while preserving globalSetup blocks that have statements.
         let formatted = poly_bench_lsp_v2::formatter::format_source(&source);
