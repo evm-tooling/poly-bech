@@ -277,6 +277,7 @@ fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -
 
     // Layout
     ir.width = directive.width;
+    ir.row_count = directive.row_count;
 
     // Dimensions
     ir.height = directive.height;

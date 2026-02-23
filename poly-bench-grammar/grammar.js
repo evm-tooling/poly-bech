@@ -378,6 +378,7 @@ module.exports = grammar({
       'filterWinner',
       'theme',
       'width',
+      'rowCount',
       'height',
       'limit',
       'minSpeedup',

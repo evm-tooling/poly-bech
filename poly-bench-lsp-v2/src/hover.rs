@@ -886,7 +886,8 @@ fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
             Generate a chart showing relative speedup compared to baseline.\n\n\
             **Basic Parameters:**\n\
             - `title` - Chart title (string)\n\
-            - `baselineBenchmark` - Benchmark to use as baseline\n\n\
+            - `baselineBenchmark` - Benchmark to use as baseline\n\
+            - `rowCount` - Number of benchmark cards per row in combined charts\n\n\
             *From `std::charting`*",
         ),
         "drawTable" => Some(

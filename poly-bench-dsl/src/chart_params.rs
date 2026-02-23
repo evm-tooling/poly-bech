@@ -30,6 +30,9 @@ pub enum ChartParam {
 
     // Theme
     Theme,
+
+    // Speedup chart layout
+    RowCount,
 }
 
 impl ChartParam {
@@ -50,6 +53,7 @@ impl ChartParam {
             ChartParam::SortOrder => "sortOrder",
             ChartParam::BaselineBenchmark => "baselineBenchmark",
             ChartParam::Theme => "theme",
+            ChartParam::RowCount => "rowCount",
         }
     }
 
@@ -70,6 +74,7 @@ impl ChartParam {
             "sortOrder" => Some(ChartParam::SortOrder),
             "baselineBenchmark" | "baseline" => Some(ChartParam::BaselineBenchmark),
             "theme" => Some(ChartParam::Theme),
+            "rowCount" => Some(ChartParam::RowCount),
             _ => None,
         }
     }
@@ -116,6 +121,7 @@ pub fn get_valid_params(chart_type: ChartType) -> HashSet<ChartParam> {
         ChartType::SpeedupChart => {
             params.insert(ChartParam::BaselineBenchmark);
             params.insert(ChartParam::Theme);
+            params.insert(ChartParam::RowCount);
         }
         ChartType::Table => {
             params.insert(ChartParam::Theme);
@@ -197,6 +203,7 @@ mod tests {
         assert!(params.contains(&ChartParam::Title));
         assert!(params.contains(&ChartParam::BaselineBenchmark));
         assert!(params.contains(&ChartParam::Theme));
+        assert!(params.contains(&ChartParam::RowCount));
     }
 
     #[test]
@@ -211,6 +218,7 @@ mod tests {
     fn test_validate_valid_param() {
         assert!(validate_param(ChartType::Table, "title").is_ok());
         assert!(validate_param(ChartType::SpeedupChart, "baseline").is_ok());
+        assert!(validate_param(ChartType::SpeedupChart, "rowCount").is_ok());
     }
 
     #[test]

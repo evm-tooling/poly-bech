@@ -151,15 +151,6 @@ suite test {
                   (string_content)))
               (chart_param
                 name: (chart_param_name)
-                value: (boolean))
-              (chart_param
-                name: (chart_param_name)
-                value: (boolean))
-              (chart_param
-                name: (chart_param_name)
-                value: (number))
-              (chart_param
-                name: (chart_param_name)
                 value: (number))
               (chart_param
                 name: (chart_param_name)
@@ -178,3 +169,49 @@ suite test {
                 name: (chart_param_name)
                 value: (string
                   (string_content))))))))))
+
+================================================================================
+Chart with rowCount parameter
+================================================================================
+
+use std::charting
+
+suite test {
+    bench foo {
+        go: run()
+    }
+
+    after {
+        charting.drawSpeedupChart(
+            title: "Row Count Example",
+            rowCount: 4
+        )
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (use_statement
+    module: (identifier))
+  (suite
+    name: (identifier)
+    (suite_body
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code))))
+      (after_block
+        (after_body
+          (chart_directive
+            function: (chart_function_name)
+            (chart_params
+              (chart_param
+                name: (chart_param_name)
+                value: (string
+                  (string_content)))
+              (chart_param
+                name: (chart_param_name)
+                value: (number)))))))))

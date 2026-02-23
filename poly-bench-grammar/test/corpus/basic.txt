@@ -154,9 +154,6 @@ suite fullExample {
         value: (identifier))
       (property
         name: (property_name)
-        value: (boolean))
-      (property
-        name: (property_name)
         value: (string
           (string_content)))
       (property
@@ -168,12 +165,6 @@ suite fullExample {
         value: (duration
           (number)
           (duration_unit)))
-      (property
-        name: (property_name)
-        value: (number))
-      (property
-        name: (property_name)
-        value: (number))
       (property
         name: (property_name)
         value: (boolean))
@@ -189,9 +180,6 @@ suite fullExample {
       (property
         name: (property_name)
         value: (boolean))
-      (property
-        name: (property_name)
-        value: (number))
       (benchmark
         name: (identifier)
         (benchmark_body

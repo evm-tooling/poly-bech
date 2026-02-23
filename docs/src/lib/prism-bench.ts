@@ -57,6 +57,7 @@ const benchProperties = [
   'filterWinner',
   'theme',
   'width',
+  'rowCount',
   'height',
   'limit',
   'minSpeedup',

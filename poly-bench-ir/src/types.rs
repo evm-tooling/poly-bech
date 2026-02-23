@@ -466,6 +466,8 @@ pub struct ChartDirectiveIR {
     // Layout
     /// Chart width in pixels
     pub width: Option<i32>,
+    /// Number of benchmark cards per row in combined speedup charts
+    pub row_count: Option<u32>,
 
     // Dimensions
     /// Chart height in pixels
@@ -497,6 +499,7 @@ impl ChartDirectiveIR {
             sort_order: None,
             // Layout
             width: None,
+            row_count: None,
             // Dimensions
             height: None,
             baseline_benchmark: None,

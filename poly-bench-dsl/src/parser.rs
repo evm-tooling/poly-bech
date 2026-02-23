@@ -508,6 +508,7 @@ impl Parser {
                 // Integer parameters
                 "limit" => directive.limit = Some(self.expect_number()? as u32),
                 "width" => directive.width = Some(self.expect_number()? as i32),
+                "rowCount" => directive.row_count = Some(self.expect_number()? as u32),
                 "height" => directive.height = Some(self.expect_number()? as i32),
 
                 // Float parameters
