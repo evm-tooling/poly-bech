@@ -1216,13 +1216,6 @@ fn after_colon_completions(keyword: &str) -> Vec<CompletionItem> {
             simple_completion("auto", CompletionItemKind::ENUM_MEMBER),
             simple_completion("fixed", CompletionItemKind::ENUM_MEMBER),
         ],
-        "timeUnit" => vec![
-            simple_completion("\"auto\"", CompletionItemKind::ENUM_MEMBER),
-            simple_completion("\"ns\"", CompletionItemKind::ENUM_MEMBER),
-            simple_completion("\"us\"", CompletionItemKind::ENUM_MEMBER),
-            simple_completion("\"ms\"", CompletionItemKind::ENUM_MEMBER),
-            simple_completion("\"s\"", CompletionItemKind::ENUM_MEMBER),
-        ],
         "sortBy" => vec![
             simple_completion("\"speedup\"", CompletionItemKind::ENUM_MEMBER),
             simple_completion("\"name\"", CompletionItemKind::ENUM_MEMBER),
@@ -1316,91 +1309,20 @@ tower_lsp::lsp_types::MarkupContent {
 /// Completions for charting function parameters
 fn charting_function_param_completions() -> Vec<CompletionItem> {
     vec![
-        // String parameters
         chart_param_completion("title", "string", "Chart title", "The title displayed at the top of the chart.", "title: \"$0\""),
         chart_param_completion("description", "string", "Chart description", "A description shown below the chart title.", "description: \"$0\""),
-        chart_param_completion("xlabel", "string", "X-axis label", "Label for the X-axis.\n\nCustomize to describe your benchmark inputs (e.g., \"Input Size\", \"Array Length\").", "xlabel: \"$0\""),
-        chart_param_completion("output", "string", "Output filename", "The output filename for the generated chart SVG.\n\nDefault: depends on chart type.", "output: \"$0\""),
-
-        // Display toggle parameters (boolean)
-        chart_param_completion("showStats", "bool", "Show statistics", "Show ops/sec and time per op for each benchmark.\n\nDefault: `true`", "showStats: ${1|true,false|}"),
-        chart_param_completion("showConfig", "bool", "Show config", "Show benchmark configuration (iterations, warmup, timeout) in chart footer.\n\nDefault: `true`", "showConfig: ${1|true,false|}"),
-        chart_param_completion("showWinCounts", "bool", "Show win counts", "Show win counts in legend (e.g., 'Go faster (5 wins)').\n\nDefault: `true`", "showWinCounts: ${1|true,false|}"),
-        chart_param_completion("showGeoMean", "bool", "Show geometric mean", "Show geometric mean speedup in legend.\n\nDefault: `true`", "showGeoMean: ${1|true,false|}"),
-        chart_param_completion("showDistribution", "bool", "Show distribution", "Show min/max/p50/p99 percentile distribution.\n\nDefault: `false`", "showDistribution: ${1|true,false|}"),
-        chart_param_completion("showMemory", "bool", "Show memory stats", "Show bytes/allocs memory statistics (if available).\n\nDefault: `false`", "showMemory: ${1|true,false|}"),
-        chart_param_completion("showTotalTime", "bool", "Show total time", "Show total execution time.\n\nDefault: `false`", "showTotalTime: ${1|true,false|}"),
-        chart_param_completion("compact", "bool", "Compact mode", "Minimal chart mode without extra statistics.\n\nDefault: `false`", "compact: ${1|true,false|}"),
-
-        // Filtering parameters
-        chart_param_completion("minSpeedup", "number", "Minimum speedup", "Only show benchmarks with speedup >= N.\n\nExample: `minSpeedup: 2.0` shows only benchmarks where one language is at least 2x faster.", "minSpeedup: $0"),
+        chart_param_completion("output", "string", "Output filename", "Output filename for the generated chart SVG.", "output: \"$0\""),
+        chart_param_completion("minSpeedup", "number", "Minimum speedup", "Only show benchmarks with speedup >= N.", "minSpeedup: $0"),
         chart_param_completion("filterWinner", "string", "Filter by winner", "Filter benchmarks by winner: `\"go\"`, `\"ts\"`, or `\"all\"`.", "filterWinner: \"${1|go,ts,all|}\""),
-        chart_param_completion("includeBenchmarks", "array", "Include benchmarks", "Only include these benchmark names (case-insensitive substring match).\n\nExample: `includeBenchmarks: [\"hash\", \"sort\"]`", "includeBenchmarks: [\"$0\"]"),
-        chart_param_completion("excludeBenchmarks", "array", "Exclude benchmarks", "Exclude these benchmark names (case-insensitive substring match).\n\nExample: `excludeBenchmarks: [\"slow\", \"legacy\"]`", "excludeBenchmarks: [\"$0\"]"),
-        chart_param_completion("limit", "number", "Limit results", "Maximum number of benchmarks to show.\n\nExample: `limit: 10` shows only top 10 benchmarks.", "limit: $0"),
-
-        // Sorting parameters
-        chart_param_completion("sortBy", "string", "Sort by", "Sort benchmarks by: `\"speedup\"`, `\"name\"`, `\"time\"`, or `\"ops\"`.\n\nDefault: `\"name\"`", "sortBy: \"${1|speedup,name,time,ops|}\""),
-        chart_param_completion("sortOrder", "string", "Sort order", "Sort order: `\"asc\"` (ascending) or `\"desc\"` (descending).\n\nDefault: `\"asc\"`", "sortOrder: \"${1|asc,desc|}\""),
-
-        // Layout parameters
-        chart_param_completion("width", "number", "Chart width", "Chart width in pixels.\n\nDefault: `880`", "width: $0"),
+        chart_param_completion("includeBenchmarks", "array", "Include benchmarks", "Only include these benchmark names (case-insensitive substring match).", "includeBenchmarks: [\"$0\"]"),
+        chart_param_completion("excludeBenchmarks", "array", "Exclude benchmarks", "Exclude these benchmark names (case-insensitive substring match).", "excludeBenchmarks: [\"$0\"]"),
+        chart_param_completion("limit", "number", "Limit results", "Maximum number of benchmarks to show.", "limit: $0"),
+        chart_param_completion("sortBy", "string", "Sort by", "Sort benchmarks by: `\"speedup\"`, `\"name\"`, `\"time\"`, `\"ops\"`, or `\"natural\"`.", "sortBy: \"${1|speedup,name,time,ops,natural|}\""),
+        chart_param_completion("sortOrder", "string", "Sort order", "Sort order: `\"asc\"` (ascending) or `\"desc\"` (descending).", "sortOrder: \"${1|asc,desc|}\""),
+        chart_param_completion("width", "number", "Chart width", "Chart width in pixels.", "width: $0"),
         chart_param_completion("height", "number", "Chart height", "Chart height in pixels.", "height: $0"),
-
-        // Data display parameters
-        chart_param_completion("precision", "number", "Decimal precision", "Number of decimal places for numbers.\n\nDefault: `2`", "precision: $0"),
-        chart_param_completion("timeUnit", "string", "Time unit", "Time unit for display: `\"auto\"`, `\"ns\"`, `\"us\"`, `\"ms\"`, or `\"s\"`.\n\nDefault: `\"auto\"` (chooses appropriate unit)", "timeUnit: \"${1|auto,ns,us,ms,s|}\""),
-
-        // === NEW PARAMETERS ===
-
-        // Axis styling
-        chart_param_completion("axisThickness", "number", "Axis thickness", "Stroke width for x/y axes.\n\nDefault: `1.0`", "axisThickness: $0"),
-        chart_param_completion("yAxisMin", "number", "Y-axis minimum", "Minimum y-axis value.", "yAxisMin: $0"),
-        chart_param_completion("yAxisMax", "number", "Y-axis maximum", "Maximum y-axis value.", "yAxisMax: $0"),
-        chart_param_completion("yScale", "string", "Y-axis scale", "Y-axis scale type: `\"linear\"`, `\"log\"`, `\"symlog\"`, or `\"percent\"`.\n\nDefault: `\"linear\"`", "yScale: \"${1|linear,log,symlog,percent|}\""),
-        chart_param_completion("baselineBenchmark", "string", "Baseline benchmark", "Baseline benchmark name for percentage scale (the benchmark that equals 100%).", "baselineBenchmark: \"$0\""),
-        chart_param_completion("symlogThreshold", "number", "Symlog threshold", "Threshold for symlog scale - values below this are treated linearly.", "symlogThreshold: $0"),
-
-        // Grid
-        chart_param_completion("showGrid", "bool", "Show grid", "Toggle grid lines.\n\nDefault: `true`", "showGrid: ${1|true,false|}"),
-        chart_param_completion("gridOpacity", "number", "Grid opacity", "Grid line opacity 0.0-1.0.\n\nDefault: `0.15`", "gridOpacity: $0"),
-        chart_param_completion("showMinorGrid", "bool", "Show minor grid", "Show minor grid lines between major ticks.\n\nDefault: `false`", "showMinorGrid: ${1|true,false|}"),
-        chart_param_completion("minorGridOpacity", "number", "Minor grid opacity", "Minor grid line opacity.\n\nDefault: `0.08`", "minorGridOpacity: $0"),
-        chart_param_completion("showVerticalGrid", "bool", "Show vertical grid", "Show vertical grid lines.\n\nDefault: `false`", "showVerticalGrid: ${1|true,false|}"),
-
-        // Typography
-        chart_param_completion("titleFontSize", "number", "Title font size", "Title font size in pixels.\n\nDefault: `16`", "titleFontSize: $0"),
-        chart_param_completion("subtitleFontSize", "number", "Subtitle font size", "Subtitle font size in pixels.\n\nDefault: `11`", "subtitleFontSize: $0"),
-        chart_param_completion("axisLabelFontSize", "number", "Axis label font size", "X/Y axis title font size in pixels.\n\nDefault: `11`", "axisLabelFontSize: $0"),
-        chart_param_completion("tickLabelFontSize", "number", "Tick label font size", "Tick mark label font size in pixels.\n\nDefault: `10`", "tickLabelFontSize: $0"),
-
-        // Legend
-        chart_param_completion("legendPosition", "string", "Legend position", "Legend position: `\"top-left\"`, `\"top-right\"`, `\"bottom-left\"`, `\"bottom-right\"`, or `\"hidden\"`.", "legendPosition: \"${1|top-left,top-right,bottom-left,bottom-right,hidden|}\""),
-
-        // Error bars
-        chart_param_completion("showErrorBars", "bool", "Show error bars", "Toggle error bars.\n\nDefault: `false`", "showErrorBars: ${1|true,false|}"),
-        chart_param_completion("errorBarOpacity", "number", "Error bar opacity", "Error bar opacity.\n\nDefault: `0.3`", "errorBarOpacity: $0"),
-        chart_param_completion("errorBarThickness", "number", "Error bar thickness", "Error bar stroke width.\n\nDefault: `1.0`", "errorBarThickness: $0"),
-        chart_param_completion("ciLevel", "number", "Confidence interval", "Confidence interval level: 90, 95, or 99.\n\nDefault: `95`", "ciLevel: ${1|90,95,99|}"),
-
-        // Regression
-        chart_param_completion("showRegression", "bool", "Show regression", "Toggle regression line.\n\nDefault: `false`", "showRegression: ${1|true,false|}"),
-        chart_param_completion("regressionStyle", "string", "Regression style", "Regression line style: `\"solid\"`, `\"dashed\"`, or `\"dotted\"`.\n\nDefault: `\"dashed\"`", "regressionStyle: \"${1|solid,dashed,dotted|}\""),
-        chart_param_completion("regressionModel", "string", "Regression model", "Regression model: `\"auto\"`, `\"constant\"`, `\"log\"`, `\"linear\"`, `\"nlogn\"`, `\"quadratic\"`, or `\"cubic\"`.", "regressionModel: \"${1|auto,constant,log,linear,nlogn,quadratic,cubic|}\""),
-        chart_param_completion("showRegressionLabel", "bool", "Show regression label", "Show detected model label e.g. \"O(n log n)\".\n\nDefault: `true`", "showRegressionLabel: ${1|true,false|}"),
-        chart_param_completion("showRSquared", "bool", "Show R-squared", "Show R² (coefficient of determination) value.\n\nDefault: `false`", "showRSquared: ${1|true,false|}"),
-        chart_param_completion("showEquation", "bool", "Show equation", "Show regression equation with coefficients.\n\nDefault: `false`", "showEquation: ${1|true,false|}"),
-        chart_param_completion("showRegressionBand", "bool", "Show regression band", "Show confidence band around regression line.\n\nDefault: `false`", "showRegressionBand: ${1|true,false|}"),
-        chart_param_completion("regressionBandOpacity", "number", "Regression band opacity", "Opacity of regression confidence band.\n\nDefault: `0.15`", "regressionBandOpacity: $0"),
-
-        // Tick formatting
-        chart_param_completion("roundTicks", "bool", "Round ticks", "Round tick labels to whole numbers when appropriate.\n\nDefault: `false`", "roundTicks: ${1|true,false|}"),
-
-        // Chart mode
-        chart_param_completion("chartMode", "string", "Chart plotting mode", "Controls what data is plotted:\n\n- `\"performance\"` (default): Y-axis = ns/op, X-axis = input size\n- `\"throughput\"`: Y-axis = iterations, X-axis = benchmark\n\nUse `\"performance\"` to compare how fast operations run at different input sizes.\nUse `\"throughput\"` to compare how many operations completed in the benchmark time.", "chartMode: \"${1|performance,throughput|}\""),
-
-        // Theme
-        chart_param_completion("theme", "string", "Color theme", "Controls the chart color scheme:\n\n- `\"dark\"` (default): Dark background with light text\n- `\"light\"`: Light/white background with dark text\n\nBoth themes use the same vibrant language colors (Go cyan, TypeScript blue, Rust orange).", "theme: \"${1|dark,light|}\""),
+        chart_param_completion("baselineBenchmark", "string", "Baseline benchmark", "Baseline benchmark/language used for comparisons.", "baselineBenchmark: \"$0\""),
+        chart_param_completion("theme", "string", "Color theme", "Color theme: `\"dark\"` or `\"light\"`.", "theme: \"${1|dark,light|}\""),
     ]
 }
 

@@ -749,9 +749,3 @@ fn print_compact_table(benchmarks: &[BenchmarkResult], options: &ReportOptions) 
         }
     }
 }
-
-// Legacy function for backwards compatibility
-#[allow(dead_code)]
-fn print_suite(suite: &SuiteResults) {
-    print_suite_with_options(suite, &ReportOptions::default());
-}

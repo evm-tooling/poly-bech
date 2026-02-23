@@ -352,32 +352,10 @@ pub struct ChartDirective {
     pub title: Option<String>,
     /// Chart description/subtitle
     pub description: Option<String>,
-    /// X-axis label
-    pub x_label: Option<String>,
-    /// Y-axis label
-    pub y_label: Option<String>,
     /// Output filename (without path)
     pub output_file: Option<String>,
     /// Source location
     pub span: Span,
-
-    // Display toggles (default: true unless noted)
-    /// Show ops/sec and time per op stats
-    pub show_stats: bool,
-    /// Show iterations, warmup, timeout config
-    pub show_config: bool,
-    /// Show "Go: 5 wins" in legend
-    pub show_win_counts: bool,
-    /// Show geometric mean speedup
-    pub show_geo_mean: bool,
-    /// Show min/max/p50/p99 distribution (default: false)
-    pub show_distribution: bool,
-    /// Show bytes/allocs memory stats (default: false)
-    pub show_memory: bool,
-    /// Show total execution time (default: false)
-    pub show_total_time: bool,
-    /// Minimal chart mode without extra info (default: false)
-    pub compact: bool,
 
     // Filtering
     /// Only show benchmarks with speedup >= N
@@ -401,101 +379,14 @@ pub struct ChartDirective {
     /// Chart width in pixels
     pub width: Option<i32>,
 
-    // Data display
-    /// Decimal places for numbers (default: 2)
-    pub precision: Option<u32>,
-    /// Time unit: "auto", "ns", "us", "ms", "s"
-    pub time_unit: Option<String>,
-
     // === NEW PARAMETERS ===
 
     // Dimensions
     /// Chart height in pixels
     pub height: Option<i32>,
 
-    // Axis styling
-    /// Stroke width for x/y axes (default: 1.0)
-    pub axis_thickness: Option<f32>,
-    /// Minimum y-axis value
-    pub y_axis_min: Option<f64>,
-    /// Maximum y-axis value
-    pub y_axis_max: Option<f64>,
-
-    // Grid
-    /// Toggle grid lines (default: true)
-    pub show_grid: Option<bool>,
-    /// Grid line opacity 0.0-1.0 (default: 0.15)
-    pub grid_opacity: Option<f32>,
-
-    // Typography
-    /// Title font size (default: 16)
-    pub title_font_size: Option<i32>,
-    /// Subtitle font size (default: 11)
-    pub subtitle_font_size: Option<i32>,
-    /// X/Y axis title font size (default: 11)
-    pub axis_label_font_size: Option<i32>,
-    /// Tick mark label font size (default: 10)
-    pub tick_label_font_size: Option<i32>,
-
-    // Legend
-    /// Legend position: "top-left", "top-right", "bottom-left", "bottom-right", "hidden"
-    pub legend_position: Option<String>,
-
-    // Error bars
-    /// Toggle error bars (default: false)
-    pub show_error_bars: Option<bool>,
-    /// Error bar opacity (default: 0.3)
-    pub error_bar_opacity: Option<f32>,
-    /// Error bar stroke width (default: 1.0)
-    pub error_bar_thickness: Option<f32>,
-
-    // Regression
-    /// Toggle regression line (default: false)
-    pub show_regression: Option<bool>,
-    /// Regression line style: "solid", "dashed", "dotted" (default: "dashed")
-    pub regression_style: Option<String>,
-    /// Show detected model label e.g. "O(n log n)" (default: true)
-    pub show_regression_label: Option<bool>,
-    /// Show R² (coefficient of determination) value (default: false)
-    pub show_r_squared: Option<bool>,
-    /// User-specified regression model: "auto", "constant", "log", "linear", "nlogn", "quadratic",
-    /// "cubic"
-    pub regression_model: Option<String>,
-    /// Show regression equation with coefficients (default: false)
-    pub show_equation: Option<bool>,
-    /// Show confidence band around regression line (default: false)
-    pub show_regression_band: Option<bool>,
-    /// Opacity of regression confidence band (default: 0.15)
-    pub regression_band_opacity: Option<f32>,
-
-    // Tick label formatting
-    /// Round tick labels to whole numbers when appropriate (default: false)
-    pub round_ticks: Option<bool>,
-
-    // Y-axis scale
-    /// Y-axis scale type for handling data spanning orders of magnitude.
-    /// Options: "linear" (default), "log" (logarithmic - powers of 10), "symlog", "percent"
-    pub y_scale: Option<String>,
     /// Baseline benchmark name for percentage scale (the benchmark that equals 100%)
     pub baseline_benchmark: Option<String>,
-    /// Threshold for symlog scale - values below this are treated linearly
-    pub symlog_threshold: Option<f64>,
-
-    // Grid enhancements
-    /// Show minor grid lines between major ticks (default: false)
-    pub show_minor_grid: Option<bool>,
-    /// Minor grid line opacity (default: 0.08)
-    pub minor_grid_opacity: Option<f32>,
-    /// Show vertical grid lines (default: false)
-    pub show_vertical_grid: Option<bool>,
-
-    // Error bars enhancements
-    /// Confidence interval level: 90, 95, or 99 (default: 95)
-    pub ci_level: Option<u32>,
-
-    // Chart mode
-    /// Chart mode: "performance" (ns/op vs size) or "throughput" (iterations vs time)
-    pub chart_mode: Option<String>,
 
     // Theme
     /// Color theme: "dark" (default) or "light"
@@ -512,19 +403,8 @@ impl ChartDirective {
             chart_type,
             title: None,
             description: None,
-            x_label: None,
-            y_label: None,
             output_file: None,
             span,
-            // Display toggles - defaults
-            show_stats: true,
-            show_config: true,
-            show_win_counts: true,
-            show_geo_mean: true,
-            show_distribution: true, // Show distribution stats by default
-            show_memory: false,
-            show_total_time: false,
-            compact: false,
             // Filtering - defaults
             min_speedup: None,
             filter_winner: None,
@@ -536,52 +416,9 @@ impl ChartDirective {
             sort_order: None,
             // Layout - defaults (None means use chart defaults)
             width: None,
-            // Data display - defaults
-            precision: None,
-            time_unit: None,
             // Dimensions
             height: None,
-            // Axis styling
-            axis_thickness: None,
-            y_axis_min: None,
-            y_axis_max: None,
-            // Grid
-            show_grid: None,
-            grid_opacity: None,
-            // Typography
-            title_font_size: None,
-            subtitle_font_size: None,
-            axis_label_font_size: None,
-            tick_label_font_size: None,
-            // Legend
-            legend_position: None,
-            // Error bars
-            show_error_bars: None,
-            error_bar_opacity: None,
-            error_bar_thickness: None,
-            // Regression
-            show_regression: None,
-            regression_style: None,
-            show_regression_label: None,
-            show_r_squared: None,
-            regression_model: None,
-            show_equation: None,
-            show_regression_band: None,
-            regression_band_opacity: None,
-            // Tick label formatting
-            round_ticks: None,
-            // Y-axis scale
-            y_scale: None,
             baseline_benchmark: None,
-            symlog_threshold: None,
-            // Grid enhancements
-            show_minor_grid: None,
-            minor_grid_opacity: None,
-            show_vertical_grid: None,
-            // Error bars enhancements
-            ci_level: None,
-            // Chart mode
-            chart_mode: None,
             // Theme
             theme: None,
             // Parameter order tracking

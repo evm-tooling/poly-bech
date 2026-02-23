@@ -192,13 +192,18 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
         "memory",
         // Charting keywords (used as parameters in charting calls)
         "title",
-        "xlabel",
         "sortBy",
         "sortOrder",
-        "timeUnit",
-        "showTotalTime",
-        "showLegend",
-        "showGrid",
+        "output",
+        "filterWinner",
+        "includeBenchmarks",
+        "excludeBenchmarks",
+        "limit",
+        "width",
+        "height",
+        "baselineBenchmark",
+        "theme",
+        "minSpeedup",
     ];
 
     // std and stdlib module names get NAMESPACE highlighting

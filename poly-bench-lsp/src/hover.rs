@@ -1038,7 +1038,6 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             When enabled, tracks memory allocations during benchmark execution:\n\
             - **Go:** Uses `runtime.ReadMemStats` to measure bytes/allocs per op\n\
             - **TypeScript:** Uses `process.memoryUsage()` to track heap usage\n\n\
-            Results appear in output when `showMemory: true` is set on charts.\n\n\
             Default: `false`"
         ),
 

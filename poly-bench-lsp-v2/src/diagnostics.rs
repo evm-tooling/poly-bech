@@ -379,57 +379,6 @@ fn validate_benchmark(
     }
 }
 
-#[allow(dead_code)]
-fn looks_like_custom_function_call(code: &str) -> bool {
-    // Simple heuristic: lowercase function calls that aren't common builtins
-    let builtins = [
-        "len",
-        "make",
-        "append",
-        "copy",
-        "delete",
-        "panic",
-        "recover",
-        "print",
-        "println",
-        "close",
-        "cap",
-        "new",
-        "real",
-        "imag",
-        "complex",
-        // TypeScript/JS
-        "console",
-        "Math",
-        "JSON",
-        "Array",
-        "Object",
-        "String",
-        "Number",
-        "Boolean",
-        "parseInt",
-        "parseFloat",
-        "isNaN",
-        "isFinite",
-    ];
-
-    // Look for function call patterns
-    let has_call = code.contains('(');
-    if !has_call {
-        return false;
-    }
-
-    // Check if it's not just builtin calls
-    for builtin in &builtins {
-        if code.contains(builtin) {
-            return false;
-        }
-    }
-
-    // If it has a call and no builtins, it might be custom
-    true
-}
-
 /// Extract function names defined in a helpers block for a given language
 fn extract_helper_functions(setup: &StructuredSetup, lang: &Lang) -> HashSet<String> {
     let mut functions = HashSet::new();

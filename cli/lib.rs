@@ -11,7 +11,7 @@
 pub use poly_bench_dsl as dsl;
 pub use poly_bench_executor as executor;
 pub use poly_bench_ir as ir;
-pub use poly_bench_lsp as lsp;
+pub use poly_bench_lsp_v2 as lsp;
 pub use poly_bench_project as project;
 pub use poly_bench_reporter as reporter;
 pub use poly_bench_runtime as runtime;
