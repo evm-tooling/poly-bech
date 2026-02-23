@@ -298,7 +298,7 @@ suite rpcBenchmarks {
         }
     }
 
-    bench getBlockNumber {
+    benchAsync getBlockNumber {
         go: getBlockNumber()
         ts: await getBlockNumber()
     }
@@ -309,6 +309,10 @@ suite rpcBenchmarks {
 
 <Aside type="tip">
 <span>The <code>ANVIL_RPC_URL</code> value is available after calling <code>anvil.spawnAnvil()</code> (injected directly for TypeScript and available via env var for Go/Rust).</span>
+</Aside>
+
+<Aside type="note">
+<span>Use <code>benchAsync</code> for async operations. It runs in async-sequential mode (one awaited call per iteration), applies internal caps (<code>warmup &lt;= 5</code>, <code>samples &lt;= 50</code>), and expects implementations to return a value.</span>
 </Aside>
 
 

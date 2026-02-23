@@ -795,4 +795,22 @@ suite test {
         assert!(!code.contains("std_PI"));
         assert!(!code.contains("std_E"));
     }
+
+    #[test]
+    fn test_generate_bench_async_uses_async_harness() {
+        let source = r#"
+suite rpc {
+    mode: "auto"
+    targetTime: 2000ms
+    benchAsync block {
+        ts: getBlock()
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let ir = lower(&ast, None).unwrap();
+        let code = generate(&ir).unwrap();
+
+        assert!(code.contains("bench_rpc_block"));
+    }
 }

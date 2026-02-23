@@ -4,13 +4,19 @@ suite evmBench {
     description: "EVM benchmark demonstrating Anvil integration"
     baseline: "go"
     mode: "auto"
-    targetTime: 10000ms
-    sink: false
+    targetTime: 5000ms
     cvThreshold: 10
+    warmup: 10
+
+    globalSetup {
+        anvil.spawnAnvil(fork: "https://eth.drpc.org")
+    }
 
     setup go {
         import (
+            "github.com/ChefBingbong/viem-go/actions/public"
             "context"
+            "time"
             "github.com/ChefBingbong/viem-go/chain/definitions"
             "github.com/ChefBingbong/viem-go/client"
             "github.com/ChefBingbong/viem-go/client/transport"
@@ -19,14 +25,16 @@ suite evmBench {
         declare {
             var publicClient *client.PublicClient
             var ctx context.Context
+            var noCache time.Duration
         }
 
         init {
             ctx = context.Background()
 
             _publicClient, err := client.CreatePublicClient(client.PublicClientConfig{
+                CacheTime: 0 *  time.Second,
                 Chain:     &definitions.Mainnet,
-                Transport: transport.HTTP(""),
+                Transport: transport.HTTP( ANVIL_RPC_URL),
             })
 
             if err != nil {
@@ -34,12 +42,16 @@ suite evmBench {
             }
 
             publicClient = _publicClient
-            defer publicClient.Close()
+            noCache = 0
         }
 
         helpers {
-            func getBlockNumberGo() any {
-                blockNumber, err := publicClient.GetBlockNumber(ctx)
+            func getBlockNumberGo()  any {
+                blockNumber, err := public.GetBlockNumber(
+                    ctx,
+                    publicClient,
+                    public.GetBlockNumberParameters{ CacheTime: &noCache },
+                )
                 if err != nil {
                     return err
                 }
@@ -60,13 +72,14 @@ suite evmBench {
 
         init {
             publicClient = createPublicClient({
+                cacheTime: 0,
                 chain: mainnet,
                 transport: http(ANVIL_RPC_URL),
             })
         }
 
         helpers {
-            async function getBlockNumberTs(): Promise<any> {
+            async function getBlockNumberTs() {
                 try {
                     const blockNumber = await publicClient.getBlockNumber()
                     return blockNumber
@@ -77,10 +90,22 @@ suite evmBench {
         }
     }
 
-    bench getBlockNumber {
+    benchAsync getBlockNumber {
         description: "Get the current block number via RPC"
         go: getBlockNumberGo()
-        ts: await getBlockNumberTs()
+        ts: getBlockNumberTs()
     }
 
+    after {
+        charting.drawSpeedupChart(
+            title: "Sort Performance - O(n log n)",
+            description: "Stdlib sort comparison across Go, TypeScript, and Rust",
+            output: "anvil.svg",
+        )
+        charting.drawTable(
+            title: "Sort Performance Comparison",
+            description: "Vertical grouped bars - Go vs TypeScript vs Rust",
+            output: "anvil-report.svg",
+        )
+    }
 }

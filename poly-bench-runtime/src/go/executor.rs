@@ -4,7 +4,7 @@ use crate::{go::compiler::GoCompiler, measurement::Measurement, traits::Runtime}
 use async_trait::async_trait;
 use libloading::{Library, Symbol};
 use miette::{miette, Result};
-use poly_bench_dsl::{BenchMode, Lang};
+use poly_bench_dsl::{BenchMode, BenchmarkKind, Lang};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use poly_bench_stdlib as stdlib;
 use std::{collections::HashSet, path::PathBuf};
@@ -268,7 +268,12 @@ impl GoRuntime {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let result: BenchResultJson = serde_json::from_str(&stdout)
+        let json_line = stdout
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .last()
+            .ok_or_else(|| miette!("No output from benchmark"))?;
+        let result: BenchResultJson = serde_json::from_str(json_line)
             .map_err(|e| miette!("Failed to parse benchmark result: {}\nOutput: {}", e, stdout))?;
 
         Ok(result.into_measurement_with_options(spec.outlier_detection, spec.cv_threshold))
@@ -359,6 +364,10 @@ struct BenchResultJson {
     allocs_per_op: u64,
     #[serde(default)]
     samples: Vec<u64>,
+    #[serde(default)]
+    raw_result: Option<String>,
+    #[serde(default)]
+    successful_results: Vec<String>,
 }
 
 impl BenchResultJson {
@@ -380,6 +389,10 @@ impl BenchResultJson {
 
         if self.bytes_per_op > 0 || self.allocs_per_op > 0 {
             m = m.with_allocs(self.bytes_per_op, self.allocs_per_op);
+        }
+        m.raw_result = self.raw_result;
+        if !self.successful_results.is_empty() {
+            m.successful_results = Some(self.successful_results);
         }
 
         m
@@ -482,8 +495,9 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     }
 
     // Result calculation and output
-    let memory_result = SinkMemoryDecls::memory_result_fields(spec.memory, "iterations");
-    code.push_str(&shared::generate_result_return("iterations", &memory_result, true));
+    let iter_var = if spec.mode == BenchMode::Auto { "totalIterations" } else { "iterations" };
+    let memory_result = SinkMemoryDecls::memory_result_fields(spec.memory, iter_var);
+    code.push_str(&shared::generate_result_return(iter_var, &memory_result, true));
     code.push_str("}\n");
 
     Ok(code)
@@ -499,11 +513,13 @@ fn generate_auto_main(
     _after_hook: Option<&String>,
     each_hook: Option<&String>,
 ) {
+    let is_async = spec.kind == BenchmarkKind::Async;
     // Note: targetNanos is declared inside generate_auto_mode_loop, not here
     code.push_str(&format!(
         r#"
 func main() {{
 {}{}
+	var successfulResults []string
 "#,
         decls.sink_decl, decls.memory_decl
     ));
@@ -525,34 +541,51 @@ func main() {{
             bench_call,
             decls.sink_keepalive,
             each_hook,
-            &spec.warmup.to_string()
+            &if spec.kind == BenchmarkKind::Async {
+                spec.warmup.min(5).to_string()
+            } else {
+                spec.warmup.to_string()
+            }
         )
     ));
 
     // Auto-calibration loop
-    code.push_str(&format!(
-        "\n{}",
-        shared::generate_auto_mode_loop(
-            bench_call,
-            decls.sink_keepalive,
-            each_hook,
-            spec.target_time_ms
-        )
-    ));
+    if is_async {
+        code.push_str(&format!(
+            "\n{}",
+            shared::generate_async_auto_mode_loop(
+                bench_call,
+                decls.sink_keepalive,
+                each_hook,
+                spec.target_time_ms
+            )
+        ));
+    } else {
+        code.push_str(&format!(
+            "\n{}",
+            shared::generate_auto_mode_loop(
+                bench_call,
+                decls.sink_keepalive,
+                each_hook,
+                spec.target_time_ms
+            )
+        ));
+    }
 
     // Sample collection
-    code.push_str(&format!(
-        "\n{}",
-        shared::generate_sample_collection(
-            bench_call,
-            decls.sink_keepalive,
-            each_hook,
-            "1000",
-            "totalIterations"
-        )
-    ));
-
-    code.push_str("\n\titerations := totalIterations\n");
+    if !is_async {
+        code.push_str(&format!(
+            "\n{}",
+            shared::generate_sample_collection(
+                bench_call,
+                decls.sink_keepalive,
+                each_hook,
+                "1000",
+                "totalIterations"
+            )
+        ));
+        code.push_str("\n\titerations := totalIterations\n");
+    }
 }
 
 /// Generate fixed iteration main function
@@ -571,6 +604,7 @@ func main() {{
 	iterations := {}
 	warmup := {}
 	samples := make([]uint64, iterations)
+	var successfulResults []string
 {}{}
 "#,
         spec.iterations, spec.warmup, decls.sink_decl, decls.memory_decl

@@ -198,6 +198,7 @@ fn lower_benchmark(
     let warmup = benchmark.warmup.unwrap_or(suite_ir.default_warmup);
 
     let mut spec = BenchmarkSpec::new(benchmark.name.clone(), suite_name, iterations, warmup);
+    spec.kind = benchmark.kind;
 
     spec.description = benchmark.description.clone();
 
@@ -208,7 +209,11 @@ fn lower_benchmark(
     // Benchmark accuracy settings (benchmark overrides suite, or inherit from suite)
     spec.mode = benchmark.mode.unwrap_or(suite_ir.mode);
     spec.target_time_ms = benchmark.target_time_ms.unwrap_or(suite_ir.target_time_ms);
-    spec.use_sink = benchmark.sink.unwrap_or(suite_ir.sink);
+    spec.use_sink = if benchmark.kind == poly_bench_dsl::BenchmarkKind::Async {
+        true
+    } else {
+        benchmark.sink.unwrap_or(suite_ir.sink)
+    };
     spec.outlier_detection = benchmark.outlier_detection.unwrap_or(suite_ir.outlier_detection);
     spec.cv_threshold = benchmark.cv_threshold.unwrap_or(suite_ir.cv_threshold);
     spec.count = benchmark.count.unwrap_or(suite_ir.count);
@@ -327,10 +332,26 @@ suite hash {
 
         let bench = &suite.benchmarks[0];
         assert_eq!(bench.name, "keccak256");
+        assert_eq!(bench.kind, poly_bench_dsl::BenchmarkKind::Sync);
         assert_eq!(bench.full_name, "hash_keccak256");
         assert_eq!(bench.iterations, 5000);
         assert!(bench.has_lang(Lang::Go));
         assert!(bench.has_lang(Lang::TypeScript));
+    }
+
+    #[test]
+    fn test_lower_bench_async_kind() {
+        let source = r#"
+suite async_suite {
+    benchAsync rpc_call {
+        ts: await getBlockNumber()
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let ir = lower(&ast, None).unwrap();
+        let bench = &ir.suites[0].benchmarks[0];
+        assert_eq!(bench.kind, poly_bench_dsl::BenchmarkKind::Async);
     }
 
     #[test]

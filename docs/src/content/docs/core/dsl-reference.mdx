@@ -429,9 +429,9 @@ The optional `shape` field provides a JSON-like descriptor for documentation and
 
 ---
 
-### `bench` Blocks
+### `bench` and `benchAsync` Blocks
 
-Bench blocks define the operations to time. Each block specifies an expression or code block for one or more target languages.
+`bench` defines synchronous benchmark operations. `benchAsync` defines async operations with async-sequential semantics (one awaited completion per iteration, no framework-managed concurrency).
 
 <CodeGroup 
   tabs={[
@@ -482,10 +482,21 @@ Bench blocks define the operations to time. Each block specifies an expression o
 
     # ── Result validation ─────────────────────────────
     validate: { go: result != nil  ts: result !== null }
+}
+
+benchAsync <name> {
+    description: "Async benchmark"
+    mode: "auto"
+    targetTime: 5000ms
+    ts: await getBlockNumber()
 }`
     },
   ]}
 />
+
+<Aside type="note">
+<span><code>benchAsync</code> applies internal caps for practical runtime behavior: warmup ≤ 5 and samples ≤ 50. Async implementations should return a value so errors/no-ops are not silently hidden.</span>
+</Aside>
 
 ### Bench Field Reference
 
@@ -547,9 +558,9 @@ Language implementations can be a single inline expression or a multi-line block
     {
       title: "Async TypeScript",
       language: "bench",
-      code: `bench fetchBlock {
+      code: `benchAsync fetchBlock {
     go: getBlockNumber()
-    ts: await getBlockNumber()   # await is valid in bench expressions
+    ts: await getBlockNumber()   # one awaited operation per iteration
 }`
     },
   ]}

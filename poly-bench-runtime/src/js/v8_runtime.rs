@@ -11,7 +11,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use miette::{miette, Result};
-use poly_bench_dsl::{BenchMode, Lang};
+use poly_bench_dsl::{BenchMode, BenchmarkKind, Lang};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use poly_bench_stdlib as stdlib;
 use std::path::PathBuf;
@@ -366,9 +366,10 @@ fn strip_typescript_syntax(code: &str) -> String {
 
 /// Generate a standalone JavaScript benchmark script
 fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<String> {
-    let impl_code = spec
+    let impl_code_raw = spec
         .get_impl(Lang::TypeScript)
         .ok_or_else(|| miette!("No TypeScript implementation for benchmark {}", spec.name))?;
+    let impl_code = impl_code_raw.trim().trim_end_matches(';');
 
     let mut script = String::new();
 
@@ -471,8 +472,8 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
     }
 
     // Generate benchmark execution with hooks
-    // Check if the implementation code contains await (needs async function)
-    let impl_is_async = impl_code.contains("await");
+    let is_async_bench = spec.kind == BenchmarkKind::Async;
+    let impl_is_async = is_async_bench || impl_code.contains("await");
     let use_auto_mode = spec.mode == BenchMode::Auto;
 
     if each_hook.is_some() {
@@ -493,9 +494,9 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         } else {
             script.push_str("    function() {\n");
         }
-        script.push_str("        ");
+        script.push_str("        return (");
         script.push_str(impl_code);
-        script.push_str(";\n");
+        script.push_str(");\n");
         script.push_str("    },\n");
 
         if each_is_async {
@@ -519,15 +520,16 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         } else {
             script.push_str("const __result = __polybench.runBenchmarkAuto(function() {\n");
         }
-        script.push_str("    ");
+        script.push_str("    return (");
         script.push_str(impl_code);
-        script.push_str(";\n");
+        script.push_str(");\n");
         script.push_str(&format!(
-            "}}, {}, {}, false, {});\n",
-            spec.target_time_ms, use_sink, spec.warmup
+            "}}, {}, {}, false, {}, {});\n",
+            spec.target_time_ms, use_sink, spec.warmup, 50
         ));
     } else {
         // Fixed iteration mode
+        let use_sink = if spec.use_sink { "true" } else { "false" };
         if impl_is_async {
             script.push_str(
                 "const __result = await __polybench.runBenchmarkAsync(async function() {\n",
@@ -535,10 +537,17 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         } else {
             script.push_str("const __result = __polybench.runBenchmark(function() {\n");
         }
-        script.push_str("    ");
+        script.push_str("    return (");
         script.push_str(impl_code);
-        script.push_str(";\n");
-        script.push_str(&format!("}}, {}, {});\n", spec.iterations, spec.warmup));
+        script.push_str(");\n");
+        if impl_is_async {
+            script.push_str(&format!(
+                "}}, {}, {}, {}, false, {});\n",
+                spec.iterations, spec.warmup, use_sink, 50
+            ));
+        } else {
+            script.push_str(&format!("}}, {}, {});\n", spec.iterations, spec.warmup));
+        }
     }
 
     // Phase 3: After hook (runs once after benchmark)
@@ -586,6 +595,10 @@ struct BenchResultJson {
     ops_per_sec: f64,
     #[serde(default)]
     samples: Vec<f64>,
+    #[serde(default)]
+    raw_result: Option<serde_json::Value>,
+    #[serde(default)]
+    successful_results: Vec<serde_json::Value>,
 }
 
 impl BenchResultJson {
@@ -597,14 +610,26 @@ impl BenchResultJson {
         let samples: Vec<u64> = self.samples.iter().map(|&s| s as u64).collect();
 
         if samples.is_empty() {
-            Measurement::from_aggregate(self.iterations, self.total_nanos as u64)
+            let mut m = Measurement::from_aggregate(self.iterations, self.total_nanos as u64);
+            m.raw_result = self.raw_result.as_ref().map(|v| v.to_string());
+            if !self.successful_results.is_empty() {
+                m.successful_results =
+                    Some(self.successful_results.iter().map(|v| v.to_string()).collect());
+            }
+            m
         } else {
-            Measurement::from_samples_with_options(
+            let mut m = Measurement::from_samples_with_options(
                 samples,
                 self.iterations,
                 outlier_detection,
                 cv_threshold,
-            )
+            );
+            m.raw_result = self.raw_result.as_ref().map(|v| v.to_string());
+            if !self.successful_results.is_empty() {
+                m.successful_results =
+                    Some(self.successful_results.iter().map(|v| v.to_string()).collect());
+            }
+            m
         }
     }
 }
@@ -664,7 +689,7 @@ fn generate_typescript_check_source(spec: &BenchmarkSpec, suite: &SuiteIR) -> Re
     }
 
     // Add the benchmark implementation wrapped in a function
-    let is_async = impl_code.contains("await ");
+    let is_async = spec.kind == BenchmarkKind::Async || impl_code.contains("await ");
     if is_async {
         script.push_str(&format!(
             "\nasync function __benchmark() {{\n    {};\n}}\n__benchmark();\n",

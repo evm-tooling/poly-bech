@@ -1,7 +1,7 @@
 //! Go plugin source code generation
 
 use miette::{miette, Result};
-use poly_bench_dsl::{BenchMode, Lang};
+use poly_bench_dsl::{BenchMode, BenchmarkKind, Lang};
 use poly_bench_ir::{BenchmarkIR, BenchmarkSpec, FixtureIR, SuiteIR};
 use poly_bench_stdlib as stdlib;
 
@@ -194,8 +194,78 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 
     match bench.mode {
         BenchMode::Auto => {
-            code.push_str(&format!(
-                r#"func bench_{}(iterations int) BenchResult {{
+            if bench.kind == BenchmarkKind::Async {
+                code.push_str(&format!(
+                    r#"func bench_{}(iterations int) BenchResult {{
+	// Async-sequential auto mode: one completed call per iteration
+	targetNanos := int64({})
+	deadline := time.Now().Add(time.Duration(targetNanos))
+{}{}
+	var successfulResults []string
+{}{}	// Brief warmup ({} iterations)
+	for i := 0; i < {}; i++ {{
+{}		{}
+{}	}}
+	
+	var totalIterations int
+	var totalNanos int64
+	samples := make([]uint64, 0, 50)
+	for time.Now().Before(deadline) {{
+{}		start := time.Now()
+		{}
+{}		elapsed := time.Since(start).Nanoseconds()
+		totalNanos += elapsed
+		totalIterations++
+		if len(samples) < 50 {{
+			samples = append(samples, uint64(elapsed))
+		}}
+		resultBytes, _ := json.Marshal(__sink)
+		if string(resultBytes) != "null" {{
+			successfulResults = append(successfulResults, string(resultBytes))
+		}}
+	}}
+
+	nanosPerOp := float64(totalNanos) / float64(totalIterations)
+	opsPerSec := 1e9 / nanosPerOp
+	rawResultBytes, _ := json.Marshal(__sink)
+	rawResult := ""
+	if string(rawResultBytes) != "null" {{
+		rawResult = string(rawResultBytes)
+	}}
+	
+{}
+	return BenchResult{{
+		Iterations:  uint64(totalIterations),
+		TotalNanos:  uint64(totalNanos),
+		NanosPerOp:  nanosPerOp,
+		OpsPerSec:   opsPerSec,
+{}		Samples:     samples,
+		RawResult:   rawResult,
+		SuccessfulResults: successfulResults,
+	}}
+}}
+
+"#,
+                    bench.full_name,
+                    bench.target_time_ms * 1_000_000,
+                    decls.sink_decl,
+                    decls.memory_decl,
+                    before_hook,
+                    decls.memory_before,
+                    bench.warmup.min(5),
+                    bench.warmup.min(5),
+                    each_hook_code,
+                    bench_call,
+                    decls.sink_keepalive,
+                    each_hook_code,
+                    bench_call,
+                    decls.sink_keepalive,
+                    after_hook,
+                    memory_result,
+                ));
+            } else {
+                code.push_str(&format!(
+                    r#"func bench_{}(iterations int) BenchResult {{
 	// Auto-calibration mode: iterations parameter is ignored, runs for targetTime
 	targetNanos := int64({})
 {}{}
@@ -205,10 +275,10 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 {}	}}
 	
 {}
+{}
 	nanosPerOp := float64(totalNanos) / float64(totalIterations)
 	opsPerSec := 1e9 / nanosPerOp
 	
-{}
 {}
 	return BenchResult{{
 		Iterations:  uint64(totalIterations),
@@ -220,33 +290,34 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 }}
 
 "#,
-                bench.full_name,
-                bench.target_time_ms * 1_000_000,
-                decls.sink_decl,
-                decls.memory_decl,
-                before_hook,
-                decls.memory_before,
-                bench.warmup,
-                bench.warmup,
-                each_hook_code,
-                bench_call,
-                decls.sink_keepalive,
-                shared::generate_auto_mode_loop(
-                    &bench_call,
+                    bench.full_name,
+                    bench.target_time_ms * 1_000_000,
+                    decls.sink_decl,
+                    decls.memory_decl,
+                    before_hook,
+                    decls.memory_before,
+                    bench.warmup,
+                    bench.warmup,
+                    each_hook_code,
+                    bench_call,
                     decls.sink_keepalive,
-                    each_hook,
-                    bench.target_time_ms
-                ),
-                shared::generate_sample_collection(
-                    &bench_call,
-                    decls.sink_keepalive,
-                    each_hook,
-                    "1000",
-                    "totalIterations"
-                ),
-                after_hook,
-                memory_result,
-            ));
+                    shared::generate_auto_mode_loop(
+                        &bench_call,
+                        decls.sink_keepalive,
+                        each_hook,
+                        bench.target_time_ms
+                    ),
+                    shared::generate_sample_collection(
+                        &bench_call,
+                        decls.sink_keepalive,
+                        each_hook,
+                        "1000",
+                        "totalIterations"
+                    ),
+                    after_hook,
+                    memory_result,
+                ));
+            }
         }
         BenchMode::Fixed => {
             let memory_result_fixed =
@@ -374,5 +445,24 @@ suite test {
 
         assert!(!code.contains("std_PI"));
         assert!(!code.contains("std_E"));
+    }
+
+    #[test]
+    fn test_generate_bench_async_applies_caps() {
+        let source = r#"
+suite rpc {
+    mode: "auto"
+    warmup: 100
+    targetTime: 2000ms
+    benchAsync block {
+        go: getBlock()
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let ir = lower(&ast, None).unwrap();
+        let code = generate(&ir).unwrap();
+
+        assert!(code.contains("func bench_rpc_block"));
     }
 }

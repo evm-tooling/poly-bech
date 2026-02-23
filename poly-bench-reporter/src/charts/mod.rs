@@ -6,7 +6,7 @@ pub mod regression;
 pub mod speedup_chart;
 pub mod table;
 
-use poly_bench_dsl::Lang;
+use poly_bench_dsl::{BenchmarkKind, Lang};
 use poly_bench_executor::comparison::BenchmarkResult;
 use poly_bench_ir::ChartDirectiveIR;
 use poly_bench_runtime::measurement::ComparisonWinner;
@@ -461,6 +461,14 @@ pub fn format_config_footer(
     }
 
     parts.join(" | ")
+}
+
+/// Format benchmark kind for chart labels/footers
+pub fn format_benchmark_kind(kind: BenchmarkKind) -> &'static str {
+    match kind {
+        BenchmarkKind::Sync => "sync-sequential",
+        BenchmarkKind::Async => "async-sequential",
+    }
 }
 
 /// Format stats label for a measurement

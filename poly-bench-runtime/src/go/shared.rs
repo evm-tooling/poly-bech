@@ -16,6 +16,8 @@ pub const BENCH_RESULT_STRUCT: &str = r#"type BenchResult struct {
 	BytesPerOp  uint64   `json:"bytes_per_op"`
 	AllocsPerOp uint64   `json:"allocs_per_op"`
 	Samples     []uint64 `json:"samples"`
+	RawResult   string   `json:"raw_result,omitempty"`
+	SuccessfulResults []string `json:"successful_results,omitempty"`
 }
 "#;
 
@@ -245,6 +247,47 @@ pub fn generate_sample_collection(
     )
 }
 
+/// Generate strict async sequential auto-mode loop (no adaptive batching)
+pub fn generate_async_auto_mode_loop(
+    bench_call: &str,
+    sink_keepalive: &str,
+    each_hook: Option<&String>,
+    target_time_ms: u64,
+) -> String {
+    let each_hook_code = each_hook
+        .map(|h| h.trim().lines().map(|line| format!("\t\t{}\n", line)).collect::<String>())
+        .unwrap_or_default();
+
+    format!(
+        r#"	// Async-sequential auto mode: one awaited/completed call per iteration.
+	targetNanos := int64({})
+	var totalIterations int
+	var totalNanos int64
+	samples := make([]uint64, 0, 50)
+
+	for totalNanos < targetNanos {{
+{}		start := time.Now()
+		{}
+{}		elapsed := time.Since(start).Nanoseconds()
+		totalNanos += elapsed
+		totalIterations++
+		if len(samples) < 50 {{
+			samples = append(samples, uint64(elapsed))
+		}}
+
+		resultBytes, _ := json.Marshal(__sink)
+		if string(resultBytes) != "null" {{
+			successfulResults = append(successfulResults, string(resultBytes))
+		}}
+	}}
+"#,
+        target_time_ms * 1_000_000,
+        each_hook_code,
+        bench_call,
+        sink_keepalive
+    )
+}
+
 /// Generate the warmup loop
 pub fn generate_warmup_loop(
     bench_call: &str,
@@ -284,7 +327,9 @@ pub fn generate_fixed_mode_loop(
 {}		start := time.Now()
 		{}
 {}		elapsed := time.Since(start).Nanoseconds()
-		samples[i] = uint64(elapsed)
+		if i < len(samples) {{
+			samples[i] = uint64(elapsed)
+		}}
 		totalNanos += uint64(elapsed)
 	}}
 "#,
@@ -386,6 +431,14 @@ pub fn generate_result_return(
         r#"
 	nanosPerOp := float64(totalNanos) / float64({iter_var})
 	opsPerSec := 1e9 / nanosPerOp
+	rawResultBytes, _ := json.Marshal(__sink)
+	rawResult := ""
+	if string(rawResultBytes) != "null" {{
+		rawResult = string(rawResultBytes)
+	}}
+	if successfulResults == nil {{
+		successfulResults = []string{{}}
+	}}
 	
 	result := BenchResult{{
 		Iterations:  uint64({iter_var}),
@@ -393,6 +446,8 @@ pub fn generate_result_return(
 		NanosPerOp:  nanosPerOp,
 		OpsPerSec:   opsPerSec,
 {memory_result}		Samples:     samples,
+		RawResult:   rawResult,
+		SuccessfulResults: successfulResults,
 	}}
 {output}"#
     )

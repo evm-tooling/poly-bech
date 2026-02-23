@@ -167,6 +167,13 @@ impl Lang {
     }
 }
 
+/// Benchmark kind keyword
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BenchmarkKind {
+    Sync,
+    Async,
+}
+
 /// A partial file - always populated even with errors
 #[derive(Debug, Clone, Default)]
 pub struct PartialFile {
@@ -361,6 +368,7 @@ pub enum HexData {
 #[derive(Debug, Clone)]
 pub struct PartialBenchmark {
     pub name: String,
+    pub kind: BenchmarkKind,
     pub span: Span,
     pub properties: Vec<Node<Property>>,
     pub tags: Vec<String>,
@@ -374,9 +382,10 @@ pub struct PartialBenchmark {
 }
 
 impl PartialBenchmark {
-    pub fn new(name: String, span: Span) -> Self {
+    pub fn new(name: String, kind: BenchmarkKind, span: Span) -> Self {
         Self {
             name,
+            kind,
             span,
             properties: Vec::new(),
             tags: Vec::new(),

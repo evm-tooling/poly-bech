@@ -367,7 +367,11 @@ impl Parser {
                 suite.fixtures.push(fixture);
             }
             TokenKind::Bench => {
-                let benchmark = self.parse_benchmark()?;
+                let benchmark = self.parse_benchmark(BenchmarkKind::Sync)?;
+                suite.benchmarks.push(benchmark);
+            }
+            TokenKind::BenchAsync => {
+                let benchmark = self.parse_benchmark(BenchmarkKind::Async)?;
                 suite.benchmarks.push(benchmark);
             }
             // Suite-level after block for chart directives
@@ -894,8 +898,15 @@ impl Parser {
     }
 
     /// Parse a benchmark definition
-    fn parse_benchmark(&mut self) -> Result<Benchmark> {
-        self.expect_keyword(TokenKind::Bench)?;
+    fn parse_benchmark(&mut self, kind: BenchmarkKind) -> Result<Benchmark> {
+        match kind {
+            BenchmarkKind::Sync => {
+                self.expect_keyword(TokenKind::Bench)?;
+            }
+            BenchmarkKind::Async => {
+                self.expect_keyword(TokenKind::BenchAsync)?;
+            }
+        }
 
         let name_token = self.expect_identifier()?;
         let name = match &name_token.kind {
@@ -905,7 +916,7 @@ impl Parser {
 
         self.expect(TokenKind::LBrace)?;
 
-        let mut benchmark = Benchmark::new(name, name_token.span.clone());
+        let mut benchmark = Benchmark::new(name, kind, name_token.span.clone());
 
         while !self.check(TokenKind::RBrace) && !self.is_at_end() {
             self.parse_benchmark_item(&mut benchmark)?;
@@ -1267,6 +1278,7 @@ impl Parser {
                         TokenKind::Hex |
                         TokenKind::Shape |
                         TokenKind::Bench |
+                        TokenKind::BenchAsync |
                         TokenKind::Setup |
                         TokenKind::Fixture
                 ) {
@@ -1631,8 +1643,28 @@ suite hash {
 
         let bench = &suite.benchmarks[0];
         assert_eq!(bench.name, "keccak256");
+        assert_eq!(bench.kind, BenchmarkKind::Sync);
         assert!(bench.implementations.contains_key(&Lang::Go));
         assert!(bench.implementations.contains_key(&Lang::TypeScript));
+    }
+
+    #[test]
+    fn test_parse_bench_async() {
+        let source = r#"
+suite asyncSuite {
+    benchAsync rpcCall {
+        ts: await getBlockNumber()
+    }
+}
+"#;
+        let result = parse(source, "test.bench");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+
+        let file = result.unwrap();
+        let suite = &file.suites[0];
+        let bench = &suite.benchmarks[0];
+        assert_eq!(bench.name, "rpcCall");
+        assert_eq!(bench.kind, BenchmarkKind::Async);
     }
 
     #[test]

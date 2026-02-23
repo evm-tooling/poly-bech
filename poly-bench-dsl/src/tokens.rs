@@ -8,6 +8,7 @@ pub enum TokenKind {
     // Keywords
     Suite,
     Bench,
+    BenchAsync,
     Setup,
     Fixture,
     Hex,
@@ -108,6 +109,7 @@ impl TokenKind {
             self,
             TokenKind::Suite |
                 TokenKind::Bench |
+                TokenKind::BenchAsync |
                 TokenKind::Setup |
                 TokenKind::Fixture |
                 TokenKind::Hex |
@@ -191,6 +193,7 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         // Core keywords
         "suite" => Some(TokenKind::Suite),
         "bench" => Some(TokenKind::Bench),
+        "benchAsync" => Some(TokenKind::BenchAsync),
         "setup" => Some(TokenKind::Setup),
         "fixture" => Some(TokenKind::Fixture),
         "hex" => Some(TokenKind::Hex),

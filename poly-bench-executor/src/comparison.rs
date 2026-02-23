@@ -1,6 +1,6 @@
 //! Cross-language comparison types and logic
 
-use poly_bench_dsl::Lang;
+use poly_bench_dsl::{BenchmarkKind, Lang};
 use poly_bench_runtime::measurement::{Comparison, Measurement};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -52,23 +52,45 @@ pub struct BenchmarkResult {
     pub name: String,
     /// Full qualified name
     pub full_name: String,
+    /// Benchmark kind (sync vs async-sequential)
+    pub kind: BenchmarkKind,
     /// Description
     pub description: Option<String>,
     /// Measurements by language
     pub measurements: HashMap<Lang, Measurement>,
     /// Comparison (if multiple languages)
     pub comparison: Option<Comparison>,
+    /// Extra metadata for async benchmarks (benchAsync)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub async_details: Option<AsyncBenchmarkDetails>,
+}
+
+/// Extra output included for async benchmarks in `results.json`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AsyncBenchmarkDetails {
+    /// Execution semantics for async benchmarks
+    pub mode: String,
+    /// Internal warmup cap used by runtimes
+    pub warmup_cap: u64,
+    /// Internal sample cap used by runtimes
+    pub sample_cap: u64,
+    /// Actual iterations executed per language
+    pub actual_iterations: HashMap<Lang, u64>,
+    /// Actual samples captured per language
+    pub actual_samples: HashMap<Lang, u64>,
 }
 
 impl BenchmarkResult {
     pub fn new(
         name: String,
         full_name: String,
+        kind: BenchmarkKind,
         description: Option<String>,
         measurements: HashMap<Lang, Measurement>,
     ) -> Self {
         let comparison = Self::calculate_comparison(&measurements);
-        Self { name, full_name, description, measurements, comparison }
+        let async_details = Self::build_async_details(kind, &measurements);
+        Self { name, full_name, kind, description, measurements, comparison, async_details }
     }
 
     fn calculate_comparison(measurements: &HashMap<Lang, Measurement>) -> Option<Comparison> {
@@ -83,6 +105,30 @@ impl BenchmarkResult {
             ts_measurement.clone(),
             "TypeScript".to_string(),
         ))
+    }
+
+    fn build_async_details(
+        kind: BenchmarkKind,
+        measurements: &HashMap<Lang, Measurement>,
+    ) -> Option<AsyncBenchmarkDetails> {
+        if kind != BenchmarkKind::Async {
+            return None;
+        }
+
+        let mut actual_iterations = HashMap::new();
+        let mut actual_samples = HashMap::new();
+        for (lang, measurement) in measurements {
+            actual_iterations.insert(*lang, measurement.iterations);
+            actual_samples.insert(*lang, measurement.samples.unwrap_or(0));
+        }
+
+        Some(AsyncBenchmarkDetails {
+            mode: "async-sequential".to_string(),
+            warmup_cap: 5,
+            sample_cap: 50,
+            actual_iterations,
+            actual_samples,
+        })
     }
 }
 

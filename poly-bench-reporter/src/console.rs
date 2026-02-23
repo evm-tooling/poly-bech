@@ -2,7 +2,7 @@
 
 use colored::Colorize;
 use miette::Result;
-use poly_bench_dsl::Lang;
+use poly_bench_dsl::{BenchmarkKind, Lang};
 use poly_bench_executor::{comparison::BenchmarkResult, BenchmarkResults, SuiteResults};
 use poly_bench_runtime::measurement::Measurement;
 
@@ -272,6 +272,12 @@ fn print_suite_with_options(suite: &SuiteResults, options: &ReportOptions) {
     );
 
     println!();
+
+    let has_async = suite.benchmarks.iter().any(|b| b.kind == BenchmarkKind::Async);
+    if has_async {
+        println!("   {}", "Async-sequential mode detected (warmup<=5, samples<=50)".dimmed());
+        println!();
+    }
 }
 
 /// Print the vitest/tinybench style distribution table
@@ -616,6 +622,10 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
         }
 
         // Multi-language comparison row
+        if bench.kind == BenchmarkKind::Async {
+            println!("   {}", "  mode: async-sequential".dimmed());
+        }
+
         let go_ns = bench.measurements.get(&Lang::Go).map(|m| m.nanos_per_op);
         let ts_ns = bench.measurements.get(&Lang::TypeScript).map(|m| m.nanos_per_op);
         let rust_ns = bench.measurements.get(&Lang::Rust).map(|m| m.nanos_per_op);

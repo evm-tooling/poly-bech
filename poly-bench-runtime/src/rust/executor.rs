@@ -429,6 +429,8 @@ struct BenchResultJson {
     allocs_per_op: Option<u64>,
     #[serde(default)]
     samples: Vec<u64>,
+    #[serde(default)]
+    raw_result: Option<String>,
 }
 
 impl BenchResultJson {
@@ -453,6 +455,7 @@ impl BenchResultJson {
                 m = m.with_allocs(bytes, allocs);
             }
         }
+        m.raw_result = self.raw_result;
 
         m
     }

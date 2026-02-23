@@ -74,6 +74,8 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
 
     // Collect fixture names from the AST to filter out false positives
     let fixture_names = collect_fixture_names(&doc.partial_ast);
+    // `std::anvil` injects ANVIL_RPC_URL at runtime; virtual lint files need this exception.
+    let has_anvil_stdlib = has_stdlib_import(&doc.partial_ast, "anvil");
 
     // Convert fixture names to Vec<String> for passing to virtual file builders
     let fixture_names_vec: Vec<String> = fixture_names.iter().cloned().collect();
@@ -100,7 +102,7 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
         write_virtual_file_to_disk(virtual_file.path(), virtual_file.content());
 
         let diagnostics = go::check_go_blocks(&virtual_file);
-        let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names);
+        let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names, has_anvil_stdlib);
         all_diagnostics.extend(map_diagnostics_to_bench(filtered, &virtual_file, doc, Lang::Go));
     }
 
@@ -131,7 +133,7 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
 
         // Run tsc directly for reliable diagnostics
         let diagnostics = typescript::check_ts_blocks(&virtual_file);
-        let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names);
+        let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names, has_anvil_stdlib);
         all_diagnostics.extend(map_diagnostics_to_bench(
             filtered,
             &virtual_file,
@@ -164,7 +166,7 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
 
         // Run rustc directly for reliable diagnostics
         let diagnostics = rust::check_rust_blocks(&virtual_file);
-        let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names);
+        let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names, has_anvil_stdlib);
         all_diagnostics.extend(map_diagnostics_to_bench(filtered, &virtual_file, doc, Lang::Rust));
     }
 
@@ -188,10 +190,19 @@ fn collect_fixture_names(ast: &poly_bench_syntax::PartialFile) -> HashSet<String
     names
 }
 
+/// Check whether a stdlib module is imported via `use std::<module>`
+fn has_stdlib_import(ast: &poly_bench_syntax::PartialFile, module: &str) -> bool {
+    ast.use_stds.iter().any(|use_node| match use_node {
+        Node::Valid(use_std) => use_std.module == module,
+        _ => false,
+    })
+}
+
 /// Filter out diagnostics that are about fixture references (false positives)
 fn filter_fixture_diagnostics(
     diagnostics: Vec<EmbeddedDiagnostic>,
     fixture_names: &HashSet<String>,
+    has_anvil_stdlib: bool,
 ) -> Vec<EmbeddedDiagnostic> {
     diagnostics
         .into_iter()
@@ -224,6 +235,21 @@ fn filter_fixture_diagnostics(
                     );
                     return false;
                 }
+            }
+
+            // `ANVIL_RPC_URL` is injected by std::anvil at runtime, but virtual lint files
+            // don't contain runtime injection scaffolding.
+            if has_anvil_stdlib &&
+                (msg.contains("undefined: ANVIL_RPC_URL") ||
+                    msg.contains("undeclared name: ANVIL_RPC_URL") ||
+                    msg.contains("Cannot find name 'ANVIL_RPC_URL'") ||
+                    msg.contains("Cannot find name \"ANVIL_RPC_URL\""))
+            {
+                tracing::debug!(
+                    "[embedded-diagnostics] Filtering std::anvil ANVIL_RPC_URL diagnostic: {}",
+                    msg
+                );
+                return false;
             }
             true
         })
@@ -463,6 +489,7 @@ pub fn format_validation_errors(errors: &[ValidationError]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[test]
     fn test_offset_to_line_col() {
@@ -471,5 +498,37 @@ mod tests {
         assert_eq!(offset_to_line_col(source, 5), (0, 5));
         assert_eq!(offset_to_line_col(source, 6), (1, 0));
         assert_eq!(offset_to_line_col(source, 12), (2, 0));
+    }
+
+    #[test]
+    fn test_filter_anvil_rpc_url_when_std_anvil_enabled() {
+        let diagnostics = vec![EmbeddedDiagnostic {
+            message: "undefined: ANVIL_RPC_URL".to_string(),
+            severity: DiagnosticSeverity::ERROR,
+            virtual_line: 0,
+            virtual_character: 0,
+            length: 10,
+            code: Some("UndeclaredName".to_string()),
+        }];
+        let fixture_names = HashSet::new();
+
+        let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names, true);
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn test_keep_anvil_rpc_url_without_std_anvil() {
+        let diagnostics = vec![EmbeddedDiagnostic {
+            message: "undefined: ANVIL_RPC_URL".to_string(),
+            severity: DiagnosticSeverity::ERROR,
+            virtual_line: 0,
+            virtual_character: 0,
+            length: 10,
+            code: Some("UndeclaredName".to_string()),
+        }];
+        let fixture_names = HashSet::new();
+
+        let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names, false);
+        assert_eq!(filtered.len(), 1);
     }
 }
