@@ -304,12 +304,6 @@ impl Parser {
                 let order = self.expect_execution_order()?;
                 suite.order = Some(order);
             }
-            TokenKind::Compare => {
-                self.advance();
-                self.expect(TokenKind::Colon)?;
-                let value = self.expect_bool()?;
-                suite.compare = value;
-            }
             TokenKind::Baseline => {
                 self.advance();
                 self.expect(TokenKind::Colon)?;
@@ -335,18 +329,6 @@ impl Parser {
                 let value = self.expect_duration()?;
                 suite.target_time_ms = Some(value);
             }
-            TokenKind::MinIterations => {
-                self.advance();
-                self.expect(TokenKind::Colon)?;
-                let value = self.expect_number()?;
-                suite.min_iterations = Some(value);
-            }
-            TokenKind::MaxIterations => {
-                self.advance();
-                self.expect(TokenKind::Colon)?;
-                let value = self.expect_number()?;
-                suite.max_iterations = Some(value);
-            }
             TokenKind::OutlierDetection => {
                 self.advance();
                 self.expect(TokenKind::Colon)?;
@@ -370,12 +352,6 @@ impl Parser {
                 self.expect(TokenKind::Colon)?;
                 let value = self.expect_bool()?;
                 suite.memory = value;
-            }
-            TokenKind::Concurrency => {
-                self.advance();
-                self.expect(TokenKind::Colon)?;
-                let value = self.expect_number()?;
-                suite.concurrency = value as u32;
             }
             // globalSetup can now be inside suite
             TokenKind::GlobalSetup => {
@@ -1064,18 +1040,6 @@ impl Parser {
                 let value = self.expect_duration()?;
                 benchmark.target_time_ms = Some(value);
             }
-            TokenKind::MinIterations => {
-                self.advance();
-                self.expect(TokenKind::Colon)?;
-                let value = self.expect_number()?;
-                benchmark.min_iterations = Some(value);
-            }
-            TokenKind::MaxIterations => {
-                self.advance();
-                self.expect(TokenKind::Colon)?;
-                let value = self.expect_number()?;
-                benchmark.max_iterations = Some(value);
-            }
             TokenKind::OutlierDetection => {
                 self.advance();
                 self.expect(TokenKind::Colon)?;
@@ -1099,12 +1063,6 @@ impl Parser {
                 self.expect(TokenKind::Colon)?;
                 let value = self.expect_bool()?;
                 benchmark.memory = Some(value);
-            }
-            TokenKind::Concurrency => {
-                self.advance();
-                self.expect(TokenKind::Colon)?;
-                let value = self.expect_number()?;
-                benchmark.concurrency = Some(value as u32);
             }
             // Phase 3: Lifecycle hooks - support both grouped and flat syntax
             TokenKind::Before => {
@@ -1194,7 +1152,7 @@ impl Parser {
             }
             _ => {
                 return Err(self.make_error(ParseError::ExpectedToken {
-                    expected: "benchmark property (iterations, warmup, timeout, tags, skip, validate, mode, sink, targetTime, minIterations, maxIterations, before, after, each) or language implementation".to_string(),
+                    expected: "benchmark property (iterations, warmup, timeout, tags, skip, validate, mode, sink, targetTime, before, after, each) or language implementation".to_string(),
                     found: format!("{:?}", token.kind),
                     span: token.span.clone(),
                 }));
@@ -1357,12 +1315,9 @@ impl Parser {
                         TokenKind::Mode |
                         TokenKind::Sink |
                         TokenKind::TargetTime |
-                        TokenKind::MinIterations |
-                        TokenKind::MaxIterations |
                         TokenKind::OutlierDetection |
                         TokenKind::CvThreshold |
                         TokenKind::Memory |
-                        TokenKind::Concurrency |
                         TokenKind::Before |
                         TokenKind::After |
                         TokenKind::Each |
@@ -1906,7 +1861,6 @@ suite test {
     timeout: 60s
     requires: ["go", "ts"]
     order: sequential
-    compare: true
     baseline: "go"
     
     setup go {
@@ -1927,7 +1881,6 @@ suite test {
 
         assert_eq!(suite.timeout, Some(60000)); // 60s in ms
         assert_eq!(suite.requires.len(), 2);
-        assert!(suite.compare);
         assert_eq!(suite.baseline, Some(Lang::Go));
     }
 

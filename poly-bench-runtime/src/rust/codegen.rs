@@ -35,13 +35,8 @@ pub fn generate(ir: &BenchmarkIR) -> Result<String> {
         suite.benchmarks.iter().any(|bench| bench.memory && bench.has_lang(Lang::Rust))
     });
 
-    // Check if any benchmark uses concurrency
-    let needs_sync = ir.suites.iter().any(|suite| {
-        suite.benchmarks.iter().any(|bench| bench.concurrency > 1 && bench.has_lang(Lang::Rust))
-    });
-
     // Generate use statements
-    let imports = CollectedImports::for_ir(&user_imports, &stdlib_imports, false, needs_sync);
+    let imports = CollectedImports::for_ir(&user_imports, &stdlib_imports, false, false);
     code.push_str(&imports.generate_use_block());
 
     // Inject stdlib code if any modules are imported
@@ -192,22 +187,6 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
     // Memory result fields
     let memory_result = SinkMemoryDecls::memory_result_fields(bench.memory);
 
-    // Concurrent execution
-    if bench.concurrency > 1 {
-        return generate_concurrent_benchmark(
-            code,
-            bench,
-            &fn_name,
-            &before_hook,
-            &after_hook,
-            &bench_call,
-            decls.sink_decl,
-            decls.memory_decl,
-            decls.memory_before,
-            decls.memory_after,
-        );
-    }
-
     match bench.mode {
         BenchMode::Auto => {
             code.push_str(&format!(
@@ -301,62 +280,6 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
             ));
         }
     }
-
-    Ok(())
-}
-
-/// Generate a concurrent benchmark function
-fn generate_concurrent_benchmark(
-    code: &mut String,
-    bench: &BenchmarkSpec,
-    fn_name: &str,
-    before_hook: &str,
-    after_hook: &str,
-    bench_call: &str,
-    sink_decl: &str,
-    memory_decl: &str,
-    memory_before: &str,
-    memory_after: &str,
-) -> Result<()> {
-    let concurrency = bench.concurrency;
-    let memory_result = SinkMemoryDecls::memory_result_fields(bench.memory);
-
-    code.push_str(&format!(
-        r#"fn bench_{fn_name}(iterations: i64) -> BenchResult {{
-{sink_decl}{memory_decl}{before_hook}{memory_before}
-{concurrent}
-{sample_collection}
-{memory_after}
-    let nanos_per_op = total_nanos as f64 / total_iterations as f64;
-    let ops_per_sec = 1e9 / nanos_per_op;
-{after_hook}
-    BenchResult {{
-        iterations: total_iterations as u64,
-        total_nanos: total_nanos as u64,
-        nanos_per_op,
-        ops_per_sec,
-{memory_result}        samples,
-    }}
-}}
-
-"#,
-        fn_name = fn_name,
-        sink_decl = sink_decl,
-        memory_decl = memory_decl,
-        before_hook = before_hook,
-        memory_before = memory_before,
-        concurrent = shared::generate_concurrent_execution(
-            bench_call,
-            bench_call,
-            concurrency,
-            "iterations"
-        ),
-        sample_collection =
-            shared::generate_sample_collection(bench_call, "", None, "100", "total_iterations"),
-        memory_after = memory_after,
-        after_hook = after_hook,
-        memory_result = memory_result,
-    ));
 
     Ok(())
 }

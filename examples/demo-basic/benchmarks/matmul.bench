@@ -3,7 +3,6 @@ use std::charting
 suite matmulN {
     description: "O(n^3) naive matrix multiply n×n"
     warmup: 30
-    compare: true
     baseline: "go"
     mode: "auto"
     targetTime: 500ms

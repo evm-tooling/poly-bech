@@ -407,9 +407,6 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     if spec.use_sink || spec.memory {
         all_imports.insert("\"runtime\"");
     }
-    if spec.concurrency > 1 {
-        all_imports.insert("\"sync\"");
-    }
     if let Some(user_imports) = suite.imports.get(&Lang::Go) {
         for import_spec in user_imports {
             all_imports.insert(import_spec);
@@ -452,17 +449,6 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     let each_hook = spec.each_hooks.get(&Lang::Go);
 
     // Generate main function based on mode
-    if spec.concurrency > 1 {
-        return generate_concurrent_main(
-            &mut code,
-            spec,
-            &decls,
-            &bench_call,
-            before_hook,
-            after_hook,
-        );
-    }
-
     match spec.mode {
         BenchMode::Auto => generate_auto_main(
             &mut code,
@@ -611,92 +597,4 @@ func main() {{
         "\n{}",
         shared::generate_fixed_mode_loop(bench_call, decls.sink_keepalive, each_hook, "iterations")
     ));
-}
-
-/// Generate concurrent execution main function
-fn generate_concurrent_main(
-    code: &mut String,
-    spec: &BenchmarkSpec,
-    decls: &SinkMemoryDecls,
-    bench_call: &str,
-    before_hook: Option<&String>,
-    after_hook: Option<&String>,
-) -> Result<String> {
-    let concurrency = spec.concurrency;
-    let memory_result = SinkMemoryDecls::memory_result_fields(spec.memory, "totalIterations");
-    let sink_keepalive = if spec.use_sink { "\n\truntime.KeepAlive(__sink)\n" } else { "" };
-
-    let warmup_call = if spec.use_sink {
-        format!("_ = {}", spec.get_impl(Lang::Go).unwrap_or(&"nil".to_string()))
-    } else {
-        bench_call.to_string()
-    };
-
-    code.push_str(&format!(
-        r#"
-func main() {{
-{}{}
-"#,
-        decls.sink_decl, decls.memory_decl
-    ));
-
-    // Before hook
-    if let Some(before) = before_hook {
-        code.push_str("\n\t// Before hook\n");
-        for line in before.lines() {
-            code.push_str(&format!("\t{}\n", line));
-        }
-    }
-
-    code.push_str(decls.memory_before);
-
-    // Concurrent execution
-    code.push_str(&format!(
-        "\n{}",
-        shared::generate_concurrent_execution(
-            bench_call,
-            &warmup_call,
-            concurrency,
-            &spec.iterations.to_string()
-        )
-    ));
-    code.push_str(sink_keepalive);
-    code.push_str(decls.memory_after);
-
-    // After hook
-    if let Some(after) = after_hook {
-        code.push_str("\n\t// After hook\n");
-        for line in after.lines() {
-            code.push_str(&format!("\t{}\n", line));
-        }
-    }
-
-    // Sample collection
-    code.push_str(&format!(
-        "\n{}",
-        shared::generate_sample_collection(bench_call, "", None, "100", "totalIterations")
-    ));
-
-    // Result output
-    code.push_str(&format!(
-        r#"
-	nanosPerOp := float64(totalNanos) / float64(totalIterations)
-	opsPerSec := 1e9 / nanosPerOp
-	
-	result := BenchResult{{
-		Iterations:  uint64(totalIterations),
-		TotalNanos:  uint64(totalNanos),
-		NanosPerOp:  nanosPerOp,
-		OpsPerSec:   opsPerSec,
-{}		Samples:     samples,
-	}}
-	
-	jsonBytes, _ := json.Marshal(result)
-	fmt.Println(string(jsonBytes))
-}}
-"#,
-        memory_result
-    ));
-
-    Ok(code.clone())
 }

@@ -822,12 +822,6 @@ completion_item(
     CompletionItemKind::PROPERTY,
 ),
 completion_item(
-    "compare",
-    "compare: true",
-    "Enable comparison tables",
-    CompletionItemKind::PROPERTY,
-),
-completion_item(
     "baseline",
     "baseline: \"${1|go,ts|}\"",
     "Baseline language for comparison",
@@ -851,18 +845,6 @@ completion_item(
     "targetTime",
     "targetTime: ${1:3000ms}",
     "Target duration for auto-calibration mode",
-    CompletionItemKind::PROPERTY,
-),
-completion_item(
-    "minIterations",
-    "minIterations: ${1:100}",
-    "Minimum iterations for auto-calibration",
-    CompletionItemKind::PROPERTY,
-),
-completion_item(
-    "maxIterations",
-    "maxIterations: ${1:1000000}",
-    "Maximum iterations for auto-calibration",
     CompletionItemKind::PROPERTY,
 ),
 
@@ -901,12 +883,6 @@ completion_item(
     "memory",
     "memory: ${1|true,false|}",
     "Enable memory allocation profiling",
-    CompletionItemKind::PROPERTY,
-),
-completion_item(
-    "concurrency",
-    "concurrency: ${1:1}",
-    "Number of concurrent goroutines/workers for parallel execution",
     CompletionItemKind::PROPERTY,
 ),
     ]
@@ -1142,18 +1118,6 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "Override target duration for auto-calibration",
             CompletionItemKind::PROPERTY,
         ),
-        completion_item(
-            "minIterations",
-            "minIterations: ${1:100}",
-            "Override minimum iterations for auto-calibration",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "maxIterations",
-            "maxIterations: ${1:1000000}",
-            "Override maximum iterations for auto-calibration",
-            CompletionItemKind::PROPERTY,
-        ),
         // Performance overrides
         completion_item(
             "sink",
@@ -1185,12 +1149,6 @@ fn bench_body_completions() -> Vec<CompletionItem> {
             "memory",
             "memory: ${1|true,false|}",
             "Enable memory profiling for this benchmark",
-            CompletionItemKind::PROPERTY,
-        ),
-        completion_item(
-            "concurrency",
-            "concurrency: ${1:4}",
-            "Number of concurrent goroutines/workers",
             CompletionItemKind::PROPERTY,
         ),
     ]
@@ -1250,7 +1208,7 @@ fn after_colon_completions(keyword: &str) -> Vec<CompletionItem> {
             simple_completion("\"ts\"", CompletionItemKind::ENUM_MEMBER),
             simple_completion("\"rust\"", CompletionItemKind::ENUM_MEMBER),
         ],
-        "compare" | "sink" | "outlierDetection" | "memory" => vec![
+        "sink" | "outlierDetection" | "memory" => vec![
             simple_completion("true", CompletionItemKind::ENUM_MEMBER),
             simple_completion("false", CompletionItemKind::ENUM_MEMBER),
         ],

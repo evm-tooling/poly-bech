@@ -144,15 +144,11 @@ suite example {
     baseline: "go"             # Baseline language for comparisons
     mode: "auto"               # "auto" (calibrate to targetTime) or "fixed"
     targetTime: 3000ms         # Target time for auto mode
-    minIterations: 10          # Min iterations (auto mode)
-    maxIterations: 1000000     # Max iterations (auto mode)
     count: 3                   # Runs per benchmark for statistics
     memory: true               # Enable memory allocation profiling
-    concurrency: 4             # Parallel workers/goroutines
     outlierDetection: true     # IQR-based outlier removal
     cvThreshold: 5.0           # Coefficient of variation target (%)
     timeout: 30000             # Suite timeout (ms)
-    compare: true              # Enable comparison tables
     sink: true                 # Prevent dead code elimination
 }
 ```

@@ -277,7 +277,7 @@
           }
         },
         {
-          "match": "\\b(iterations|warmup|minIterations|maxIterations|concurrency|count)\\s*:\\s*(\\d+)",
+          "match": "\\b(iterations|warmup|count)\\s*:\\s*(\\d+)",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
@@ -343,7 +343,7 @@
           }
         },
         {
-          "match": "\\b(compare|sink|memory|outlierDetection)\\s*:\\s*(true|false)",
+          "match": "\\b(sink|memory|outlierDetection)\\s*:\\s*(true|false)",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
@@ -876,7 +876,7 @@
           }
         },
         {
-          "match": "\\b(iterations|warmup|minIterations|maxIterations|concurrency|count)\\s*:\\s*(\\d+)",
+          "match": "\\b(iterations|warmup|count)\\s*:\\s*(\\d+)",
           "captures": {
             "1": {
               "name": "keyword.other.bench"

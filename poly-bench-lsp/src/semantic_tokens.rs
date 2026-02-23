@@ -175,7 +175,6 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
         "each",
         "requires",
         "order",
-        "compare",
         "baseline",
         "shape",
         "async",
@@ -184,8 +183,6 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
         // Auto-calibration keywords
         "mode",
         "targetTime",
-        "minIterations",
-        "maxIterations",
         // Performance keywords
         "sink",
         // Statistical keywords
@@ -193,7 +190,6 @@ fn lexical_tokens(doc: &ParsedDocument) -> Vec<SemanticToken> {
         "cvThreshold",
         // Observability keywords (Phase 2B)
         "memory",
-        "concurrency",
         // Charting keywords (used as parameters in charting calls)
         "title",
         "xlabel",

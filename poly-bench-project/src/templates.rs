@@ -15,9 +15,8 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool) -> String {
     content.push_str("    description: \"Fibonacci benchmark - no external dependencies\"\n");
     content.push_str("    warmup: 10\n");
 
-    // Enable comparison if more than one language
+    // Set baseline if more than one language
     if lang_count > 1 {
-        content.push_str("    compare: true\n");
         if has_go {
             content.push_str("    baseline: \"go\"\n");
         } else if has_rust {
@@ -231,7 +230,6 @@ pub fn new_bench(name: &str, has_go: bool, has_ts: bool, has_rust: bool) -> Stri
     content.push_str("    warmup: 100\n");
     let lang_count = has_go as i32 + has_ts as i32 + has_rust as i32;
     if lang_count > 1 {
-        content.push_str("    compare: true\n");
         if has_go {
             content.push_str("    baseline: \"go\"\n");
         } else if has_rust {
@@ -577,7 +575,6 @@ mod tests {
         assert!(content.contains("setup ts"));
         assert!(content.contains("fibGo(n20)"));
         assert!(content.contains("fibTs(n20)"));
-        assert!(content.contains("compare: true"));
         assert!(content.contains("baseline: \"go\""));
         assert!(content.contains("helpers {"));
         assert!(content.contains("charting.drawTable"));
@@ -590,7 +587,7 @@ mod tests {
         let content = example_bench(true, false, false);
         assert!(content.contains("setup go"));
         assert!(!content.contains("setup ts"));
-        assert!(!content.contains("compare: true")); // No comparison with single language
+        assert!(!content.contains("baseline: \"go\"")); // No baseline with single language
         assert!(!content.contains("charting")); // No charting with single language
     }
 
@@ -606,7 +603,6 @@ mod tests {
         assert!(content.contains("fibGo(n70)"));
         assert!(content.contains("fibTs(n70)"));
         assert!(content.contains("fib_rust(&n70)"));
-        assert!(content.contains("compare: true"));
         assert!(content.contains("baseline: \"go\""));
         assert!(content.contains("use std::charting"));
     }
@@ -618,7 +614,7 @@ mod tests {
         assert!(!content.contains("setup ts"));
         assert!(content.contains("setup rust"));
         assert!(content.contains("fib_rust(&n20)"));
-        assert!(!content.contains("compare: true")); // No comparison with single language
+        assert!(!content.contains("baseline: \"go\"")); // No baseline with single language
     }
 
     #[test]

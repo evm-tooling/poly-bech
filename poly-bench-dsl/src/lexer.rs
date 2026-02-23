@@ -503,7 +503,8 @@ mod tests {
 
     #[test]
     fn test_new_keywords() {
-        let source = "declare init helpers import timeout tags skip validate before after each requires order compare baseline shape async";
+        let source =
+            "declare init helpers import timeout tags skip validate before after each requires order baseline shape async";
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize().unwrap();
 
@@ -520,10 +521,9 @@ mod tests {
         assert_eq!(tokens[10].kind, TokenKind::Each);
         assert_eq!(tokens[11].kind, TokenKind::Requires);
         assert_eq!(tokens[12].kind, TokenKind::Order);
-        assert_eq!(tokens[13].kind, TokenKind::Compare);
-        assert_eq!(tokens[14].kind, TokenKind::Baseline);
-        assert_eq!(tokens[15].kind, TokenKind::Shape);
-        assert_eq!(tokens[16].kind, TokenKind::Async);
+        assert_eq!(tokens[13].kind, TokenKind::Baseline);
+        assert_eq!(tokens[14].kind, TokenKind::Shape);
+        assert_eq!(tokens[15].kind, TokenKind::Async);
     }
 
     #[test]

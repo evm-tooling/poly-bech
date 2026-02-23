@@ -292,55 +292,6 @@ pub fn generate_fixed_mode_loop(
     )
 }
 
-/// Generate concurrent execution code
-pub fn generate_concurrent_execution(
-    bench_call: &str,
-    warmup_call: &str,
-    concurrency: u32,
-    iter_var: &str,
-) -> String {
-    format!(
-        r#"	// Concurrent benchmark: {concurrency} goroutines
-	concurrency := {concurrency}
-	iterPerGoroutine := {iter_var} / concurrency
-	if iterPerGoroutine < 1 {{
-		iterPerGoroutine = 1
-	}}
-	totalIterations := iterPerGoroutine * concurrency
-	
-	// Concurrent warmup
-	var wgWarmup sync.WaitGroup
-	for g := 0; g < concurrency; g++ {{
-		wgWarmup.Add(1)
-		go func() {{
-			defer wgWarmup.Done()
-			for i := 0; i < 10; i++ {{
-				{warmup_call}
-			}}
-		}}()
-	}}
-	wgWarmup.Wait()
-	
-	// Timed concurrent run
-	var wg sync.WaitGroup
-	start := time.Now()
-	
-	for g := 0; g < concurrency; g++ {{
-		wg.Add(1)
-		go func() {{
-			defer wg.Done()
-			for i := 0; i < iterPerGoroutine; i++ {{
-				{bench_call}
-			}}
-		}}()
-	}}
-	wg.Wait()
-	
-	totalNanos := time.Since(start).Nanoseconds()
-"#
-    )
-}
-
 /// Generate suite-level code (declarations, init, helpers)
 pub fn generate_suite_code(suite: &SuiteIR, lang: Lang) -> String {
     let mut code = String::new();

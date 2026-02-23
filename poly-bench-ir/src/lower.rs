@@ -73,14 +73,11 @@ fn lower_suite(
     ir.timeout = suite.timeout;
     ir.requires = suite.requires.clone();
     ir.order = suite.order.unwrap_or(ExecutionOrder::Sequential);
-    ir.compare = suite.compare;
     ir.baseline = suite.baseline;
 
     // Benchmark accuracy settings
     ir.mode = suite.mode.unwrap_or(BenchMode::Auto); // Auto-calibration by default
     ir.target_time_ms = suite.target_time_ms.unwrap_or(3000); // 3 seconds
-    ir.min_iterations = suite.min_iterations.unwrap_or(10);
-    ir.max_iterations = suite.max_iterations.unwrap_or(1_000_000);
     ir.sink = suite.sink; // Already defaults to true in AST
 
     // Statistical analysis settings
@@ -90,7 +87,6 @@ fn lower_suite(
 
     // Observability settings (Phase 2B)
     ir.memory = suite.memory; // Already defaults to false in AST
-    ir.concurrency = suite.concurrency; // Already defaults to 1 in AST
 
     // Copy stdlib imports to suite
     ir.stdlib_imports = stdlib_imports.clone();
@@ -212,8 +208,6 @@ fn lower_benchmark(
     // Benchmark accuracy settings (benchmark overrides suite, or inherit from suite)
     spec.mode = benchmark.mode.unwrap_or(suite_ir.mode);
     spec.target_time_ms = benchmark.target_time_ms.unwrap_or(suite_ir.target_time_ms);
-    spec.min_iterations = benchmark.min_iterations.unwrap_or(suite_ir.min_iterations);
-    spec.max_iterations = benchmark.max_iterations.unwrap_or(suite_ir.max_iterations);
     spec.use_sink = benchmark.sink.unwrap_or(suite_ir.sink);
     spec.outlier_detection = benchmark.outlier_detection.unwrap_or(suite_ir.outlier_detection);
     spec.cv_threshold = benchmark.cv_threshold.unwrap_or(suite_ir.cv_threshold);
@@ -221,7 +215,6 @@ fn lower_benchmark(
 
     // Observability settings (Phase 2B)
     spec.memory = benchmark.memory.unwrap_or(suite_ir.memory);
-    spec.concurrency = benchmark.concurrency.unwrap_or(suite_ir.concurrency);
 
     // Copy skip conditions
     for (lang, code_block) in &benchmark.skip {

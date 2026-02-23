@@ -2,7 +2,6 @@ use std::anvil
 
 suite evmBench {
     description: "EVM benchmark demonstrating Anvil integration"
-    compare: true
     baseline: "go"
     mode: "auto"
     targetTime: 10000ms

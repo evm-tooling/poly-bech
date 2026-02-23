@@ -960,18 +960,14 @@ fn is_suite_param_value_context(line_text: &str) -> bool {
             "timeout" |
             "requires" |
             "order" |
-            "compare" |
             "baseline" |
             "mode" |
             "targetTime" |
-            "minIterations" |
-            "maxIterations" |
             "sink" |
             "outlierDetection" |
             "cvThreshold" |
             "count" |
-            "memory" |
-            "concurrency"
+            "memory"
     )
 }
 
@@ -1615,14 +1611,6 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
             detail: Some("Benchmark execution order".to_string()),
             ..Default::default()
         },
-        CompletionItem {
-            label: "compare".to_string(),
-            kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("compare: false".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            detail: Some("Enable comparison tables".to_string()),
-            ..Default::default()
-        },
         // Auto-calibration settings
         CompletionItem {
             label: "mode".to_string(),
@@ -1640,22 +1628,6 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
             insert_text: Some("targetTime: 3000".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Target duration for auto-calibration mode".to_string()),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "minIterations".to_string(),
-            kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("minIterations: 10".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            detail: Some("Minimum iterations for auto-calibration".to_string()),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "maxIterations".to_string(),
-            kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("maxIterations: 1000000".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            detail: Some("Maximum iterations for auto-calibration".to_string()),
             ..Default::default()
         },
         // Performance settings
@@ -1703,16 +1675,6 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
             insert_text: Some("memory: false".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Enable memory allocation profiling".to_string()),
-            ..Default::default()
-        },
-        CompletionItem {
-            label: "concurrency".to_string(),
-            kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("concurrency: ${1:1}".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            detail: Some(
-                "Number of concurrent goroutines/workers for parallel execution".to_string(),
-            ),
             ..Default::default()
         },
     ]
@@ -1942,8 +1904,6 @@ mod tests {
         assert_eq!(inserts.get("warmup"), Some(&"warmup: 1000".to_string()));
         assert_eq!(inserts.get("mode"), Some(&"mode: \"auto\"".to_string()));
         assert_eq!(inserts.get("targetTime"), Some(&"targetTime: 3000".to_string()));
-        assert_eq!(inserts.get("minIterations"), Some(&"minIterations: 10".to_string()));
-        assert_eq!(inserts.get("maxIterations"), Some(&"maxIterations: 1000000".to_string()));
         assert_eq!(inserts.get("count"), Some(&"count: 1".to_string()));
     }
 
