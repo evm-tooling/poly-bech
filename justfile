@@ -96,7 +96,7 @@ build mode="release":
   case "{{mode}}" in
     release)
       printf "\033[36m[±]\033[0m Building poly-bench (release)...\r"
-      RUSTFLAGS="-A warnings" cargo build --release --bin poly-bench --quiet
+      cargo build --release --bin poly-bench
       printf "\033[32m[✓]\033[0m Built poly-bench (release)        \n"
       ;;
     debug)

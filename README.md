@@ -44,7 +44,7 @@ The repository is split by responsibility so each stage can evolve independently
 | `poly-bench-project` | Project initialization, manifest/dependency workflows |
 | `poly-bench-stdlib` | Built-in DSL modules (`std::anvil`, `std::charting`, `std::constants`) |
 | `poly-bench-syntax` + `tree-sitter-polybench` | Error-tolerant syntax layer and grammar tooling |
-| `poly-bench-lsp-v2` | Current LSP implementation powering editor diagnostics, formatting, and completions |
+| `poly-bench-lsp-v2` | LSP implementation powering editor diagnostics, formatting, and completions |
 
 ### Execution Model
 
@@ -64,7 +64,7 @@ The `poly-bench` CLI is an orchestrator over workspace crates rather than a mono
 
 This keeps the CLI surface area broad while retaining narrow internal module boundaries.
 
-### LSP Architecture (v2)
+### LSP Architecture
 
 The LSP uses the syntax + DSL layers for robust editor behavior, including partial/error-tolerant parsing, semantic diagnostics, and formatting of `.bench` files. It is exposed through `poly-bench lsp` and consumed by the VS Code/Cursor extension in `extensions/vscode`.
 

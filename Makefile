@@ -51,7 +51,7 @@ help:
 	@echo "  make release-major   - Major bump + tag + prerelease + PR to production"
 	@echo "  make release VERSION=vX.Y.Z - Legacy explicit release version override"
 	@echo "  make release-build   - Build single release binary (poly-bench)"
-	@echo "  make release-both    - Build poly-bench (legacy alias; v2 only)"
+	@echo "  make release-both    - Build poly-bench (compatibility alias)"
 	@echo "  make vscode-publish  - Publish VSCode extension to marketplace (requires VSCE_PAT)"
 	@echo ""
 	@echo "Utilities:"
@@ -134,10 +134,9 @@ run: cli
 # ============================================================================
 
 # Build the poly-bench CLI (release/production)
-# Uses RUSTFLAGS to suppress warnings for clean user-facing output
 cli-release:
 	@printf "\033[36m[±]\033[0m Building poly-bench (release)...\r" && \
-	RUSTFLAGS="-A warnings" cargo build --release --bin poly-bench --quiet && \
+	cargo build --release --bin poly-bench && \
 	printf "\033[32m[✓]\033[0m Built poly-bench (release)        \n"
 
 # poly-bench init
@@ -197,9 +196,9 @@ watch:
 release-build: cli-release
 	@echo "✅ Release binary: target/release/poly-bench"
 
-# Build binary (legacy alias retained for compatibility)
+# Build binary (compatibility alias retained)
 release-both:
-	@echo "🔨 Building poly-bench (release, LSP v2 only)..."
+	@echo "🔨 Building poly-bench (release)..."
 	@cargo build --release --bin poly-bench
 	@echo "✅ Done!"
 	@echo "  CLI: target/release/poly-bench"

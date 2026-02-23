@@ -11,7 +11,7 @@
  * - Semantic tokens for enhanced highlighting
  * - Document formatting
  *
- * The language server uses the v2 implementation with error-tolerant parsing.
+ * The language server uses the current implementation with error-tolerant parsing.
  * Optional Tree-sitter WASM can be used for client-side highlighting.
  */
 
@@ -111,7 +111,7 @@ function findLspServer(context: ExtensionContext): LspServerSpec | null {
         return useLspSubcommand(configured);
       }
       window.showWarningMessage(
-        'poly-bench.lspPath must point to the poly-bench binary. Legacy poly-bench-lsp is no longer supported.'
+        'poly-bench.lspPath must point to the poly-bench binary.'
       );
       return null;
     }
@@ -164,8 +164,8 @@ export async function activate(context: ExtensionContext): Promise<void> {
     spec.args.length > 0
       ? `${spec.command} ${spec.args.join(' ')}`
       : spec.command;
-  outputChannel.appendLine(`[startup] Using LSP v2 (${label}): ${desc}`);
-  console.log(`[Poly-Bench] Using LSP v2: ${label} → ${desc}`);
+  outputChannel.appendLine(`[startup] Using Poly-Bench LSP (${label}): ${desc}`);
+  console.log(`[Poly-Bench] Using LSP: ${label} → ${desc}`);
 
   if (treeSitterParser) {
     outputChannel.appendLine('[startup] Tree-sitter WASM highlighting enabled');
