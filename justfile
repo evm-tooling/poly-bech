@@ -327,6 +327,103 @@ release kind="patch" version="":
 
   echo "Done. Review and merge the release PR to publish."
 
+# Release automation without VSCode extension bump/publish.
+# Usage:
+#   just prod release-no-vscode patch
+#   just prod release-no-vscode minor
+#   just prod release-no-vscode major
+#   just prod release-no-vscode explicit v0.2.1
+[group('prod')]
+[confirm("Proceed with release workflow (no VSCode extension bump/publish)?")]
+release-no-vscode kind="patch" version="":
+  #!/usr/bin/env bash
+  set -euo pipefail
+
+  pb_env="${PB_ENV:-dev}"
+  if [[ "$pb_env" != "prod" ]]; then
+    echo "Release commands require prod scope."
+    echo "Run with: just prod release-no-vscode {{kind}} {{version}}"
+    exit 1
+  fi
+
+  kind="{{kind}}"
+  version="{{version}}"
+
+  if [[ "$kind" == "docs" ]]; then
+    if [[ -n "$version" ]]; then
+      echo "Docs release does not use a version argument."
+      exit 1
+    fi
+    gh auth status >/dev/null
+    gh pr create \
+      --base production \
+      --head main \
+      --title "Docs release" \
+      --body "## Docs release\n\nThis PR deploys docs-only changes to production.\n\nAfter merge, comment \`/release\` on this PR to run the release workflow (it will skip binary publish for docs-only changes)."
+    echo "Docs production PR created."
+    exit 0
+  fi
+
+  if [[ "$kind" == "explicit" ]]; then
+    if [[ -z "$version" ]]; then
+      echo "Usage: just release-no-vscode explicit vX.Y.Z"
+      exit 1
+    fi
+    rel_version="$version"
+  else
+    current="$(node -e "const fs=require('fs');const m=fs.readFileSync('Cargo.toml','utf8').match(/^version = \"([0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?)\"/m);if(!m){console.error('Could not parse Cargo.toml version');process.exit(1)};process.stdout.write(m[1]);")"
+    case "$kind" in
+      patch)
+        rel_version="$(node -e "const v='$current';const m=v.match(/^(\\d+)\\.(\\d+)\\.(\\d+)(?:-.+)?$/);if(!m){console.error('Invalid semver: '+v);process.exit(1)};process.stdout.write('v'+m[1]+'.'+m[2]+'.'+(Number(m[3])+1));")"
+        ;;
+      minor)
+        rel_version="$(node -e "const v='$current';const m=v.match(/^(\\d+)\\.(\\d+)\\.(\\d+)(?:-.+)?$/);if(!m){console.error('Invalid semver: '+v);process.exit(1)};process.stdout.write('v'+m[1]+'.'+(Number(m[2])+1)+'.0');")"
+        ;;
+      major)
+        rel_version="$(node -e "const v='$current';const m=v.match(/^(\\d+)\\.(\\d+)\\.(\\d+)(?:-.+)?$/);if(!m){console.error('Invalid semver: '+v);process.exit(1)};process.stdout.write('v'+(Number(m[1])+1)+'.0.0');")"
+        ;;
+      *)
+        echo "Usage: just release-no-vscode [patch|minor|major|explicit|docs] [version]"
+        exit 1
+        ;;
+    esac
+    echo "Releasing $kind version (no VSCode extension):"
+    echo "  poly-bench: $current -> ${rel_version#v}"
+  fi
+
+  gh auth status >/dev/null
+  git checkout main
+  git pull origin main
+
+  ver="${rel_version#v}"
+
+  sed -i.bak "s/^version = \".*\"/version = \"$ver\"/" Cargo.toml
+  rm -f Cargo.toml.bak
+
+  git add Cargo.toml
+  if git diff --staged --quiet; then
+    echo "No version changes to commit."
+  else
+    git commit -m "chore: release $rel_version (no vscode)"
+    git push origin main
+  fi
+
+  git tag -a "$rel_version" -m "Release $rel_version"
+  git push origin "$rel_version"
+
+  gh release create "$rel_version" \
+    --title "$rel_version" \
+    --generate-notes \
+    --prerelease
+
+  gh pr create \
+    --base production \
+    --head main \
+    --title "Release $rel_version (no VSCode extension)" \
+    --body "## Release $rel_version\n\nThis PR releases $rel_version to production without a VSCode extension version bump/publish.\n\nWhen merged, comment \`/release\` on this PR to promote the prerelease to the latest release."
+
+  echo "Done. Review and merge the release PR to publish."
+
 # Release aliases (short forms)
 # Usage:
 #   just rel-p
