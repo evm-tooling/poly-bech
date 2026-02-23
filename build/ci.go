@@ -7,20 +7,18 @@ Usage: go run build/ci.go <command>
 
 Available commands are:
 
-	fmt     -- checks Rust formatting via cargo +nightly fmt
-	lint    -- runs Clippy with warnings as errors
-	test    -- runs the test suite
-	check   -- runs all checks (fmt + lint + test)
+	fmt     -- checks Rust formatting via just
+	lint    -- runs Clippy with warnings as errors via just
+	test    -- runs the test suite via just
+	check   -- runs all checks (fmt + lint + test) via just
 */
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 )
 
 func main() {
@@ -62,60 +60,24 @@ func mustRun(name string, args ...string) {
 	}
 }
 
-// checkRustToolchain verifies that cargo and rustup are available,
-// and that the nightly toolchain is installed for formatting.
-func checkRustToolchain() {
-	// Check for cargo
-	if _, err := exec.LookPath("cargo"); err != nil {
-		log.Fatal("cargo not found in PATH. Please install Rust: https://rustup.rs")
-	}
-
-	// Check for rustup (needed for +nightly)
-	if _, err := exec.LookPath("rustup"); err != nil {
-		log.Fatal("rustup not found in PATH. Please install rustup: https://rustup.rs")
-	}
-
-	// Check if nightly toolchain is installed
-	cmd := exec.Command("rustup", "toolchain", "list")
-	output, err := cmd.Output()
-	if err != nil {
-		log.Fatalf("failed to list rustup toolchains: %v", err)
-	}
-
-	if !strings.Contains(string(output), "nightly") {
-		fmt.Println("==> Nightly toolchain not found. Installing...")
-		mustRun("rustup", "toolchain", "install", "nightly")
-		mustRun("rustup", "component", "add", "rustfmt", "--toolchain", "nightly")
-	}
-}
-
-// doFmt checks Rust formatting using nightly rustfmt.
+// doFmt checks Rust formatting via just.
 func doFmt() {
-	fmt.Println("==> Checking Rust formatting...")
-	mustRun("cargo", "+nightly", "fmt", "--all", "--", "--check")
-	fmt.Println("==> Formatting check passed!")
+	mustRun("just", "dev", "fmt", "check")
 }
 
-// doLint runs Clippy with warnings treated as errors.
+// doLint runs Clippy with warnings treated as errors via just.
 func doLint() {
-	fmt.Println("==> Running Clippy...")
-	mustRun("cargo", "clippy", "--all-targets", "--")
-	fmt.Println("==> Lint passed!")
+	mustRun("just", "dev", "lint")
 }
 
-// doTest runs the test suite.
+// doTest runs the test suite via just.
 func doTest() {
-	fmt.Println("==> Running tests...")
-	mustRun("cargo", "test", "--all")
-	fmt.Println("==> Tests passed!")
+	mustRun("just", "dev", "test")
 }
 
 // doCheck runs all checks: fmt, lint, and test.
 func doCheck() {
-	fmt.Println("==> Running all checks...")
-	checkRustToolchain()
 	doFmt()
 	doLint()
 	doTest()
-	fmt.Println("==> All checks passed!")
 }

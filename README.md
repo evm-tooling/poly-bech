@@ -338,13 +338,22 @@ poly-bench upgrade
 
 ## Release
 
-Releases are created via the Makefile:
+Releases are created via the `justfile`:
 
 ```bash
-make release VERSION=v0.1.0
+just prod release patch
 ```
 
-This bumps versions in `Cargo.toml` and `extensions/vscode/package.json`, creates a git tag, and triggers the GitHub release workflow.
+You can also use:
+
+```bash
+just prod release minor
+just prod release major
+just prod release explicit v0.1.0
+just prod release docs
+```
+
+This bumps versions in `Cargo.toml` and `extensions/vscode/package.json` (for patch/minor/major), creates a git tag, and triggers the GitHub release workflow.
 
 ## License
 
