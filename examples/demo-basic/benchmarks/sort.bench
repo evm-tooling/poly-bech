@@ -4,16 +4,16 @@ suite sortN {
     description: "O(n log n) sort - stdlib sort on int32 array"
     warmup: 50
     baseline: "go"
-    mode: "auto"
-    targetTime: 500ms
+    mode: "fixed"
+    iterations: 10000
     cvThreshold: 5
     count: 1
     memory: true
 
     setup go {
         import (
-        "encoding/binary"
-        "sort"
+            "encoding/binary"
+            "sort"
         )
 
         helpers {
@@ -178,15 +178,11 @@ suite sortN {
             title: "Sort Performance - O(n log n)",
             description: "Stdlib sort comparison across Go, TypeScript, and Rust",
             output: "sort-line1.svg",
-            xlabel: "Array Size (n elements)"
         )
-
         charting.drawTable(
             title: "Sort Performance Comparison",
             description: "Vertical grouped bars - Go vs TypeScript vs Rust",
             output: "sort-bar.svg",
-            xlabel: "Benchmark"
         )
     }
-
 }

@@ -10,15 +10,15 @@ use poly_bench_ir::ChartDirectiveIR;
 use super::{escape_xml, filter_benchmarks, format_duration, sort_benchmarks};
 
 // Bar dimensions
-const DEFAULT_BAR_HEIGHT: i32 = 32;
+const DEFAULT_BAR_HEIGHT: i32 = 48;
 const BAR_GAP: i32 = 8;
 const GROUP_GAP: i32 = 20;
 
 // Margins and spacing
 const MARGIN_TOP: i32 = 72;
-const MARGIN_BOTTOM: i32 = 70;
-const MARGIN_LEFT: i32 = 20;
-const MARGIN_RIGHT: i32 = 20;
+const MARGIN_BOTTOM: i32 = 156;
+const MARGIN_LEFT: i32 = 50;
+const MARGIN_RIGHT: i32 = 40;
 const PLOT_PADDING: i32 = 12;
 
 // Language colors (same for both themes)
@@ -40,12 +40,12 @@ struct ThemeColors {
     text_secondary: &'static str,
     text_muted: &'static str,
     text_dim: &'static str,
-    grid_color: &'static str,
-    grid_color_major: &'static str,
-    axis_color: &'static str,
     bar_outline: &'static str,
     container_stroke: &'static str,
     plot_bg: &'static str,
+    detail_box_fill: &'static str,
+    detail_box_stroke: &'static str,
+    row_border: &'static str,
 }
 
 impl ThemeColors {
@@ -56,12 +56,12 @@ impl ThemeColors {
             text_secondary: "rgba(255,255,255,0.7)",
             text_muted: "rgba(255,255,255,0.45)",
             text_dim: "rgba(255,255,255,0.35)",
-            grid_color: "rgba(255,255,255,0.12)",
-            grid_color_major: "rgba(255,255,255,0.4)",
-            axis_color: "rgba(255,255,255,0.2)",
             bar_outline: "rgba(255,255,255,0.15)",
             container_stroke: "rgba(255,255,255,0.12)",
             plot_bg: "rgba(255,255,255,0.02)",
+            detail_box_fill: "rgba(255,255,255,0.03)",
+            detail_box_stroke: "rgba(255,255,255,0.14)",
+            row_border: "rgba(255,255,255,0.23)",
         }
     }
 
@@ -72,12 +72,12 @@ impl ThemeColors {
             text_secondary: "rgba(0,0,0,0.7)",
             text_muted: "rgba(0,0,0,0.5)",
             text_dim: "rgba(0,0,0,0.35)",
-            grid_color: "rgba(0,0,0,0.08)",
-            grid_color_major: "rgba(0,0,0,0.25)",
-            axis_color: "rgba(0,0,0,0.15)",
             bar_outline: "rgba(0,0,0,0.1)",
             container_stroke: "rgba(0,0,0,0.08)",
             plot_bg: "rgba(0,0,0,0.02)",
+            detail_box_fill: "rgba(0,0,0,0.03)",
+            detail_box_stroke: "rgba(0,0,0,0.14)",
+            row_border: "rgba(0,0,0,0.22)",
         }
     }
 
@@ -92,12 +92,31 @@ impl ThemeColors {
 /// Speedup data for a single language measurement
 struct LangSpeedup {
     lang: Lang,
-    speedup: f64,
-    is_baseline: bool,
-    nanos_per_op: f64,
+    total_nanos: f64,
     iterations: u64,
     #[allow(dead_code)]
     run_count: Option<u64>,
+}
+
+struct LangSummary {
+    lang: Lang,
+    total_nanos: f64,
+    total_iterations: u64,
+    total_speedup: f64,
+    is_baseline: bool,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum BenchMetricMode {
+    Fixed,
+    Auto,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum OverallMetricMode {
+    Fixed,
+    Auto,
+    Mixed,
 }
 
 /// Generate a speedup chart showing relative performance vs baseline
@@ -146,21 +165,16 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
     }
 
     // Calculate speedups with timing data
-    let mut speedups: Vec<(String, Vec<LangSpeedup>)> = Vec::new();
-    let mut max_speedup: f64 = 0.0;
+    let mut speedups: Vec<(String, BenchMetricMode, Vec<LangSpeedup>)> = Vec::new();
     let mut max_run_count: Option<u64> = None;
+    let mut fixed_mode_count = 0usize;
+    let mut auto_mode_count = 0usize;
 
     for bench in &filtered {
-        let baseline_time = bench.measurements.get(&baseline_lang).map(|m| m.nanos_per_op);
-
-        if let Some(base_ns) = baseline_time {
+        if bench.measurements.contains_key(&baseline_lang) {
             let mut bench_speedups = Vec::new();
             for &lang in &all_langs {
                 if let Some(m) = bench.measurements.get(&lang) {
-                    let speedup = base_ns / m.nanos_per_op;
-                    let is_baseline = lang == baseline_lang;
-                    max_speedup = max_speedup.max(speedup);
-
                     // Track max run_count across all measurements
                     if let Some(rc) = m.run_count {
                         max_run_count = Some(max_run_count.map_or(rc, |c| c.max(rc)));
@@ -168,16 +182,19 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
 
                     bench_speedups.push(LangSpeedup {
                         lang,
-                        speedup,
-                        is_baseline,
-                        nanos_per_op: m.nanos_per_op,
+                        total_nanos: m.nanos_per_op * m.iterations as f64,
                         iterations: m.iterations,
                         run_count: m.run_count,
                     });
                 }
             }
             if !bench_speedups.is_empty() {
-                speedups.push((bench.name.clone(), bench_speedups));
+                let bench_mode = infer_benchmark_mode(&bench_speedups);
+                match bench_mode {
+                    BenchMetricMode::Fixed => fixed_mode_count += 1,
+                    BenchMetricMode::Auto => auto_mode_count += 1,
+                }
+                speedups.push((bench.name.clone(), bench_mode, bench_speedups));
             }
         }
     }
@@ -186,11 +203,44 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         return empty_chart("No valid speedup data", &theme);
     }
 
-    // Calculate tight scale
-    max_speedup = max_speedup * 1.12;
+    let mut language_summaries = Vec::new();
+    for &lang in &all_langs {
+        let mut lang_total_nanos = 0.0;
+        let mut total_iterations = 0u64;
+        let mut speedup_log_sum = 0.0;
+        let mut speedup_samples = 0usize;
 
-    // Calculate dynamic name width
-    let max_name_len = speedups.iter().map(|(name, _)| name.len()).max().unwrap_or(5);
+        for bench in &filtered {
+            let baseline = bench.measurements.get(&baseline_lang);
+            let current = bench.measurements.get(&lang);
+
+            if let (Some(base), Some(cur)) = (baseline, current) {
+                lang_total_nanos += cur.nanos_per_op * cur.iterations as f64;
+                total_iterations += cur.iterations;
+                speedup_log_sum += (base.nanos_per_op / cur.nanos_per_op).ln();
+                speedup_samples += 1;
+            }
+        }
+
+        if lang_total_nanos > 0.0 && speedup_samples > 0 {
+            language_summaries.push(LangSummary {
+                lang,
+                total_nanos: lang_total_nanos,
+                total_iterations,
+                total_speedup: (speedup_log_sum / speedup_samples as f64).exp(),
+                is_baseline: lang == baseline_lang,
+            });
+        }
+    }
+
+    let overall_mode = match (fixed_mode_count > 0, auto_mode_count > 0) {
+        (true, true) => OverallMetricMode::Mixed,
+        (false, true) => OverallMetricMode::Auto,
+        _ => OverallMetricMode::Fixed,
+    };
+
+    // Reserve label gutter only when benchmark names are shown.
+    let max_name_len = speedups.iter().map(|(name, _, _)| name.len()).max().unwrap_or(5);
     let name_width = (max_name_len as i32 * 8).min(90).max(40);
 
     let num_benchmarks = speedups.len() as i32;
@@ -209,7 +259,8 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
     let chart_width = directive.width.unwrap_or(720);
 
     // Plot area positioning
-    let plot_x = MARGIN_LEFT + name_width + 12;
+    let label_gutter = if num_benchmarks > 1 { name_width + 12 } else { 0 };
+    let plot_x = MARGIN_LEFT + label_gutter;
     let plot_y = MARGIN_TOP;
     let plot_width = chart_width - plot_x - MARGIN_RIGHT;
 
@@ -223,17 +274,7 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         Lang::Rust => "Rust",
         _ => "Baseline",
     };
-    svg.push_str(&svg_title(chart_width, title, baseline_name, &theme));
-
-    // Plot area container with rounded border
-    svg.push_str(&format!(
-        "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"12\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\"/>\n",
-        plot_x - 6,
-        plot_y - 6,
-        plot_width + 12,
-        plot_height + 12,
-        theme.container_stroke
-    ));
+    svg.push_str(&svg_title(chart_width, title, baseline_name, overall_mode, &theme));
 
     // Plot area background
     svg.push_str(&format!(
@@ -249,24 +290,24 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         plot_height
     ));
 
-    // Calculate smart tick values
-    let ticks = calculate_smart_ticks(max_speedup);
-
-    // X-axis line
+    // Vertical axis label.
+    let y_axis_label = "runtime";
     svg.push_str(&format!(
-        "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
-        plot_x,
-        plot_y + plot_height,
-        plot_x + plot_width,
-        plot_y + plot_height,
-        theme.axis_color
+        "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" transform=\"rotate(-90 {} {})\" font-family=\"{}\" font-size=\"10\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
+        plot_x - 24,
+        plot_y + plot_height / 2,
+        plot_x - 24,
+        plot_y + plot_height / 2,
+        FONT_FAMILY,
+        theme.text_muted,
+        y_axis_label
     ));
 
-    // Draw bars first (so grid lines render on top)
+    // Draw bars
     let bar_height = DEFAULT_BAR_HEIGHT;
     let mut y = plot_y + PLOT_PADDING;
 
-    for (bench_name, bench_speedups) in &speedups {
+    for (bench_name, bench_mode, bench_speedups) in &speedups {
         // Only show benchmark name label if there are multiple benchmarks
         if num_benchmarks > 1 {
             let label_y =
@@ -281,56 +322,59 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
             ));
         }
 
+        let bench_max_metric = bench_speedups
+            .iter()
+            .map(|ls| bench_metric_value(*bench_mode, ls))
+            .fold(0.0_f64, f64::max)
+            .max(1.0);
+
         for ls in bench_speedups {
-            let bar_width = ((ls.speedup / max_speedup) * plot_width as f64) as i32;
+            let inner_x = plot_x + 8;
+            let inner_y = y + 6;
+            let inner_height = (bar_height - 12).max(8);
+            let max_inner_width = (plot_width - 20).max(12);
+            let row_x = plot_x + 4;
+            let row_y = y;
+            let row_width = (plot_width - 8).max(20);
+            let row_height = bar_height;
+            let metric_value = bench_metric_value(*bench_mode, ls);
+            let bar_width = ((metric_value / bench_max_metric) * max_inner_width as f64) as i32;
             let gradient_id = lang_gradient_id(ls.lang);
             let lang_color = get_lang_color(ls.lang);
 
-            // Bar with gradient fill and subtle outline
+            // Keep the border around each runtime row.
             svg.push_str(&format!(
-                "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"6\" fill=\"url(#{})\" stroke=\"{}\" stroke-width=\"1\" filter=\"url(#barShadow)\"/>\n",
-                plot_x,
-                y,
+                "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.2\"/>\n",
+                row_x,
+                row_y,
+                row_width,
+                row_height,
+                theme.row_border
+            ));
+
+            // Bar with gradient fill and stronger per-bar border (decode-result style)
+            svg.push_str(&format!(
+                "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"url(#{})\" stroke=\"{}\" stroke-width=\"1.5\" filter=\"url(#barShadow)\"/>\n",
+                inner_x,
+                inner_y,
                 bar_width.max(6),
-                bar_height,
+                inner_height,
                 gradient_id,
                 theme.bar_outline
             ));
 
-            // Language label with timing and iterations info
-            let lang_name = match ls.lang {
-                Lang::Go => "Go",
-                Lang::TypeScript => "TS",
-                Lang::Rust => "Rust",
-                _ => "?",
-            };
-
-            let timing_str = format_duration(ls.nanos_per_op);
-            let iter_str = format_iterations_short(ls.iterations);
-
-            let speedup_label = if ls.is_baseline {
-                format!("{} · {} · {} iter (baseline)", lang_name, timing_str, iter_str)
-            } else if ls.speedup >= 1.0 {
-                format!(
-                    "{} · {} · {} iter · {:.2}x faster",
-                    lang_name, timing_str, iter_str, ls.speedup
-                )
-            } else {
-                format!(
-                    "{} · {} · {} iter · {:.2}x slower",
-                    lang_name,
-                    timing_str,
-                    iter_str,
-                    1.0 / ls.speedup
-                )
-            };
+            // Keep bar labels simple: language + primary metric (mode-aware).
+            let lang_name = short_lang_name(ls.lang);
+            let metric_label = format_primary_metric(*bench_mode, ls.total_nanos, ls.iterations);
+            let speedup_label = format!("{} · {}", lang_name, metric_label);
 
             // Position label: inside if wide enough, otherwise outside
-            let label_inside = bar_width > 280;
+            let bar_end = inner_x + bar_width.max(6);
+            let label_inside = bar_width > 220;
             let (label_x, label_anchor, label_color) = if label_inside {
-                (plot_x + bar_width - 10, "end", theme.text_primary)
+                (bar_end - 10, "end", theme.text_primary)
             } else {
-                (plot_x + bar_width + 10, "start", theme.text_secondary)
+                (bar_end + 10, "start", theme.text_secondary)
             };
 
             svg.push_str(&format!(
@@ -340,13 +384,13 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
                 label_anchor,
                 FONT_FAMILY,
                 label_color,
-                speedup_label
+                escape_xml(&speedup_label)
             ));
 
             // Language color indicator dot (positioned left of the gold accent bar)
             svg.push_str(&format!(
                 "  <circle cx=\"{}\" cy=\"{}\" r=\"3\" fill=\"{}\"/>\n",
-                plot_x - 18,
+                plot_x - 12,
                 y + bar_height / 2,
                 lang_color
             ));
@@ -357,43 +401,26 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         y += GROUP_GAP - BAR_GAP;
     }
 
-    // Draw grid lines ON TOP of bars (brighter and more visible)
-    for &tick_value in &ticks {
-        if tick_value > max_speedup || tick_value == 0.0 {
-            continue;
-        }
-        let x = plot_x + ((tick_value / max_speedup) * plot_width as f64) as i32;
-
-        // Use stronger styling for "round" values (0.5, 1.0, 1.5, 2.0, etc)
-        let is_major = (tick_value * 2.0).fract().abs() < 0.001;
-        let (grid_stroke, stroke_width) =
-            if is_major { (theme.grid_color_major, "1.5") } else { (theme.grid_color, "1") };
-
-        // Vertical grid line
-        svg.push_str(&format!(
-            "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"{}\" stroke-dasharray=\"4,4\"/>\n",
-            x,
-            plot_y,
-            x,
-            plot_y + plot_height,
-            grid_stroke,
-            stroke_width
-        ));
-
-        // Tick label below plot
-        let label = format_tick_label(tick_value);
-        svg.push_str(&format!(
-            "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"10\" fill=\"{}\">{}</text>\n",
-            x,
-            plot_y + plot_height + 18,
-            FONT_FAMILY,
-            theme.text_muted,
-            label
-        ));
-    }
+    // X-axis label (mode aware)
+    let x_axis_label = match overall_mode {
+        OverallMetricMode::Fixed => "time (ms)",
+        OverallMetricMode::Auto => "iterations",
+        OverallMetricMode::Mixed => "time / iterations by mode",
+    };
+    let x_axis_label_y = plot_y + plot_height + 20;
+    svg.push_str(&format!(
+        "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"10\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
+        plot_x + plot_width / 2,
+        x_axis_label_y,
+        FONT_FAMILY,
+        theme.text_muted,
+        x_axis_label
+    ));
 
     // Legend at bottom with extra gap
-    let legend_y = chart_height - 38;
+    let details_height = ((language_summaries.len() as i32).max(1) * 16) + 18;
+    let legend_y = x_axis_label_y + 28;
+    let details_y = legend_y + 26;
     svg.push_str(&svg_legend(
         chart_width,
         legend_y,
@@ -401,6 +428,15 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         has_ts,
         has_rust,
         baseline_lang,
+        &theme,
+    ));
+    svg.push_str(&svg_detail_legend(
+        chart_width,
+        details_y,
+        details_height,
+        &language_summaries,
+        baseline_lang,
+        overall_mode,
         &theme,
     ));
 
@@ -482,8 +518,28 @@ fn svg_header(width: i32, height: i32, theme: &ThemeColors) -> String {
 }
 
 /// Title section
-fn svg_title(width: i32, title: &str, baseline_name: &str, theme: &ThemeColors) -> String {
-    let subtitle = format!("Performance relative to {} baseline", baseline_name);
+fn svg_title(
+    width: i32,
+    title: &str,
+    baseline_name: &str,
+    mode: OverallMetricMode,
+    theme: &ThemeColors,
+) -> String {
+    let subtitle = match mode {
+        OverallMetricMode::Fixed => {
+            format!("Fixed mode · bars show total runtime · speedup details vs {} in legend", baseline_name)
+        }
+        OverallMetricMode::Auto => {
+            format!(
+                "Auto mode · bars show total iterations completed · speedup details vs {} in legend",
+                baseline_name
+            )
+        }
+        OverallMetricMode::Mixed => format!(
+            "Mixed modes · auto bars show iterations, fixed bars show runtime · speedup details vs {} in legend",
+            baseline_name
+        ),
+    };
     format!(
         "<text x=\"{}\" y=\"28\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"18\" font-weight=\"700\" fill=\"{}\">{}</text>\n\
 <text x=\"{}\" y=\"48\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"11\" fill=\"{}\">{}</text>\n",
@@ -514,7 +570,7 @@ fn svg_legend(
         items.push((RUST_COLOR, "Rust", baseline_lang == Lang::Rust));
     }
 
-    let item_width = 100;
+    let item_width = 130;
     let total_width = items.len() as i32 * item_width;
     let start_x = (width - total_width) / 2;
 
@@ -543,6 +599,61 @@ fn svg_legend(
     svg
 }
 
+fn svg_detail_legend(
+    width: i32,
+    y: i32,
+    height: i32,
+    summaries: &[LangSummary],
+    baseline_lang: Lang,
+    mode: OverallMetricMode,
+    theme: &ThemeColors,
+) -> String {
+    let box_x = 40;
+    let box_width = (width - 80).max(220);
+    let mut svg = String::new();
+
+    svg.push_str(&format!(
+        "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+        box_x,
+        y,
+        box_width,
+        height,
+        theme.detail_box_fill,
+        theme.detail_box_stroke
+    ));
+
+    let mut text_y = y + 14;
+    for summary in summaries {
+        let lang_name = full_lang_name(summary.lang);
+        let total = format_duration(summary.total_nanos);
+        let iters = format_iterations_short(summary.total_iterations);
+        let speedup =
+            format_speedup_phrase(summary.total_speedup, summary.is_baseline, baseline_lang);
+        let line = match mode {
+            OverallMetricMode::Fixed => {
+                format!("{lang_name}: total {total} · {iters} iter · {speedup}")
+            }
+            OverallMetricMode::Auto => {
+                format!("{lang_name}: total {iters} iter · {total} runtime · {speedup}")
+            }
+            OverallMetricMode::Mixed => {
+                format!("{lang_name}: total {iters} iter · {total} runtime · {speedup}")
+            }
+        };
+        svg.push_str(&format!(
+            "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"10\" fill=\"{}\">{}</text>\n",
+            box_x + (box_width / 2),
+            text_y,
+            FONT_FAMILY,
+            theme.text_muted,
+            escape_xml(&line)
+        ));
+        text_y += 16;
+    }
+
+    svg
+}
+
 /// Get gradient ID for a language
 fn lang_gradient_id(lang: Lang) -> &'static str {
     match lang {
@@ -563,57 +674,60 @@ fn get_lang_color(lang: Lang) -> &'static str {
     }
 }
 
-/// Calculate smart tick values that fit the data
-fn calculate_smart_ticks(max_value: f64) -> Vec<f64> {
-    let rough_step = max_value / 4.0;
-    let magnitude = 10_f64.powf(rough_step.log10().floor());
-    let normalized = rough_step / magnitude;
-
-    let nice_step = if normalized <= 1.0 {
-        magnitude
-    } else if normalized <= 2.0 {
-        2.0 * magnitude
-    } else if normalized <= 5.0 {
-        5.0 * magnitude
-    } else {
-        10.0 * magnitude
-    };
-
-    let step = if max_value <= 2.0 {
-        0.5
-    } else if max_value <= 3.0 {
-        0.5
-    } else if max_value <= 5.0 {
-        1.0
-    } else {
-        nice_step.max(1.0)
-    };
-
-    let mut ticks = Vec::new();
-    let mut tick = 0.0;
-    while tick <= max_value + 0.001 {
-        ticks.push(tick);
-        tick += step;
+fn short_lang_name(lang: Lang) -> &'static str {
+    match lang {
+        Lang::Go => "Go",
+        Lang::TypeScript => "TS",
+        Lang::Rust => "Rust",
+        _ => "?",
     }
-
-    // Always include 1.0 (baseline) if not already present
-    if !ticks.iter().any(|&t| (t - 1.0).abs() < 0.001) {
-        ticks.push(1.0);
-        ticks.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    }
-
-    ticks
 }
 
-/// Format tick label nicely
-fn format_tick_label(value: f64) -> String {
-    if value == 0.0 {
-        "0".to_string()
-    } else if value == 1.0 {
-        "1x".to_string()
-    } else if value.fract() == 0.0 {
-        format!("{}x", value as i32)
+fn full_lang_name(lang: Lang) -> &'static str {
+    match lang {
+        Lang::Go => "Go",
+        Lang::TypeScript => "TypeScript",
+        Lang::Rust => "Rust",
+        _ => "Unknown",
+    }
+}
+
+fn format_speedup_phrase(speedup: f64, is_baseline: bool, baseline_lang: Lang) -> String {
+    if is_baseline {
+        return "baseline".to_string();
+    }
+
+    let baseline_name = full_lang_name(baseline_lang);
+    if speedup >= 1.0 {
+        format!("{:.2}x faster vs {}", speedup, baseline_name)
     } else {
-        format!("{:.1}x", value)
+        format!("{:.2}x slower vs {}", 1.0 / speedup, baseline_name)
+    }
+}
+
+fn infer_benchmark_mode(bench_speedups: &[LangSpeedup]) -> BenchMetricMode {
+    if bench_speedups.len() < 2 {
+        return BenchMetricMode::Fixed;
+    }
+
+    let first_iters = bench_speedups[0].iterations;
+    if bench_speedups.iter().all(|ls| ls.iterations == first_iters) {
+        BenchMetricMode::Fixed
+    } else {
+        BenchMetricMode::Auto
+    }
+}
+
+fn bench_metric_value(mode: BenchMetricMode, ls: &LangSpeedup) -> f64 {
+    match mode {
+        BenchMetricMode::Fixed => ls.total_nanos,
+        BenchMetricMode::Auto => ls.iterations as f64,
+    }
+}
+
+fn format_primary_metric(mode: BenchMetricMode, total_nanos: f64, iterations: u64) -> String {
+    match mode {
+        BenchMetricMode::Fixed => format_duration(total_nanos),
+        BenchMetricMode::Auto => format!("{} iter", format_iterations_short(iterations)),
     }
 }
