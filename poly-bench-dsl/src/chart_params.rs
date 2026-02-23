@@ -118,7 +118,7 @@ pub fn get_valid_params(chart_type: ChartType) -> HashSet<ChartParam> {
             params.insert(ChartParam::Theme);
         }
         ChartType::Table => {
-            // Table currently uses the shared/common params only.
+            params.insert(ChartParam::Theme);
         }
     }
 
@@ -203,6 +203,7 @@ mod tests {
     fn test_table_chart_params() {
         let params = get_valid_params(ChartType::Table);
         assert!(params.contains(&ChartParam::Title));
+        assert!(params.contains(&ChartParam::Theme));
         assert!(!params.contains(&ChartParam::BaselineBenchmark));
     }
 
