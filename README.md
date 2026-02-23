@@ -1,5 +1,10 @@
 # poly-bench
 
+[![CI](https://github.com/evm-tooling/poly-bech/actions/workflows/ci.yml/badge.svg)](https://github.com/evm-tooling/poly-bech/actions/workflows/ci.yml)
+[![Docs CI](https://github.com/evm-tooling/poly-bech/actions/workflows/ci-docs.yml/badge.svg)](https://github.com/evm-tooling/poly-bech/actions/workflows/ci-docs.yml)
+[![Release](https://github.com/evm-tooling/poly-bech/actions/workflows/release.yml/badge.svg)](https://github.com/evm-tooling/poly-bech/actions/workflows/release.yml)
+[![Release Build](https://github.com/evm-tooling/poly-bech/actions/workflows/release-build.yml/badge.svg)](https://github.com/evm-tooling/poly-bech/actions/workflows/release-build.yml)
+
 A high-performance multi-language benchmarking framework with a custom DSL and full LSP support.
 
 ## Overview
@@ -9,6 +14,61 @@ poly-bench lets you define benchmarks once and run them across multiple language
 - **Cross-language library comparisons** — Compare your Go library against its TypeScript equivalent
 - **Performance regression testing** — Track performance across languages over time
 - **Fair benchmarking** — Same data, same iterations, unified measurement
+
+## Architecture
+
+poly-bench is a modular Rust workspace. A `.bench` file is parsed, validated, lowered to IR, compiled/generated for each language target, executed in isolated runtime environments, and then reported in multiple formats.
+
+### End-to-End Flow
+
+```mermaid
+flowchart LR
+  A[".bench source"] --> B["poly-bench-dsl\nparse + validate"]
+  B --> C["poly-bench-ir\nlowering + normalization"]
+  C --> D["poly-bench-runtime\ncodegen / compile prep"]
+  D --> E["poly-bench-executor\nrun benchmarks"]
+  E --> F["poly-bench-reporter\nconsole / markdown / json"]
+```
+
+### Workspace Components
+
+The repository is split by responsibility so each stage can evolve independently:
+
+| Crate | Responsibility |
+|---|---|
+| `poly-bench-dsl` | DSL lexer/parser, AST, validation, and formatting for `.bench` files |
+| `poly-bench-ir` | Intermediate representation used by downstream compile/run stages |
+| `poly-bench-runtime` | Runtime-specific code generation and execution adapters |
+| `poly-bench-executor` | Benchmark orchestration, iteration flow, measurement collection |
+| `poly-bench-reporter` | Rendering benchmark results (console, markdown, json) |
+| `poly-bench-project` | Project initialization, manifest/dependency workflows |
+| `poly-bench-stdlib` | Built-in DSL modules (`std::anvil`, `std::charting`, `std::constants`) |
+| `poly-bench-syntax` + `tree-sitter-polybench` | Error-tolerant syntax layer and grammar tooling |
+| `poly-bench-lsp-v2` | Current LSP implementation powering editor diagnostics, formatting, and completions |
+
+### Execution Model
+
+- **Compile-like pipeline**: The DSL is normalized before execution so runtimes consume a consistent, validated IR.
+- **Isolated language runtimes**: Go/TypeScript/Rust execution is separated to reduce cross-language environment leakage.
+- **Comparable runs**: Shared fixtures and suite-level configuration keep measurements aligned across languages.
+- **Output decoupling**: Report formatting is separated from execution, so CI automation can consume machine-readable output while humans get rich console summaries.
+
+### CLI and Runtime Architecture
+
+The `poly-bench` CLI is an orchestrator over workspace crates rather than a monolith. High-level command groups map cleanly to architectural layers:
+
+- **Authoring/validation**: `check`, `fmt`, `compile`, `codegen`
+- **Execution**: `run`
+- **Project lifecycle**: `init`, `new`, `add`, `remove`, `install`, `build`
+- **Tooling/runtime state**: `cache stats|clear|clean`, `lsp`
+
+This keeps the CLI surface area broad while retaining narrow internal module boundaries.
+
+### LSP Architecture (v2)
+
+The LSP uses the syntax + DSL layers for robust editor behavior, including partial/error-tolerant parsing, semantic diagnostics, and formatting of `.bench` files. It is exposed through `poly-bench lsp` and consumed by the VS Code/Cursor extension in `extensions/vscode`.
+
+For deeper implementation detail, see the docs architecture page: `docs/src/content/docs/core/architecture.mdx`.
 
 ## Quick Start
 
@@ -27,7 +87,7 @@ poly-bench run
 
 ### Suite Structure
 
-```
+```rust
 use std::charting
 
 suite hash {
@@ -75,7 +135,7 @@ suite hash {
 
 ### Suite Configuration
 
-```
+```rust
 suite example {
     description: "Suite description"
     iterations: 5000           # Default iteration count
@@ -101,7 +161,7 @@ suite example {
 
 Setup blocks contain language-specific initialization with four sections:
 
-```
+```rust
 setup go {
     import "crypto/sha256"
     import "encoding/hex"
@@ -128,7 +188,7 @@ setup go {
 
 Portable test data shared across languages:
 
-```
+```rust
 # Hex-encoded data
 fixture short_data {
     hex: "deadbeef"
@@ -149,7 +209,7 @@ fixture complex {
 
 ### Benchmarks
 
-```
+```rust
 bench keccak256 {
     description: "Keccak-256 hash"
     iterations: 10000          # Override suite default
@@ -186,7 +246,7 @@ bench keccak256 {
 
 ### Standard Library
 
-```
+```rust
 use std::anvil      # Ethereum node spawning
 use std::charting   # Chart generation
 use std::constants  # Mathematical constants
@@ -276,7 +336,7 @@ poly-bench run hash.bench \
 
 ### Console (default)
 
-```
+```text
 ═══════════════════════════════════════════════════════════════════
   BENCHMARK RESULTS
 ═══════════════════════════════════════════════════════════════════
