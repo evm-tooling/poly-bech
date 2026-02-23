@@ -2,7 +2,7 @@
 # ================================
 # Quick commands for local development and CI
 
-.PHONY: help check check-compile build build-debug watch release release-build release-both clean install-tools reload cli run \
+.PHONY: help check check-compile build build-debug watch release release-minor release-major _release-run release-build release-both clean install-tools reload cli run \
         cli-release init add install pb-build pb-run fmt fmt-check lint test test-cover oncommit install-hooks \
         grammar grammar-wasm vscode-publish
 
@@ -46,7 +46,10 @@ help:
 	@echo "    make pb-run PROJECT=examples/demo"
 	@echo ""
 	@echo "Release:"
-	@echo "  make release         - Tag, prerelease, open PR to production (VERSION=v0.0.1)"
+	@echo "  make release         - Default release (minor bump from Cargo.toml)"
+	@echo "  make release-minor   - Minor bump + tag + prerelease + PR to production"
+	@echo "  make release-major   - Major bump + tag + prerelease + PR to production"
+	@echo "  make release VERSION=vX.Y.Z - Legacy explicit release version override"
 	@echo "  make release-build   - Build single release binary (poly-bench)"
 	@echo "  make release-both    - Build poly-bench (legacy alias; v2 only)"
 	@echo "  make vscode-publish  - Publish VSCode extension to marketplace (requires VSCE_PAT)"
@@ -202,10 +205,33 @@ release-both:
 	@echo "  CLI: target/release/poly-bench"
 	@echo "  LSP command: target/release/poly-bench lsp"
 
-# Release automation: bump versions (Rust + VSCode extension), tag, prerelease, open PR to production
-# Usage: make release VERSION=v0.0.1
-# Requires: gh CLI authenticated, on main branch
+# Release automation entrypoint:
+# - make release-minor / make release-major (recommended)
+# - make release VERSION=vX.Y.Z (legacy manual override)
 release:
+ifeq ($(strip $(VERSION)),)
+	@$(MAKE) release-minor VSCODE_VERSION="$(VSCODE_VERSION)"
+else
+	@$(MAKE) _release-run VERSION="$(VERSION)" VSCODE_VERSION="$(VSCODE_VERSION)"
+endif
+
+# Bump Cargo semver minor and run release flow
+release-minor:
+	@CURRENT=$$(node -e "const fs=require('fs');const m=fs.readFileSync('Cargo.toml','utf8').match(/^version = \"([0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?)\"/m);if(!m){console.error('Could not parse Cargo.toml version');process.exit(1)};process.stdout.write(m[1]);"); \
+	NEXT=$$(node -e "const v='$$CURRENT';const m=v.match(/^(\\d+)\\.(\\d+)\\.(\\d+)(?:-.+)?$$/);if(!m){console.error('Invalid semver: '+v);process.exit(1)};process.stdout.write('v'+m[1]+'.'+(Number(m[2])+1)+'.0');"); \
+	echo "==> Releasing minor version $$CURRENT -> $$NEXT"; \
+	$(MAKE) _release-run VERSION="$$NEXT" VSCODE_VERSION="$(VSCODE_VERSION)"
+
+# Bump Cargo semver major and run release flow
+release-major:
+	@CURRENT=$$(node -e "const fs=require('fs');const m=fs.readFileSync('Cargo.toml','utf8').match(/^version = \"([0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?)\"/m);if(!m){console.error('Could not parse Cargo.toml version');process.exit(1)};process.stdout.write(m[1]);"); \
+	NEXT=$$(node -e "const v='$$CURRENT';const m=v.match(/^(\\d+)\\.(\\d+)\\.(\\d+)(?:-.+)?$$/);if(!m){console.error('Invalid semver: '+v);process.exit(1)};process.stdout.write('v'+(Number(m[1])+1)+'.0.0');"); \
+	echo "==> Releasing major version $$CURRENT -> $$NEXT"; \
+	$(MAKE) _release-run VERSION="$$NEXT" VSCODE_VERSION="$(VSCODE_VERSION)"
+
+# Shared release implementation: bump versions (Rust + VSCode extension), tag, prerelease, open PR to production
+# Requires: gh CLI authenticated, on main branch
+_release-run:
 ifndef VERSION
 	$(error VERSION is required. Usage: make release VERSION=v0.0.1)
 endif

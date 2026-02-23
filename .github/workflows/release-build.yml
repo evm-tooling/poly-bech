@@ -1,4 +1,5 @@
-# Build and attach poly-bench binaries when a release is published (e.g. prerelease created by make release).
+# Build and attach poly-bench binaries only when a GitHub release is published.
+# Docs-only production merges do not publish a release, so this workflow is skipped by design.
 # Can also be run manually to attach assets to an existing release (e.g. v0.0.2).
 name: Release build
 
