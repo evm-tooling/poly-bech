@@ -12,7 +12,6 @@ use super::{escape_xml, filter_benchmarks, format_duration, sort_benchmarks};
 // Bar dimensions
 const DEFAULT_BAR_HEIGHT: i32 = 48;
 const BAR_GAP: i32 = 8;
-const GROUP_GAP: i32 = 20;
 
 // Margins and spacing
 const MARGIN_TOP: i32 = 72;
@@ -20,6 +19,12 @@ const MARGIN_BOTTOM: i32 = 156;
 const MARGIN_LEFT: i32 = 50;
 const MARGIN_RIGHT: i32 = 40;
 const PLOT_PADDING: i32 = 12;
+const GRID_GAP_X: i32 = 18;
+const GRID_GAP_Y: i32 = 22;
+const CARD_TITLE_HEIGHT: i32 = 22;
+const MIN_CARD_WIDTH: i32 = 260;
+const MAX_GRID_COLUMNS: i32 = 4;
+const TARGET_COMBINED_GRID_HEIGHT: i32 = 420;
 
 // Language colors (same for both themes)
 const GO_COLOR: &str = "#00ADD8";
@@ -117,6 +122,58 @@ enum OverallMetricMode {
     Fixed,
     Auto,
     Mixed,
+}
+
+struct GridLayout {
+    columns: i32,
+    card_width: i32,
+    card_height: i32,
+    grid_height: i32,
+}
+
+fn calculate_grid_layout(num_benchmarks: i32, num_langs: i32, plot_width: i32) -> GridLayout {
+    let bar_stack_height = num_langs * (DEFAULT_BAR_HEIGHT + BAR_GAP) - BAR_GAP;
+    let card_height = CARD_TITLE_HEIGHT + PLOT_PADDING * 2 + bar_stack_height + 6;
+    let max_columns_from_width =
+        ((plot_width + GRID_GAP_X) / (MIN_CARD_WIDTH + GRID_GAP_X)).max(1).min(MAX_GRID_COLUMNS);
+    let mut best = GridLayout {
+        columns: 1,
+        card_width: plot_width.max(MIN_CARD_WIDTH),
+        card_height,
+        grid_height: num_benchmarks.max(1) * card_height + (num_benchmarks.max(1) - 1) * GRID_GAP_Y,
+    };
+
+    for candidate_columns in 1..=max_columns_from_width.max(1) {
+        let rows = (num_benchmarks + candidate_columns - 1) / candidate_columns;
+        let width_without_gaps = plot_width - (candidate_columns - 1) * GRID_GAP_X;
+        let card_width = (width_without_gaps / candidate_columns).max(MIN_CARD_WIDTH);
+        let grid_height = rows * card_height + (rows - 1) * GRID_GAP_Y;
+        let candidate =
+            GridLayout { columns: candidate_columns, card_width, card_height, grid_height };
+
+        best = candidate;
+        if grid_height <= TARGET_COMBINED_GRID_HEIGHT {
+            break;
+        }
+    }
+
+    // If no candidate meets the height target, retain the widest feasible grid from the loop.
+    if best.grid_height > TARGET_COMBINED_GRID_HEIGHT && max_columns_from_width > 1 {
+        let columns = max_columns_from_width;
+        let rows = (num_benchmarks + columns - 1) / columns;
+        let width_without_gaps = plot_width - (columns - 1) * GRID_GAP_X;
+        let card_width = (width_without_gaps / columns).max(MIN_CARD_WIDTH);
+        let grid_height = rows * card_height + (rows - 1) * GRID_GAP_Y;
+        return GridLayout { columns, card_width, card_height, grid_height };
+    }
+
+    best
+}
+
+fn row_item_count(row: i32, columns: i32, total_items: i32) -> i32 {
+    let start = row * columns;
+    let remaining = total_items - start;
+    remaining.max(0).min(columns).max(1)
 }
 
 /// Generate a speedup chart showing relative performance vs baseline
@@ -239,30 +296,78 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         _ => OverallMetricMode::Fixed,
     };
 
-    // Reserve label gutter only when benchmark names are shown.
-    let max_name_len = speedups.iter().map(|(name, _, _)| name.len()).max().unwrap_or(5);
-    let name_width = (max_name_len as i32 * 8).min(90).max(40);
-
     let num_benchmarks = speedups.len() as i32;
     let num_langs = all_langs.len() as i32;
-    let total_bars = num_benchmarks * num_langs;
 
-    // Calculate bar area height
-    let bar_area_height =
-        total_bars * (DEFAULT_BAR_HEIGHT + BAR_GAP) + (num_benchmarks - 1) * GROUP_GAP - BAR_GAP;
-
-    // Plot area dimensions
-    let plot_height = bar_area_height + PLOT_PADDING * 2;
-
-    // Total chart height - calculate dynamically
-    let chart_height = directive.height.unwrap_or(MARGIN_TOP + plot_height + MARGIN_BOTTOM);
-    let chart_width = directive.width.unwrap_or(720);
-
-    // Plot area positioning
-    let label_gutter = if num_benchmarks > 1 { name_width + 12 } else { 0 };
-    let plot_x = MARGIN_LEFT + label_gutter;
+    let combined_min_width = 40 +
+        (MAX_GRID_COLUMNS * MIN_CARD_WIDTH) +
+        ((MAX_GRID_COLUMNS - 1) * GRID_GAP_X) +
+        MARGIN_RIGHT;
+    let chart_width =
+        directive.width.unwrap_or(if num_benchmarks > 1 { combined_min_width } else { 720 });
     let plot_y = MARGIN_TOP;
-    let plot_width = chart_width - plot_x - MARGIN_RIGHT;
+    let details_height = ((language_summaries.len() as i32).max(1) * 16) + 18;
+    let combined_summary_height = ((language_summaries.len() as i32).max(1) * 24) + 30;
+    let is_combined_chart = num_benchmarks > 1;
+
+    let (
+        plot_x,
+        plot_width,
+        plot_height,
+        summary_y,
+        x_axis_label_y,
+        legend_y,
+        details_y,
+        chart_height,
+    ) = if is_combined_chart {
+        // Grid layout for combined chart: auto columns from width with max-height target.
+        let plot_x = 40;
+        let plot_width = chart_width - plot_x - MARGIN_RIGHT;
+        let grid_layout = calculate_grid_layout(num_benchmarks, num_langs, plot_width);
+        let plot_height = grid_layout.grid_height;
+        let summary_y = plot_y + plot_height + 12;
+        let x_axis_label_y = summary_y + combined_summary_height + 18;
+        let legend_y = x_axis_label_y + 28;
+        let details_y = legend_y + 26;
+        let chart_height = directive.height.unwrap_or(details_y + details_height + 24);
+        (
+            plot_x,
+            plot_width,
+            plot_height,
+            summary_y,
+            x_axis_label_y,
+            legend_y,
+            details_y,
+            chart_height,
+        )
+    } else {
+        // Preserve pre-grid look and spacing for single-benchmark charts.
+        let plot_x = MARGIN_LEFT;
+        let plot_width = chart_width - plot_x - MARGIN_RIGHT;
+        let bar_area_height = num_langs * (DEFAULT_BAR_HEIGHT + BAR_GAP) - BAR_GAP;
+        let plot_height = bar_area_height + PLOT_PADDING * 2;
+        let summary_y = plot_y + plot_height;
+        let x_axis_label_y = plot_y + plot_height + 20;
+        let legend_y = x_axis_label_y + 28;
+        let details_y = legend_y + 26;
+        let chart_height = directive.height.unwrap_or(MARGIN_TOP + plot_height + MARGIN_BOTTOM);
+        (
+            plot_x,
+            plot_width,
+            plot_height,
+            summary_y,
+            x_axis_label_y,
+            legend_y,
+            details_y,
+            chart_height,
+        )
+    };
+
+    let grid_layout = if is_combined_chart {
+        Some(calculate_grid_layout(num_benchmarks, num_langs, plot_width))
+    } else {
+        None
+    };
 
     let mut svg = svg_header(chart_width, chart_height, &theme);
 
@@ -282,123 +387,220 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         plot_x, plot_y, plot_width, plot_height, theme.plot_bg
     ));
 
-    // Gold accent bar beside Y-axis (left edge of plot)
-    svg.push_str(&format!(
-        "  <rect x=\"{}\" y=\"{}\" width=\"6\" height=\"{}\" rx=\"3\" fill=\"url(#accentGrad)\" fill-opacity=\"0.96\" filter=\"url(#accentGlow)\"/>\n",
-        plot_x - 6,
-        plot_y,
-        plot_height
-    ));
+    // Keep accent bar on single charts; remove it for combined chart grid.
+    if !is_combined_chart {
+        svg.push_str(&format!(
+            "  <rect x=\"{}\" y=\"{}\" width=\"6\" height=\"{}\" rx=\"3\" fill=\"url(#accentGrad)\" fill-opacity=\"0.96\" filter=\"url(#accentGlow)\"/>\n",
+            plot_x - 6,
+            plot_y,
+            plot_height
+        ));
+    }
 
     // Vertical axis label.
     let y_axis_label = "runtime";
+    let y_axis_x = if is_combined_chart { plot_x - 30 } else { plot_x - 24 };
     svg.push_str(&format!(
         "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" transform=\"rotate(-90 {} {})\" font-family=\"{}\" font-size=\"10\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
-        plot_x - 24,
+        y_axis_x,
         plot_y + plot_height / 2,
-        plot_x - 24,
+        y_axis_x,
         plot_y + plot_height / 2,
         FONT_FAMILY,
         theme.text_muted,
         y_axis_label
     ));
 
-    // Draw bars
     let bar_height = DEFAULT_BAR_HEIGHT;
-    let mut y = plot_y + PLOT_PADDING;
+    if let Some(grid_layout) = &grid_layout {
+        // Draw benchmark cards in a centered small-multiples grid.
+        for (idx, (bench_name, bench_mode, bench_speedups)) in speedups.iter().enumerate() {
+            let card_idx = idx as i32;
+            let row = card_idx / grid_layout.columns;
+            let col = card_idx % grid_layout.columns;
+            let row_items = row_item_count(row, grid_layout.columns, num_benchmarks);
+            let row_width = row_items * grid_layout.card_width + (row_items - 1) * GRID_GAP_X;
+            let row_start_x = plot_x + (plot_width - row_width) / 2;
+            let card_x = row_start_x + col * (grid_layout.card_width + GRID_GAP_X);
+            let card_y = plot_y + row * (grid_layout.card_height + GRID_GAP_Y);
 
-    for (bench_name, bench_mode, bench_speedups) in &speedups {
-        // Only show benchmark name label if there are multiple benchmarks
-        if num_benchmarks > 1 {
-            let label_y =
-                y + (bench_speedups.len() as i32 * (bar_height + BAR_GAP) - BAR_GAP) / 2 + 5;
             svg.push_str(&format!(
-                "  <text x=\"{}\" y=\"{}\" text-anchor=\"end\" font-family=\"{}\" font-size=\"12\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
-                plot_x - 12,
-                label_y,
+                "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"10\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+                card_x,
+                card_y,
+                grid_layout.card_width,
+                grid_layout.card_height,
+                theme.plot_bg,
+                theme.container_stroke
+            ));
+
+            svg.push_str(&format!(
+                "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"11\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
+                card_x + grid_layout.card_width / 2,
+                card_y + 15,
                 FONT_FAMILY,
                 theme.text_primary,
                 escape_xml(bench_name)
             ));
+
+            let card_plot_x = card_x + 8;
+            let card_plot_y = card_y + CARD_TITLE_HEIGHT;
+            let card_plot_width = (grid_layout.card_width - 16).max(40);
+            let bench_max_metric = bench_speedups
+                .iter()
+                .map(|ls| bench_metric_value(*bench_mode, ls))
+                .fold(0.0_f64, f64::max)
+                .max(1.0);
+
+            let mut y = card_plot_y + PLOT_PADDING;
+            for ls in bench_speedups {
+                let row_x = card_plot_x + 4;
+                let row_y = y;
+                let row_width = (card_plot_width - 8).max(20);
+                let row_height = bar_height;
+                let inset = 6;
+                let inner_x = row_x + inset;
+                let inner_y = row_y + inset;
+                let inner_height = (row_height - inset * 2).max(8);
+                let max_inner_width = (row_width - inset * 2).max(12);
+                let metric_value = bench_metric_value(*bench_mode, ls);
+                let bar_width = ((metric_value / bench_max_metric) * max_inner_width as f64) as i32;
+                let gradient_id = lang_gradient_id(ls.lang);
+                let lang_color = get_lang_color(ls.lang);
+
+                svg.push_str(&format!(
+                    "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.2\"/>\n",
+                    row_x,
+                    row_y,
+                    row_width,
+                    row_height,
+                    theme.row_border
+                ));
+                svg.push_str(&format!(
+                    "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"url(#{})\" stroke=\"{}\" stroke-width=\"1.5\" filter=\"url(#barShadow)\"/>\n",
+                    inner_x,
+                    inner_y,
+                    bar_width.max(6),
+                    inner_height,
+                    gradient_id,
+                    theme.bar_outline
+                ));
+
+                let lang_name = short_lang_name(ls.lang);
+                let metric_label =
+                    format_primary_metric(*bench_mode, ls.total_nanos, ls.iterations);
+                let speedup_label = format!("{} · {}", lang_name, metric_label);
+                let bar_end = inner_x + bar_width.max(6);
+                let label_inside = bar_width > (row_width / 2);
+                let (label_x, label_anchor, label_color) = if label_inside {
+                    (bar_end - 8, "end", theme.text_primary)
+                } else {
+                    ((bar_end + 8).min(row_x + row_width - 8), "start", theme.text_secondary)
+                };
+
+                svg.push_str(&format!(
+                    "  <text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-family=\"{}\" font-size=\"10\" font-weight=\"500\" fill=\"{}\">{}</text>\n",
+                    label_x,
+                    y + bar_height / 2 + 4,
+                    label_anchor,
+                    FONT_FAMILY,
+                    label_color,
+                    escape_xml(&speedup_label)
+                ));
+                svg.push_str(&format!(
+                    "  <circle cx=\"{}\" cy=\"{}\" r=\"3\" fill=\"{}\"/>\n",
+                    row_x - 8,
+                    y + bar_height / 2,
+                    lang_color
+                ));
+
+                y += bar_height + BAR_GAP;
+            }
         }
+    } else {
+        // Keep single-benchmark charts visually unchanged from pre-grid behavior.
+        let mut y = plot_y + PLOT_PADDING;
+        for (_bench_name, bench_mode, bench_speedups) in &speedups {
+            let bench_max_metric = bench_speedups
+                .iter()
+                .map(|ls| bench_metric_value(*bench_mode, ls))
+                .fold(0.0_f64, f64::max)
+                .max(1.0);
 
-        let bench_max_metric = bench_speedups
-            .iter()
-            .map(|ls| bench_metric_value(*bench_mode, ls))
-            .fold(0.0_f64, f64::max)
-            .max(1.0);
+            for ls in bench_speedups {
+                let inner_x = plot_x + 8;
+                let inner_y = y + 6;
+                let inner_height = (bar_height - 12).max(8);
+                let max_inner_width = (plot_width - 20).max(12);
+                let row_x = plot_x + 4;
+                let row_y = y;
+                let row_width = (plot_width - 8).max(20);
+                let row_height = bar_height;
+                let metric_value = bench_metric_value(*bench_mode, ls);
+                let bar_width = ((metric_value / bench_max_metric) * max_inner_width as f64) as i32;
+                let gradient_id = lang_gradient_id(ls.lang);
+                let lang_color = get_lang_color(ls.lang);
 
-        for ls in bench_speedups {
-            let inner_x = plot_x + 8;
-            let inner_y = y + 6;
-            let inner_height = (bar_height - 12).max(8);
-            let max_inner_width = (plot_width - 20).max(12);
-            let row_x = plot_x + 4;
-            let row_y = y;
-            let row_width = (plot_width - 8).max(20);
-            let row_height = bar_height;
-            let metric_value = bench_metric_value(*bench_mode, ls);
-            let bar_width = ((metric_value / bench_max_metric) * max_inner_width as f64) as i32;
-            let gradient_id = lang_gradient_id(ls.lang);
-            let lang_color = get_lang_color(ls.lang);
+                svg.push_str(&format!(
+                    "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.2\"/>\n",
+                    row_x,
+                    row_y,
+                    row_width,
+                    row_height,
+                    theme.row_border
+                ));
+                svg.push_str(&format!(
+                    "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"url(#{})\" stroke=\"{}\" stroke-width=\"1.5\" filter=\"url(#barShadow)\"/>\n",
+                    inner_x,
+                    inner_y,
+                    bar_width.max(6),
+                    inner_height,
+                    gradient_id,
+                    theme.bar_outline
+                ));
 
-            // Keep the border around each runtime row.
-            svg.push_str(&format!(
-                "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.2\"/>\n",
-                row_x,
-                row_y,
-                row_width,
-                row_height,
-                theme.row_border
-            ));
+                let lang_name = short_lang_name(ls.lang);
+                let metric_label =
+                    format_primary_metric(*bench_mode, ls.total_nanos, ls.iterations);
+                let speedup_label = format!("{} · {}", lang_name, metric_label);
+                let bar_end = inner_x + bar_width.max(6);
+                let label_inside = bar_width > 220;
+                let (label_x, label_anchor, label_color) = if label_inside {
+                    (bar_end - 10, "end", theme.text_primary)
+                } else {
+                    (bar_end + 10, "start", theme.text_secondary)
+                };
 
-            // Bar with gradient fill and stronger per-bar border (decode-result style)
-            svg.push_str(&format!(
-                "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"url(#{})\" stroke=\"{}\" stroke-width=\"1.5\" filter=\"url(#barShadow)\"/>\n",
-                inner_x,
-                inner_y,
-                bar_width.max(6),
-                inner_height,
-                gradient_id,
-                theme.bar_outline
-            ));
+                svg.push_str(&format!(
+                    "  <text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-family=\"{}\" font-size=\"11\" font-weight=\"500\" fill=\"{}\">{}</text>\n",
+                    label_x,
+                    y + bar_height / 2 + 4,
+                    label_anchor,
+                    FONT_FAMILY,
+                    label_color,
+                    escape_xml(&speedup_label)
+                ));
+                svg.push_str(&format!(
+                    "  <circle cx=\"{}\" cy=\"{}\" r=\"3\" fill=\"{}\"/>\n",
+                    plot_x - 12,
+                    y + bar_height / 2,
+                    lang_color
+                ));
 
-            // Keep bar labels simple: language + primary metric (mode-aware).
-            let lang_name = short_lang_name(ls.lang);
-            let metric_label = format_primary_metric(*bench_mode, ls.total_nanos, ls.iterations);
-            let speedup_label = format!("{} · {}", lang_name, metric_label);
-
-            // Position label: inside if wide enough, otherwise outside
-            let bar_end = inner_x + bar_width.max(6);
-            let label_inside = bar_width > 220;
-            let (label_x, label_anchor, label_color) = if label_inside {
-                (bar_end - 10, "end", theme.text_primary)
-            } else {
-                (bar_end + 10, "start", theme.text_secondary)
-            };
-
-            svg.push_str(&format!(
-                "  <text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-family=\"{}\" font-size=\"11\" font-weight=\"500\" fill=\"{}\">{}</text>\n",
-                label_x,
-                y + bar_height / 2 + 4,
-                label_anchor,
-                FONT_FAMILY,
-                label_color,
-                escape_xml(&speedup_label)
-            ));
-
-            // Language color indicator dot (positioned left of the gold accent bar)
-            svg.push_str(&format!(
-                "  <circle cx=\"{}\" cy=\"{}\" r=\"3\" fill=\"{}\"/>\n",
-                plot_x - 12,
-                y + bar_height / 2,
-                lang_color
-            ));
-
-            y += bar_height + BAR_GAP;
+                y += bar_height + BAR_GAP;
+            }
         }
+    }
 
-        y += GROUP_GAP - BAR_GAP;
+    if is_combined_chart {
+        svg.push_str(&svg_combined_summary(
+            chart_width,
+            summary_y,
+            combined_summary_height,
+            &language_summaries,
+            baseline_lang,
+            &theme,
+        ));
     }
 
     // X-axis label (mode aware)
@@ -407,7 +609,6 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         OverallMetricMode::Auto => "iterations",
         OverallMetricMode::Mixed => "time / iterations by mode",
     };
-    let x_axis_label_y = plot_y + plot_height + 20;
     svg.push_str(&format!(
         "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"10\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
         plot_x + plot_width / 2,
@@ -417,10 +618,7 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         x_axis_label
     ));
 
-    // Legend at bottom with extra gap
-    let details_height = ((language_summaries.len() as i32).max(1) * 16) + 18;
-    let legend_y = x_axis_label_y + 28;
-    let details_y = legend_y + 26;
+    // Legend and detail stats below axis label.
     svg.push_str(&svg_legend(
         chart_width,
         legend_y,
@@ -649,6 +847,87 @@ fn svg_detail_legend(
             escape_xml(&line)
         ));
         text_y += 16;
+    }
+
+    svg
+}
+
+fn svg_combined_summary(
+    width: i32,
+    y: i32,
+    height: i32,
+    summaries: &[LangSummary],
+    baseline_lang: Lang,
+    theme: &ThemeColors,
+) -> String {
+    let box_x = 40;
+    let box_width = (width - 80).max(300);
+    let mut svg = String::new();
+    let row_spacing = 24;
+    let track_height = 15;
+    let max_speedup = summaries.iter().map(|s| s.total_speedup).fold(1.0_f64, f64::max).max(1.0);
+
+    svg.push_str(&format!(
+        "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+        box_x, y, box_width, height, theme.detail_box_fill, theme.detail_box_stroke
+    ));
+    svg.push_str(&format!(
+        "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"10\" font-weight=\"600\" fill=\"{}\">Average gain across all benchmarks (geometric mean)</text>\n",
+        box_x + box_width / 2,
+        y + 14,
+        FONT_FAMILY,
+        theme.text_secondary
+    ));
+
+    let track_x = box_x + 170;
+    let track_width = (box_width - 230).max(120);
+    let baseline_x = track_x + ((track_width as f64) * (1.0 / max_speedup)) as i32;
+
+    for (idx, summary) in summaries.iter().enumerate() {
+        let row_y = y + 26 + (idx as i32 * row_spacing);
+        let speedup = summary.total_speedup.max(0.0);
+        let ratio = (speedup / max_speedup).clamp(0.0, 1.0);
+        let fill_width = ((track_width as f64) * ratio) as i32;
+        let label = if summary.is_baseline {
+            "baseline".to_string()
+        } else if speedup >= 1.0 {
+            format!("{:.2}x faster", speedup)
+        } else {
+            format!("{:.2}x slower", 1.0 / speedup.max(1e-9))
+        };
+
+        svg.push_str(&format!(
+            "  <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-size=\"10\" fill=\"{}\">{} · {}</text>\n",
+            box_x + 12,
+            row_y + 10,
+            FONT_FAMILY,
+            theme.text_muted,
+            full_lang_name(summary.lang),
+            label
+        ));
+        svg.push_str(&format!(
+            "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"5\" fill=\"{}\"/>\n",
+            track_x, row_y, track_width, track_height, theme.plot_bg
+        ));
+        svg.push_str(&format!(
+            "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"5\" fill=\"{}\"/>\n",
+            track_x,
+            row_y,
+            fill_width.max(4),
+            track_height,
+            get_lang_color(summary.lang)
+        ));
+
+        if summary.lang != baseline_lang {
+            svg.push_str(&format!(
+                "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-opacity=\"0.65\"/>\n",
+                baseline_x,
+                row_y - 1,
+                baseline_x,
+                row_y + track_height + 1,
+                theme.text_secondary
+            ));
+        }
     }
 
     svg
