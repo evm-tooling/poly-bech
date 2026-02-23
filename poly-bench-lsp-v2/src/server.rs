@@ -1267,6 +1267,11 @@ fn get_charting_param_completions() -> Vec<CompletionItem> {
         param_completion("description", "string", "Chart description"),
         param_completion("output", "string", "Output filename"),
         param_completion("width", "number", "Chart width in pixels"),
+        param_completion(
+            "rowCount",
+            "number",
+            "Max number of benchmark cards per row in combined charts",
+        ),
         param_completion("height", "number", "Chart height in pixels"),
         param_completion("minSpeedup", "number", "Only show benchmarks with speedup >= N"),
         enum_param_completion("filterWinner", &["go", "ts", "all"], "Filter by winner language"),

@@ -1108,10 +1108,6 @@
         },
         {
           "type": "STRING",
-          "value": "xlabel"
-        },
-        {
-          "type": "STRING",
           "value": "output"
         },
         {
@@ -1121,26 +1117,6 @@
         {
           "type": "STRING",
           "value": "sortOrder"
-        },
-        {
-          "type": "STRING",
-          "value": "timeUnit"
-        },
-        {
-          "type": "STRING",
-          "value": "legendPosition"
-        },
-        {
-          "type": "STRING",
-          "value": "regressionStyle"
-        },
-        {
-          "type": "STRING",
-          "value": "regressionModel"
-        },
-        {
-          "type": "STRING",
-          "value": "yScale"
         },
         {
           "type": "STRING",
@@ -1156,87 +1132,7 @@
         },
         {
           "type": "STRING",
-          "value": "chartMode"
-        },
-        {
-          "type": "STRING",
           "value": "theme"
-        },
-        {
-          "type": "STRING",
-          "value": "showStats"
-        },
-        {
-          "type": "STRING",
-          "value": "showConfig"
-        },
-        {
-          "type": "STRING",
-          "value": "showWinCounts"
-        },
-        {
-          "type": "STRING",
-          "value": "showGeoMean"
-        },
-        {
-          "type": "STRING",
-          "value": "showDistribution"
-        },
-        {
-          "type": "STRING",
-          "value": "showMemory"
-        },
-        {
-          "type": "STRING",
-          "value": "showTotalTime"
-        },
-        {
-          "type": "STRING",
-          "value": "showLegend"
-        },
-        {
-          "type": "STRING",
-          "value": "showGrid"
-        },
-        {
-          "type": "STRING",
-          "value": "showErrorBars"
-        },
-        {
-          "type": "STRING",
-          "value": "showRegression"
-        },
-        {
-          "type": "STRING",
-          "value": "showRegressionLabel"
-        },
-        {
-          "type": "STRING",
-          "value": "showRSquared"
-        },
-        {
-          "type": "STRING",
-          "value": "showEquation"
-        },
-        {
-          "type": "STRING",
-          "value": "showRegressionBand"
-        },
-        {
-          "type": "STRING",
-          "value": "showMinorGrid"
-        },
-        {
-          "type": "STRING",
-          "value": "showVerticalGrid"
-        },
-        {
-          "type": "STRING",
-          "value": "roundTicks"
-        },
-        {
-          "type": "STRING",
-          "value": "compact"
         },
         {
           "type": "STRING",
@@ -1244,11 +1140,11 @@
         },
         {
           "type": "STRING",
-          "value": "height"
+          "value": "rowCount"
         },
         {
           "type": "STRING",
-          "value": "precision"
+          "value": "height"
         },
         {
           "type": "STRING",
@@ -1256,63 +1152,7 @@
         },
         {
           "type": "STRING",
-          "value": "titleFontSize"
-        },
-        {
-          "type": "STRING",
-          "value": "subtitleFontSize"
-        },
-        {
-          "type": "STRING",
-          "value": "axisLabelFontSize"
-        },
-        {
-          "type": "STRING",
-          "value": "tickLabelFontSize"
-        },
-        {
-          "type": "STRING",
-          "value": "ciLevel"
-        },
-        {
-          "type": "STRING",
           "value": "minSpeedup"
-        },
-        {
-          "type": "STRING",
-          "value": "axisThickness"
-        },
-        {
-          "type": "STRING",
-          "value": "yAxisMin"
-        },
-        {
-          "type": "STRING",
-          "value": "yAxisMax"
-        },
-        {
-          "type": "STRING",
-          "value": "gridOpacity"
-        },
-        {
-          "type": "STRING",
-          "value": "minorGridOpacity"
-        },
-        {
-          "type": "STRING",
-          "value": "errorBarOpacity"
-        },
-        {
-          "type": "STRING",
-          "value": "errorBarThickness"
-        },
-        {
-          "type": "STRING",
-          "value": "regressionBandOpacity"
-        },
-        {
-          "type": "STRING",
-          "value": "symlogThreshold"
         },
         {
           "type": "STRING",
@@ -1403,10 +1243,6 @@
         },
         {
           "type": "STRING",
-          "value": "compare"
-        },
-        {
-          "type": "STRING",
           "value": "baseline"
         },
         {
@@ -1416,14 +1252,6 @@
         {
           "type": "STRING",
           "value": "targetTime"
-        },
-        {
-          "type": "STRING",
-          "value": "minIterations"
-        },
-        {
-          "type": "STRING",
-          "value": "maxIterations"
         },
         {
           "type": "STRING",
@@ -1444,10 +1272,6 @@
         {
           "type": "STRING",
           "value": "memory"
-        },
-        {
-          "type": "STRING",
-          "value": "concurrency"
         }
       ]
     },

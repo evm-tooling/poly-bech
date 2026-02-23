@@ -178,6 +178,7 @@ suite sortN {
             title: "Sort Performance - O(n log n)",
             description: "Stdlib sort comparison across Go, TypeScript, and Rust",
             output: "sort-line1.svg",
+            rowCount: 3
         )
         charting.drawTable(
             title: "Sort Performance Comparison",

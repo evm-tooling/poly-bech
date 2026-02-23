@@ -131,11 +131,17 @@ struct GridLayout {
     grid_height: i32,
 }
 
-fn calculate_grid_layout(num_benchmarks: i32, num_langs: i32, plot_width: i32) -> GridLayout {
+fn calculate_grid_layout(
+    num_benchmarks: i32,
+    num_langs: i32,
+    plot_width: i32,
+    forced_columns: Option<i32>,
+) -> GridLayout {
     let bar_stack_height = num_langs * (DEFAULT_BAR_HEIGHT + BAR_GAP) - BAR_GAP;
     let card_height = CARD_TITLE_HEIGHT + PLOT_PADDING * 2 + bar_stack_height + 6;
-    let max_columns_from_width =
+    let auto_max_columns =
         ((plot_width + GRID_GAP_X) / (MIN_CARD_WIDTH + GRID_GAP_X)).max(1).min(MAX_GRID_COLUMNS);
+    let max_columns_from_width = forced_columns.unwrap_or(auto_max_columns).max(1);
     let mut best = GridLayout {
         columns: 1,
         card_width: plot_width.max(MIN_CARD_WIDTH),
@@ -298,13 +304,20 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
 
     let num_benchmarks = speedups.len() as i32;
     let num_langs = all_langs.len() as i32;
+    let forced_row_count = directive
+        .row_count
+        .map(|c| (c as i32).max(1).min(num_benchmarks.max(1)));
 
+    let default_columns = forced_row_count.unwrap_or(MAX_GRID_COLUMNS).max(1);
     let combined_min_width = 40 +
-        (MAX_GRID_COLUMNS * MIN_CARD_WIDTH) +
-        ((MAX_GRID_COLUMNS - 1) * GRID_GAP_X) +
+        (default_columns * MIN_CARD_WIDTH) +
+        ((default_columns - 1) * GRID_GAP_X) +
         MARGIN_RIGHT;
-    let chart_width =
-        directive.width.unwrap_or(if num_benchmarks > 1 { combined_min_width } else { 720 });
+    let chart_width = if num_benchmarks > 1 {
+        directive.width.unwrap_or(combined_min_width).max(combined_min_width)
+    } else {
+        directive.width.unwrap_or(720)
+    };
     let plot_y = MARGIN_TOP;
     let details_height = ((language_summaries.len() as i32).max(1) * 16) + 18;
     let combined_summary_height = ((language_summaries.len() as i32).max(1) * 24) + 30;
@@ -323,7 +336,8 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         // Grid layout for combined chart: auto columns from width with max-height target.
         let plot_x = 40;
         let plot_width = chart_width - plot_x - MARGIN_RIGHT;
-        let grid_layout = calculate_grid_layout(num_benchmarks, num_langs, plot_width);
+        let grid_layout =
+            calculate_grid_layout(num_benchmarks, num_langs, plot_width, forced_row_count);
         let plot_height = grid_layout.grid_height;
         let summary_y = plot_y + plot_height + 12;
         let x_axis_label_y = summary_y + combined_summary_height + 18;
@@ -364,7 +378,12 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
     };
 
     let grid_layout = if is_combined_chart {
-        Some(calculate_grid_layout(num_benchmarks, num_langs, plot_width))
+        Some(calculate_grid_layout(
+            num_benchmarks,
+            num_langs,
+            plot_width,
+            forced_row_count,
+        ))
     } else {
         None
     };
@@ -593,8 +612,14 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
     }
 
     if is_combined_chart {
+        let summary_max_width = grid_layout
+            .as_ref()
+            .map(|layout| (3 * layout.card_width) + (2 * GRID_GAP_X))
+            .unwrap_or(plot_width);
         svg.push_str(&svg_combined_summary(
-            chart_width,
+            plot_x,
+            plot_width,
+            summary_max_width,
             summary_y,
             combined_summary_height,
             &language_summaries,
@@ -853,15 +878,17 @@ fn svg_detail_legend(
 }
 
 fn svg_combined_summary(
-    width: i32,
+    plot_x: i32,
+    plot_width: i32,
+    summary_max_width: i32,
     y: i32,
     height: i32,
     summaries: &[LangSummary],
     baseline_lang: Lang,
     theme: &ThemeColors,
 ) -> String {
-    let box_x = 40;
-    let box_width = (width - 80).max(300);
+    let box_width = plot_width.min(summary_max_width).max(300);
+    let box_x = plot_x + (plot_width - box_width) / 2;
     let mut svg = String::new();
     let row_spacing = 24;
     let track_height = 15;

@@ -1143,14 +1143,6 @@
     "named": false
   },
   {
-    "type": "axisLabelFontSize",
-    "named": false
-  },
-  {
-    "type": "axisThickness",
-    "named": false
-  },
-  {
     "type": "baseline",
     "named": false
   },
@@ -1167,32 +1159,12 @@
     "named": false
   },
   {
-    "type": "chartMode",
-    "named": false
-  },
-  {
     "type": "charting",
-    "named": false
-  },
-  {
-    "type": "ciLevel",
     "named": false
   },
   {
     "type": "comment",
     "named": true
-  },
-  {
-    "type": "compact",
-    "named": false
-  },
-  {
-    "type": "compare",
-    "named": false
-  },
-  {
-    "type": "concurrency",
-    "named": false
   },
   {
     "type": "count",
@@ -1225,14 +1197,6 @@
   {
     "type": "embedded_code",
     "named": true
-  },
-  {
-    "type": "errorBarOpacity",
-    "named": false
-  },
-  {
-    "type": "errorBarThickness",
-    "named": false
   },
   {
     "type": "escape_sequence",
@@ -1268,10 +1232,6 @@
   },
   {
     "type": "go",
-    "named": false
-  },
-  {
-    "type": "gridOpacity",
     "named": false
   },
   {
@@ -1311,10 +1271,6 @@
     "named": false
   },
   {
-    "type": "legendPosition",
-    "named": false
-  },
-  {
     "type": "limit",
     "named": false
   },
@@ -1323,23 +1279,11 @@
     "named": false
   },
   {
-    "type": "maxIterations",
-    "named": false
-  },
-  {
     "type": "memory",
     "named": false
   },
   {
-    "type": "minIterations",
-    "named": false
-  },
-  {
     "type": "minSpeedup",
-    "named": false
-  },
-  {
-    "type": "minorGridOpacity",
     "named": false
   },
   {
@@ -1367,23 +1311,7 @@
     "named": false
   },
   {
-    "type": "precision",
-    "named": false
-  },
-  {
     "type": "python",
-    "named": false
-  },
-  {
-    "type": "regressionBandOpacity",
-    "named": false
-  },
-  {
-    "type": "regressionModel",
-    "named": false
-  },
-  {
-    "type": "regressionStyle",
     "named": false
   },
   {
@@ -1391,7 +1319,7 @@
     "named": false
   },
   {
-    "type": "roundTicks",
+    "type": "rowCount",
     "named": false
   },
   {
@@ -1408,74 +1336,6 @@
   },
   {
     "type": "shape",
-    "named": false
-  },
-  {
-    "type": "showConfig",
-    "named": false
-  },
-  {
-    "type": "showDistribution",
-    "named": false
-  },
-  {
-    "type": "showEquation",
-    "named": false
-  },
-  {
-    "type": "showErrorBars",
-    "named": false
-  },
-  {
-    "type": "showGeoMean",
-    "named": false
-  },
-  {
-    "type": "showGrid",
-    "named": false
-  },
-  {
-    "type": "showLegend",
-    "named": false
-  },
-  {
-    "type": "showMemory",
-    "named": false
-  },
-  {
-    "type": "showMinorGrid",
-    "named": false
-  },
-  {
-    "type": "showRSquared",
-    "named": false
-  },
-  {
-    "type": "showRegression",
-    "named": false
-  },
-  {
-    "type": "showRegressionBand",
-    "named": false
-  },
-  {
-    "type": "showRegressionLabel",
-    "named": false
-  },
-  {
-    "type": "showStats",
-    "named": false
-  },
-  {
-    "type": "showTotalTime",
-    "named": false
-  },
-  {
-    "type": "showVerticalGrid",
-    "named": false
-  },
-  {
-    "type": "showWinCounts",
     "named": false
   },
   {
@@ -1503,15 +1363,7 @@
     "named": false
   },
   {
-    "type": "subtitleFontSize",
-    "named": false
-  },
-  {
     "type": "suite",
-    "named": false
-  },
-  {
-    "type": "symlogThreshold",
     "named": false
   },
   {
@@ -1527,23 +1379,11 @@
     "named": false
   },
   {
-    "type": "tickLabelFontSize",
-    "named": false
-  },
-  {
-    "type": "timeUnit",
-    "named": false
-  },
-  {
     "type": "timeout",
     "named": false
   },
   {
     "type": "title",
-    "named": false
-  },
-  {
-    "type": "titleFontSize",
     "named": false
   },
   {
@@ -1572,22 +1412,6 @@
   },
   {
     "type": "width",
-    "named": false
-  },
-  {
-    "type": "xlabel",
-    "named": false
-  },
-  {
-    "type": "yAxisMax",
-    "named": false
-  },
-  {
-    "type": "yAxisMin",
-    "named": false
-  },
-  {
-    "type": "yScale",
     "named": false
   },
   {
