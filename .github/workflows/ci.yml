@@ -25,11 +25,14 @@ jobs:
           toolchain: nightly
           components: rustfmt, clippy
 
+      - name: Install just
+        uses: taiki-e/install-action@just
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
       - name: Build
-        run: cargo build --release -p poly-bench
+        run: just dev build
 
   lint:
     name: Lint
@@ -49,11 +52,14 @@ jobs:
           toolchain: nightly
           components: rustfmt, clippy
 
+      - name: Install just
+        uses: taiki-e/install-action@just
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
       - name: Run lint
-        run: go run build/ci.go lint
+        run: just dev lint
 
   fmt:
     name: Format
@@ -76,8 +82,11 @@ jobs:
           toolchain: nightly
           components: rustfmt
 
+      - name: Install just
+        uses: taiki-e/install-action@just
+
       - name: Check formatting
-        run: go run build/ci.go fmt
+        run: just dev fmt check
 
   test:
     name: Test
@@ -94,8 +103,11 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@nightly
 
+      - name: Install just
+        uses: taiki-e/install-action@just
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
       - name: Run tests
-        run: go run build/ci.go test
+        run: just dev test
