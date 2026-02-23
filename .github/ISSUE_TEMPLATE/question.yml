@@ -1,0 +1,47 @@
+name: Question
+description: Ask a question about poly-bench usage.
+labels: ['question']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question about using poly-bench? You're in the right place!
+
+        For broader discussions or feature brainstorming, consider using GitHub Discussions.
+
+  - type: checkboxes
+    attributes:
+      label: Before asking
+      description: Please confirm you've done the following.
+      options:
+        - label: I checked the README and project docs
+          required: true
+        - label: I searched existing issues and discussions
+          required: true
+
+  - type: textarea
+    attributes:
+      label: Question
+      description: What would you like to know?
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Context
+      description: |
+        Provide any relevant context, code examples, or what you've already tried.
+
+        ```text
+        // Your code here
+        ```
+    validations:
+      required: false
+
+  - type: input
+    attributes:
+      label: poly-bench Version
+      description: What version are you using? (if relevant)
+      placeholder: x.y.z
+    validations:
+      required: false
