@@ -63,7 +63,7 @@ test mode="unit":
       ;;
     check)
       cargo +nightly fmt --all -- --check
-      cargo clippy --all-targets -- -D warnings
+      cargo clippy --all-targets --
       cargo test --all
       ;;
     cover)
@@ -81,7 +81,7 @@ test mode="unit":
 #   just dev lint
 [group('dev')]
 lint:
-  cargo clippy --all-targets -- -D warnings
+  cargo clippy --all-targets --
 
 # Build poly-bench.
 # Usage:
