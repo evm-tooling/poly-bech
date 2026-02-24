@@ -1122,6 +1122,14 @@
         {
           "type": "STRING",
           "value": "drawTable"
+        },
+        {
+          "type": "STRING",
+          "value": "drawLineChart"
+        },
+        {
+          "type": "STRING",
+          "value": "drawBarChart"
         }
       ]
     },
@@ -1253,6 +1261,22 @@
         {
           "type": "STRING",
           "value": "excludeBenchmarks"
+        },
+        {
+          "type": "STRING",
+          "value": "showStdDev"
+        },
+        {
+          "type": "STRING",
+          "value": "showErrorBars"
+        },
+        {
+          "type": "STRING",
+          "value": "showRegression"
+        },
+        {
+          "type": "STRING",
+          "value": "regressionModel"
         }
       ]
     },

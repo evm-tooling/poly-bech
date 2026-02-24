@@ -1239,6 +1239,14 @@
     "named": false
   },
   {
+    "type": "drawBarChart",
+    "named": false
+  },
+  {
+    "type": "drawLineChart",
+    "named": false
+  },
+  {
     "type": "drawSpeedupChart",
     "named": false
   },
@@ -1387,6 +1395,10 @@
     "named": false
   },
   {
+    "type": "regressionModel",
+    "named": false
+  },
+  {
     "type": "requires",
     "named": false
   },
@@ -1412,6 +1424,18 @@
   },
   {
     "type": "shape",
+    "named": false
+  },
+  {
+    "type": "showErrorBars",
+    "named": false
+  },
+  {
+    "type": "showRegression",
+    "named": false
+  },
+  {
+    "type": "showStdDev",
     "named": false
   },
   {

@@ -1193,6 +1193,22 @@ fn get_module_member_completions(module: &str) -> Vec<CompletionItem> {
                 detail: Some("Generate a results table".to_string()),
                 ..Default::default()
             },
+            CompletionItem {
+                label: "drawLineChart".to_string(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                insert_text: Some("drawLineChart($0)".to_string()),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                detail: Some("Draw a line chart with overlays".to_string()),
+                ..Default::default()
+            },
+            CompletionItem {
+                label: "drawBarChart".to_string(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                insert_text: Some("drawBarChart($0)".to_string()),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                detail: Some("Draw a grouped bar chart with overlays".to_string()),
+                ..Default::default()
+            },
         ],
         "constants" => vec![
             CompletionItem {

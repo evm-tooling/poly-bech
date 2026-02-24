@@ -1,9 +1,9 @@
 use std::charting
 
-declare suite bubbleN performance timeBased sameDataset: true {
+declare suite bubbleN memory iterationBased sameDataset: true {
     description: "O(n^2) bubble sort on int32 array"
     baseline: "go"
-    targetTime: 5000ms
+    iterations: 1000
     cvThreshold: 5
     count: 1
 
@@ -184,15 +184,23 @@ declare suite bubbleN performance timeBased sameDataset: true {
     }
 
     after {
-        charting.drawSpeedupChart(
+        charting.drawLineChart(
             title: "Bubble Sort - O(n²)",
-            description: "Classic bubble sort - quadratic complexity comparison",
+            description: "Classic bubble sort - quadratic trend with regression + error overlays",
             output: "bubble-line-t.svg",
+            showStdDev: true,
+            showErrorBars: true,
+            showRegression: true,
+            regressionModel: "auto",
         )
-        charting.drawTable(
-            title: "Bubble Sort Comparison",
-            description: "Vertical grouped bars - quadratic growth visible",
+        charting.drawBarChart(
+            title: "Bubble Sort - Grouped Bars",
+            description: "Grouped bars per dataset size with statistical overlays",
             output: "bubble-bar-t.svg",
+            showStdDev: true,
+            showErrorBars: true,
+            showRegression: true,
+            regressionModel: "auto",
         )
     }
 }

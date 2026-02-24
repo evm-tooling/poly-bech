@@ -612,6 +612,13 @@ fn get_chart_function_documentation(name: &str) -> String {
                 .to_string()
         }
         "drawTable" => "**drawTable**\n\nGenerate a table of benchmark results.".to_string(),
+        "drawLineChart" => {
+            "**drawLineChart**\n\nGenerate a multi-series line chart with stats overlays."
+                .to_string()
+        }
+        "drawBarChart" => {
+            "**drawBarChart**\n\nGenerate grouped bars with stats overlays.".to_string()
+        }
         _ => format!("**{}**", name),
     }
 }
@@ -871,7 +878,7 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             Import a module from the poly-bench standard library.\n\n\
             Available modules:\n\
             - `anvil` - Anvil node integration (ANVIL_RPC_URL)\n\
-            - `charting` - Chart generation (drawSpeedupChart, drawTable)\n\
+            - `charting` - Chart generation (drawSpeedupChart, drawTable, drawLineChart, drawBarChart)\n\
             - `constants` - Mathematical constants (std_PI, std_E)",
         ),
         "globalSetup" => Some(
@@ -920,7 +927,9 @@ fn stdlib_module_docs(module: &str) -> Option<&'static str> {
             Use in a suite-level `after { }` block to generate charts after benchmarks complete.\n\n\
             **Provided functions:**\n\
             - `charting.drawSpeedupChart()` - Generate a speedup comparison chart\n\
-            - `charting.drawTable()` - Generate a data table",
+            - `charting.drawTable()` - Generate a data table\n\
+            - `charting.drawLineChart()` - Generate a line chart with overlays\n\
+            - `charting.drawBarChart()` - Generate a grouped bar chart with overlays",
         ),
         "constants" => Some(
             "**std::constants**\n\n\
@@ -975,6 +984,26 @@ fn stdlib_symbol_docs(symbol: &str) -> Option<&'static str> {
             Generate a table of benchmark results.\n\n\
             **Basic Parameters:**\n\
             - `title` - Table title (string)\n\n\
+            *From `std::charting`*",
+        ),
+        "drawLineChart" => Some(
+            "**charting.drawLineChart** `(...params)`\n\n\
+            Generate a line chart across related benchmarks.\n\n\
+            **Default-on overlays:**\n\
+            - `showStdDev: true`\n\
+            - `showErrorBars: true`\n\
+            - `showRegression: true`\n\
+            - `regressionModel: \"auto\"`\n\n\
+            *From `std::charting`*",
+        ),
+        "drawBarChart" => Some(
+            "**charting.drawBarChart** `(...params)`\n\n\
+            Generate a grouped bar chart across related benchmarks.\n\n\
+            **Default-on overlays:**\n\
+            - `showStdDev: true`\n\
+            - `showErrorBars: true`\n\
+            - `showRegression: true`\n\
+            - `regressionModel: \"auto\"`\n\n\
             *From `std::charting`*",
         ),
         "PI" | "std_PI" => Some(

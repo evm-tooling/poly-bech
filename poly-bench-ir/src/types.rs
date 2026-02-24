@@ -525,6 +525,14 @@ pub struct ChartDirectiveIR {
     // Theme
     /// Color theme: "dark" (default) or "light"
     pub theme: Option<String>,
+    /// Show standard deviation overlays
+    pub show_std_dev: bool,
+    /// Show confidence-interval/error bars
+    pub show_error_bars: bool,
+    /// Show regression trendline
+    pub show_regression: bool,
+    /// Regression model type or "auto"
+    pub regression_model: String,
 }
 
 impl ChartDirectiveIR {
@@ -552,6 +560,10 @@ impl ChartDirectiveIR {
             baseline_benchmark: None,
             // Theme
             theme: None,
+            show_std_dev: true,
+            show_error_bars: true,
+            show_regression: true,
+            regression_model: "auto".to_string(),
         }
     }
 
@@ -560,6 +572,8 @@ impl ChartDirectiveIR {
         self.title.clone().unwrap_or_else(|| match self.chart_type {
             ChartType::SpeedupChart => "Speedup vs Baseline".to_string(),
             ChartType::Table => "Benchmark Results".to_string(),
+            ChartType::LineChart => "Benchmark Trend Line".to_string(),
+            ChartType::BarChart => "Benchmark Trend Bars".to_string(),
         })
     }
 }

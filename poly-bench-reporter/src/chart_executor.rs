@@ -12,7 +12,7 @@ use poly_bench_executor::{
 use poly_bench_ir::ChartDirectiveIR;
 use std::path::Path;
 
-use crate::charts::{speedup_chart, table};
+use crate::charts::{bar_chart, line_chart, speedup_chart, table};
 
 /// Information about a generated chart
 #[derive(Debug, Clone)]
@@ -65,6 +65,8 @@ fn execute_single_directive(
     let svg_content = match directive.chart_type {
         ChartType::SpeedupChart => generate_speedup_chart(directive, &filtered_results)?,
         ChartType::Table => generate_table(directive, &filtered_results)?,
+        ChartType::LineChart => generate_line_chart(directive, &filtered_results)?,
+        ChartType::BarChart => generate_bar_chart(directive, &filtered_results)?,
     };
 
     // Ensure output directory exists
@@ -202,20 +204,112 @@ fn generate_table(directive: &ChartDirectiveIR, results: &BenchmarkResults) -> R
     Ok(table::generate(benchmarks, directive))
 }
 
+/// Generate a line chart SVG
+fn generate_line_chart(directive: &ChartDirectiveIR, results: &BenchmarkResults) -> Result<String> {
+    let benchmarks: Vec<_> = results.suites.iter().flat_map(|s| s.benchmarks.iter()).collect();
+    Ok(line_chart::generate(benchmarks, directive))
+}
+
+/// Generate a bar chart SVG
+fn generate_bar_chart(directive: &ChartDirectiveIR, results: &BenchmarkResults) -> Result<String> {
+    let benchmarks: Vec<_> = results.suites.iter().flat_map(|s| s.benchmarks.iter()).collect();
+    Ok(bar_chart::generate(benchmarks, directive))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use poly_bench_dsl::BenchmarkKind;
     use poly_bench_executor::comparison::BenchmarkResult;
+    use poly_bench_ir::ChartDirectiveIR;
+    use poly_bench_runtime::measurement::Measurement;
     use std::collections::HashMap;
 
     fn make_test_results() -> BenchmarkResults {
+        let mut measurements = HashMap::new();
+        measurements.insert(
+            poly_bench_dsl::Lang::Go,
+            Measurement {
+                iterations: 100,
+                total_nanos: 100_000,
+                nanos_per_op: 1000.0,
+                ops_per_sec: 1_000_000.0,
+                min_nanos: None,
+                max_nanos: None,
+                p50_nanos: None,
+                p75_nanos: None,
+                p99_nanos: None,
+                p995_nanos: None,
+                rme_percent: None,
+                samples: None,
+                bytes_per_op: None,
+                allocs_per_op: None,
+                raw_samples: Some(vec![900, 1000, 1100]),
+                raw_result: None,
+                successful_results: None,
+                async_success_count: None,
+                async_error_count: None,
+                async_error_samples: None,
+                cv_percent: None,
+                outliers_removed: None,
+                is_stable: None,
+                run_count: Some(3),
+                median_across_runs: None,
+                ci_95_lower: Some(900.0),
+                ci_95_upper: Some(1100.0),
+                std_dev_nanos: Some(100.0),
+                estimator_source: None,
+                raw_nanos_per_op: None,
+                filtered_nanos_per_op: None,
+                timed_out: None,
+                run_nanos_per_op: None,
+            },
+        );
+        measurements.insert(
+            poly_bench_dsl::Lang::TypeScript,
+            Measurement {
+                iterations: 100,
+                total_nanos: 130_000,
+                nanos_per_op: 1300.0,
+                ops_per_sec: 769_230.0,
+                min_nanos: None,
+                max_nanos: None,
+                p50_nanos: None,
+                p75_nanos: None,
+                p99_nanos: None,
+                p995_nanos: None,
+                rme_percent: None,
+                samples: None,
+                bytes_per_op: None,
+                allocs_per_op: None,
+                raw_samples: Some(vec![1200, 1300, 1400]),
+                raw_result: None,
+                successful_results: None,
+                async_success_count: None,
+                async_error_count: None,
+                async_error_samples: None,
+                cv_percent: None,
+                outliers_removed: None,
+                is_stable: None,
+                run_count: Some(3),
+                median_across_runs: None,
+                ci_95_lower: Some(1200.0),
+                ci_95_upper: Some(1400.0),
+                std_dev_nanos: Some(100.0),
+                estimator_source: None,
+                raw_nanos_per_op: None,
+                filtered_nanos_per_op: None,
+                timed_out: None,
+                run_nanos_per_op: None,
+            },
+        );
+
         let benchmarks = vec![BenchmarkResult::new(
             "bench1".to_string(),
             "suite_bench1".to_string(),
             BenchmarkKind::Sync,
             None,
-            HashMap::new(),
+            measurements,
             "legacy".to_string(),
             None,
             None,
@@ -252,5 +346,33 @@ mod tests {
         assert_eq!(single.suites.len(), 1);
         assert_eq!(single.suites[0].benchmarks.len(), 1);
         assert_eq!(single.suites[0].benchmarks[0].name, "bench1");
+    }
+
+    #[test]
+    fn test_execute_line_chart_directive() {
+        let results = make_test_results();
+        let mut directive = ChartDirectiveIR::new(
+            ChartType::LineChart,
+            "line-test.svg".to_string(),
+        );
+        directive.title = Some("Line".to_string());
+        let out_dir = std::env::temp_dir().join("polybench_chart_executor_line");
+        let generated = execute_chart_directives(&[directive], &results, &out_dir).unwrap();
+        assert_eq!(generated.len(), 1);
+        assert_eq!(generated[0].chart_type, ChartType::LineChart);
+    }
+
+    #[test]
+    fn test_execute_bar_chart_directive() {
+        let results = make_test_results();
+        let mut directive = ChartDirectiveIR::new(
+            ChartType::BarChart,
+            "bar-test.svg".to_string(),
+        );
+        directive.title = Some("Bar".to_string());
+        let out_dir = std::env::temp_dir().join("polybench_chart_executor_bar");
+        let generated = execute_chart_directives(&[directive], &results, &out_dir).unwrap();
+        assert_eq!(generated.len(), 1);
+        assert_eq!(generated[0].chart_type, ChartType::BarChart);
     }
 }
