@@ -38,6 +38,12 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -48,9 +54,13 @@ jobs:
             const docsChanged = files.some(f => f.filename.startsWith('docs/'));
             const codeChanged = files.some(f => !f.filename.startsWith('docs/'));
 
+            // Check if PR title indicates no VSCode extension publish
+            const skipVscode = pr.data.title.toLowerCase().includes('no vscode');
+
             core.setOutput('docs_changed', String(docsChanged));
             core.setOutput('code_changed', String(codeChanged));
-            console.log(`docs_changed=${docsChanged}, code_changed=${codeChanged}`);
+            core.setOutput('skip_vscode', String(skipVscode));
+            console.log(`docs_changed=${docsChanged}, code_changed=${codeChanged}, skip_vscode=${skipVscode}`);
 
       - name: React to comment
         uses: actions/github-script@v7
@@ -75,13 +85,13 @@ jobs:
           comment: always
 
       - name: Set up Node.js
-        if: ${{ steps.changes.outputs.code_changed == 'true' }}
+        if: ${{ steps.changes.outputs.code_changed == 'true' && steps.changes.outputs.skip_vscode != 'true' }}
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Publish VSCode extension
-        if: ${{ steps.changes.outputs.code_changed == 'true' }}
+        if: ${{ steps.changes.outputs.code_changed == 'true' && steps.changes.outputs.skip_vscode != 'true' }}
         working-directory: extensions/vscode
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
@@ -129,12 +139,14 @@ jobs:
         env:
           DOCS_CHANGED: ${{ steps.changes.outputs.docs_changed }}
           CODE_CHANGED: ${{ steps.changes.outputs.code_changed }}
+          SKIP_VSCODE: ${{ steps.changes.outputs.skip_vscode }}
           RELEASE_TAG: ${{ steps.publish_release.outputs.tag }}
           RELEASE_URL: ${{ steps.publish_release.outputs.url }}
         with:
           script: |
             const docsChanged = process.env.DOCS_CHANGED === 'true';
             const codeChanged = process.env.CODE_CHANGED === 'true';
+            const skipVscode = process.env.SKIP_VSCODE === 'true';
             const releaseTag = process.env.RELEASE_TAG;
             const releaseUrl = process.env.RELEASE_URL;
 
@@ -143,13 +155,15 @@ jobs:
             if (docsChanged && !codeChanged) {
               message = '📚 Docs-only release complete: merged to `production` for Vercel deploy. No binary/tag promotion run.';
             } else if (!docsChanged && codeChanged) {
+              const vscodeNote = skipVscode ? ' (VSCode extension publish skipped)' : '';
               message = releaseTag && releaseUrl
-                ? `🚀 Code release complete: published [${releaseTag}](${releaseUrl}).`
-                : '🚀 Code release complete: fast-forward merged and code release steps ran.';
+                ? `🚀 Code release complete: published [${releaseTag}](${releaseUrl})${vscodeNote}.`
+                : `🚀 Code release complete: fast-forward merged and code release steps ran${vscodeNote}.`;
             } else if (docsChanged && codeChanged) {
+              const vscodeNote = skipVscode ? ' (VSCode extension publish skipped)' : '';
               message = releaseTag && releaseUrl
-                ? `🚀 Mixed release complete: docs deployed and [${releaseTag}](${releaseUrl}) published.`
-                : '🚀 Mixed release complete: docs deployed and code release steps ran.';
+                ? `🚀 Mixed release complete: docs deployed and [${releaseTag}](${releaseUrl}) published${vscodeNote}.`
+                : `🚀 Mixed release complete: docs deployed and code release steps ran${vscodeNote}.`;
             }
 
             await github.rest.issues.createComment({
