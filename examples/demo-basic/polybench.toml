@@ -16,8 +16,8 @@ module = "demo-basic"
 version = "1.21"
 
 [go.dependencies]
-"golang.org/x/crypto/sha3" = "latest"
 "github.com/ChefBingbong/viem-go" = "latest"
+"golang.org/x/crypto/sha3" = "latest"
 
 [ts]
 runtime = "node"
@@ -29,8 +29,15 @@ viem = "latest"
 edition = "2021"
 
 [rust.dependencies]
-regex = "1.12.3"
-sha2 = "0.10"
+lazy_static = "1.5.0"
+eyre = "0.6.12"
+
+[rust.dependencies.tokio]
+version = "1.49.0"
+features = [
+    "rt",
+    "rt-multi-thread",
+]
 
 [rust.dependencies.tiny-keccak]
 version = "2.0"

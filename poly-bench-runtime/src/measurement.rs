@@ -360,6 +360,24 @@ impl Measurement {
         let has_success_count = runs.iter().any(|r| r.async_success_count.is_some());
         let total_error_count: u64 = runs.iter().filter_map(|r| r.async_error_count).sum();
         let has_error_count = runs.iter().any(|r| r.async_error_count.is_some());
+
+        // Aggregate successful_results across all runs (capped at 100)
+        let mut aggregated_successful_results: Vec<String> = Vec::new();
+        for run in &runs {
+            if let Some(results) = &run.successful_results {
+                for result in results {
+                    if aggregated_successful_results.len() >= 100 {
+                        break;
+                    }
+                    aggregated_successful_results.push(result.clone());
+                }
+            }
+            if aggregated_successful_results.len() >= 100 {
+                break;
+            }
+        }
+
+        // Aggregate error_samples across all runs (capped at 50)
         let mut aggregated_error_samples: Vec<String> = Vec::new();
         for run in &runs {
             if let Some(samples) = &run.async_error_samples {
@@ -392,7 +410,11 @@ impl Measurement {
             allocs_per_op,
             raw_samples: None, // Don't combine raw samples (too large)
             raw_result: runs.last().and_then(|r| r.raw_result.clone()),
-            successful_results: runs.last().and_then(|r| r.successful_results.clone()),
+            successful_results: if aggregated_successful_results.is_empty() {
+                None
+            } else {
+                Some(aggregated_successful_results)
+            },
             async_success_count: if has_success_count { Some(total_success_count) } else { None },
             async_error_count: if has_error_count { Some(total_error_count) } else { None },
             async_error_samples: if aggregated_error_samples.is_empty() {

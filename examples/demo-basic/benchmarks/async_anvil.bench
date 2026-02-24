@@ -3,16 +3,16 @@ use std::anvil
 suite evmBench {
     description: "EVM benchmark demonstrating Anvil integration"
     baseline: "go"
-    mode: "auto"
-    targetTime: 8000ms
+    mode: "fixed"
+    iterations: 10
     cvThreshold: 10
     warmup: 10
-    count: 5
-     fairness: "strict"
+    count: 10
+    fairness: "strict"
     fairnessSeed: 20260223
-    asyncSamplingPolicy: "timeBudgeted"
+    asyncSamplingPolicy: "fixedCap"
     asyncWarmupCap: 8
-    asyncSampleCap: 500
+    asyncSampleCap: 100
 
     globalSetup {
         anvil.spawnAnvil(fork: "https://eth.drpc.org")
@@ -40,7 +40,7 @@ suite evmBench {
             _publicClient, err := client.CreatePublicClient(client.PublicClientConfig{
                 CacheTime: 0 *  time.Second,
                 Chain:     &definitions.Mainnet,
-                Transport: transport.HTTP( ANVIL_RPC_URL),
+                Transport: transport.HTTP( "https://eth.drpc.org"),
             })
 
             if err != nil {
@@ -80,7 +80,7 @@ suite evmBench {
             publicClient = createPublicClient({
                 cacheTime: 0,
                 chain: mainnet,
-                transport: http(ANVIL_RPC_URL),
+                transport: http("https://eth.drpc.org"),
             })
         }
 
@@ -93,33 +93,29 @@ suite evmBench {
 
     setup rust {
         import {
-            use alloy::providers::{Provider, ProviderBuilder};
+            use alloy::providers::{Provider, RootProvider};
+            use std::sync::OnceLock;
+            use tokio::runtime::Runtime;
         }
 
         declare {
-            type HttpProvider = alloy::providers::RootProvider<
-                alloy::transports::http::Http<alloy::transports::http::reqwest::Client>
-            >;
-           
+            static PROVIDER: OnceLock<RootProvider> = OnceLock::new();
+            static RT: OnceLock<Runtime> = OnceLock::new();
         }
 
         init {
-            static mut publicClient = ProviderBuilder::new().connect_http(ANVIL_RPC_URL); 
+            let rpc_url = "https://eth.drpc.org".parse().expect("Invalid ANVIL_RPC_URL");
+            let provider = RootProvider::new_http(rpc_url);
+            PROVIDER.set(provider).expect("PROVIDER already initialized");
+            RT.set(Runtime::new().expect("failed to create runtime")).ok();
         }
 
         helpers {
-            fn getBlockNumberRust() -> u64 {
-                let provider = unsafe {
-                    publicClient
-                        .as_ref()
-                        .expect("publicClient was not initialized in setup rust init")
-                };
-                let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+            fn get_block_number_rust() -> u64 {
+                let provider = PROVIDER.get().expect("PROVIDER not initialized");
+                let rt = RT.get().expect("RT not initialized");
                 rt.block_on(async {
-                    provider
-                        .get_block_number()
-                        .await
-                        .expect("failed to fetch block number")
+                    provider.get_block_number().await.expect("failed to get block number")
                 })
             }
         }
@@ -129,7 +125,7 @@ suite evmBench {
         description: "Get the current block number via RPC"
         go: getBlockNumberGo()
         ts: getBlockNumberTs()
-        rust: getBlockNumberRust()
+        rust: get_block_number_rust()
     }
 
     after {

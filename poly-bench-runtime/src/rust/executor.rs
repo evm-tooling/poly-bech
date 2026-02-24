@@ -3,14 +3,35 @@
 use crate::{measurement::Measurement, traits::Runtime};
 use async_trait::async_trait;
 use miette::{miette, Result};
-use poly_bench_dsl::{BenchMode, Lang};
+use poly_bench_dsl::{BenchMode, BenchmarkKind, Lang};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use poly_bench_stdlib as stdlib;
-use std::{collections::HashSet, path::PathBuf, process::Stdio};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+    process::Stdio,
+};
+
+/// Clean up LSP virtual files from the src/bin directory that would interfere with cargo
+/// compilation
+fn cleanup_lsp_virtual_files(project_root: &Path) {
+    let bin_dir = project_root.join("src").join("bin");
+    if bin_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&bin_dir) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.starts_with("_lsp_virtual_") && name.ends_with(".rs") {
+                        let _ = std::fs::remove_file(entry.path());
+                    }
+                }
+            }
+        }
+    }
+}
 
 use super::shared::{
-    self, generate_bench_call, generate_fixtures_for_spec, generate_suite_code, SinkMemoryDecls,
-    BENCH_RESULT_STRUCT,
+    self, generate_bench_call, generate_fixtures_for_spec, generate_init_code, generate_suite_code,
+    SinkMemoryDecls, BENCH_RESULT_STRUCT,
 };
 
 /// Rust runtime using cargo subprocess
@@ -71,26 +92,48 @@ impl Runtime for RustRuntime {
         // Build line mappings for error remapping
         let mappings = crate::build_rust_mappings(suite, &source);
 
-        // Generate Cargo.toml for this suite's dependencies
-        let cargo_toml = generate_cargo_toml(suite);
-
-        // Use a persistent directory keyed by Cargo.toml hash to get incremental compilation
-        // while keeping different suites (with different dependencies) isolated
+        // Set up working directory and Cargo.toml based on project_root type
         let (work_dir, cleanup) = if let Some(ref project_root) = self.project_root {
-            // Hash the Cargo.toml to create a unique directory per dependency set
-            use std::{
-                collections::hash_map::DefaultHasher,
-                hash::{Hash, Hasher},
-            };
-            let mut hasher = DefaultHasher::new();
-            cargo_toml.hash(&mut hasher);
-            let cargo_hash = hasher.finish();
+            let is_runtime_env = project_root.as_os_str().to_string_lossy().contains("runtime-env");
 
-            let rust_dir =
-                project_root.join(".polybench").join("rust").join(format!("{:016x}", cargo_hash));
-            std::fs::create_dir_all(&rust_dir)
-                .map_err(|e| miette!("Failed to create .polybench/rust directory: {}", e))?;
-            (rust_dir, false)
+            if is_runtime_env {
+                // Use runtime-env directly - it has user's Cargo.toml with dependencies
+                // Clean up any LSP virtual files that might interfere with cargo check
+                cleanup_lsp_virtual_files(project_root);
+                (project_root.clone(), false)
+            } else {
+                // Not a runtime-env: use hash-based subdirectory for isolation
+                let cargo_toml = generate_cargo_toml(suite);
+                use std::{
+                    collections::hash_map::DefaultHasher,
+                    hash::{Hash, Hasher},
+                };
+                let mut hasher = DefaultHasher::new();
+                cargo_toml.hash(&mut hasher);
+                let cargo_hash = hasher.finish();
+
+                let rust_dir = project_root
+                    .join(".polybench")
+                    .join("rust")
+                    .join(format!("{:016x}", cargo_hash));
+                std::fs::create_dir_all(&rust_dir)
+                    .map_err(|e| miette!("Failed to create .polybench/rust directory: {}", e))?;
+
+                // Write generated Cargo.toml for non-runtime-env case
+                let cargo_path = rust_dir.join("Cargo.toml");
+                let should_write_cargo = if cargo_path.exists() {
+                    let existing = std::fs::read_to_string(&cargo_path).unwrap_or_default();
+                    existing != cargo_toml
+                } else {
+                    true
+                };
+                if should_write_cargo {
+                    std::fs::write(&cargo_path, &cargo_toml)
+                        .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
+                }
+
+                (rust_dir, false)
+            }
         } else {
             // Fall back to temp directory with unique name
             let safe_name = spec.full_name.replace('.', "_").replace('/', "_");
@@ -106,25 +149,18 @@ impl Runtime for RustRuntime {
                 .join(format!("polybench-rust-check-{}-{}", safe_name, check_id));
             std::fs::create_dir_all(&temp_dir)
                 .map_err(|e| miette!("Failed to create temp directory: {}", e))?;
+
+            // Write minimal Cargo.toml for temp directory
+            let cargo_toml = generate_cargo_toml(suite);
+            std::fs::write(temp_dir.join("Cargo.toml"), &cargo_toml)
+                .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
+
             (temp_dir, true)
         };
 
         let src_dir = work_dir.join("src");
         std::fs::create_dir_all(&src_dir)
             .map_err(|e| miette!("Failed to create src directory: {}", e))?;
-
-        // Write Cargo.toml (only if changed to preserve Cargo.lock)
-        let cargo_path = work_dir.join("Cargo.toml");
-        let should_write_cargo = if cargo_path.exists() {
-            let existing = std::fs::read_to_string(&cargo_path).unwrap_or_default();
-            existing != cargo_toml
-        } else {
-            true
-        };
-        if should_write_cargo {
-            std::fs::write(&cargo_path, &cargo_toml)
-                .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
-        }
 
         // Write source as main.rs
         let main_path = src_dir.join("main.rs");
@@ -198,6 +234,12 @@ impl RustRuntime {
         // Need to compile - set up directories and source
         let (src_path, working_dir) = if let Some(ref project_root) = self.project_root {
             let is_runtime_env = project_root.as_os_str().to_string_lossy().contains("runtime-env");
+
+            // Clean up any LSP virtual files that might interfere with cargo build
+            if is_runtime_env {
+                cleanup_lsp_virtual_files(project_root);
+            }
+
             let src_path = if is_runtime_env {
                 project_root.join("src").join("main.rs")
             } else {
@@ -305,6 +347,12 @@ impl RustRuntime {
         // Need to compile - set up directories and source
         let (src_path, working_dir) = if let Some(ref project_root) = self.project_root {
             let is_runtime_env = project_root.as_os_str().to_string_lossy().contains("runtime-env");
+
+            // Clean up any LSP virtual files that might interfere with cargo build
+            if is_runtime_env {
+                cleanup_lsp_virtual_files(project_root);
+            }
+
             let src_path = if is_runtime_env {
                 project_root.join("src").join("main.rs")
             } else {
@@ -450,6 +498,14 @@ struct BenchResultJson {
     samples: Vec<u64>,
     #[serde(default)]
     raw_result: Option<String>,
+    #[serde(default)]
+    successful_results: Vec<String>,
+    #[serde(default)]
+    successful_count: Option<u64>,
+    #[serde(default)]
+    error_count: Option<u64>,
+    #[serde(default)]
+    error_samples: Vec<String>,
 }
 
 impl BenchResultJson {
@@ -475,6 +531,20 @@ impl BenchResultJson {
             }
         }
         m.raw_result = self.raw_result;
+
+        // Set async-specific fields
+        if let Some(successful_count) = self.successful_count {
+            m.async_success_count = Some(successful_count);
+        }
+        if let Some(error_count) = self.error_count {
+            m.async_error_count = Some(error_count);
+        }
+        if !self.successful_results.is_empty() {
+            m.successful_results = Some(self.successful_results);
+        }
+        if !self.error_samples.is_empty() {
+            m.async_error_samples = Some(self.error_samples);
+        }
 
         m
     }
@@ -636,6 +706,9 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     // Main function
     code.push_str("fn main() {\n");
 
+    // Init code (runs once at start of main)
+    code.push_str(&generate_init_code(suite, Lang::Rust));
+
     // Fixtures
     code.push_str(&generate_fixtures_for_spec(spec, suite, Lang::Rust));
 
@@ -653,33 +726,57 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
 
     code.push_str(decls.memory_before);
 
-    // Generate based on mode
+    // Check if this is an async benchmark
+    let is_async = spec.kind == BenchmarkKind::Async;
+
+    // Generate based on mode and async status
     match spec.mode {
         BenchMode::Auto => {
-            // Warmup
-            code.push_str(&shared::generate_warmup_loop(
-                &bench_call,
-                decls.sink_keepalive,
-                each_hook,
-                &spec.warmup.to_string(),
-            ));
+            if is_async {
+                // Async + Auto: use capped warmup and async-specific loops
+                let capped_warmup = spec.warmup.min(spec.async_warmup_cap);
 
-            // Auto-calibration loop
-            code.push_str(&shared::generate_auto_mode_loop(
-                &bench_call,
-                decls.sink_keepalive,
-                each_hook,
-                spec.target_time_ms,
-            ));
+                // Warmup with capped iterations
+                code.push_str(&shared::generate_warmup_loop(
+                    &bench_call,
+                    decls.sink_keepalive,
+                    each_hook,
+                    &capped_warmup.to_string(),
+                ));
 
-            // Sample collection
-            code.push_str(&shared::generate_sample_collection(
-                &bench_call,
-                decls.sink_keepalive,
-                each_hook,
-                "1000",
-                "total_iterations",
-            ));
+                // Async loop based on policy
+                code.push_str(&shared::generate_async_loop_by_policy(
+                    spec.async_sampling_policy,
+                    &bench_call,
+                    decls.sink_keepalive,
+                    each_hook,
+                    spec.target_time_ms,
+                    spec.async_sample_cap,
+                ));
+            } else {
+                // Sync + Auto: standard auto-calibration
+                code.push_str(&shared::generate_warmup_loop(
+                    &bench_call,
+                    decls.sink_keepalive,
+                    each_hook,
+                    &spec.warmup.to_string(),
+                ));
+
+                code.push_str(&shared::generate_auto_mode_loop(
+                    &bench_call,
+                    decls.sink_keepalive,
+                    each_hook,
+                    spec.target_time_ms,
+                ));
+
+                code.push_str(&shared::generate_sample_collection(
+                    &bench_call,
+                    decls.sink_keepalive,
+                    each_hook,
+                    "1000",
+                    "total_iterations",
+                ));
+            }
         }
         BenchMode::Fixed => {
             let iterations = spec.iterations;
@@ -689,24 +786,40 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
                 iterations
             ));
 
-            // Warmup
+            // Warmup (capped for async)
+            let warmup_count = if is_async {
+                spec.warmup.min(spec.async_warmup_cap).to_string()
+            } else {
+                spec.warmup.to_string()
+            };
             code.push_str(&shared::generate_warmup_loop(
                 &bench_call,
                 decls.sink_keepalive,
                 each_hook,
-                &spec.warmup.to_string(),
+                &warmup_count,
             ));
 
-            // Fixed measurement loop
-            code.push_str(&shared::generate_fixed_mode_loop(
-                &bench_call,
-                decls.sink_keepalive,
-                each_hook,
-                "iterations",
-            ));
+            if is_async {
+                // Async Fixed mode: use async loop with error tracking (matching TypeScript)
+                code.push_str(&shared::generate_async_fixed_mode_loop(
+                    &bench_call,
+                    decls.sink_keepalive,
+                    each_hook,
+                    "iterations",
+                    spec.async_sample_cap,
+                ));
+            } else {
+                // Sync Fixed mode: standard fixed loop
+                code.push_str(&shared::generate_fixed_mode_loop(
+                    &bench_call,
+                    decls.sink_keepalive,
+                    each_hook,
+                    "iterations",
+                ));
 
-            // Use iterations as total for result
-            code.push_str("    let total_iterations = iterations;\n");
+                // Use iterations as total for result
+                code.push_str("    let total_iterations = iterations;\n");
+            }
         }
     }
 
@@ -721,8 +834,14 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     }
 
     // Result calculation and output
+    // Use async result return for all async benchmarks (both Auto and Fixed modes now have error
+    // tracking)
     let memory_result = SinkMemoryDecls::memory_result_fields(spec.memory);
-    code.push_str(&shared::generate_result_return("total_iterations", &memory_result));
+    if is_async {
+        code.push_str(&shared::generate_async_result_return("total_iterations", &memory_result));
+    } else {
+        code.push_str(&shared::generate_result_return("total_iterations", &memory_result));
+    }
 
     code.push_str("}\n");
 

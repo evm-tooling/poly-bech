@@ -3,7 +3,7 @@
 //! This module contains common code generation functions used by both
 //! the codegen and executor modules for Rust benchmarks.
 
-use poly_bench_dsl::Lang;
+use poly_bench_dsl::{AsyncSamplingPolicy, Lang};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use std::collections::HashSet;
 
@@ -21,6 +21,14 @@ struct BenchResult {
     samples: Vec<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     raw_result: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    successful_results: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    successful_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_count: Option<u64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    error_samples: Vec<String>,
 }
 "#;
 
@@ -189,6 +197,71 @@ pub fn generate_fixed_mode_loop(
     )
 }
 
+/// Generate fixed iteration measurement loop for async Rust benchmarks
+/// Includes error tracking and result capture like TypeScript
+pub fn generate_async_fixed_mode_loop(
+    bench_call: &str,
+    _sink_keepalive: &str,
+    each_hook: Option<&String>,
+    iter_var: &str,
+    sample_cap: u64,
+) -> String {
+    let each_hook_code = each_hook
+        .map(|h| h.trim().lines().map(|line| format!("        {}\n", line)).collect::<String>())
+        .unwrap_or_default();
+
+    format!(
+        r#"    // Async fixed iteration timed run with error tracking
+    let mut total_nanos: i64 = 0;
+    let mut successful_results: Vec<String> = Vec::new();
+    let mut successful_count: u64 = 0;
+    let mut error_count: u64 = 0;
+    let mut error_samples: Vec<String> = Vec::new();
+
+    for i in 0..{iter_var} {{
+{each_hook_code}        let start = Instant::now();
+        let iter_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {{
+            {bench_call}
+        }}));
+        let elapsed = start.elapsed().as_nanos() as i64;
+        total_nanos += elapsed;
+        samples[i as usize] = elapsed as u64;
+
+        match iter_result {{
+            Ok(result) => {{
+                successful_count += 1;
+                if successful_results.len() < {sample_cap} as usize {{
+                    if let Ok(json) = serde_json::to_string(&result) {{
+                        if json != "null" {{
+                            successful_results.push(json);
+                        }}
+                    }}
+                }}
+            }}
+            Err(e) => {{
+                error_count += 1;
+                if error_samples.len() < {sample_cap} as usize {{
+                    let msg = if let Some(s) = e.downcast_ref::<&str>() {{
+                        s.to_string()
+                    }} else if let Some(s) = e.downcast_ref::<String>() {{
+                        s.clone()
+                    }} else {{
+                        "panic".to_string()
+                    }};
+                    error_samples.push(msg);
+                }}
+            }}
+        }}
+    }}
+    let total_iterations = {iter_var};
+"#,
+        iter_var = iter_var,
+        each_hook_code = each_hook_code,
+        bench_call = bench_call,
+        sample_cap = sample_cap,
+    )
+}
+
 /// Generate the auto-calibration measurement loop for Rust
 pub fn generate_auto_mode_loop(
     bench_call: &str,
@@ -275,6 +348,206 @@ pub fn generate_sample_collection(
     )
 }
 
+/// Generate async sequential auto-mode loop (TimeBudgeted policy)
+/// Runs until target time budget is reached, with error tracking and reservoir sampling
+pub fn generate_async_auto_mode_loop(
+    bench_call: &str,
+    _sink_keepalive: &str,
+    each_hook: Option<&String>,
+    target_time_ms: u64,
+    sample_cap: u64,
+) -> String {
+    let each_hook_code = each_hook
+        .map(|h| h.trim().lines().map(|line| format!("        {}\n", line)).collect::<String>())
+        .unwrap_or_default();
+
+    let target_nanos_val = target_time_ms * 1_000_000;
+    format!(
+        r#"    // Async-sequential auto mode: one completed call per iteration (TimeBudgeted)
+    let target_nanos: i64 = {target_nanos_val};
+    let mut total_iterations: i64 = 0;
+    let mut total_nanos: i64 = 0;
+    let mut samples: Vec<u64> = Vec::with_capacity({sample_cap} as usize);
+    let mut rng_state: u64 = 0x9E37_79B9_7F4A_7C15;
+    let mut successful_results: Vec<String> = Vec::new();
+    let mut successful_count: u64 = 0;
+    let mut error_count: u64 = 0;
+    let mut error_samples: Vec<String> = Vec::new();
+
+    while total_nanos < target_nanos {{
+{each_hook_code}        let start = Instant::now();
+        let iter_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {{
+            {bench_call}
+        }}));
+        let elapsed = start.elapsed().as_nanos() as i64;
+        total_nanos += elapsed;
+
+        match iter_result {{
+            Ok(result) => {{
+                successful_count += 1;
+                if let Ok(json) = serde_json::to_string(&result) {{
+                    if json != "null" {{
+                        successful_results.push(json);
+                    }}
+                }}
+            }}
+            Err(e) => {{
+                error_count += 1;
+                if error_samples.len() < {sample_cap} as usize {{
+                    let msg = if let Some(s) = e.downcast_ref::<&str>() {{
+                        s.to_string()
+                    }} else if let Some(s) = e.downcast_ref::<String>() {{
+                        s.clone()
+                    }} else {{
+                        "panic".to_string()
+                    }};
+                    error_samples.push(msg);
+                }}
+            }}
+        }}
+
+        // Reservoir sampling for samples
+        if samples.len() < {sample_cap} as usize {{
+            samples.push(elapsed as u64);
+        }} else if {sample_cap} > 0 {{
+            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let replace_idx = (rng_state % (total_iterations as u64 + 1)) as usize;
+            if replace_idx < {sample_cap} as usize {{
+                samples[replace_idx] = elapsed as u64;
+            }}
+        }}
+        total_iterations += 1;
+    }}
+"#,
+        target_nanos_val = target_nanos_val,
+        sample_cap = sample_cap,
+        each_hook_code = each_hook_code,
+        bench_call = bench_call,
+    )
+}
+
+/// Generate async fixed-cap loop (FixedCap policy)
+/// Runs exactly sample_cap iterations with error tracking and reservoir sampling
+pub fn generate_async_fixed_cap_loop(
+    bench_call: &str,
+    _sink_keepalive: &str,
+    each_hook: Option<&String>,
+    sample_cap: u64,
+) -> String {
+    let each_hook_code = each_hook
+        .map(|h| h.trim().lines().map(|line| format!("        {}\n", line)).collect::<String>())
+        .unwrap_or_default();
+
+    format!(
+        r#"    // Async fixed-cap mode: run a bounded number of completed async calls (FixedCap)
+    let mut total_iterations: i64 = 0;
+    let mut total_nanos: i64 = 0;
+    let mut samples: Vec<u64> = Vec::with_capacity({sample_cap} as usize);
+    let mut rng_state: u64 = 0x9E37_79B9_7F4A_7C15;
+    let mut successful_results: Vec<String> = Vec::new();
+    let mut successful_count: u64 = 0;
+    let mut error_count: u64 = 0;
+    let mut error_samples: Vec<String> = Vec::new();
+
+    while total_iterations < {sample_cap} as i64 {{
+{each_hook_code}        let start = Instant::now();
+        let iter_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {{
+            {bench_call}
+        }}));
+        let elapsed = start.elapsed().as_nanos() as i64;
+        total_nanos += elapsed;
+
+        match iter_result {{
+            Ok(result) => {{
+                successful_count += 1;
+                if let Ok(json) = serde_json::to_string(&result) {{
+                    if json != "null" {{
+                        successful_results.push(json);
+                    }}
+                }}
+            }}
+            Err(e) => {{
+                error_count += 1;
+                if error_samples.len() < {sample_cap} as usize {{
+                    let msg = if let Some(s) = e.downcast_ref::<&str>() {{
+                        s.to_string()
+                    }} else if let Some(s) = e.downcast_ref::<String>() {{
+                        s.clone()
+                    }} else {{
+                        "panic".to_string()
+                    }};
+                    error_samples.push(msg);
+                }}
+            }}
+        }}
+
+        // Reservoir sampling for samples
+        if samples.len() < {sample_cap} as usize {{
+            samples.push(elapsed as u64);
+        }} else if {sample_cap} > 0 {{
+            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let replace_idx = (rng_state % (total_iterations as u64 + 1)) as usize;
+            if replace_idx < {sample_cap} as usize {{
+                samples[replace_idx] = elapsed as u64;
+            }}
+        }}
+        total_iterations += 1;
+    }}
+"#,
+        sample_cap = sample_cap,
+        each_hook_code = each_hook_code,
+        bench_call = bench_call,
+    )
+}
+
+/// Select async loop strategy based on policy
+pub fn generate_async_loop_by_policy(
+    policy: AsyncSamplingPolicy,
+    bench_call: &str,
+    sink_keepalive: &str,
+    each_hook: Option<&String>,
+    target_time_ms: u64,
+    sample_cap: u64,
+) -> String {
+    match policy {
+        AsyncSamplingPolicy::FixedCap => {
+            generate_async_fixed_cap_loop(bench_call, sink_keepalive, each_hook, sample_cap)
+        }
+        AsyncSamplingPolicy::TimeBudgeted => generate_async_auto_mode_loop(
+            bench_call,
+            sink_keepalive,
+            each_hook,
+            target_time_ms,
+            sample_cap,
+        ),
+    }
+}
+
+/// Generate result calculation and output for async benchmarks
+pub fn generate_async_result_return(iter_var: &str, memory_result: &str) -> String {
+    format!(
+        r#"
+    let nanos_per_op = total_nanos as f64 / {iter_var} as f64;
+    let ops_per_sec = 1e9 / nanos_per_op;
+    
+    let result = BenchResult {{
+        iterations: {iter_var} as u64,
+        total_nanos: total_nanos as u64,
+        nanos_per_op,
+        ops_per_sec,
+{memory_result}        samples,
+        raw_result: None,
+        successful_results,
+        successful_count: Some(successful_count),
+        error_count: Some(error_count),
+        error_samples,
+    }};
+    
+    println!("{{}}", serde_json::to_string(&result).unwrap());
+"#
+    )
+}
+
 /// Generate suite-level code (declarations, init, helpers)
 pub fn generate_suite_code(suite: &SuiteIR, lang: Lang) -> String {
     let mut code = String::new();
@@ -298,6 +571,23 @@ pub fn generate_suite_code(suite: &SuiteIR, lang: Lang) -> String {
             code.push_str(helpers);
             if !helpers.ends_with('\n') {
                 code.push('\n');
+            }
+            code.push('\n');
+        }
+    }
+
+    code
+}
+
+/// Generate init code to be called at the start of main()
+pub fn generate_init_code(suite: &SuiteIR, lang: Lang) -> String {
+    let mut code = String::new();
+
+    if let Some(init_code) = suite.init_code.get(&lang) {
+        if !init_code.trim().is_empty() {
+            code.push_str("    // Init\n");
+            for line in init_code.lines() {
+                code.push_str(&format!("    {}\n", line));
             }
             code.push('\n');
         }
@@ -345,6 +635,10 @@ pub fn generate_result_return(iter_var: &str, memory_result: &str) -> String {
         ops_per_sec,
 {memory_result}        samples,
         raw_result: None,
+        successful_results: Vec::new(),
+        successful_count: None,
+        error_count: None,
+        error_samples: Vec::new(),
     }};
     
     println!("{{}}", serde_json::to_string(&result).unwrap());
@@ -361,6 +655,9 @@ mod tests {
         assert!(BENCH_RESULT_STRUCT.contains("struct BenchResult"));
         assert!(BENCH_RESULT_STRUCT.contains("iterations"));
         assert!(BENCH_RESULT_STRUCT.contains("serde::Serialize"));
+        assert!(BENCH_RESULT_STRUCT.contains("successful_count"));
+        assert!(BENCH_RESULT_STRUCT.contains("error_count"));
+        assert!(BENCH_RESULT_STRUCT.contains("error_samples"));
     }
 
     #[test]
@@ -374,5 +671,41 @@ mod tests {
         let result = SinkMemoryDecls::memory_result_fields(true);
         assert!(result.contains("bytes_per_op"));
         assert!(result.contains("allocs_per_op"));
+    }
+
+    #[test]
+    fn test_generate_async_loop_by_policy_time_budgeted() {
+        let loop_code = generate_async_loop_by_policy(
+            AsyncSamplingPolicy::TimeBudgeted,
+            "std::hint::black_box(call())",
+            "",
+            None,
+            1000,
+            10,
+        );
+        assert!(loop_code.contains("target_nanos: i64 ="));
+        assert!(loop_code.contains("while total_nanos < target_nanos"));
+        assert!(loop_code.contains("catch_unwind"));
+        assert!(loop_code.contains("error_count += 1"));
+        assert!(loop_code.contains("total_nanos += elapsed"));
+        assert!(loop_code.contains("rng_state"));
+    }
+
+    #[test]
+    fn test_generate_async_loop_by_policy_fixed_cap() {
+        let loop_code = generate_async_loop_by_policy(
+            AsyncSamplingPolicy::FixedCap,
+            "std::hint::black_box(call())",
+            "",
+            None,
+            1000,
+            10,
+        );
+        assert!(loop_code.contains("while total_iterations < 10"));
+        assert!(!loop_code.contains("target_nanos: i64 ="));
+        assert!(loop_code.contains("catch_unwind"));
+        assert!(loop_code.contains("successful_count += 1"));
+        assert!(loop_code.contains("total_nanos += elapsed"));
+        assert!(loop_code.contains("rng_state"));
     }
 }
