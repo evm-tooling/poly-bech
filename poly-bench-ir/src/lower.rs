@@ -329,6 +329,7 @@ fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -
     ir.show_error_bars = directive.show_error_bars;
     ir.show_regression = directive.show_regression;
     ir.regression_model = directive.regression_model.clone();
+    ir.y_scale = directive.y_scale.clone();
 
     ir
 }
@@ -541,5 +542,32 @@ declare suite chartSuite performance timeBased sameDataset: true {
         assert!(chart.show_error_bars);
         assert!(!chart.show_regression);
         assert_eq!(chart.regression_model, "linear");
+        assert_eq!(chart.y_scale, "linear");
+    }
+
+    #[test]
+    fn test_lower_chart_y_scale_round_trip() {
+        let source = r#"
+use std::charting
+
+declare suite chartSuite performance timeBased sameDataset: true {
+    targetTime: 2s
+    bench n10 {
+        go: run()
+        ts: run()
+    }
+    after {
+        charting.drawLineChart(
+            title: "Trend",
+            description: "desc",
+            yScale: "log10"
+        )
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let ir = lower(&ast, None).unwrap();
+        assert_eq!(ir.chart_directives.len(), 1);
+        assert_eq!(ir.chart_directives[0].y_scale, "log10");
     }
 }

@@ -402,6 +402,7 @@ module.exports = grammar({
       'showErrorBars',
       'showRegression',
       'regressionModel',
+      'yScale',
     ),
 
     _chart_value: $ => choice(

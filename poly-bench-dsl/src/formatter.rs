@@ -1014,6 +1014,7 @@ fn format_single_param(directive: &ChartDirective, name: &str, indent: &str) -> 
             indent,
             escape_string(&directive.regression_model)
         )),
+        "yScale" => Some(format!("{}yScale: \"{}\"", indent, escape_string(&directive.y_scale))),
 
         // Integer parameters
         "limit" => directive.limit.map(|v| format!("{}limit: {}", indent, v)),
@@ -1141,6 +1142,9 @@ fn format_params_default_order(directive: &ChartDirective, inner2: &str) -> Vec<
             inner2,
             escape_string(&directive.regression_model)
         ));
+    }
+    if directive.y_scale != "linear" {
+        params.push(format!("{}yScale: \"{}\"", inner2, escape_string(&directive.y_scale)));
     }
     if !directive.show_std_dev {
         params.push(format!("{}showStdDev: false", inner2));

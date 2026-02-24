@@ -154,9 +154,10 @@ Fit a complexity curve to the bars. Useful when benchmarks encode input sizes in
 
 Available `regressionModel` values: `"auto"`, `"constant"`, `"log"`, `"linear"`, `"nlogn"`, `"quadratic"`, `"cubic"`. Use `"auto"` to let poly-bench pick the best fit.
 
-#### Log scale for wide-range data
+#### Y-axis scale modes (`yScale`)
 
-When results span several orders of magnitude, a log scale prevents small values from being invisible.
+When results span wide ranges, choose a scale mode to keep smaller values readable without changing
+sampling, regression, or R² computation (those remain on raw values).
 
 <CodeGroup
   tabs={[
@@ -167,7 +168,7 @@ When results span several orders of magnitude, a log scale prevents small values
     charting.drawTable(
         title: "Mixed Complexity Benchmarks",
         output: "mixed-log.svg",
-        yScale: "log",
+        yScale: "log10",
         showGrid: true,
         gridOpacity: 0.15
     )
@@ -175,6 +176,13 @@ When results span several orders of magnitude, a log scale prevents small values
     },
   ]}
 />
+
+Supported values:
+
+- `linear` (default)
+- `log10` (base-10 log for positive values)
+- `symlog` (linear near zero, logarithmic in tails)
+- `split` (broken/split axis for strong outliers)
 
 #### Compact mode for tight layouts
 

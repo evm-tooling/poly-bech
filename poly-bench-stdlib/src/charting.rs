@@ -104,7 +104,8 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             - `title` - Chart title (default: \"Benchmark Trend Line\")\n\
             - `description` - Subtitle/description text\n\
             - `output` - Output filename (default: \"line-chart.svg\")\n\
-            - `theme` - Color theme: \"dark\" (default) or \"light\"\n\n\
+            - `theme` - Color theme: \"dark\" (default) or \"light\"\n\
+            - `yScale` - Y-axis scale: \"linear\" (default), \"log10\", \"symlog\", \"split\"\n\n\
             **Dimensions:**\n\
             - `width` - Chart width in pixels\n\
             - `height` - Chart height in pixels\n\n\
@@ -129,7 +130,8 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             - `title` - Chart title (default: \"Benchmark Trend Bars\")\n\
             - `description` - Subtitle/description text\n\
             - `output` - Output filename (default: \"bar-chart.svg\")\n\
-            - `theme` - Color theme: \"dark\" (default) or \"light\"\n\n\
+            - `theme` - Color theme: \"dark\" (default) or \"light\"\n\
+            - `yScale` - Y-axis scale: \"linear\" (default), \"log10\", \"symlog\", \"split\"\n\n\
             **Dimensions:**\n\
             - `width` - Chart width in pixels\n\
             - `height` - Chart height in pixels\n\n\

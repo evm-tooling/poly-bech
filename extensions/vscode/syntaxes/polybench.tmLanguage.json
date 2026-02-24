@@ -220,7 +220,7 @@
     "charting-params": {
       "patterns": [
         {
-          "match": "\\b(title|description|sortBy|sortOrder|output|filterWinner|baselineBenchmark|baseline|theme|regressionModel)\\s*:\\s*",
+          "match": "\\b(title|description|sortBy|sortOrder|output|filterWinner|baselineBenchmark|baseline|theme|regressionModel|yScale)\\s*:\\s*",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
