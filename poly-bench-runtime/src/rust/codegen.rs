@@ -293,7 +293,7 @@ mod tests {
     #[test]
     fn test_generate_simple() {
         let source = r#"
-suite hash {
+declare suite hash performance iterationBased sameDataset: false {
     iterations: 1000
     warmup: 10
     
@@ -320,7 +320,7 @@ suite hash {
         let source = r#"
 use std::constants
 
-suite math {
+declare suite math performance iterationBased sameDataset: false {
     iterations: 100
     
     bench pi_calc {

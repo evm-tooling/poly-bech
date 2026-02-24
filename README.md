@@ -136,14 +136,13 @@ suite hash {
 ### Suite Configuration
 
 ```rust
-suite example {
+declare suite example performance timeBased sameDataset: true {
     description: "Suite description"
-    iterations: 5000           # Default iteration count
     // [!code focus:4]
+    iterations: 5000           # Used when runMode is iterationBased
     warmup: 1000               # Warmup iterations before timing
     baseline: "go"             # Baseline language for comparisons
-    mode: "auto"               # "auto" (calibrate to targetTime) or "fixed"
-    targetTime: 3000ms         # Target time for auto mode
+    targetTime: 3000ms         # Used when runMode is timeBased
     count: 3                   # Runs per benchmark for statistics
     memory: true               # Enable memory allocation profiling
     outlierDetection: true     # IQR-based outlier removal
@@ -152,6 +151,8 @@ suite example {
     sink: true                 # Prevent dead code elimination
 }
 ```
+
+`mode` is deprecated and rejected. Configure execution semantics in the `declare suite` header.
 
 ### Setup Blocks
 

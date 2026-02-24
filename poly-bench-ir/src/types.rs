@@ -2,6 +2,7 @@
 
 use poly_bench_dsl::{
     AsyncSamplingPolicy, BenchMode, BenchmarkKind, ChartType, ExecutionOrder, FairnessMode, Lang,
+    RunMode, SuiteType,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -137,6 +138,12 @@ pub struct SuiteIR {
     pub order: ExecutionOrder,
     /// Baseline language for comparison ratios
     pub baseline: Option<Lang>,
+    /// User-declared suite category
+    pub suite_type: SuiteType,
+    /// User-declared run mode for this suite
+    pub run_mode: RunMode,
+    /// Whether this suite benchmarks a shared dataset
+    pub same_dataset: bool,
 
     // Benchmark accuracy settings
     /// Benchmark execution mode (auto-calibration vs fixed iterations)
@@ -213,6 +220,9 @@ impl SuiteIR {
             requires: Vec::new(),
             order: ExecutionOrder::Sequential,
             baseline: None,
+            suite_type: SuiteType::Performance,
+            run_mode: RunMode::Time,
+            same_dataset: false,
             // Benchmark accuracy defaults
             mode: BenchMode::Auto, // Auto-calibration by default
             target_time_ms: 3000,  // 3 seconds target

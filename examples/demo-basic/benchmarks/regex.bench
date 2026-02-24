@@ -1,10 +1,9 @@
 use std::charting
 
-suite regexN {
+declare suite regexN performance timeBased sameDataset: true {
     description: "Regex backtracking (a+)+b on string 'a'*n+'b'"
     warmup: 50
     baseline: "go"
-    mode: "auto"
     targetTime: 3000ms
     cvThreshold: 5
     count: 1
@@ -12,8 +11,8 @@ suite regexN {
 
     setup go {
         import (
-        "encoding/binary"
-        "regexp"
+            "encoding/binary"
+            "regexp"
         )
 
         helpers {
@@ -166,15 +165,11 @@ suite regexN {
             title: "Regex Matching Performance",
             description: "Email regex matching across input lengths",
             output: "regex-line.svg",
-            xlabel: "Input Length (chars)"
         )
-
         charting.drawTable(
             title: "Regex Matching Comparison",
             description: "Vertical grouped bars - regex engine comparison",
             output: "regex-bar.svg",
-            xlabel: "Input Length"
         )
     }
-
 }

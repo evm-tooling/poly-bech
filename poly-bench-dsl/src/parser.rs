@@ -251,7 +251,12 @@ impl Parser {
 
     /// Parse a suite definition
     fn parse_suite(&mut self) -> Result<Suite> {
-        // Expect 'suite' keyword
+        // New canonical header: declare suite <name> <suiteType> <runMode> sameDataset: <bool> {
+        // ... } For migration, bare `suite` is still parsed.
+        let has_declare = self.check(TokenKind::Declare);
+        if has_declare {
+            self.advance();
+        }
         self.expect_keyword(TokenKind::Suite)?;
 
         // Get suite name
@@ -261,10 +266,22 @@ impl Parser {
             _ => unreachable!(),
         };
 
+        let mut suite = Suite::new(name, name_token.span.clone());
+
+        // Header semantics after suite name (canonical with `declare suite`)
+        if has_declare {
+            let suite_type = self.expect_suite_type()?;
+            let run_mode = self.expect_run_mode()?;
+            self.expect(TokenKind::SameDataset)?;
+            self.expect(TokenKind::Colon)?;
+            let same_dataset = self.expect_bool()?;
+            suite.suite_type = Some(suite_type);
+            suite.run_mode = Some(run_mode);
+            suite.same_dataset = Some(same_dataset);
+        }
+
         // Expect opening brace
         self.expect(TokenKind::LBrace)?;
-
-        let mut suite = Suite::new(name, name_token.span.clone());
 
         // Parse suite body
         while !self.check(TokenKind::RBrace) && !self.is_at_end() {
@@ -324,6 +341,24 @@ impl Parser {
                 self.expect(TokenKind::Colon)?;
                 let lang = self.expect_lang_from_string()?;
                 suite.baseline = Some(lang);
+            }
+            TokenKind::SuiteType => {
+                return Err(self.make_error(ParseError::InvalidProperty {
+                    name: "suiteType must be declared in the suite header".to_string(),
+                    span: token.span.clone(),
+                }));
+            }
+            TokenKind::RunMode => {
+                return Err(self.make_error(ParseError::InvalidProperty {
+                    name: "runMode must be declared in the suite header".to_string(),
+                    span: token.span.clone(),
+                }));
+            }
+            TokenKind::SameDataset => {
+                return Err(self.make_error(ParseError::InvalidProperty {
+                    name: "sameDataset must be declared in the suite header".to_string(),
+                    span: token.span.clone(),
+                }));
             }
             // Benchmark accuracy settings
             TokenKind::Mode => {
@@ -1557,6 +1592,78 @@ impl Parser {
                 }),
             _ => Err(self.make_error(ParseError::ExpectedToken {
                 expected: "execution order (sequential, parallel, random)".to_string(),
+                found: format!("{:?}", token.kind),
+                span: token.span,
+            })),
+        }
+    }
+
+    /// Expect a suite type (memory/performance) from string or identifier
+    fn expect_suite_type(&mut self) -> Result<SuiteType> {
+        let token = self.peek().clone();
+        match &token.kind {
+            TokenKind::String(s) => SuiteType::from_str(s)
+                .map(|suite_type| {
+                    self.advance();
+                    suite_type
+                })
+                .ok_or_else(|| {
+                    self.make_error(ParseError::ExpectedToken {
+                        expected: "suite type (\"memory\" or \"performance\")".to_string(),
+                        found: s.clone(),
+                        span: token.span.clone(),
+                    })
+                }),
+            TokenKind::Identifier(s) => SuiteType::from_str(s)
+                .map(|suite_type| {
+                    self.advance();
+                    suite_type
+                })
+                .ok_or_else(|| {
+                    self.make_error(ParseError::ExpectedToken {
+                        expected: "suite type (memory or performance)".to_string(),
+                        found: s.clone(),
+                        span: token.span.clone(),
+                    })
+                }),
+            _ => Err(self.make_error(ParseError::ExpectedToken {
+                expected: "suite type (memory or performance)".to_string(),
+                found: format!("{:?}", token.kind),
+                span: token.span,
+            })),
+        }
+    }
+
+    /// Expect a run mode (time/iterations) from string or identifier
+    fn expect_run_mode(&mut self) -> Result<RunMode> {
+        let token = self.peek().clone();
+        match &token.kind {
+            TokenKind::String(s) => RunMode::from_str(s)
+                .map(|run_mode| {
+                    self.advance();
+                    run_mode
+                })
+                .ok_or_else(|| {
+                    self.make_error(ParseError::ExpectedToken {
+                        expected: "run mode (\"timeBased\" or \"iterationBased\")".to_string(),
+                        found: s.clone(),
+                        span: token.span.clone(),
+                    })
+                }),
+            TokenKind::Identifier(s) => RunMode::from_str(s)
+                .map(|run_mode| {
+                    self.advance();
+                    run_mode
+                })
+                .ok_or_else(|| {
+                    self.make_error(ParseError::ExpectedToken {
+                        expected: "run mode (timeBased or iterationBased)".to_string(),
+                        found: s.clone(),
+                        span: token.span.clone(),
+                    })
+                }),
+            _ => Err(self.make_error(ParseError::ExpectedToken {
+                expected: "run mode (timeBased or iterationBased)".to_string(),
                 found: format!("{:?}", token.kind),
                 span: token.span,
             })),

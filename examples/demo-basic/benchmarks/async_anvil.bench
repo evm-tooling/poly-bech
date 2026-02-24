@@ -1,21 +1,19 @@
 use std::anvil
 
-suite evmBench {
+declare suite evmBench performance iterationBased sameDataset: false {
     description: "EVM benchmark demonstrating Anvil integration"
     baseline: "go"
-    mode: "fixed"
-    iterations: 10
+    iterations: 50
     cvThreshold: 10
-    warmup: 10
-    count: 10
+    warmup: 5
+    count: 4
     fairness: "strict"
     fairnessSeed: 20260223
     asyncSamplingPolicy: "fixedCap"
-    asyncWarmupCap: 8
-    asyncSampleCap: 100
+    asyncWarmupCap: 5
 
     globalSetup {
-        anvil.spawnAnvil(fork: "https://eth.drpc.org")
+        anvil.spawnAnvil(fork: "https://rough-purple-market.quiknode.pro/c1a568726a34041d3c5d58603f5981951e6a8503")
     }
 
     setup go {
@@ -40,7 +38,7 @@ suite evmBench {
             _publicClient, err := client.CreatePublicClient(client.PublicClientConfig{
                 CacheTime: 0 *  time.Second,
                 Chain:     &definitions.Mainnet,
-                Transport: transport.HTTP( "https://eth.drpc.org"),
+                Transport: transport.HTTP( "https://rough-purple-market.quiknode.pro/c1a568726a34041d3c5d58603f5981951e6a8503"),
             })
 
             if err != nil {
@@ -80,7 +78,7 @@ suite evmBench {
             publicClient = createPublicClient({
                 cacheTime: 0,
                 chain: mainnet,
-                transport: http("https://eth.drpc.org"),
+                transport: http("https://rough-purple-market.quiknode.pro/c1a568726a34041d3c5d58603f5981951e6a8503"),
             })
         }
 
@@ -104,7 +102,7 @@ suite evmBench {
         }
 
         init {
-            let rpc_url = "https://eth.drpc.org".parse().expect("Invalid ANVIL_RPC_URL");
+            let rpc_url = "https://rough-purple-market.quiknode.pro/c1a568726a34041d3c5d58603f5981951e6a8503".parse().expect("Invalid ANVIL_RPC_URL");
             let provider = RootProvider::new_http(rpc_url);
             PROVIDER.set(provider).expect("PROVIDER already initialized");
             RT.set(Runtime::new().expect("failed to create runtime")).ok();

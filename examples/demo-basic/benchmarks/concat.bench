@@ -1,10 +1,9 @@
 use std::charting
 
-suite concatN {
+declare suite concatN performance timeBased sameDataset: true {
     description: "O(n^2) naive string concatenation s += 'x'"
     warmup: 50
     baseline: "go"
-    mode: "auto"
     targetTime: 500ms
     cvThreshold: 50
     count: 3

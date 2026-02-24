@@ -209,6 +209,65 @@ impl Default for BenchMode {
     }
 }
 
+/// High-level suite category
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SuiteType {
+    /// Memory-focused benchmarking suites
+    Memory,
+    /// CPU/performance-focused benchmarking suites
+    Performance,
+}
+
+impl SuiteType {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "memory" => Some(SuiteType::Memory),
+            "performance" => Some(SuiteType::Performance),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SuiteType::Memory => "memory",
+            SuiteType::Performance => "performance",
+        }
+    }
+}
+
+/// Suite-level run configuration mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RunMode {
+    /// Time-budgeted mode (targetTime is valid)
+    Time,
+    /// Fixed-iterations mode (iterations is valid)
+    Iterations,
+}
+
+impl RunMode {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "time" | "timebased" => Some(RunMode::Time),
+            "iterations" | "iterationbased" => Some(RunMode::Iterations),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RunMode::Time => "time",
+            RunMode::Iterations => "iterations",
+        }
+    }
+
+    pub fn as_header_str(&self) -> &'static str {
+        match self {
+            RunMode::Time => "timeBased",
+            RunMode::Iterations => "iterationBased",
+        }
+    }
+}
+
 /// Benchmark kind (sync vs async sequential)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum BenchmarkKind {
@@ -567,8 +626,15 @@ pub struct Suite {
     pub order: Option<ExecutionOrder>,
     /// Baseline language for comparison ratios
     pub baseline: Option<Lang>,
+    /// Suite category (required by semantic validation)
+    pub suite_type: Option<SuiteType>,
+    /// Suite run mode (required by semantic validation)
+    pub run_mode: Option<RunMode>,
+    /// Whether benchmarks in this suite operate on the same dataset
+    pub same_dataset: Option<bool>,
 
     // Benchmark accuracy settings
+    /// Legacy benchmark execution mode (deprecated; rejected by semantic validation)
     /// Benchmark execution mode (auto-calibration vs fixed iterations)
     pub mode: Option<BenchMode>,
     /// Target time for auto-calibration in milliseconds (e.g., "3s" = 3000)
@@ -623,6 +689,9 @@ impl Suite {
             requires: Vec::new(),
             order: None,
             baseline: None,
+            suite_type: None,
+            run_mode: None,
+            same_dataset: None,
             mode: None,
             target_time_ms: None,
             sink: true,              // Enabled by default to prevent DCE
@@ -717,6 +786,7 @@ pub struct Benchmark {
     pub validate: HashMap<Lang, CodeBlock>,
 
     // Benchmark accuracy settings (overrides suite-level)
+    /// Legacy benchmark execution mode override (deprecated; rejected by semantic validation)
     /// Override benchmark execution mode
     pub mode: Option<BenchMode>,
     /// Override target time for auto-calibration

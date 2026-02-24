@@ -34,9 +34,12 @@ pub enum TokenKind {
     Each,   // each
 
     // Phase 4: Suite configuration keywords
-    Requires, // requires
-    Order,    // order
-    Baseline, // baseline
+    Requires,    // requires
+    Order,       // order
+    Baseline,    // baseline
+    SuiteType,   // suiteType
+    RunMode,     // runMode
+    SameDataset, // sameDataset
 
     // Benchmark accuracy keywords
     Mode,         // mode (auto/fixed)
@@ -135,6 +138,9 @@ impl TokenKind {
                 TokenKind::Requires |
                 TokenKind::Order |
                 TokenKind::Baseline |
+                TokenKind::SuiteType |
+                TokenKind::RunMode |
+                TokenKind::SameDataset |
                 TokenKind::Mode |
                 TokenKind::Fairness |
                 TokenKind::FairnessSeed |
@@ -232,6 +238,9 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         "requires" => Some(TokenKind::Requires),
         "order" => Some(TokenKind::Order),
         "baseline" => Some(TokenKind::Baseline),
+        "suiteType" => Some(TokenKind::SuiteType),
+        "runMode" => Some(TokenKind::RunMode),
+        "sameDataset" => Some(TokenKind::SameDataset),
 
         // Benchmark accuracy keywords
         "mode" => Some(TokenKind::Mode),

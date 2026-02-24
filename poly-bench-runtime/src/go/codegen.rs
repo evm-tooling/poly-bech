@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn test_generate_simple() {
         let source = r#"
-suite hash {
+declare suite hash performance iterationBased sameDataset: false {
     iterations: 1000
     warmup: 10
     
@@ -403,7 +403,7 @@ suite hash {
         let source = r#"
 use std::constants
 
-suite math {
+declare suite math performance iterationBased sameDataset: false {
     iterations: 100
     
     bench pi_calc {
@@ -424,7 +424,7 @@ suite math {
     #[test]
     fn test_generate_without_stdlib() {
         let source = r#"
-suite test {
+declare suite test performance iterationBased sameDataset: false {
     iterations: 100
     
     fixture data {
@@ -447,8 +447,7 @@ suite test {
     #[test]
     fn test_generate_bench_async_applies_caps() {
         let source = r#"
-suite rpc {
-    mode: "auto"
+declare suite rpc performance timeBased sameDataset: false {
     warmup: 100
     targetTime: 2000ms
     benchAsync block {

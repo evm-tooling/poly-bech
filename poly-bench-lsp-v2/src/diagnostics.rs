@@ -141,9 +141,42 @@ fn validate_suite(suite: &PartialSuite, doc: &Document, diagnostics: &mut Vec<Di
         }
     }
 
+    let mut suite_has_iterations = false;
+    let mut suite_has_target_time = false;
+    let parsed_run_mode = suite.run_mode.clone();
+
     // Check for baseline language existence
     for prop in &suite.properties {
         if let Node::Valid(p) = prop {
+            if matches!(p.name.as_str(), "suiteType" | "runMode" | "sameDataset") {
+                diagnostics.push(Diagnostic {
+                    range: doc.span_to_range(&p.span),
+                    severity: Some(DiagnosticSeverity::ERROR),
+                    code: Some(NumberOrString::String("suite-semantics-in-header".to_string())),
+                    source: Some("poly-bench".to_string()),
+                    message:
+                        "Suite semantics must be declared in header: declare suite <name> <performance|memory> <timeBased|iterationBased> sameDataset: <true|false>"
+                            .to_string(),
+                    ..Default::default()
+                });
+            }
+            if p.name == "iterations" {
+                suite_has_iterations = true;
+            }
+            if p.name == "targetTime" {
+                suite_has_target_time = true;
+            }
+            if p.name == "mode" {
+                diagnostics.push(Diagnostic {
+                    range: doc.span_to_range(&p.span),
+                    severity: Some(DiagnosticSeverity::ERROR),
+                    code: Some(NumberOrString::String("legacy-mode-removed".to_string())),
+                    source: Some("poly-bench".to_string()),
+                    message: "Property 'mode' is no longer supported. Use suite declaration run mode instead"
+                        .to_string(),
+                    ..Default::default()
+                });
+            }
             if p.name == "baseline" {
                 if let PropertyValue::String(lang) = &p.value {
                     let lang_enum = Lang::from_str(lang.as_str());
@@ -237,6 +270,69 @@ fn validate_suite(suite: &PartialSuite, doc: &Document, diagnostics: &mut Vec<Di
             }
         }
     }
+
+    match suite.suite_type.as_deref() {
+        Some("memory") | Some("performance") => {}
+        _ => {
+            diagnostics.push(Diagnostic {
+                range: doc.span_to_range(&suite.span),
+                severity: Some(DiagnosticSeverity::ERROR),
+                code: Some(NumberOrString::String("missing-suite-type".to_string())),
+                source: Some("poly-bench".to_string()),
+                message:
+                    "Missing/invalid suite type in declaration header (expected memory|performance)"
+                        .to_string(),
+                ..Default::default()
+            });
+        }
+    }
+    match suite.run_mode.as_deref() {
+        Some("timeBased") | Some("iterationBased") => {}
+        _ => {
+            diagnostics.push(Diagnostic {
+                range: doc.span_to_range(&suite.span),
+                severity: Some(DiagnosticSeverity::ERROR),
+                code: Some(NumberOrString::String("missing-run-mode".to_string())),
+                source: Some("poly-bench".to_string()),
+                message:
+                    "Missing/invalid run mode in declaration header (expected timeBased|iterationBased)"
+                        .to_string(),
+                ..Default::default()
+            });
+        }
+    }
+    if suite.same_dataset.is_none() {
+        diagnostics.push(Diagnostic {
+            range: doc.span_to_range(&suite.span),
+            severity: Some(DiagnosticSeverity::ERROR),
+            code: Some(NumberOrString::String("missing-same-dataset".to_string())),
+            source: Some("poly-bench".to_string()),
+            message: "Missing sameDataset boolean in declaration header".to_string(),
+            ..Default::default()
+        });
+    }
+    if let Some(run_mode) = parsed_run_mode {
+        if run_mode == "timeBased" && suite_has_iterations {
+            diagnostics.push(Diagnostic {
+                range: doc.span_to_range(&suite.span),
+                severity: Some(DiagnosticSeverity::ERROR),
+                code: Some(NumberOrString::String("suite-iterations-invalid".to_string())),
+                source: Some("poly-bench".to_string()),
+                message: "iterations is invalid when run mode is timeBased".to_string(),
+                ..Default::default()
+            });
+        }
+        if run_mode == "iterationBased" && suite_has_target_time {
+            diagnostics.push(Diagnostic {
+                range: doc.span_to_range(&suite.span),
+                severity: Some(DiagnosticSeverity::ERROR),
+                code: Some(NumberOrString::String("suite-target-time-invalid".to_string())),
+                source: Some("poly-bench".to_string()),
+                message: "targetTime is invalid when run mode is iterationBased".to_string(),
+                ..Default::default()
+            });
+        }
+    }
 }
 
 fn validate_fixture(
@@ -292,6 +388,8 @@ fn validate_benchmark(
     doc: &Document,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
+    let suite_run_mode = suite.run_mode.as_deref();
+
     // Check for empty benchmark
     if benchmark.implementations.is_empty() {
         diagnostics.push(Diagnostic {
@@ -300,6 +398,52 @@ fn validate_benchmark(
             code: Some(NumberOrString::String("empty-benchmark".to_string())),
             source: Some("poly-bench".to_string()),
             message: format!("Benchmark '{}' has no implementations", benchmark.name),
+            ..Default::default()
+        });
+    }
+
+    let mut has_benchmark_iterations = false;
+    let mut has_benchmark_target_time = false;
+    for prop in &benchmark.properties {
+        if let Node::Valid(p) = prop {
+            if p.name == "mode" {
+                diagnostics.push(Diagnostic {
+                    range: doc.span_to_range(&p.span),
+                    severity: Some(DiagnosticSeverity::ERROR),
+                    code: Some(NumberOrString::String("legacy-mode-removed".to_string())),
+                    source: Some("poly-bench".to_string()),
+                    message: "Benchmark-level mode is no longer supported. Use suite declaration run mode"
+                        .to_string(),
+                    ..Default::default()
+                });
+            }
+            if p.name == "iterations" {
+                has_benchmark_iterations = true;
+            }
+            if p.name == "targetTime" {
+                has_benchmark_target_time = true;
+            }
+        }
+    }
+
+    if suite_run_mode == Some("timeBased") && has_benchmark_iterations {
+        diagnostics.push(Diagnostic {
+            range: doc.span_to_range(&benchmark.span),
+            severity: Some(DiagnosticSeverity::ERROR),
+            code: Some(NumberOrString::String("benchmark-iterations-invalid".to_string())),
+            source: Some("poly-bench".to_string()),
+            message: "Benchmark iterations is invalid when suite run mode is timeBased".to_string(),
+            ..Default::default()
+        });
+    }
+    if suite_run_mode == Some("iterationBased") && has_benchmark_target_time {
+        diagnostics.push(Diagnostic {
+            range: doc.span_to_range(&benchmark.span),
+            severity: Some(DiagnosticSeverity::ERROR),
+            code: Some(NumberOrString::String("benchmark-target-time-invalid".to_string())),
+            source: Some("poly-bench".to_string()),
+            message: "Benchmark targetTime is invalid when suite run mode is iterationBased"
+                .to_string(),
             ..Default::default()
         });
     }
