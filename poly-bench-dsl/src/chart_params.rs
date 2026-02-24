@@ -191,12 +191,8 @@ pub fn validate_param(chart_type: ChartType, param_name: &str) -> Result<(), Par
 
         // Parameter exists but not valid for this chart type
         // Find which chart types it IS valid for
-        let all_chart_types = [
-            ChartType::SpeedupChart,
-            ChartType::Table,
-            ChartType::LineChart,
-            ChartType::BarChart,
-        ];
+        let all_chart_types =
+            [ChartType::SpeedupChart, ChartType::Table, ChartType::LineChart, ChartType::BarChart];
 
         let valid_chart_types: Vec<_> = all_chart_types
             .into_iter()

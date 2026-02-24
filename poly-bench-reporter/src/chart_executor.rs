@@ -351,10 +351,8 @@ mod tests {
     #[test]
     fn test_execute_line_chart_directive() {
         let results = make_test_results();
-        let mut directive = ChartDirectiveIR::new(
-            ChartType::LineChart,
-            "line-test.svg".to_string(),
-        );
+        let mut directive =
+            ChartDirectiveIR::new(ChartType::LineChart, "line-test.svg".to_string());
         directive.title = Some("Line".to_string());
         let out_dir = std::env::temp_dir().join("polybench_chart_executor_line");
         let generated = execute_chart_directives(&[directive], &results, &out_dir).unwrap();
@@ -365,10 +363,7 @@ mod tests {
     #[test]
     fn test_execute_bar_chart_directive() {
         let results = make_test_results();
-        let mut directive = ChartDirectiveIR::new(
-            ChartType::BarChart,
-            "bar-test.svg".to_string(),
-        );
+        let mut directive = ChartDirectiveIR::new(ChartType::BarChart, "bar-test.svg".to_string());
         directive.title = Some("Bar".to_string());
         let out_dir = std::env::temp_dir().join("polybench_chart_executor_bar");
         let generated = execute_chart_directives(&[directive], &results, &out_dir).unwrap();

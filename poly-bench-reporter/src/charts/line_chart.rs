@@ -4,8 +4,8 @@ use poly_bench_ir::ChartDirectiveIR;
 use poly_bench_runtime::measurement::Measurement;
 
 use super::{
-    compute_ci_bounds, escape_xml, extract_numeric_value, filter_benchmarks, lang_color, regression,
-    sort_benchmarks,
+    compute_ci_bounds, escape_xml, extract_numeric_value, filter_benchmarks, lang_color,
+    regression, sort_benchmarks,
 };
 
 const MARGIN_LEFT: f64 = 70.0;
@@ -90,9 +90,13 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
                     }
                 }
                 if directive.show_error_bars {
-                    if let (_, Some(upper)) =
-                        compute_ci_bounds(m.nanos_per_op, m.raw_samples.as_ref(), 95, m.ci_95_lower, m.ci_95_upper)
-                    {
+                    if let (_, Some(upper)) = compute_ci_bounds(
+                        m.nanos_per_op,
+                        m.raw_samples.as_ref(),
+                        95,
+                        m.ci_95_lower,
+                        m.ci_95_upper,
+                    ) {
                         y_max = y_max.max(upper);
                     }
                 }
@@ -142,11 +146,7 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
     );
     svg.push_str(&format!(
         "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"8\" fill=\"{}\"/>\n",
-        MARGIN_LEFT,
-        MARGIN_TOP,
-        plot_w,
-        plot_h,
-        theme.plot_bg
+        MARGIN_LEFT, MARGIN_TOP, plot_w, plot_h, theme.plot_bg
     ));
 
     for i in 0..=5 {
@@ -227,7 +227,8 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         }
 
         if directive.show_regression && points.len() >= 2 {
-            if let Some(model) = regression::select_model(&points, Some(directive.regression_model.as_str()))
+            if let Some(model) =
+                regression::select_model(&points, Some(directive.regression_model.as_str()))
             {
                 let mut reg_path = String::new();
                 for step in 0..=80 {
@@ -501,10 +502,8 @@ mod tests {
         let b1 = bench("n10", 100.0, 140.0);
         let b2 = bench("n100", 500.0, 700.0);
         let b3 = bench("n1000", 2200.0, 3000.0);
-        let mut directive = ChartDirectiveIR::new(
-            poly_bench_dsl::ChartType::LineChart,
-            "line.svg".to_string(),
-        );
+        let mut directive =
+            ChartDirectiveIR::new(poly_bench_dsl::ChartType::LineChart, "line.svg".to_string());
         directive.show_regression = true;
         directive.show_std_dev = true;
         directive.show_error_bars = true;

@@ -1026,7 +1026,9 @@ fn format_single_param(directive: &ChartDirective, name: &str, indent: &str) -> 
         // Boolean parameters
         "showStdDev" => Some(format!("{}showStdDev: {}", indent, directive.show_std_dev)),
         "showErrorBars" => Some(format!("{}showErrorBars: {}", indent, directive.show_error_bars)),
-        "showRegression" => Some(format!("{}showRegression: {}", indent, directive.show_regression)),
+        "showRegression" => {
+            Some(format!("{}showRegression: {}", indent, directive.show_regression))
+        }
 
         // Array parameters
         "includeBenchmarks" => {
