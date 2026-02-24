@@ -30,11 +30,13 @@ pub struct ChartAnnotation {
 pub struct AnvilConfigIR {
     /// Optional RPC URL to fork from
     pub fork_url: Option<String>,
+    /// Whether to route through toxiproxy/tokio proxy
+    pub use_proxy: bool,
 }
 
 impl AnvilConfigIR {
-    pub fn new(fork_url: Option<String>) -> Self {
-        Self { fork_url }
+    pub fn new(fork_url: Option<String>, use_proxy: bool) -> Self {
+        Self { fork_url, use_proxy }
     }
 }
 

@@ -216,22 +216,37 @@ impl Parser {
         self.expect(TokenKind::LParen)?;
 
         let mut fork_url = None;
+        let mut use_proxy = false;
 
-        // Check for optional arguments: fork: "url"
-        if !self.check(TokenKind::RParen) {
-            // Expect "fork" identifier
+        // Optional named arguments:
+        // fork: "url"
+        // tokioProxy: true|false
+        // toxiproxy: true|false
+        while !self.check(TokenKind::RParen) && !self.is_at_end() {
             if self.check_identifier("fork") {
-                self.advance(); // consume "fork"
+                self.advance();
                 self.expect(TokenKind::Colon)?;
-
-                // Expect string value
                 fork_url = Some(self.expect_string()?);
+            } else if self.check_identifier("tokioProxy") || self.check_identifier("toxiproxy") {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                use_proxy = self.expect_bool()?;
+            } else {
+                return Err(self.make_error(ParseError::InvalidProperty {
+                    name: "spawnAnvil argument (expected fork, tokioProxy, or toxiproxy)"
+                        .to_string(),
+                    span: self.peek().span.clone(),
+                }));
+            }
+
+            if !self.check(TokenKind::RParen) {
+                self.expect(TokenKind::Comma)?;
             }
         }
 
         self.expect(TokenKind::RParen)?;
 
-        Ok(AnvilSetupConfig::new(fork_url, anvil_span))
+        Ok(AnvilSetupConfig::new(fork_url, use_proxy, anvil_span))
     }
 
     /// Parse a suite definition
@@ -2057,6 +2072,32 @@ suite test {
         assert!(gs.anvil_config.is_some());
         let anvil = gs.anvil_config.unwrap();
         assert_eq!(anvil.fork_url, Some("https://eth.example.com".to_string()));
+        assert!(!anvil.use_proxy);
+    }
+
+    #[test]
+    fn test_parse_namespaced_global_setup_with_proxy_toggle() {
+        let source = r#"
+use std::anvil
+
+globalSetup {
+    anvil.spawnAnvil(fork: "https://eth.example.com", tokioProxy: true)
+}
+
+suite test {
+    bench foo {
+        go: test()
+    }
+}
+"#;
+        let result = parse(source, "test.bench");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+
+        let file = result.unwrap();
+        let gs = file.global_setup.unwrap();
+        let anvil = gs.anvil_config.unwrap();
+        assert_eq!(anvil.fork_url, Some("https://eth.example.com".to_string()));
+        assert!(anvil.use_proxy);
     }
 
     #[test]
@@ -2208,7 +2249,7 @@ suite test1 {
     #[test]
     fn test_parse_suite_fairness_and_async_policy_fields() {
         let source = r#"
-suite fairness {
+suite fairnessTest {
     fairness: "strict"
     fairnessSeed: 1337
     asyncSamplingPolicy: "timeBudgeted"

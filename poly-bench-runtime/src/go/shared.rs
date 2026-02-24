@@ -268,6 +268,7 @@ pub fn generate_async_auto_mode_loop(
 	var totalIterations int
 	var totalNanos int64
 	samples := make([]uint64, 0, {sample_cap})
+	rngState := uint64(0x9E37_79B9_7F4A_7C15)
 
 	for totalNanos < targetNanos {{
 {}		start := time.Now()
@@ -285,11 +286,17 @@ pub fn generate_async_auto_mode_loop(
 			{}
 {}		}}()
 		elapsed := time.Since(start).Nanoseconds()
-		if !iterFailed {{
-			totalNanos += elapsed
-			if len(samples) < {sample_cap} {{
-				samples = append(samples, uint64(elapsed))
+		totalNanos += elapsed
+		if len(samples) < {sample_cap} {{
+			samples = append(samples, uint64(elapsed))
+		}} else if {sample_cap} > 0 {{
+			rngState = rngState*6364136223846793005 + 1
+			replaceIdx := int(rngState % uint64(totalIterations + 1))
+			if replaceIdx < {sample_cap} {{
+				samples[replaceIdx] = uint64(elapsed)
 			}}
+		}}
+		if !iterFailed {{
 			successfulCount++
 		}}
 		totalIterations++
@@ -325,6 +332,7 @@ pub fn generate_async_fixed_cap_loop(
 	totalIterations := 0
 	var totalNanos int64
 	samples := make([]uint64, 0, {sample_cap})
+	rngState := uint64(0x9E37_79B9_7F4A_7C15)
 	for totalIterations < {sample_cap} {{
 {}		start := time.Now()
 		iterFailed := false
@@ -341,9 +349,17 @@ pub fn generate_async_fixed_cap_loop(
 			{}
 {}		}}()
 		elapsed := time.Since(start).Nanoseconds()
-		if !iterFailed {{
-			totalNanos += elapsed
+		totalNanos += elapsed
+		if len(samples) < {sample_cap} {{
 			samples = append(samples, uint64(elapsed))
+		}} else if {sample_cap} > 0 {{
+			rngState = rngState*6364136223846793005 + 1
+			replaceIdx := int(rngState % uint64(totalIterations + 1))
+			if replaceIdx < {sample_cap} {{
+				samples[replaceIdx] = uint64(elapsed)
+			}}
+		}}
+		if !iterFailed {{
 			successfulCount++
 		}}
 		totalIterations++
@@ -601,6 +617,8 @@ mod tests {
         assert!(loop_code.contains("for totalNanos < targetNanos"));
         assert!(loop_code.contains("recover()"));
         assert!(loop_code.contains("errorCount++"));
+        assert!(loop_code.contains("totalNanos += elapsed"));
+        assert!(loop_code.contains("replaceIdx := int(rngState % uint64(totalIterations + 1))"));
     }
 
     #[test]
@@ -617,5 +635,7 @@ mod tests {
         assert!(!loop_code.contains("targetNanos := int64("));
         assert!(loop_code.contains("recover()"));
         assert!(loop_code.contains("successfulCount++"));
+        assert!(loop_code.contains("totalNanos += elapsed"));
+        assert!(loop_code.contains("replaceIdx := int(rngState % uint64(totalIterations + 1))"));
     }
 }

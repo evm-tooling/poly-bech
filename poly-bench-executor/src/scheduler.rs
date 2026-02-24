@@ -238,7 +238,11 @@ pub async fn run(
         println!("{} Starting Anvil node...", "⚡".yellow());
 
         // Build config from IR
-        let config = AnvilConfig { fork_url: anvil_ir.fork_url.clone(), fork_block: None };
+        let config = AnvilConfig {
+            fork_url: anvil_ir.fork_url.clone(),
+            fork_block: None,
+            use_proxy: anvil_ir.use_proxy,
+        };
 
         match AnvilService::spawn(&config) {
             Ok(service) => {

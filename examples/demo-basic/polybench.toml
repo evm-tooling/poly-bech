@@ -16,8 +16,8 @@ module = "demo-basic"
 version = "1.21"
 
 [go.dependencies]
-"github.com/ChefBingbong/viem-go" = "latest"
 "golang.org/x/crypto/sha3" = "latest"
+"github.com/ChefBingbong/viem-go" = "latest"
 
 [ts]
 runtime = "node"
@@ -29,8 +29,12 @@ viem = "latest"
 edition = "2021"
 
 [rust.dependencies]
-sha2 = "0.10"
 regex = "1.12.3"
+sha2 = "0.10"
+
+[rust.dependencies.tiny-keccak]
+version = "2.0"
+features = ["keccak"]
 
 [rust.dependencies.tiny_keccak]
 version = "latest"
@@ -39,9 +43,9 @@ features = [
     "sha3",
 ]
 
-[rust.dependencies.tiny-keccak]
-version = "2.0"
-features = ["keccak"]
+[rust.dependencies.alloy]
+version = "1.6.3"
+features = ["full"]
 
 [output]
 report_formats = []

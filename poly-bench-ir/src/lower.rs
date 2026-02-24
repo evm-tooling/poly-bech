@@ -25,14 +25,14 @@ pub fn lower(ast: &File, base_dir: Option<&Path>) -> Result<BenchmarkIR> {
         .global_setup
         .as_ref()
         .and_then(|gs| gs.anvil_config.as_ref())
-        .map(|cfg| AnvilConfigIR::new(cfg.fork_url.clone()));
+        .map(|cfg| AnvilConfigIR::new(cfg.fork_url.clone(), cfg.use_proxy));
 
     // If no file-level globalSetup, check suite-level globalSetup
     if anvil_config.is_none() {
         for suite in &ast.suites {
             if let Some(ref gs) = suite.global_setup {
                 if let Some(ref cfg) = gs.anvil_config {
-                    anvil_config = Some(AnvilConfigIR::new(cfg.fork_url.clone()));
+                    anvil_config = Some(AnvilConfigIR::new(cfg.fork_url.clone(), cfg.use_proxy));
                     break;
                 }
             }
@@ -431,6 +431,7 @@ suite evm {
         );
         let anvil_cfg = ir.anvil_config.as_ref().unwrap();
         assert!(anvil_cfg.fork_url.is_none(), "spawnAnvil() without args should have no fork_url");
+        assert!(!anvil_cfg.use_proxy, "tokio proxy should default to off");
     }
 
     #[test]
@@ -455,7 +456,7 @@ suite test {
     #[test]
     fn test_lower_with_fairness_and_async_policy() {
         let source = r#"
-suite fairness {
+suite fairnessTest {
     fairness: "strict"
     fairnessSeed: 42
     asyncSamplingPolicy: "timeBudgeted"

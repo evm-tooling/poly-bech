@@ -4,16 +4,15 @@ suite evmBench {
     description: "EVM benchmark demonstrating Anvil integration"
     baseline: "go"
     mode: "auto"
-    targetTime: 2000ms
+    targetTime: 8000ms
     cvThreshold: 10
     warmup: 10
-    outlierDetection: false
     count: 5
      fairness: "strict"
     fairnessSeed: 20260223
     asyncSamplingPolicy: "timeBudgeted"
     asyncWarmupCap: 8
-    asyncSampleCap: 50
+    asyncSampleCap: 500
 
     globalSetup {
         anvil.spawnAnvil(fork: "https://eth.drpc.org")
@@ -60,7 +59,7 @@ suite evmBench {
                     public.GetBlockNumberParameters{ CacheTime: &noCache },
                 )
                 if err != nil {
-                    return err
+                    panic(err)
                 }
                 return blockNumber
             }
@@ -87,12 +86,41 @@ suite evmBench {
 
         helpers {
             async function getBlockNumberTs() {
-                try {
-                    const blockNumber = await publicClient.getBlockNumber()
-                    return blockNumber
-                }catch (error) {
-                    return error
-                }
+                return await publicClient.getBlockNumber()
+            }
+        }
+    }
+
+    setup rust {
+        import {
+            use alloy::providers::{Provider, ProviderBuilder};
+        }
+
+        declare {
+            type HttpProvider = alloy::providers::RootProvider<
+                alloy::transports::http::Http<alloy::transports::http::reqwest::Client>
+            >;
+           
+        }
+
+        init {
+            static mut publicClient = ProviderBuilder::new().connect_http(ANVIL_RPC_URL); 
+        }
+
+        helpers {
+            fn getBlockNumberRust() -> u64 {
+                let provider = unsafe {
+                    publicClient
+                        .as_ref()
+                        .expect("publicClient was not initialized in setup rust init")
+                };
+                let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+                rt.block_on(async {
+                    provider
+                        .get_block_number()
+                        .await
+                        .expect("failed to fetch block number")
+                })
             }
         }
     }
@@ -101,6 +129,7 @@ suite evmBench {
         description: "Get the current block number via RPC"
         go: getBlockNumberGo()
         ts: getBlockNumberTs()
+        rust: getBlockNumberRust()
     }
 
     after {

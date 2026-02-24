@@ -84,6 +84,56 @@ fn format_ops_per_sec(ops: f64) -> String {
     }
 }
 
+const ASYNC_WARN_MIN_SUCCESS_RATIO: f64 = 0.95;
+const ASYNC_WARN_MAX_RATIO_SPREAD: f64 = 0.05;
+
+fn lang_short_name(lang: Lang) -> &'static str {
+    match lang {
+        Lang::Go => "Go",
+        Lang::TypeScript => "TS",
+        Lang::Rust => "Rust",
+        _ => "Unknown",
+    }
+}
+
+fn async_reliability_warnings(bench: &BenchmarkResult) -> Vec<String> {
+    if bench.kind != BenchmarkKind::Async {
+        return Vec::new();
+    }
+    let Some(details) = &bench.async_details else {
+        return Vec::new();
+    };
+
+    let mut warnings = Vec::new();
+    let mut ratios = Vec::new();
+    for (lang, ratio) in &details.success_ratio {
+        ratios.push((*lang, *ratio));
+        if *ratio < ASYNC_WARN_MIN_SUCCESS_RATIO {
+            warnings.push(format!(
+                "{} success ratio is {:.1}% (< {:.0}%)",
+                lang_short_name(*lang),
+                ratio * 100.0,
+                ASYNC_WARN_MIN_SUCCESS_RATIO * 100.0
+            ));
+        }
+    }
+
+    if ratios.len() >= 2 {
+        let min_ratio = ratios.iter().map(|(_, r)| *r).fold(f64::INFINITY, f64::min);
+        let max_ratio = ratios.iter().map(|(_, r)| *r).fold(f64::NEG_INFINITY, f64::max);
+        let spread = max_ratio - min_ratio;
+        if spread > ASYNC_WARN_MAX_RATIO_SPREAD {
+            warnings.push(format!(
+                "cross-language success-ratio spread is {:.1}% (> {:.0}%); speedup may be low-confidence",
+                spread * 100.0,
+                ASYNC_WARN_MAX_RATIO_SPREAD * 100.0
+            ));
+        }
+    }
+
+    warnings
+}
+
 /// Generate console report (simple version)
 pub fn report(results: &BenchmarkResults) -> Result<()> {
     report_with_options(results, &ReportOptions::default())
@@ -681,6 +731,10 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
             println!("{}", winner_str);
         }
 
+        for warning in async_reliability_warnings(bench) {
+            println!("   {}", format!("  ! async reliability: {}", warning).yellow());
+        }
+
         // Add visual separation between benchmarks
         println!();
     }
@@ -776,5 +830,63 @@ fn print_compact_table(benchmarks: &[BenchmarkResult], options: &ReportOptions) 
                 result_colored
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::async_reliability_warnings;
+    use poly_bench_dsl::{BenchmarkKind, Lang};
+    use poly_bench_executor::comparison::BenchmarkResult;
+    use poly_bench_runtime::measurement::Measurement;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_async_reliability_warnings_trigger_for_low_success_ratio_and_spread() {
+        let mut measurements = HashMap::new();
+        let mut go = Measurement::from_aggregate(100, 100_000);
+        go.async_success_count = Some(80);
+        go.async_error_count = Some(20);
+        measurements.insert(Lang::Go, go);
+
+        let mut ts = Measurement::from_aggregate(100, 90_000);
+        ts.async_success_count = Some(99);
+        ts.async_error_count = Some(1);
+        measurements.insert(Lang::TypeScript, ts);
+
+        let bench = BenchmarkResult::new(
+            "rpc".to_string(),
+            "suite_rpc".to_string(),
+            BenchmarkKind::Async,
+            None,
+            measurements,
+            "strict".to_string(),
+            None,
+            Some(5),
+            Some(50),
+            Some("timeBudgeted".to_string()),
+        );
+
+        let warnings = async_reliability_warnings(&bench);
+        assert!(warnings.iter().any(|w| w.contains("Go success ratio")));
+        assert!(warnings.iter().any(|w| w.contains("spread")));
+    }
+
+    #[test]
+    fn test_async_reliability_warnings_empty_for_sync_benchmarks() {
+        let bench = BenchmarkResult::new(
+            "hash".to_string(),
+            "suite_hash".to_string(),
+            BenchmarkKind::Sync,
+            None,
+            HashMap::new(),
+            "strict".to_string(),
+            None,
+            None,
+            None,
+            None,
+        );
+
+        assert!(async_reliability_warnings(&bench).is_empty());
     }
 }
