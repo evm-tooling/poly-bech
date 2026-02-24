@@ -243,7 +243,8 @@ fn filter_fixture_diagnostics(
                 (msg.contains("undefined: ANVIL_RPC_URL") ||
                     msg.contains("undeclared name: ANVIL_RPC_URL") ||
                     msg.contains("Cannot find name 'ANVIL_RPC_URL'") ||
-                    msg.contains("Cannot find name \"ANVIL_RPC_URL\""))
+                    msg.contains("Cannot find name \"ANVIL_RPC_URL\"") ||
+                    msg.contains("cannot find value `ANVIL_RPC_URL`"))
             {
                 tracing::debug!(
                     "[embedded-diagnostics] Filtering std::anvil ANVIL_RPC_URL diagnostic: {}",
@@ -530,5 +531,21 @@ mod tests {
 
         let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names, false);
         assert_eq!(filtered.len(), 1);
+    }
+
+    #[test]
+    fn test_filter_rust_anvil_rpc_url_when_std_anvil_enabled() {
+        let diagnostics = vec![EmbeddedDiagnostic {
+            message: "cannot find value `ANVIL_RPC_URL` in this scope".to_string(),
+            severity: DiagnosticSeverity::ERROR,
+            virtual_line: 0,
+            virtual_character: 0,
+            length: 10,
+            code: Some("E0425".to_string()),
+        }];
+        let fixture_names = HashSet::new();
+
+        let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names, true);
+        assert!(filtered.is_empty());
     }
 }
