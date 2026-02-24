@@ -534,7 +534,7 @@ impl Parser {
         let chart_type = ChartType::from_function_name(&func_name).ok_or_else(|| {
             self.make_error(ParseError::InvalidProperty {
                 name: format!(
-                    "Unknown charting function '{}'. Valid functions: drawSpeedupChart, drawTable",
+                    "Unknown charting function '{}'. Valid functions: drawSpeedupChart, drawTable, drawLineChart, drawBarChart",
                     func_name
                 ),
                 span: func_token.span.clone(),
@@ -588,6 +588,7 @@ impl Parser {
                     directive.baseline_benchmark = Some(self.expect_string()?)
                 }
                 "theme" => directive.theme = Some(self.expect_string()?),
+                "regressionModel" => directive.regression_model = self.expect_string()?,
 
                 // Integer parameters
                 "limit" => directive.limit = Some(self.expect_number()? as u32),
@@ -597,6 +598,11 @@ impl Parser {
 
                 // Float parameters
                 "minSpeedup" => directive.min_speedup = Some(self.expect_float()?),
+
+                // Boolean parameters
+                "showStdDev" => directive.show_std_dev = self.expect_bool()?,
+                "showErrorBars" => directive.show_error_bars = self.expect_bool()?,
+                "showRegression" => directive.show_regression = self.expect_bool()?,
 
                 // Array parameters
                 "includeBenchmarks" => directive.include_benchmarks = self.expect_string_array()?,
@@ -1602,6 +1608,10 @@ impl Parser {
     fn expect_suite_type(&mut self) -> Result<SuiteType> {
         let token = self.peek().clone();
         match &token.kind {
+            TokenKind::Memory => {
+                self.advance();
+                Ok(SuiteType::Memory)
+            }
             TokenKind::String(s) => SuiteType::from_str(s)
                 .map(|suite_type| {
                     self.advance();
@@ -2286,6 +2296,68 @@ suite evmTest {
         let gs = suite.global_setup.as_ref().unwrap();
         let anvil = gs.anvil_config.as_ref().unwrap();
         assert_eq!(anvil.fork_url, Some("https://mainnet.infura.io".to_string()));
+    }
+
+    #[test]
+    fn test_parse_line_chart_with_stats_params() {
+        let source = r#"
+use std::charting
+
+declare suite chartSuite performance timeBased sameDataset: true {
+    targetTime: 2s
+    bench n10 {
+        go: run()
+        ts: run()
+    }
+    after {
+        charting.drawLineChart(
+            title: "Line",
+            showStdDev: true,
+            showErrorBars: false,
+            showRegression: true,
+            regressionModel: "auto"
+        )
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let directive = &ast.suites[0].chart_directives[0];
+        assert_eq!(directive.chart_type, ChartType::LineChart);
+        assert!(directive.show_std_dev);
+        assert!(!directive.show_error_bars);
+        assert!(directive.show_regression);
+        assert_eq!(directive.regression_model, "auto");
+    }
+
+    #[test]
+    fn test_parse_bar_chart_with_stats_params() {
+        let source = r#"
+use std::charting
+
+declare suite chartSuite performance iterationBased sameDataset: true {
+    iterations: 1000
+    bench n10 {
+        go: run()
+        ts: run()
+    }
+    after {
+        charting.drawBarChart(
+            title: "Bars",
+            showStdDev: false,
+            showErrorBars: true,
+            showRegression: false,
+            regressionModel: "linear"
+        )
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let directive = &ast.suites[0].chart_directives[0];
+        assert_eq!(directive.chart_type, ChartType::BarChart);
+        assert!(!directive.show_std_dev);
+        assert!(directive.show_error_bars);
+        assert!(!directive.show_regression);
+        assert_eq!(directive.regression_model, "linear");
     }
 
     #[test]

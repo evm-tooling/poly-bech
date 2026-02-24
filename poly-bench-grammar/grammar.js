@@ -365,6 +365,8 @@ module.exports = grammar({
     chart_function_name: $ => choice(
       'drawSpeedupChart',
       'drawTable',
+      'drawLineChart',
+      'drawBarChart',
     ),
 
     chart_params: $ => seq(
@@ -396,6 +398,10 @@ module.exports = grammar({
       'minSpeedup',
       'includeBenchmarks',
       'excludeBenchmarks',
+      'showStdDev',
+      'showErrorBars',
+      'showRegression',
+      'regressionModel',
     ),
 
     _chart_value: $ => choice(

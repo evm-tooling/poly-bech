@@ -25,6 +25,8 @@
 //!
 //! - `drawSpeedupChart` - Speedup chart showing relative performance vs baseline
 //! - `drawTable` - SVG data table with conditional formatting
+//! - `drawLineChart` - Line chart for benchmark trend series
+//! - `drawBarChart` - Grouped bar chart for benchmark trend series
 
 use crate::{StdlibSymbol, StdlibSymbolKind};
 
@@ -87,6 +89,56 @@ pub static CHARTING_SYMBOLS: &[StdlibSymbol] = &[
             **Example:**\n\
             ```\nafter {\n    charting.drawTable(\n        title: \"Detailed Results\",\n        sortBy: \"name\",\n        theme: \"light\"\n    )\n}\n```",
     },
+    StdlibSymbol {
+        name: "drawLineChart",
+        kind: StdlibSymbolKind::Function,
+        description: "Draw a line chart with trend/statistical overlays",
+        documentation: "**charting.drawLineChart** `(...params)`\n\n\
+            Generate a multi-series line chart across benchmarks in natural name order.\n\n\
+            Includes statistical overlays by default (set to false to disable):\n\
+            - `showStdDev` (default: true)\n\
+            - `showErrorBars` (default: true)\n\
+            - `showRegression` (default: true)\n\
+            - `regressionModel` (default: \"auto\")\n\n\
+            **Basic Parameters:**\n\
+            - `title` - Chart title (default: \"Benchmark Trend Line\")\n\
+            - `description` - Subtitle/description text\n\
+            - `output` - Output filename (default: \"line-chart.svg\")\n\
+            - `theme` - Color theme: \"dark\" (default) or \"light\"\n\n\
+            **Dimensions:**\n\
+            - `width` - Chart width in pixels\n\
+            - `height` - Chart height in pixels\n\n\
+            **Filtering + Sorting:**\n\
+            - `minSpeedup`, `filterWinner`, `includeBenchmarks`, `excludeBenchmarks`, `limit`\n\
+            - `sortBy`, `sortOrder`\n\n\
+            **Example:**\n\
+            ```\nafter {\n    charting.drawLineChart(\n        title: \"Scaling Trend\",\n        showRegression: true,\n        regressionModel: \"auto\"\n    )\n}\n```",
+    },
+    StdlibSymbol {
+        name: "drawBarChart",
+        kind: StdlibSymbolKind::Function,
+        description: "Draw a grouped bar chart with trend/statistical overlays",
+        documentation: "**charting.drawBarChart** `(...params)`\n\n\
+            Generate grouped bars for each benchmark, with optional statistical overlays.\n\n\
+            Includes statistical overlays by default (set to false to disable):\n\
+            - `showStdDev` (default: true)\n\
+            - `showErrorBars` (default: true)\n\
+            - `showRegression` (default: true)\n\
+            - `regressionModel` (default: \"auto\")\n\n\
+            **Basic Parameters:**\n\
+            - `title` - Chart title (default: \"Benchmark Trend Bars\")\n\
+            - `description` - Subtitle/description text\n\
+            - `output` - Output filename (default: \"bar-chart.svg\")\n\
+            - `theme` - Color theme: \"dark\" (default) or \"light\"\n\n\
+            **Dimensions:**\n\
+            - `width` - Chart width in pixels\n\
+            - `height` - Chart height in pixels\n\n\
+            **Filtering + Sorting:**\n\
+            - `minSpeedup`, `filterWinner`, `includeBenchmarks`, `excludeBenchmarks`, `limit`\n\
+            - `sortBy`, `sortOrder`\n\n\
+            **Example:**\n\
+            ```\nafter {\n    charting.drawBarChart(\n        title: \"Dataset Comparison\",\n        showStdDev: true,\n        showErrorBars: true\n    )\n}\n```",
+    },
 ];
 
 /// Get all symbols exported by the charting module
@@ -101,11 +153,13 @@ mod tests {
     #[test]
     fn test_charting_symbols() {
         let symbols = get_symbols();
-        assert_eq!(symbols.len(), 2);
+        assert_eq!(symbols.len(), 4);
 
         let names: Vec<_> = symbols.iter().map(|s| s.name).collect();
         assert!(names.contains(&"drawSpeedupChart"));
         assert!(names.contains(&"drawTable"));
+        assert!(names.contains(&"drawLineChart"));
+        assert!(names.contains(&"drawBarChart"));
     }
 
     #[test]

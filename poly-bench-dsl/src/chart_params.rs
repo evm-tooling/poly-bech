@@ -33,6 +33,11 @@ pub enum ChartParam {
 
     // Speedup chart layout
     RowCount,
+    // Statistical overlays
+    ShowStdDev,
+    ShowErrorBars,
+    ShowRegression,
+    RegressionModel,
 }
 
 impl ChartParam {
@@ -54,6 +59,10 @@ impl ChartParam {
             ChartParam::BaselineBenchmark => "baselineBenchmark",
             ChartParam::Theme => "theme",
             ChartParam::RowCount => "rowCount",
+            ChartParam::ShowStdDev => "showStdDev",
+            ChartParam::ShowErrorBars => "showErrorBars",
+            ChartParam::ShowRegression => "showRegression",
+            ChartParam::RegressionModel => "regressionModel",
         }
     }
 
@@ -75,6 +84,10 @@ impl ChartParam {
             "baselineBenchmark" | "baseline" => Some(ChartParam::BaselineBenchmark),
             "theme" => Some(ChartParam::Theme),
             "rowCount" => Some(ChartParam::RowCount),
+            "showStdDev" => Some(ChartParam::ShowStdDev),
+            "showErrorBars" => Some(ChartParam::ShowErrorBars),
+            "showRegression" => Some(ChartParam::ShowRegression),
+            "regressionModel" => Some(ChartParam::RegressionModel),
             _ => None,
         }
     }
@@ -126,6 +139,13 @@ pub fn get_valid_params(chart_type: ChartType) -> HashSet<ChartParam> {
         ChartType::Table => {
             params.insert(ChartParam::Theme);
         }
+        ChartType::LineChart | ChartType::BarChart => {
+            params.insert(ChartParam::Theme);
+            params.insert(ChartParam::ShowStdDev);
+            params.insert(ChartParam::ShowErrorBars);
+            params.insert(ChartParam::ShowRegression);
+            params.insert(ChartParam::RegressionModel);
+        }
     }
 
     params
@@ -171,7 +191,12 @@ pub fn validate_param(chart_type: ChartType, param_name: &str) -> Result<(), Par
 
         // Parameter exists but not valid for this chart type
         // Find which chart types it IS valid for
-        let all_chart_types = [ChartType::SpeedupChart, ChartType::Table];
+        let all_chart_types = [
+            ChartType::SpeedupChart,
+            ChartType::Table,
+            ChartType::LineChart,
+            ChartType::BarChart,
+        ];
 
         let valid_chart_types: Vec<_> = all_chart_types
             .into_iter()
@@ -219,6 +244,8 @@ mod tests {
         assert!(validate_param(ChartType::Table, "title").is_ok());
         assert!(validate_param(ChartType::SpeedupChart, "baseline").is_ok());
         assert!(validate_param(ChartType::SpeedupChart, "rowCount").is_ok());
+        assert!(validate_param(ChartType::LineChart, "showRegression").is_ok());
+        assert!(validate_param(ChartType::BarChart, "regressionModel").is_ok());
     }
 
     #[test]

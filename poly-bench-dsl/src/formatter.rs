@@ -929,6 +929,8 @@ fn format_chart_directives(out: &mut String, directives: &[ChartDirective], inde
         let func_name = match directive.chart_type {
             ChartType::SpeedupChart => "drawSpeedupChart",
             ChartType::Table => "drawTable",
+            ChartType::LineChart => "drawLineChart",
+            ChartType::BarChart => "drawBarChart",
         };
 
         // Collect all the parameters to output, preserving original order if available
@@ -1007,6 +1009,11 @@ fn format_single_param(directive: &ChartDirective, name: &str, indent: &str) -> 
         "theme" => {
             directive.theme.as_ref().map(|v| format!("{}theme: \"{}\"", indent, escape_string(v)))
         }
+        "regressionModel" => Some(format!(
+            "{}regressionModel: \"{}\"",
+            indent,
+            escape_string(&directive.regression_model)
+        )),
 
         // Integer parameters
         "limit" => directive.limit.map(|v| format!("{}limit: {}", indent, v)),
@@ -1016,6 +1023,10 @@ fn format_single_param(directive: &ChartDirective, name: &str, indent: &str) -> 
 
         // Float parameters
         "minSpeedup" => directive.min_speedup.map(|v| format!("{}minSpeedup: {}", indent, v)),
+        // Boolean parameters
+        "showStdDev" => Some(format!("{}showStdDev: {}", indent, directive.show_std_dev)),
+        "showErrorBars" => Some(format!("{}showErrorBars: {}", indent, directive.show_error_bars)),
+        "showRegression" => Some(format!("{}showRegression: {}", indent, directive.show_regression)),
 
         // Array parameters
         "includeBenchmarks" => {
@@ -1121,6 +1132,22 @@ fn format_params_default_order(directive: &ChartDirective, inner2: &str) -> Vec<
     }
     if let Some(ref theme) = directive.theme {
         params.push(format!("{}theme: \"{}\"", inner2, escape_string(theme)));
+    }
+    if directive.regression_model != "auto" {
+        params.push(format!(
+            "{}regressionModel: \"{}\"",
+            inner2,
+            escape_string(&directive.regression_model)
+        ));
+    }
+    if !directive.show_std_dev {
+        params.push(format!("{}showStdDev: false", inner2));
+    }
+    if !directive.show_error_bars {
+        params.push(format!("{}showErrorBars: false", inner2));
+    }
+    if !directive.show_regression {
+        params.push(format!("{}showRegression: false", inner2));
     }
 
     params

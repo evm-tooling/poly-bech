@@ -2,6 +2,8 @@
 //!
 //! Provides speedup charts and tables for visualizing benchmark results.
 
+pub mod bar_chart;
+pub mod line_chart;
 pub mod regression;
 pub mod speedup_chart;
 pub mod table;

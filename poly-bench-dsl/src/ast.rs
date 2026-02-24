@@ -450,6 +450,10 @@ pub enum ChartType {
     SpeedupChart,
     /// Data table rendered as SVG
     Table,
+    /// Line chart for trend visualization across related benchmarks
+    LineChart,
+    /// Bar chart for grouped comparisons across related benchmarks
+    BarChart,
 }
 
 impl ChartType {
@@ -457,6 +461,8 @@ impl ChartType {
         match name {
             "drawSpeedupChart" => Some(ChartType::SpeedupChart),
             "drawTable" => Some(ChartType::Table),
+            "drawLineChart" => Some(ChartType::LineChart),
+            "drawBarChart" => Some(ChartType::BarChart),
             _ => None,
         }
     }
@@ -465,6 +471,8 @@ impl ChartType {
         match self {
             ChartType::SpeedupChart => "speedup",
             ChartType::Table => "table",
+            ChartType::LineChart => "line",
+            ChartType::BarChart => "bar",
         }
     }
 
@@ -472,6 +480,8 @@ impl ChartType {
         match self {
             ChartType::SpeedupChart => "speedup-chart.svg",
             ChartType::Table => "table.svg",
+            ChartType::LineChart => "line-chart.svg",
+            ChartType::BarChart => "bar-chart.svg",
         }
     }
 }
@@ -532,6 +542,14 @@ pub struct ChartDirective {
     // Theme
     /// Color theme: "dark" (default) or "light"
     pub theme: Option<String>,
+    /// Show standard deviation overlays
+    pub show_std_dev: bool,
+    /// Show confidence-interval/error bars
+    pub show_error_bars: bool,
+    /// Show regression trendline
+    pub show_regression: bool,
+    /// Regression model type or "auto"
+    pub regression_model: String,
 
     /// Order of parameters as they appeared in source (for formatting)
     #[serde(default)]
@@ -563,6 +581,10 @@ impl ChartDirective {
             baseline_benchmark: None,
             // Theme
             theme: None,
+            show_std_dev: true,
+            show_error_bars: true,
+            show_regression: true,
+            regression_model: "auto".to_string(),
             // Parameter order tracking
             param_order: Vec::new(),
         }

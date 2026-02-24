@@ -6,7 +6,7 @@
 //! Note: Stdlib-specific validation (e.g., validating use std::module names)
 //! is handled by higher-level crates that depend on both dsl and stdlib.
 
-use crate::{Benchmark, CodeBlock, File, Lang, RunMode, StructuredSetup, Suite, UseStd};
+use crate::{Benchmark, ChartType, CodeBlock, File, Lang, RunMode, StructuredSetup, Suite, UseStd};
 use std::collections::HashSet;
 
 /// A validation warning (non-fatal issue)
@@ -122,6 +122,7 @@ pub fn validate_suite(suite: &Suite) -> ValidationResult {
 
     // Validate suite-level semantic contract
     validate_suite_semantics(suite, &mut result);
+    validate_chart_dataset_constraints(suite, &mut result);
 
     // Validate: all benchmarks have required languages
     validate_requires(suite, &mut result);
@@ -211,6 +212,24 @@ fn validate_suite_semantics(suite: &Suite, result: &mut ValidationResult) {
                     );
                 }
             }
+        }
+    }
+}
+
+/// Validate chart constraints tied to suite metadata.
+fn validate_chart_dataset_constraints(suite: &Suite, result: &mut ValidationResult) {
+    for directive in &suite.chart_directives {
+        if matches!(directive.chart_type, ChartType::LineChart | ChartType::BarChart) &&
+            suite.same_dataset != Some(true)
+        {
+            result.add_error(
+                ValidationError::new(format!(
+                    "Chart '{}' requires suite '{}' to declare sameDataset: true",
+                    directive.chart_type.as_str(),
+                    suite.name
+                ))
+                .with_location(format!("suite.{}", suite.name)),
+            );
         }
     }
 }
@@ -691,5 +710,29 @@ declare suite test performance timeBased sameDataset: true {
         let ast = parse(source, "test.bench").unwrap();
         let result = validate_suite(&ast.suites[0]);
         assert!(result.errors.iter().any(|e| e.message.contains("timeBased")));
+    }
+
+    #[test]
+    fn test_validate_chart_requires_same_dataset() {
+        let source = r#"
+use std::charting
+
+declare suite test performance timeBased sameDataset: false {
+    targetTime: 2s
+    bench foo {
+        go: work()
+        ts: work()
+    }
+    after {
+        charting.drawLineChart(title: "Trend")
+        charting.drawBarChart(title: "Bars")
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let result = validate_suite(&ast.suites[0]);
+        assert!(result.errors.iter().any(|e| e.message.contains("sameDataset: true")));
+        assert!(result.errors.iter().any(|e| e.message.contains("line")));
+        assert!(result.errors.iter().any(|e| e.message.contains("bar")));
     }
 }

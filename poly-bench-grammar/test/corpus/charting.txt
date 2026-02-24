@@ -215,3 +215,93 @@ suite test {
               (chart_param
                 name: (chart_param_name)
                 value: (number)))))))))
+
+================================================================================
+Line/bar chart directives with stats params
+================================================================================
+
+use std::charting
+
+suite test {
+    bench n10 {
+        go: run()
+        ts: run()
+    }
+    bench n100 {
+        go: run()
+        ts: run()
+    }
+
+    after {
+        charting.drawLineChart(
+            title: "Trend",
+            showStdDev: true,
+            showErrorBars: false,
+            showRegression: true,
+            regressionModel: "auto"
+        )
+        charting.drawBarChart(
+            title: "Bars",
+            showRegression: false
+        )
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (use_statement
+    module: (identifier))
+  (suite
+    name: (identifier)
+    (suite_body
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code))
+          (language_implementation
+            language: (language_tag)
+            (inline_code))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code))
+          (language_implementation
+            language: (language_tag)
+            (inline_code))))
+      (after_block
+        (after_body
+          (chart_directive
+            function: (chart_function_name)
+            (chart_params
+              (chart_param
+                name: (chart_param_name)
+                value: (string
+                  (string_content)))
+              (chart_param
+                name: (chart_param_name)
+                value: (boolean))
+              (chart_param
+                name: (chart_param_name)
+                value: (boolean))
+              (chart_param
+                name: (chart_param_name)
+                value: (boolean))
+              (chart_param
+                name: (chart_param_name)
+                value: (string
+                  (string_content)))))
+          (chart_directive
+            function: (chart_function_name)
+            (chart_params
+              (chart_param
+                name: (chart_param_name)
+                value: (string
+                  (string_content)))
+              (chart_param
+                name: (chart_param_name)
+                value: (boolean)))))))))

@@ -333,6 +333,30 @@ fn validate_suite(suite: &PartialSuite, doc: &Document, diagnostics: &mut Vec<Di
             });
         }
     }
+
+    // Line/bar charts are only valid for same-dataset suites.
+    if suite.same_dataset != Some(true) {
+        if let Some(Node::Valid(after_block)) = &suite.after_block {
+            for directive in &after_block.directives {
+                if let Node::Valid(chart) = directive {
+                    if chart.function == "drawLineChart" || chart.function == "drawBarChart" {
+                        diagnostics.push(Diagnostic {
+                            range: doc.span_to_range(&chart.span),
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            code: Some(NumberOrString::String(
+                                "chart-requires-same-dataset".to_string(),
+                            )),
+                            source: Some("poly-bench".to_string()),
+                            message:
+                                "drawLineChart/drawBarChart require suite declaration sameDataset: true"
+                                    .to_string(),
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn validate_fixture(
