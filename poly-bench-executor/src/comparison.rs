@@ -63,6 +63,11 @@ pub struct BenchmarkResult {
     /// Extra metadata for async benchmarks (benchAsync)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub async_details: Option<AsyncBenchmarkDetails>,
+    /// Comparison/statistics mode used for this benchmark result
+    pub comparison_mode: String,
+    /// Optional fairness seed used for randomized/interleaved execution
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fairness_seed: Option<u64>,
 }
 
 /// Extra output included for async benchmarks in `results.json`
@@ -74,10 +79,20 @@ pub struct AsyncBenchmarkDetails {
     pub warmup_cap: u64,
     /// Internal sample cap used by runtimes
     pub sample_cap: u64,
+    /// Async sampling policy used by runtimes
+    pub sampling_policy: String,
     /// Actual iterations executed per language
     pub actual_iterations: HashMap<Lang, u64>,
     /// Actual samples captured per language
     pub actual_samples: HashMap<Lang, u64>,
+    /// Successful async iterations captured per language
+    pub successful_iterations: HashMap<Lang, u64>,
+    /// Failed async iterations captured per language
+    pub error_iterations: HashMap<Lang, u64>,
+    /// Success ratio (successful / total attempts) per language
+    pub success_ratio: HashMap<Lang, f64>,
+    /// Error ratio (failed / total attempts) per language
+    pub error_ratio: HashMap<Lang, f64>,
 }
 
 impl BenchmarkResult {
@@ -87,16 +102,44 @@ impl BenchmarkResult {
         kind: BenchmarkKind,
         description: Option<String>,
         measurements: HashMap<Lang, Measurement>,
+        comparison_mode: String,
+        fairness_seed: Option<u64>,
+        async_warmup_cap: Option<u64>,
+        async_sample_cap: Option<u64>,
+        async_sampling_policy: Option<String>,
     ) -> Self {
         let comparison = Self::calculate_comparison(&measurements);
-        let async_details = Self::build_async_details(kind, &measurements);
-        Self { name, full_name, kind, description, measurements, comparison, async_details }
+        let async_details = Self::build_async_details(
+            kind,
+            &measurements,
+            async_warmup_cap,
+            async_sample_cap,
+            async_sampling_policy,
+        );
+        Self {
+            name,
+            full_name,
+            kind,
+            description,
+            measurements,
+            comparison,
+            async_details,
+            comparison_mode,
+            fairness_seed,
+        }
     }
 
     fn calculate_comparison(measurements: &HashMap<Lang, Measurement>) -> Option<Comparison> {
         // Compare Go vs TypeScript if both are present
         let go_measurement = measurements.get(&Lang::Go)?;
         let ts_measurement = measurements.get(&Lang::TypeScript)?;
+        let ratio_ci_95 = match (&go_measurement.run_nanos_per_op, &ts_measurement.run_nanos_per_op)
+        {
+            (Some(go_runs), Some(ts_runs)) => {
+                Measurement::paired_ratio_ci(go_runs, ts_runs).map(|(_, lo, hi)| (lo, hi))
+            }
+            _ => None,
+        };
 
         Some(Comparison::new(
             String::new(), // Will be set by caller
@@ -104,12 +147,16 @@ impl BenchmarkResult {
             "Go".to_string(),
             ts_measurement.clone(),
             "TypeScript".to_string(),
+            ratio_ci_95,
         ))
     }
 
     fn build_async_details(
         kind: BenchmarkKind,
         measurements: &HashMap<Lang, Measurement>,
+        async_warmup_cap: Option<u64>,
+        async_sample_cap: Option<u64>,
+        async_sampling_policy: Option<String>,
     ) -> Option<AsyncBenchmarkDetails> {
         if kind != BenchmarkKind::Async {
             return None;
@@ -117,17 +164,52 @@ impl BenchmarkResult {
 
         let mut actual_iterations = HashMap::new();
         let mut actual_samples = HashMap::new();
+        let mut successful_iterations = HashMap::new();
+        let mut error_iterations = HashMap::new();
+        let mut success_ratio = HashMap::new();
+        let mut error_ratio = HashMap::new();
         for (lang, measurement) in measurements {
             actual_iterations.insert(*lang, measurement.iterations);
             actual_samples.insert(*lang, measurement.samples.unwrap_or(0));
+
+            let mut success = measurement
+                .async_success_count
+                .or_else(|| measurement.successful_results.as_ref().map(|v| v.len() as u64))
+                .unwrap_or(0);
+            let mut errors = measurement.async_error_count.unwrap_or(0);
+            if measurement.timed_out == Some(true) {
+                errors = errors.saturating_add(1);
+            }
+
+            let total = success.saturating_add(errors);
+            if total == 0 {
+                if measurement.iterations > 0 {
+                    success = measurement.iterations;
+                } else if measurement.timed_out == Some(true) {
+                    errors = 1;
+                }
+            }
+
+            let total = success.saturating_add(errors);
+            let success_pct = if total > 0 { success as f64 / total as f64 } else { 0.0 };
+            let error_pct = if total > 0 { errors as f64 / total as f64 } else { 0.0 };
+            successful_iterations.insert(*lang, success);
+            error_iterations.insert(*lang, errors);
+            success_ratio.insert(*lang, success_pct);
+            error_ratio.insert(*lang, error_pct);
         }
 
         Some(AsyncBenchmarkDetails {
             mode: "async-sequential".to_string(),
-            warmup_cap: 5,
-            sample_cap: 50,
+            warmup_cap: async_warmup_cap.unwrap_or(5),
+            sample_cap: async_sample_cap.unwrap_or(50),
+            sampling_policy: async_sampling_policy.unwrap_or_else(|| "timeBudgeted".to_string()),
             actual_iterations,
             actual_samples,
+            successful_iterations,
+            error_iterations,
+            success_ratio,
+            error_ratio,
         })
     }
 }
@@ -353,5 +435,105 @@ impl OverallSummary {
             unstable_count,
             total_outliers_removed,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use poly_bench_runtime::measurement::Measurement;
+
+    #[test]
+    fn test_benchmark_result_metadata_preserved() {
+        let result = BenchmarkResult::new(
+            "bench".to_string(),
+            "suite_bench".to_string(),
+            BenchmarkKind::Sync,
+            None,
+            HashMap::new(),
+            "strict".to_string(),
+            Some(123),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(result.comparison_mode, "strict");
+        assert_eq!(result.fairness_seed, Some(123));
+    }
+
+    #[test]
+    fn test_benchmark_result_serialization_includes_metadata() {
+        let result = BenchmarkResult::new(
+            "bench".to_string(),
+            "suite_bench".to_string(),
+            BenchmarkKind::Sync,
+            None,
+            HashMap::<Lang, Measurement>::new(),
+            "legacy".to_string(),
+            None,
+            None,
+            None,
+            None,
+        );
+
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"comparison_mode\":\"legacy\""));
+        assert!(!json.contains("\"fairness_seed\""));
+    }
+
+    #[test]
+    fn test_async_details_include_success_error_ratios() {
+        let mut measurements = HashMap::<Lang, Measurement>::new();
+        let mut go = Measurement::from_aggregate(10, 1000);
+        go.async_success_count = Some(8);
+        go.async_error_count = Some(2);
+        measurements.insert(Lang::Go, go);
+
+        let result = BenchmarkResult::new(
+            "bench".to_string(),
+            "suite_bench".to_string(),
+            BenchmarkKind::Async,
+            None,
+            measurements,
+            "strict".to_string(),
+            None,
+            Some(5),
+            Some(50),
+            Some("timeBudgeted".to_string()),
+        );
+
+        let details = result.async_details.expect("async details should be present");
+        assert_eq!(details.successful_iterations.get(&Lang::Go), Some(&8));
+        assert_eq!(details.error_iterations.get(&Lang::Go), Some(&2));
+        assert_eq!(details.success_ratio.get(&Lang::Go), Some(&0.8));
+        assert_eq!(details.error_ratio.get(&Lang::Go), Some(&0.2));
+    }
+
+    #[test]
+    fn test_async_details_counts_timeout_as_error() {
+        let mut measurements = HashMap::<Lang, Measurement>::new();
+        let mut ts = Measurement::timeout_marker();
+        ts.async_success_count = Some(4);
+        ts.async_error_count = Some(1);
+        measurements.insert(Lang::TypeScript, ts);
+
+        let result = BenchmarkResult::new(
+            "bench".to_string(),
+            "suite_bench".to_string(),
+            BenchmarkKind::Async,
+            None,
+            measurements,
+            "strict".to_string(),
+            None,
+            None,
+            None,
+            None,
+        );
+
+        let details = result.async_details.expect("async details should be present");
+        assert_eq!(details.successful_iterations.get(&Lang::TypeScript), Some(&4));
+        // base error_count(1) + timeout(1) according to policy
+        assert_eq!(details.error_iterations.get(&Lang::TypeScript), Some(&2));
+        assert_eq!(details.success_ratio.get(&Lang::TypeScript), Some(&(4.0 / 6.0)));
     }
 }

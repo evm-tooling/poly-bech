@@ -4,9 +4,16 @@ suite evmBench {
     description: "EVM benchmark demonstrating Anvil integration"
     baseline: "go"
     mode: "auto"
-    targetTime: 5000ms
+    targetTime: 2000ms
     cvThreshold: 10
     warmup: 10
+    outlierDetection: false
+    count: 5
+     fairness: "strict"
+    fairnessSeed: 20260223
+    asyncSamplingPolicy: "timeBudgeted"
+    asyncWarmupCap: 8
+    asyncSampleCap: 50
 
     globalSetup {
         anvil.spawnAnvil(fork: "https://eth.drpc.org")

@@ -2,12 +2,12 @@ use std::charting
 
 suite bubbleN {
     description: "O(n^2) bubble sort on int32 array"
-    warmup: 50
+    warmup: 500
     baseline: "go"
     mode: "fixed"
     iterations: 1000
     cvThreshold: 5
-    count: 1
+    count: 19
     memory: true
 
     setup go {

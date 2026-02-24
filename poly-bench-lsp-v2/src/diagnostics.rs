@@ -183,6 +183,58 @@ fn validate_suite(suite: &PartialSuite, doc: &Document, diagnostics: &mut Vec<Di
                     }
                 }
             }
+            if p.name == "fairness" {
+                if let PropertyValue::String(mode) = &p.value {
+                    if mode != "legacy" && mode != "strict" {
+                        diagnostics.push(Diagnostic {
+                            range: doc.span_to_range(&p.span),
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            code: Some(NumberOrString::String("invalid-fairness-mode".to_string())),
+                            source: Some("poly-bench".to_string()),
+                            message: format!(
+                                "Invalid fairness mode '{}'. Expected \"legacy\" or \"strict\"",
+                                mode
+                            ),
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+            if p.name == "asyncSamplingPolicy" {
+                if let PropertyValue::String(policy) = &p.value {
+                    if policy != "timeBudgeted" && policy != "fixedCap" {
+                        diagnostics.push(Diagnostic {
+                            range: doc.span_to_range(&p.span),
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            code: Some(NumberOrString::String(
+                                "invalid-async-sampling-policy".to_string(),
+                            )),
+                            source: Some("poly-bench".to_string()),
+                            message: format!(
+                                "Invalid asyncSamplingPolicy '{}'. Expected \"timeBudgeted\" or \"fixedCap\"",
+                                policy
+                            ),
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+            if matches!(p.name.as_str(), "fairnessSeed" | "asyncWarmupCap" | "asyncSampleCap") {
+                if let PropertyValue::Number(value) = &p.value {
+                    if *value < 0 {
+                        diagnostics.push(Diagnostic {
+                            range: doc.span_to_range(&p.span),
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            code: Some(NumberOrString::String(
+                                "negative-suite-property".to_string(),
+                            )),
+                            source: Some("poly-bench".to_string()),
+                            message: format!("Property '{}' must be >= 0", p.name),
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
         }
     }
 }

@@ -11,10 +11,10 @@ use crate::{
 };
 use async_trait::async_trait;
 use miette::{miette, Result};
-use poly_bench_dsl::{BenchMode, BenchmarkKind, Lang};
+use poly_bench_dsl::{AsyncSamplingPolicy, BenchMode, BenchmarkKind, Lang};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use poly_bench_stdlib as stdlib;
-use std::path::PathBuf;
+use std::{path::PathBuf, process::Stdio};
 use tempfile::TempDir;
 
 /// JavaScript runtime using Node.js subprocess
@@ -340,7 +340,24 @@ impl Runtime for JsRuntime {
             cmd.env("ANVIL_RPC_URL", url);
         }
 
-        let output = cmd.output().await.map_err(|e| miette!("Failed to run Node.js: {}", e))?;
+        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        cmd.kill_on_drop(true);
+        let child = cmd.spawn().map_err(|e| miette!("Failed to run Node.js: {}", e))?;
+        let output = if let Some(timeout_ms) = spec.timeout {
+            match tokio::time::timeout(
+                tokio::time::Duration::from_millis(timeout_ms),
+                child.wait_with_output(),
+            )
+            .await
+            {
+                Ok(result) => result.map_err(|e| miette!("Failed to run Node.js: {}", e))?,
+                Err(_) => {
+                    return Err(miette!("JavaScript benchmark timed out after {}ms", timeout_ms));
+                }
+            }
+        } else {
+            child.wait_with_output().await.map_err(|e| miette!("Failed to run Node.js: {}", e))?
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -475,6 +492,10 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
     let is_async_bench = spec.kind == BenchmarkKind::Async;
     let impl_is_async = is_async_bench || impl_code.contains("await");
     let use_auto_mode = spec.mode == BenchMode::Auto;
+    let async_sampling_policy = match spec.async_sampling_policy {
+        AsyncSamplingPolicy::FixedCap => "fixedCap",
+        AsyncSamplingPolicy::TimeBudgeted => "timeBudgeted",
+    };
 
     if each_hook.is_some() {
         // Custom benchmark loop with each hook
@@ -508,7 +529,14 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         script.push_str(&strip_typescript_syntax(each));
         script.push_str(";\n");
         script.push_str("    },\n");
-        script.push_str(&format!("    {}, {}\n", spec.iterations, spec.warmup));
+        script.push_str(&format!(
+            "    {}, {}, {}, {}, \"{}\"\n",
+            spec.iterations,
+            spec.warmup,
+            spec.async_sample_cap,
+            spec.async_warmup_cap,
+            async_sampling_policy
+        ));
         script.push_str(");\n");
     } else if use_auto_mode {
         // Auto-calibration mode: only uses targetTime (no min/max iteration caps)
@@ -524,8 +552,13 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         script.push_str(impl_code);
         script.push_str(");\n");
         script.push_str(&format!(
-            "}}, {}, {}, false, {}, {});\n",
-            spec.target_time_ms, use_sink, spec.warmup, 50
+            "}}, {}, {}, false, {}, {}, {}, \"{}\");\n",
+            spec.target_time_ms,
+            use_sink,
+            spec.warmup,
+            spec.async_sample_cap,
+            spec.async_warmup_cap,
+            async_sampling_policy
         ));
     } else {
         // Fixed iteration mode
@@ -542,8 +575,13 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         script.push_str(");\n");
         if impl_is_async {
             script.push_str(&format!(
-                "}}, {}, {}, {}, false, {});\n",
-                spec.iterations, spec.warmup, use_sink, 50
+                "}}, {}, {}, {}, false, {}, {}, \"{}\");\n",
+                spec.iterations,
+                spec.warmup,
+                use_sink,
+                spec.async_sample_cap,
+                spec.async_warmup_cap,
+                async_sampling_policy
             ));
         } else {
             script.push_str(&format!("}}, {}, {});\n", spec.iterations, spec.warmup));
@@ -599,6 +637,12 @@ struct BenchResultJson {
     raw_result: Option<serde_json::Value>,
     #[serde(default)]
     successful_results: Vec<serde_json::Value>,
+    #[serde(default)]
+    successful_count: Option<u64>,
+    #[serde(default)]
+    error_count: Option<u64>,
+    #[serde(default)]
+    error_samples: Vec<String>,
 }
 
 impl BenchResultJson {
@@ -616,6 +660,11 @@ impl BenchResultJson {
                 m.successful_results =
                     Some(self.successful_results.iter().map(|v| v.to_string()).collect());
             }
+            m.async_success_count = self.successful_count;
+            m.async_error_count = self.error_count;
+            if !self.error_samples.is_empty() {
+                m.async_error_samples = Some(self.error_samples);
+            }
             m
         } else {
             let mut m = Measurement::from_samples_with_options(
@@ -629,8 +678,41 @@ impl BenchResultJson {
                 m.successful_results =
                     Some(self.successful_results.iter().map(|v| v.to_string()).collect());
             }
+            m.async_success_count = self.successful_count;
+            m.async_error_count = self.error_count;
+            if !self.error_samples.is_empty() {
+                m.async_error_samples = Some(self.error_samples);
+            }
             m
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BenchResultJson;
+
+    #[test]
+    fn test_parse_async_outcome_fields_from_js_result() {
+        let json = r#"{
+            "iterations": 10,
+            "totalNanos": 1000,
+            "nanosPerOp": 100,
+            "opsPerSec": 10000000,
+            "samples": [100, 101],
+            "successfulResults": [1,2,3],
+            "successfulCount": 3,
+            "errorCount": 2,
+            "errorSamples": ["boom","bad rpc"]
+        }"#;
+        let parsed: BenchResultJson = serde_json::from_str(json).unwrap();
+        let measurement = parsed.into_measurement_with_options(false, 5.0);
+        assert_eq!(measurement.async_success_count, Some(3));
+        assert_eq!(measurement.async_error_count, Some(2));
+        assert_eq!(
+            measurement.async_error_samples,
+            Some(vec!["boom".to_string(), "bad rpc".to_string()])
+        );
     }
 }
 

@@ -1143,6 +1143,18 @@
     "named": false
   },
   {
+    "type": "asyncSampleCap",
+    "named": false
+  },
+  {
+    "type": "asyncSamplingPolicy",
+    "named": false
+  },
+  {
+    "type": "asyncWarmupCap",
+    "named": false
+  },
+  {
     "type": "baseline",
     "named": false
   },
@@ -1208,6 +1220,14 @@
   },
   {
     "type": "excludeBenchmarks",
+    "named": false
+  },
+  {
+    "type": "fairness",
+    "named": false
+  },
+  {
+    "type": "fairnessSeed",
     "named": false
   },
   {

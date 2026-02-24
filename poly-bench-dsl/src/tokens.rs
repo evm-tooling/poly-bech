@@ -39,9 +39,11 @@ pub enum TokenKind {
     Baseline, // baseline
 
     // Benchmark accuracy keywords
-    Mode,       // mode (auto/fixed)
-    Sink,       // sink (true/false)
-    TargetTime, // targetTime
+    Mode,         // mode (auto/fixed)
+    Fairness,     // fairness (legacy/strict)
+    FairnessSeed, // fairnessSeed
+    Sink,         // sink (true/false)
+    TargetTime,   // targetTime
 
     // Statistical analysis keywords
     OutlierDetection, // outlierDetection (true/false)
@@ -49,7 +51,10 @@ pub enum TokenKind {
     Count,            // count (number) - run benchmark N times for statistical consistency
 
     // Observability keywords (Phase 2B)
-    Memory, // memory (true/false) - enable memory profiling
+    Memory,              // memory (true/false) - enable memory profiling
+    AsyncSamplingPolicy, // asyncSamplingPolicy (fixedCap/timeBudgeted)
+    AsyncWarmupCap,      // asyncWarmupCap
+    AsyncSampleCap,      // asyncSampleCap
 
     // Phase 5: Fixture keywords
     Shape, // shape
@@ -131,12 +136,17 @@ impl TokenKind {
                 TokenKind::Order |
                 TokenKind::Baseline |
                 TokenKind::Mode |
+                TokenKind::Fairness |
+                TokenKind::FairnessSeed |
                 TokenKind::Sink |
                 TokenKind::TargetTime |
                 TokenKind::OutlierDetection |
                 TokenKind::CvThreshold |
                 TokenKind::Count |
                 TokenKind::Memory |
+                TokenKind::AsyncSamplingPolicy |
+                TokenKind::AsyncWarmupCap |
+                TokenKind::AsyncSampleCap |
                 TokenKind::Shape |
                 TokenKind::Async |
                 TokenKind::Use |
@@ -225,6 +235,8 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
 
         // Benchmark accuracy keywords
         "mode" => Some(TokenKind::Mode),
+        "fairness" => Some(TokenKind::Fairness),
+        "fairnessSeed" => Some(TokenKind::FairnessSeed),
         "sink" => Some(TokenKind::Sink),
         "targetTime" => Some(TokenKind::TargetTime),
 
@@ -235,6 +247,9 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
 
         // Observability keywords (Phase 2B)
         "memory" => Some(TokenKind::Memory),
+        "asyncSamplingPolicy" => Some(TokenKind::AsyncSamplingPolicy),
+        "asyncWarmupCap" => Some(TokenKind::AsyncWarmupCap),
+        "asyncSampleCap" => Some(TokenKind::AsyncSampleCap),
 
         // Phase 5: Fixture keywords
         "shape" => Some(TokenKind::Shape),

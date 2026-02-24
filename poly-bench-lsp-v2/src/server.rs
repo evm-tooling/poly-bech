@@ -967,7 +967,12 @@ fn is_suite_param_value_context(line_text: &str) -> bool {
             "outlierDetection" |
             "cvThreshold" |
             "count" |
-            "memory"
+            "memory" |
+            "fairness" |
+            "fairnessSeed" |
+            "asyncSamplingPolicy" |
+            "asyncWarmupCap" |
+            "asyncSampleCap"
     )
 }
 
@@ -1600,6 +1605,46 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
             detail: Some(
                 "Number of times to run each benchmark for statistical consistency".to_string(),
             ),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "fairness".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("fairness: \"${1|legacy,strict|}\"".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Fairness scheduling mode across runtimes".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "fairnessSeed".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("fairnessSeed: 20260223".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Deterministic seed for strict fairness ordering".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "asyncSamplingPolicy".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("asyncSamplingPolicy: \"${1|timeBudgeted,fixedCap|}\"".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Sampling policy for async auto mode".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "asyncWarmupCap".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("asyncWarmupCap: 8".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Maximum async warmup iterations in auto mode".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "asyncSampleCap".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("asyncSampleCap: 50".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Maximum stored async samples per benchmark run".to_string()),
             ..Default::default()
         },
         // Observability settings

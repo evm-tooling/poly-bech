@@ -41,6 +41,15 @@ pub struct Measurement {
     /// All successful benchmark return values captured during timed execution
     #[serde(skip_serializing_if = "Option::is_none")]
     pub successful_results: Option<Vec<String>>,
+    /// Number of successful async iterations captured during timed execution
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub async_success_count: Option<u64>,
+    /// Number of failed async iterations captured during timed execution
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub async_error_count: Option<u64>,
+    /// Sampled async error payloads captured during timed execution
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub async_error_samples: Option<Vec<String>>,
     /// Coefficient of variation (std_dev / mean * 100) - measures result stability
     pub cv_percent: Option<f64>,
     /// Number of outliers removed via IQR method
@@ -59,6 +68,21 @@ pub struct Measurement {
     pub ci_95_upper: Option<f64>,
     /// Standard deviation of sample times (nanos)
     pub std_dev_nanos: Option<f64>,
+    /// Canonical estimator source for this measurement ("raw" or "filtered")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimator_source: Option<String>,
+    /// Raw (non-filtered) nanos/op estimate for transparency
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_nanos_per_op: Option<f64>,
+    /// Filtered nanos/op estimate for transparency
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filtered_nanos_per_op: Option<f64>,
+    /// Whether this benchmark run timed out
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timed_out: Option<bool>,
+    /// Run-level nanos/op values (strict fairness mode)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_nanos_per_op: Option<Vec<f64>>,
 }
 
 /// Default CV threshold percentage (5%) - results with CV above this are considered unstable
@@ -137,6 +161,9 @@ impl Measurement {
         };
 
         let sample_count = raw_samples.len() as u64;
+        let raw_total_nanos: u64 = sorted.iter().sum();
+        let raw_nanos_per_op =
+            if !sorted.is_empty() { raw_total_nanos as f64 / sorted.len() as f64 } else { 0.0 };
 
         Self {
             iterations,
@@ -156,6 +183,9 @@ impl Measurement {
             raw_samples: Some(raw_samples),
             raw_result: None,
             successful_results: None,
+            async_success_count: None,
+            async_error_count: None,
+            async_error_samples: None,
             cv_percent,
             outliers_removed: Some(outliers_removed),
             is_stable,
@@ -165,6 +195,11 @@ impl Measurement {
             ci_95_lower: None,
             ci_95_upper: None,
             std_dev_nanos,
+            estimator_source: Some(if remove_outliers { "filtered" } else { "raw" }.to_string()),
+            raw_nanos_per_op: Some(raw_nanos_per_op),
+            filtered_nanos_per_op: Some(nanos_per_op),
+            timed_out: Some(false),
+            run_nanos_per_op: None,
         }
     }
 
@@ -191,6 +226,9 @@ impl Measurement {
             raw_samples: None,
             raw_result: None,
             successful_results: None,
+            async_success_count: None,
+            async_error_count: None,
+            async_error_samples: None,
             cv_percent: None,
             outliers_removed: None,
             is_stable: None,
@@ -200,6 +238,11 @@ impl Measurement {
             ci_95_lower: None,
             ci_95_upper: None,
             std_dev_nanos: None,
+            estimator_source: Some("raw".to_string()),
+            raw_nanos_per_op: Some(nanos_per_op),
+            filtered_nanos_per_op: Some(nanos_per_op),
+            timed_out: Some(false),
+            run_nanos_per_op: None,
         }
     }
 
@@ -253,6 +296,7 @@ impl Measurement {
 
         // Collect nanos_per_op from each run
         let mut nanos_values: Vec<f64> = runs.iter().map(|r| r.nanos_per_op).collect();
+        let run_nanos_per_op = nanos_values.clone();
         nanos_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
         // Calculate median
@@ -262,18 +306,13 @@ impl Measurement {
             nanos_values[run_count / 2]
         };
 
-        // Calculate mean and std deviation for CI
+        // Calculate mean and std deviation for descriptive stats
         let mean: f64 = nanos_values.iter().sum::<f64>() / run_count as f64;
         let variance: f64 =
             nanos_values.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (run_count - 1) as f64;
         let std_dev = variance.sqrt();
-        let std_error = std_dev / (run_count as f64).sqrt();
-
-        // 95% CI using t-distribution (approximate with z=1.96 for larger samples)
-        let t_value = 1.96;
-        let ci_half_width = t_value * std_error;
-        let ci_lower = (median - ci_half_width).max(0.0);
-        let ci_upper = median + ci_half_width;
+        // Robust 95% CI from bootstrap distribution of medians
+        let (ci_lower, ci_upper) = bootstrap_ci_median(&nanos_values, 1000);
 
         // Aggregate totals across runs
         let total_iterations: u64 = runs.iter().map(|r| r.iterations).sum();
@@ -314,8 +353,27 @@ impl Measurement {
         // Calculate cross-run CV and RME
         let cv_percent = if mean > 0.0 { Some((std_dev / mean) * 100.0) } else { None };
         let rme_percent =
-            if median > 0.0 { Some((std_error / median) * 100.0 * 1.96) } else { None };
+            if median > 0.0 { Some(((ci_upper - median).max(0.0) / median) * 100.0) } else { None };
         let is_stable = cv_percent.map(|cv| cv <= DEFAULT_CV_THRESHOLD);
+
+        let total_success_count: u64 = runs.iter().filter_map(|r| r.async_success_count).sum();
+        let has_success_count = runs.iter().any(|r| r.async_success_count.is_some());
+        let total_error_count: u64 = runs.iter().filter_map(|r| r.async_error_count).sum();
+        let has_error_count = runs.iter().any(|r| r.async_error_count.is_some());
+        let mut aggregated_error_samples: Vec<String> = Vec::new();
+        for run in &runs {
+            if let Some(samples) = &run.async_error_samples {
+                for sample in samples {
+                    if aggregated_error_samples.len() >= 50 {
+                        break;
+                    }
+                    aggregated_error_samples.push(sample.clone());
+                }
+            }
+            if aggregated_error_samples.len() >= 50 {
+                break;
+            }
+        }
 
         Self {
             iterations: total_iterations,
@@ -335,6 +393,13 @@ impl Measurement {
             raw_samples: None, // Don't combine raw samples (too large)
             raw_result: runs.last().and_then(|r| r.raw_result.clone()),
             successful_results: runs.last().and_then(|r| r.successful_results.clone()),
+            async_success_count: if has_success_count { Some(total_success_count) } else { None },
+            async_error_count: if has_error_count { Some(total_error_count) } else { None },
+            async_error_samples: if aggregated_error_samples.is_empty() {
+                None
+            } else {
+                Some(aggregated_error_samples)
+            },
             cv_percent,
             outliers_removed: Some(total_outliers),
             is_stable,
@@ -344,7 +409,85 @@ impl Measurement {
             ci_95_lower: Some(ci_lower),
             ci_95_upper: Some(ci_upper),
             std_dev_nanos: Some(std_dev),
+            estimator_source: Some("paired-robust".to_string()),
+            raw_nanos_per_op: Some(mean),
+            filtered_nanos_per_op: Some(median),
+            timed_out: Some(false),
+            run_nanos_per_op: Some(run_nanos_per_op),
         }
+    }
+
+    /// Mark measurement as timed out
+    pub fn with_timeout(mut self) -> Self {
+        self.timed_out = Some(true);
+        self
+    }
+
+    /// Create an explicit timeout marker measurement.
+    pub fn timeout_marker() -> Self {
+        Self {
+            iterations: 0,
+            total_nanos: 0,
+            nanos_per_op: 0.0,
+            ops_per_sec: 0.0,
+            min_nanos: None,
+            max_nanos: None,
+            p50_nanos: None,
+            p75_nanos: None,
+            p99_nanos: None,
+            p995_nanos: None,
+            rme_percent: None,
+            samples: Some(0),
+            bytes_per_op: None,
+            allocs_per_op: None,
+            raw_samples: None,
+            raw_result: None,
+            successful_results: None,
+            async_success_count: None,
+            async_error_count: None,
+            async_error_samples: None,
+            cv_percent: None,
+            outliers_removed: None,
+            is_stable: None,
+            run_count: None,
+            median_across_runs: None,
+            ci_95_lower: None,
+            ci_95_upper: None,
+            std_dev_nanos: None,
+            estimator_source: Some("timeout".to_string()),
+            raw_nanos_per_op: None,
+            filtered_nanos_per_op: None,
+            timed_out: Some(true),
+            run_nanos_per_op: None,
+        }
+    }
+
+    /// Build robust paired comparison CI between two run series.
+    /// Returns (median ratio first/second, 95% CI lower, 95% CI upper).
+    pub fn paired_ratio_ci(first_runs: &[f64], second_runs: &[f64]) -> Option<(f64, f64, f64)> {
+        let n = first_runs.len().min(second_runs.len());
+        if n == 0 {
+            return None;
+        }
+
+        let mut ratios = Vec::with_capacity(n);
+        for i in 0..n {
+            let denom = second_runs[i];
+            if denom > 0.0 {
+                ratios.push(first_runs[i] / denom);
+            }
+        }
+        if ratios.is_empty() {
+            return None;
+        }
+        ratios.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let median = if ratios.len() % 2 == 0 {
+            (ratios[ratios.len() / 2 - 1] + ratios[ratios.len() / 2]) / 2.0
+        } else {
+            ratios[ratios.len() / 2]
+        };
+        let (lo, hi) = bootstrap_ci_median(&ratios, 1000);
+        Some((median, lo, hi))
     }
 }
 
@@ -360,6 +503,44 @@ fn median_of_options(mut values: Vec<u64>) -> Option<u64> {
     } else {
         Some(values[len / 2])
     }
+}
+
+/// Deterministic bootstrap CI for median estimator.
+fn bootstrap_ci_median(values: &[f64], iterations: usize) -> (f64, f64) {
+    if values.is_empty() {
+        return (0.0, 0.0);
+    }
+    if values.len() == 1 {
+        return (values[0], values[0]);
+    }
+
+    let mut state: u64 = 0xA5A5_1234_9E37_79B9;
+    let mut next_u64 = || {
+        state ^= state >> 12;
+        state ^= state << 25;
+        state ^= state >> 27;
+        state.wrapping_mul(0x2545_F491_4F6C_DD1D)
+    };
+
+    let mut medians = Vec::with_capacity(iterations);
+    let n = values.len();
+    for _ in 0..iterations {
+        let mut sample = Vec::with_capacity(n);
+        for _ in 0..n {
+            let idx = (next_u64() as usize) % n;
+            sample.push(values[idx]);
+        }
+        sample.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let m = if n % 2 == 0 { (sample[n / 2 - 1] + sample[n / 2]) / 2.0 } else { sample[n / 2] };
+        medians.push(m);
+    }
+    medians.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let lower_idx = ((iterations as f64) * 0.025).floor() as usize;
+    let upper_idx = ((iterations as f64) * 0.975).ceil() as usize;
+    let lower = medians[lower_idx.min(medians.len() - 1)];
+    let upper = medians[upper_idx.min(medians.len() - 1)];
+    (lower, upper)
 }
 
 /// Calculate percentile from sorted samples (integer percentile)
@@ -424,6 +605,12 @@ pub struct Comparison {
     pub speedup: f64,
     /// Which one is faster
     pub winner: ComparisonWinner,
+    /// Optional robust paired 95% CI lower bound for ratio
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ratio_ci_95_lower: Option<f64>,
+    /// Optional robust paired 95% CI upper bound for ratio
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ratio_ci_95_upper: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -440,6 +627,7 @@ impl Comparison {
         first_lang: String,
         second: Measurement,
         second_lang: String,
+        ratio_ci_95: Option<(f64, f64)>,
     ) -> Self {
         let ratio = first.nanos_per_op / second.nanos_per_op;
 
@@ -451,7 +639,18 @@ impl Comparison {
             (ComparisonWinner::First, 1.0 / ratio)
         };
 
-        Self { name, first, first_lang, second, second_lang, ratio, speedup, winner }
+        Self {
+            name,
+            first,
+            first_lang,
+            second,
+            second_lang,
+            ratio,
+            speedup,
+            winner,
+            ratio_ci_95_lower: ratio_ci_95.map(|x| x.0),
+            ratio_ci_95_upper: ratio_ci_95.map(|x| x.1),
+        }
     }
 
     /// Get a description of the speedup
@@ -461,5 +660,37 @@ impl Comparison {
             ComparisonWinner::Second => format!("{} {:.2}x faster", self.second_lang, self.speedup),
             ComparisonWinner::Tie => "Similar performance".to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bootstrap_ci_median_contains_center() {
+        let values = vec![10.0, 11.0, 12.0, 13.0, 14.0];
+        let (lo, hi) = bootstrap_ci_median(&values, 300);
+        assert!(lo <= 12.0);
+        assert!(hi >= 12.0);
+    }
+
+    #[test]
+    fn test_paired_ratio_ci_returns_values() {
+        let a = vec![100.0, 110.0, 120.0, 130.0, 140.0];
+        let b = vec![50.0, 55.0, 60.0, 65.0, 70.0];
+        let result = Measurement::paired_ratio_ci(&a, &b);
+        assert!(result.is_some());
+        let (median, lo, hi) = result.unwrap();
+        assert!(median > 1.5);
+        assert!(lo <= median);
+        assert!(hi >= median);
+    }
+
+    #[test]
+    fn test_timeout_marker_sets_timeout_flag() {
+        let m = Measurement::timeout_marker();
+        assert_eq!(m.timed_out, Some(true));
+        assert_eq!(m.iterations, 0);
     }
 }

@@ -127,6 +127,65 @@ pub enum BenchMode {
     Fixed,
 }
 
+/// Fairness strategy for cross-runtime execution and comparison
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FairnessMode {
+    /// Legacy behavior (fixed runtime order, legacy stats)
+    Legacy,
+    /// Strict fairness behavior (interleaving, robust paired stats)
+    Strict,
+}
+
+impl FairnessMode {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "legacy" => Some(FairnessMode::Legacy),
+            "strict" => Some(FairnessMode::Strict),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FairnessMode::Legacy => "legacy",
+            FairnessMode::Strict => "strict",
+        }
+    }
+}
+
+impl Default for FairnessMode {
+    fn default() -> Self {
+        FairnessMode::Strict
+    }
+}
+
+/// Sampling policy for async benchmarks
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AsyncSamplingPolicy {
+    /// Legacy fixed cap behavior
+    FixedCap,
+    /// Time budgeted adaptive behavior
+    TimeBudgeted,
+}
+
+impl AsyncSamplingPolicy {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "fixedcap" | "fixed_cap" | "fixed-cap" => Some(AsyncSamplingPolicy::FixedCap),
+            "timebudgeted" | "time_budgeted" | "time-budgeted" => {
+                Some(AsyncSamplingPolicy::TimeBudgeted)
+            }
+            _ => None,
+        }
+    }
+}
+
+impl Default for AsyncSamplingPolicy {
+    fn default() -> Self {
+        AsyncSamplingPolicy::TimeBudgeted
+    }
+}
+
 impl BenchMode {
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
@@ -522,10 +581,20 @@ pub struct Suite {
     pub cv_threshold: Option<f64>,
     /// Number of times to run each benchmark for statistical consistency (default: 1)
     pub count: Option<u64>,
+    /// Fairness mode for execution and comparison (default: strict)
+    pub fairness_mode: Option<FairnessMode>,
+    /// Optional deterministic seed for fairness randomization
+    pub fairness_seed: Option<u64>,
 
     // Observability settings (Phase 2B)
     /// Enable memory allocation profiling (default: false)
     pub memory: bool,
+    /// Async sampling policy (default: timeBudgeted)
+    pub async_sampling_policy: Option<AsyncSamplingPolicy>,
+    /// Async warmup cap override
+    pub async_warmup_cap: Option<u64>,
+    /// Async sample cap override
+    pub async_sample_cap: Option<u64>,
 
     /// Global setup block for suite-level initialization (runs once before all benchmarks)
     pub global_setup: Option<GlobalSetup>,
@@ -558,7 +627,12 @@ impl Suite {
             outlier_detection: true, // Enabled by default for statistical accuracy
             cv_threshold: None,      // Uses default (5.0%) when None
             count: None,             // Uses default (1) when None - single run
-            memory: false,           // Memory profiling disabled by default
+            fairness_mode: None,     // Uses default (strict) when None
+            fairness_seed: None,
+            memory: false,               // Memory profiling disabled by default
+            async_sampling_policy: None, // Uses default (timeBudgeted) when None
+            async_warmup_cap: None,
+            async_sample_cap: None,
             global_setup: None,
             setups: HashMap::new(),
             fixtures: Vec::new(),

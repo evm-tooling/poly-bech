@@ -419,6 +419,11 @@ module.exports = grammar({
       'cvThreshold',
       'count',
       'memory',
+      'fairness',
+      'fairnessSeed',
+      'asyncSamplingPolicy',
+      'asyncWarmupCap',
+      'asyncSampleCap',
     ),
 
     _value: $ => choice(

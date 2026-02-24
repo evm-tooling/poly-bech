@@ -6,7 +6,7 @@ use miette::{miette, Result};
 use poly_bench_dsl::{BenchMode, Lang};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use poly_bench_stdlib as stdlib;
-use std::{collections::HashSet, path::PathBuf};
+use std::{collections::HashSet, path::PathBuf, process::Stdio};
 
 use super::shared::{
     self, generate_bench_call, generate_fixtures_for_spec, generate_suite_code, SinkMemoryDecls,
@@ -400,8 +400,27 @@ impl RustRuntime {
             cmd.env("ANVIL_RPC_URL", url);
         }
 
-        let output =
-            cmd.output().await.map_err(|e| miette!("Failed to run Rust benchmark: {}", e))?;
+        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        cmd.kill_on_drop(true);
+        let child = cmd.spawn().map_err(|e| miette!("Failed to run Rust benchmark: {}", e))?;
+        let output = if let Some(timeout_ms) = spec.timeout {
+            match tokio::time::timeout(
+                tokio::time::Duration::from_millis(timeout_ms),
+                child.wait_with_output(),
+            )
+            .await
+            {
+                Ok(result) => result.map_err(|e| miette!("Failed to run Rust benchmark: {}", e))?,
+                Err(_) => {
+                    return Err(miette!("Rust benchmark timed out after {}ms", timeout_ms));
+                }
+            }
+        } else {
+            child
+                .wait_with_output()
+                .await
+                .map_err(|e| miette!("Failed to run Rust benchmark: {}", e))?
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

@@ -317,6 +317,18 @@ impl Parser {
                 let mode = self.expect_bench_mode()?;
                 suite.mode = Some(mode);
             }
+            TokenKind::Fairness => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let fairness_mode = self.expect_fairness_mode()?;
+                suite.fairness_mode = Some(fairness_mode);
+            }
+            TokenKind::FairnessSeed => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let seed = self.expect_number()?;
+                suite.fairness_seed = Some(seed);
+            }
             TokenKind::Sink => {
                 self.advance();
                 self.expect(TokenKind::Colon)?;
@@ -352,6 +364,24 @@ impl Parser {
                 self.expect(TokenKind::Colon)?;
                 let value = self.expect_bool()?;
                 suite.memory = value;
+            }
+            TokenKind::AsyncSamplingPolicy => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let policy = self.expect_async_sampling_policy()?;
+                suite.async_sampling_policy = Some(policy);
+            }
+            TokenKind::AsyncWarmupCap => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_number()?;
+                suite.async_warmup_cap = Some(value);
+            }
+            TokenKind::AsyncSampleCap => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_number()?;
+                suite.async_sample_cap = Some(value);
             }
             // globalSetup can now be inside suite
             TokenKind::GlobalSetup => {
@@ -1267,11 +1297,17 @@ impl Parser {
                         TokenKind::Skip |
                         TokenKind::Validate |
                         TokenKind::Mode |
+                        TokenKind::Fairness |
+                        TokenKind::FairnessSeed |
                         TokenKind::Sink |
                         TokenKind::TargetTime |
                         TokenKind::OutlierDetection |
                         TokenKind::CvThreshold |
+                        TokenKind::Count |
                         TokenKind::Memory |
+                        TokenKind::AsyncSamplingPolicy |
+                        TokenKind::AsyncWarmupCap |
+                        TokenKind::AsyncSampleCap |
                         TokenKind::Before |
                         TokenKind::After |
                         TokenKind::Each |
@@ -1542,6 +1578,79 @@ impl Parser {
                 }),
             _ => Err(self.make_error(ParseError::ExpectedToken {
                 expected: "benchmark mode (auto or fixed)".to_string(),
+                found: format!("{:?}", token.kind),
+                span: token.span,
+            })),
+        }
+    }
+
+    /// Expect a fairness mode (legacy/strict) from string or identifier
+    fn expect_fairness_mode(&mut self) -> Result<FairnessMode> {
+        let token = self.peek().clone();
+        match &token.kind {
+            TokenKind::String(s) => FairnessMode::from_str(s)
+                .map(|mode| {
+                    self.advance();
+                    mode
+                })
+                .ok_or_else(|| {
+                    self.make_error(ParseError::ExpectedToken {
+                        expected: "fairness mode (\"legacy\" or \"strict\")".to_string(),
+                        found: s.clone(),
+                        span: token.span.clone(),
+                    })
+                }),
+            TokenKind::Identifier(s) => FairnessMode::from_str(s)
+                .map(|mode| {
+                    self.advance();
+                    mode
+                })
+                .ok_or_else(|| {
+                    self.make_error(ParseError::ExpectedToken {
+                        expected: "fairness mode (legacy or strict)".to_string(),
+                        found: s.clone(),
+                        span: token.span.clone(),
+                    })
+                }),
+            _ => Err(self.make_error(ParseError::ExpectedToken {
+                expected: "fairness mode (legacy or strict)".to_string(),
+                found: format!("{:?}", token.kind),
+                span: token.span,
+            })),
+        }
+    }
+
+    /// Expect an async sampling policy (fixedCap/timeBudgeted) from string or identifier
+    fn expect_async_sampling_policy(&mut self) -> Result<AsyncSamplingPolicy> {
+        let token = self.peek().clone();
+        match &token.kind {
+            TokenKind::String(s) => AsyncSamplingPolicy::from_str(s)
+                .map(|policy| {
+                    self.advance();
+                    policy
+                })
+                .ok_or_else(|| {
+                    self.make_error(ParseError::ExpectedToken {
+                        expected: "async sampling policy (\"fixedCap\" or \"timeBudgeted\")"
+                            .to_string(),
+                        found: s.clone(),
+                        span: token.span.clone(),
+                    })
+                }),
+            TokenKind::Identifier(s) => AsyncSamplingPolicy::from_str(s)
+                .map(|policy| {
+                    self.advance();
+                    policy
+                })
+                .ok_or_else(|| {
+                    self.make_error(ParseError::ExpectedToken {
+                        expected: "async sampling policy (fixedCap or timeBudgeted)".to_string(),
+                        found: s.clone(),
+                        span: token.span.clone(),
+                    })
+                }),
+            _ => Err(self.make_error(ParseError::ExpectedToken {
+                expected: "async sampling policy (fixedCap or timeBudgeted)".to_string(),
                 found: format!("{:?}", token.kind),
                 span: token.span,
             })),
@@ -2094,5 +2203,27 @@ suite test1 {
 
         // Suite's own globalSetup should be used (with fork)
         assert_eq!(anvil.fork_url, Some("https://custom.rpc".to_string()));
+    }
+
+    #[test]
+    fn test_parse_suite_fairness_and_async_policy_fields() {
+        let source = r#"
+suite fairness {
+    fairness: "strict"
+    fairnessSeed: 1337
+    asyncSamplingPolicy: "timeBudgeted"
+    asyncWarmupCap: 9
+    asyncSampleCap: 77
+
+    bench test {
+        ts: doWork()
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let suite = &ast.suites[0];
+        assert_eq!(suite.fairness_seed, Some(1337));
+        assert_eq!(suite.async_warmup_cap, Some(9));
+        assert_eq!(suite.async_sample_cap, Some(77));
     }
 }

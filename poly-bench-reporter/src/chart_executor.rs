@@ -216,6 +216,11 @@ mod tests {
             BenchmarkKind::Sync,
             None,
             HashMap::new(),
+            "legacy".to_string(),
+            None,
+            None,
+            None,
+            None,
         )];
         let suite = SuiteResults::new("suite".to_string(), None, benchmarks);
         BenchmarkResults::new(vec![suite])
