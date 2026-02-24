@@ -359,6 +359,19 @@ impl LanguageServer for PolyBenchLanguageServer {
             // Extract current prefix being typed
             let prefix = extract_current_prefix(trimmed);
 
+            // Suite declaration header completions (top-level only, before opening brace).
+            // This keeps keyword suggestions available when editing header tokens in-place.
+            if let Some(slot) = suite_header_slot_for_context(&doc.source, position, &line_text) {
+                let completions = get_suite_header_completions(slot);
+                let header_prefix = header_prefix_for_completion(&line_text);
+                let filtered = if header_prefix.is_empty() {
+                    completions
+                } else {
+                    filter_completions_by_prefix(completions, &header_prefix, 1)
+                };
+                return Ok(Some(exclusive_list(filtered)));
+            }
+
             // Setup keyword completions should remain available while editing incomplete code.
             // This line-based fast path avoids depending solely on parser context.
             if is_likely_inside_unclosed_setup(&doc.source, position) &&
@@ -1117,7 +1130,7 @@ fn suite_brace_depth_at_cursor(source: &ropey::Rope, position: Position) -> Opti
     for line_idx in 0..=cursor_line.min(source.len_lines().saturating_sub(1)) {
         let line: String = source.line(line_idx).chars().collect();
         let trimmed = line.trim_start();
-        if trimmed.starts_with("suite ") || trimmed.starts_with("suite\t") {
+        if is_suite_declaration_start(trimmed) {
             suite_start_line = Some(line_idx);
         }
     }
@@ -1142,6 +1155,194 @@ fn suite_brace_depth_at_cursor(source: &ropey::Rope, position: Position) -> Opti
     }
 
     Some(balance)
+}
+
+fn is_suite_declaration_start(trimmed_line: &str) -> bool {
+    trimmed_line.starts_with("suite ") ||
+        trimmed_line.starts_with("suite\t") ||
+        trimmed_line.starts_with("declare suite ")
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SuiteHeaderSlot {
+    StartKeyword,
+    SuiteKeyword,
+    SuiteType,
+    RunMode,
+    SameDatasetKey,
+    SameDatasetBool,
+}
+
+fn suite_header_slot_at_cursor(line_text_before_cursor: &str) -> Option<SuiteHeaderSlot> {
+    // Header suggestions are only meaningful before the suite body opens.
+    if line_text_before_cursor.contains('{') {
+        return None;
+    }
+
+    let trimmed = line_text_before_cursor.trim_start();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let tokens: Vec<&str> = trimmed.split_whitespace().collect();
+    if tokens.is_empty() {
+        return Some(SuiteHeaderSlot::StartKeyword);
+    }
+
+    let first = tokens[0];
+    let looks_like_header_start =
+        "declare".starts_with(first) || "suite".starts_with(first) || first == "declare" || first == "suite";
+    if !looks_like_header_start {
+        return None;
+    }
+    if "declare".starts_with(first) && first != "declare" {
+        return Some(SuiteHeaderSlot::StartKeyword);
+    }
+
+    let trailing_ws = line_text_before_cursor
+        .chars()
+        .last()
+        .is_some_and(char::is_whitespace);
+    let slot = if trailing_ws {
+        tokens.len() + 1
+    } else {
+        tokens.len()
+    };
+
+    let starts_with_declare = tokens.first().is_some_and(|t| *t == "declare");
+    if starts_with_declare {
+        // declare suite <name> <suiteType> <runMode> sameDataset: <bool>
+        match slot {
+            1 => Some(SuiteHeaderSlot::StartKeyword),
+            2 => Some(SuiteHeaderSlot::SuiteKeyword),
+            4 => Some(SuiteHeaderSlot::SuiteType),
+            5 => Some(SuiteHeaderSlot::RunMode),
+            6 => Some(SuiteHeaderSlot::SameDatasetKey),
+            7 => Some(SuiteHeaderSlot::SameDatasetBool),
+            _ => None,
+        }
+    } else {
+        // suite <name> <suiteType> <runMode> sameDataset: <bool>
+        match slot {
+            1 => Some(SuiteHeaderSlot::SuiteKeyword),
+            3 => Some(SuiteHeaderSlot::SuiteType),
+            4 => Some(SuiteHeaderSlot::RunMode),
+            5 => Some(SuiteHeaderSlot::SameDatasetKey),
+            6 => Some(SuiteHeaderSlot::SameDatasetBool),
+            _ => None,
+        }
+    }
+}
+
+fn suite_header_slot_for_context(
+    source: &ropey::Rope,
+    position: Position,
+    line_text_before_cursor: &str,
+) -> Option<SuiteHeaderSlot> {
+    // Never show suite-header keyword suggestions inside an already-open suite body.
+    if is_likely_inside_unclosed_suite(source, position) {
+        return None;
+    }
+    suite_header_slot_at_cursor(line_text_before_cursor)
+}
+
+fn header_prefix_for_completion(line_text_before_cursor: &str) -> String {
+    // When a completion inserts a trailing space (e.g. "performance "),
+    // show the next slot's options immediately without requiring a typed character.
+    if line_text_before_cursor.chars().last().is_some_and(char::is_whitespace) {
+        return String::new();
+    }
+    extract_current_prefix(line_text_before_cursor)
+}
+
+fn suggest_again_command() -> Command {
+    Command {
+        title: "Trigger Suggest".to_string(),
+        command: "editor.action.triggerSuggest".to_string(),
+        arguments: None,
+    }
+}
+
+fn header_keyword_item(label: &str, detail: &str, insert_text: &str) -> CompletionItem {
+    CompletionItem {
+        label: label.to_string(),
+        kind: Some(CompletionItemKind::KEYWORD),
+        insert_text: Some(insert_text.to_string()),
+        detail: Some(detail.to_string()),
+        command: Some(suggest_again_command()),
+        ..Default::default()
+    }
+}
+
+fn get_suite_header_completions(slot: SuiteHeaderSlot) -> Vec<CompletionItem> {
+    match slot {
+        SuiteHeaderSlot::StartKeyword => vec![
+            CompletionItem {
+                label: "declare".to_string(),
+                kind: Some(CompletionItemKind::KEYWORD),
+                insert_text: Some("declare suite ${1:name} ".to_string()),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                detail: Some("Start a declared suite header".to_string()),
+                command: Some(suggest_again_command()),
+                ..Default::default()
+            },
+            header_keyword_item("suite", "Start a suite declaration", "suite "),
+        ],
+        SuiteHeaderSlot::SuiteKeyword => {
+            vec![header_keyword_item("suite", "Suite declaration keyword", "suite ")]
+        }
+        SuiteHeaderSlot::SuiteType => vec![
+            header_keyword_item(
+                "performance",
+                "Suite type for runtime performance benchmarking",
+                "performance ",
+            ),
+            header_keyword_item(
+                "memory",
+                "Suite type for memory-focused benchmarking",
+                "memory ",
+            ),
+            // Keep run-mode keywords visible here as a forgiving UX fallback.
+            header_keyword_item("timeBased", "Run mode calibrated by target time", "timeBased "),
+            header_keyword_item(
+                "iterationBased",
+                "Run mode with fixed iterations",
+                "iterationBased ",
+            ),
+        ],
+        SuiteHeaderSlot::RunMode => vec![
+            header_keyword_item("timeBased", "Run mode calibrated by target time", "timeBased "),
+            header_keyword_item(
+                "iterationBased",
+                "Run mode with fixed iterations",
+                "iterationBased ",
+            ),
+        ],
+        SuiteHeaderSlot::SameDatasetKey => vec![CompletionItem {
+            label: "sameDataset".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("sameDataset: ".to_string()),
+            detail: Some("Control dataset reuse across runtimes".to_string()),
+            command: Some(suggest_again_command()),
+            ..Default::default()
+        }],
+        SuiteHeaderSlot::SameDatasetBool => vec![
+            CompletionItem {
+                label: "true".to_string(),
+                kind: Some(CompletionItemKind::VALUE),
+                insert_text: Some("true {\n\t$0\n}".to_string()),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                ..Default::default()
+            },
+            CompletionItem {
+                label: "false".to_string(),
+                kind: Some(CompletionItemKind::VALUE),
+                insert_text: Some("false {\n\t$0\n}".to_string()),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                ..Default::default()
+            },
+        ],
+    }
 }
 
 /// Get completions for stdlib module members (after "module.")
@@ -1420,6 +1621,14 @@ fn get_global_setup_completions(source: &ropey::Rope) -> Vec<CompletionItem> {
 fn get_top_level_completions() -> Vec<CompletionItem> {
     let mut items = vec![
         CompletionItem {
+            label: "declare".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("declare suite ${1:name} ".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Start a declared suite header".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
             label: "suite".to_string(),
             kind: Some(CompletionItemKind::KEYWORD),
             insert_text: Some(
@@ -1436,6 +1645,42 @@ fn get_top_level_completions() -> Vec<CompletionItem> {
             insert_text: Some("globalSetup {\n\t$0\n}".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Define global setup".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "performance".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("performance".to_string()),
+            detail: Some("Suite type for runtime performance benchmarking".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "memory".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("memory".to_string()),
+            detail: Some("Suite type for memory-focused benchmarking".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "timeBased".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("timeBased".to_string()),
+            detail: Some("Run mode calibrated by target time".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "iterationBased".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("iterationBased".to_string()),
+            detail: Some("Run mode with a fixed iteration count".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "sameDataset".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("sameDataset: ${1|true,false|}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Control dataset reuse across runtimes".to_string()),
             ..Default::default()
         },
     ];
@@ -1880,7 +2125,9 @@ mod tests {
 
     #[test]
     fn suite_completions_insert_runtime_defaults() {
-        let completions = get_top_level_completions()
+        let top_level = get_top_level_completions();
+        let completions = top_level
+            .clone()
             .into_iter()
             .chain(get_suite_body_completions())
             .collect::<Vec<_>>();
@@ -1899,11 +2146,120 @@ mod tests {
                     .to_string()
             )
         );
+        assert_eq!(
+            inserts.get("declare"),
+            Some(&"declare suite ${1:name} ".to_string())
+        );
         assert_eq!(inserts.get("targetTime"), Some(&"targetTime: 3000".to_string()));
         assert_eq!(inserts.get("count"), Some(&"count: 1".to_string()));
         assert_eq!(
             inserts.get("benchAsync"),
             Some(&"benchAsync ${1:name} {\n\t${2:ts}: ${3:await code()}\n}".to_string())
+        );
+
+        let has_top_level_insert = |label: &str, insert_text: &str| {
+            top_level.iter().any(|item| {
+                item.label == label && item.insert_text.as_deref() == Some(insert_text)
+            })
+        };
+        assert!(has_top_level_insert("performance", "performance"));
+        assert!(has_top_level_insert("memory", "memory"));
+        assert!(has_top_level_insert("timeBased", "timeBased"));
+        assert!(has_top_level_insert("iterationBased", "iterationBased"));
+        assert!(has_top_level_insert("sameDataset", "sameDataset: ${1|true,false|}"));
+    }
+
+    #[test]
+    fn suite_header_slot_detection() {
+        assert_eq!(
+            suite_header_slot_at_cursor("dec"),
+            Some(SuiteHeaderSlot::StartKeyword)
+        );
+        assert_eq!(
+            suite_header_slot_at_cursor("declare su"),
+            Some(SuiteHeaderSlot::SuiteKeyword)
+        );
+        assert_eq!(
+            suite_header_slot_at_cursor("declare suite demo per"),
+            Some(SuiteHeaderSlot::SuiteType)
+        );
+        assert_eq!(
+            suite_header_slot_at_cursor("declare suite demo performance tim"),
+            Some(SuiteHeaderSlot::RunMode)
+        );
+        assert_eq!(
+            suite_header_slot_at_cursor("declare suite demo performance timeBased same"),
+            Some(SuiteHeaderSlot::SameDatasetKey)
+        );
+        assert_eq!(
+            suite_header_slot_at_cursor("declare suite demo performance timeBased sameDataset: tr"),
+            Some(SuiteHeaderSlot::SameDatasetBool)
+        );
+        assert_eq!(
+            suite_header_slot_at_cursor("declare suite demo performance timeBased sameDataset: true {"),
+            None
+        );
+    }
+
+    #[test]
+    fn suite_header_keyword_items_chain_with_spaces() {
+        let items = get_suite_header_completions(SuiteHeaderSlot::SuiteType);
+        let mut inserts = std::collections::HashMap::new();
+        for item in items {
+            if let Some(insert_text) = item.insert_text {
+                inserts.insert(item.label, insert_text);
+            }
+        }
+
+        assert_eq!(inserts.get("performance"), Some(&"performance ".to_string()));
+        assert_eq!(inserts.get("memory"), Some(&"memory ".to_string()));
+        assert_eq!(inserts.get("timeBased"), Some(&"timeBased ".to_string()));
+        assert_eq!(inserts.get("iterationBased"), Some(&"iterationBased ".to_string()));
+    }
+
+    #[test]
+    fn suite_header_run_mode_slot_excludes_suite_types() {
+        let items = get_suite_header_completions(SuiteHeaderSlot::RunMode);
+        let labels: Vec<String> = items.into_iter().map(|item| item.label).collect();
+        assert!(labels.contains(&"timeBased".to_string()));
+        assert!(labels.contains(&"iterationBased".to_string()));
+        assert!(!labels.contains(&"performance".to_string()));
+        assert!(!labels.contains(&"memory".to_string()));
+    }
+
+    #[test]
+    fn suite_header_bool_completion_finishes_with_braces() {
+        let items = get_suite_header_completions(SuiteHeaderSlot::SameDatasetBool);
+        let mut inserts = std::collections::HashMap::new();
+        for item in items {
+            if let Some(insert_text) = item.insert_text {
+                inserts.insert(item.label, insert_text);
+            }
+        }
+
+        assert_eq!(inserts.get("true"), Some(&"true {\n\t$0\n}".to_string()));
+        assert_eq!(inserts.get("false"), Some(&"false {\n\t$0\n}".to_string()));
+    }
+
+    #[test]
+    fn header_prefix_ignores_trailing_space() {
+        assert_eq!(header_prefix_for_completion("declare suite demo performance "), "");
+        assert_eq!(header_prefix_for_completion("declare suite demo per"), "per");
+    }
+
+    #[test]
+    fn suite_header_not_suggested_inside_suite_body() {
+        let source = "declare suite demo performance iterationBased sameDataset: true {\n    de\n}";
+        let doc = crate::document::Document::new(
+            Url::parse("file:///suite_body_no_header.bench").expect("valid file URL"),
+            source.to_string(),
+            1,
+        );
+        let pos = Position { line: 1, character: 6 };
+        let line_text = "    de";
+        assert_eq!(
+            suite_header_slot_for_context(&doc.source, pos, line_text),
+            None
         );
     }
 
@@ -1954,6 +2310,17 @@ mod tests {
         assert!(!is_likely_inside_unclosed_suite(
             &doc_closed.source,
             Position { line: 3, character: 0 },
+        ));
+
+        let declared_source = "declare suite demo performance timeBased sameDataset: true {\n    warmup: 1000\n    target";
+        let declared_doc = crate::document::Document::new(
+            Url::parse("file:///suite_declared_unclosed.bench").expect("valid file URL"),
+            declared_source.to_string(),
+            1,
+        );
+        assert!(is_likely_inside_unclosed_suite(
+            &declared_doc.source,
+            Position { line: 2, character: 10 },
         ));
     }
 
