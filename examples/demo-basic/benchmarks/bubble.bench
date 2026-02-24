@@ -1,10 +1,12 @@
 use std::charting
 
-declare suite bubbleN memory iterationBased sameDataset: true {
+declare suite bubbleN memory timeBased sameDataset: true {
     description: "O(n^2) bubble sort on int32 array"
     baseline: "go"
-    iterations: 1000
+    warmup: 1
+    targetTime: 50ms
     cvThreshold: 5
+    outlierDetection: false
     count: 1
 
     setup go {
@@ -184,10 +186,11 @@ declare suite bubbleN memory iterationBased sameDataset: true {
     }
 
     after {
-        charting.drawLineChart(
+         charting.drawLineChart(
             title: "Bubble Sort - O(n²)",
             description: "Classic bubble sort - quadratic trend with regression + error overlays",
-            output: "bubble-line-t.svg",
+            output: "bubble-line-linear.svg",
+            yScale: "linear",
             showStdDev: true,
             showErrorBars: true,
             showRegression: true,
@@ -196,7 +199,70 @@ declare suite bubbleN memory iterationBased sameDataset: true {
         charting.drawBarChart(
             title: "Bubble Sort - Grouped Bars",
             description: "Grouped bars per dataset size with statistical overlays",
-            output: "bubble-bar-t.svg",
+            output: "bubble-bar-linear.svg",
+            yScale: "linear",
+            showStdDev: true,
+            showErrorBars: true,
+            showRegression: true,
+            regressionModel: "auto",
+        )
+        charting.drawLineChart(
+            title: "Bubble Sort - O(n²)",
+            description: "Classic bubble sort - quadratic trend with regression + error overlays",
+            output: "bubble-line-log10.svg",
+            yScale: "log10",
+            showStdDev: true,
+            showErrorBars: true,
+            showRegression: true,
+            regressionModel: "auto",
+        )
+        charting.drawBarChart(
+            title: "Bubble Sort - Grouped Bars",
+            description: "Grouped bars per dataset size with statistical overlays",
+            output: "bubble-bar-log10.svg",
+            yScale: "log10",
+            showStdDev: true,
+            showErrorBars: true,
+            showRegression: true,
+            regressionModel: "auto",
+        )
+
+         charting.drawLineChart(
+            title: "Bubble Sort - O(n²)",
+            description: "Classic bubble sort - quadratic trend with regression + error overlays",
+            output: "bubble-line-split.svg",
+            yScale: "split",
+            showStdDev: true,
+            showErrorBars: true,
+            showRegression: true,
+            regressionModel: "auto",
+        )
+        charting.drawBarChart(
+            title: "Bubble Sort - Grouped Bars",
+            description: "Grouped bars per dataset size with statistical overlays",
+            output: "bubble-bar-split.svg",
+            yScale: "split",
+            showStdDev: true,
+            showErrorBars: true,
+            showRegression: true,
+            regressionModel: "auto",
+        )
+
+         charting.drawLineChart(
+            title: "Bubble Sort - O(n²)",
+            description: "Classic bubble sort - quadratic trend with regression + error overlays",
+            output: "bubble-line-symlog.svg",
+            yScale: "symlog",
+            showStdDev: true,
+            showErrorBars: true,
+            showRegression: true,
+            regressionModel: "auto",
+        )
+        charting.drawBarChart(
+            title: "Bubble Sort - Grouped Bars",
+            description: "Grouped bars per dataset size with statistical overlays",
+            output: "bubble-bar-symlog.svg",
+            yScale: "symlog",
             showStdDev: true,
             showErrorBars: true,
             showRegression: true,

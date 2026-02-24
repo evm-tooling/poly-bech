@@ -550,6 +550,8 @@ pub struct ChartDirective {
     pub show_regression: bool,
     /// Regression model type or "auto"
     pub regression_model: String,
+    /// Y-axis scale type: "linear" (default), "log10", "symlog", "split"
+    pub y_scale: String,
 
     /// Order of parameters as they appeared in source (for formatting)
     #[serde(default)]
@@ -585,6 +587,7 @@ impl ChartDirective {
             show_error_bars: true,
             show_regression: true,
             regression_model: "auto".to_string(),
+            y_scale: "linear".to_string(),
             // Parameter order tracking
             param_order: Vec::new(),
         }

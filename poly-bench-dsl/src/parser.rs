@@ -589,6 +589,7 @@ impl Parser {
                 }
                 "theme" => directive.theme = Some(self.expect_string()?),
                 "regressionModel" => directive.regression_model = self.expect_string()?,
+                "yScale" => directive.y_scale = self.expect_string()?,
 
                 // Integer parameters
                 "limit" => directive.limit = Some(self.expect_number()? as u32),
@@ -2327,6 +2328,7 @@ declare suite chartSuite performance timeBased sameDataset: true {
         assert!(!directive.show_error_bars);
         assert!(directive.show_regression);
         assert_eq!(directive.regression_model, "auto");
+        assert_eq!(directive.y_scale, "linear");
     }
 
     #[test]
@@ -2358,6 +2360,37 @@ declare suite chartSuite performance iterationBased sameDataset: true {
         assert!(directive.show_error_bars);
         assert!(!directive.show_regression);
         assert_eq!(directive.regression_model, "linear");
+        assert_eq!(directive.y_scale, "linear");
+    }
+
+    #[test]
+    fn test_parse_chart_with_y_scale_param() {
+        let source = r#"
+use std::charting
+
+declare suite chartSuite performance timeBased sameDataset: true {
+    targetTime: 1s
+    bench n10 {
+        go: run()
+        ts: run()
+    }
+    after {
+        charting.drawLineChart(
+            title: "Line",
+            description: "desc",
+            yScale: "symlog"
+        )
+        charting.drawBarChart(
+            title: "Bars",
+            description: "desc",
+            yScale: "split"
+        )
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        assert_eq!(ast.suites[0].chart_directives[0].y_scale, "symlog");
+        assert_eq!(ast.suites[0].chart_directives[1].y_scale, "split");
     }
 
     #[test]

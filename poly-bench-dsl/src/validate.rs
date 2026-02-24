@@ -231,6 +231,31 @@ fn validate_chart_dataset_constraints(suite: &Suite, result: &mut ValidationResu
                 .with_location(format!("suite.{}", suite.name)),
             );
         }
+        if matches!(directive.chart_type, ChartType::LineChart | ChartType::BarChart) &&
+            directive.description.is_none()
+        {
+            result.add_error(
+                ValidationError::new(format!(
+                    "Chart '{}' requires a 'description' parameter",
+                    directive.chart_type.as_str()
+                ))
+                .with_location(format!("suite.{}", suite.name)),
+            );
+        }
+        if matches!(directive.chart_type, ChartType::LineChart | ChartType::BarChart) {
+            let y_scale = directive.y_scale.trim().to_ascii_lowercase();
+            let valid = matches!(y_scale.as_str(), "linear" | "log10" | "symlog" | "split");
+            if !valid {
+                result.add_error(
+                    ValidationError::new(format!(
+                        "Chart '{}' has invalid yScale '{}'. Expected one of: linear, log10, symlog, split",
+                        directive.chart_type.as_str(),
+                        directive.y_scale
+                    ))
+                    .with_location(format!("suite.{}", suite.name)),
+                );
+            }
+        }
     }
 }
 
@@ -734,5 +759,26 @@ declare suite test performance timeBased sameDataset: false {
         assert!(result.errors.iter().any(|e| e.message.contains("sameDataset: true")));
         assert!(result.errors.iter().any(|e| e.message.contains("line")));
         assert!(result.errors.iter().any(|e| e.message.contains("bar")));
+    }
+
+    #[test]
+    fn test_validate_chart_y_scale_values() {
+        let source = r#"
+use std::charting
+
+declare suite test performance timeBased sameDataset: true {
+    targetTime: 2s
+    bench foo {
+        go: work()
+        ts: work()
+    }
+    after {
+        charting.drawLineChart(title: "Trend", description: "d", yScale: "bad")
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let result = validate_suite(&ast.suites[0]);
+        assert!(result.errors.iter().any(|e| e.message.contains("invalid yScale")));
     }
 }

@@ -1190,8 +1190,10 @@ fn suite_header_slot_at_cursor(line_text_before_cursor: &str) -> Option<SuiteHea
     }
 
     let first = tokens[0];
-    let looks_like_header_start =
-        "declare".starts_with(first) || "suite".starts_with(first) || first == "declare" || first == "suite";
+    let looks_like_header_start = "declare".starts_with(first) ||
+        "suite".starts_with(first) ||
+        first == "declare" ||
+        first == "suite";
     if !looks_like_header_start {
         return None;
     }
@@ -1199,15 +1201,8 @@ fn suite_header_slot_at_cursor(line_text_before_cursor: &str) -> Option<SuiteHea
         return Some(SuiteHeaderSlot::StartKeyword);
     }
 
-    let trailing_ws = line_text_before_cursor
-        .chars()
-        .last()
-        .is_some_and(char::is_whitespace);
-    let slot = if trailing_ws {
-        tokens.len() + 1
-    } else {
-        tokens.len()
-    };
+    let trailing_ws = line_text_before_cursor.chars().last().is_some_and(char::is_whitespace);
+    let slot = if trailing_ws { tokens.len() + 1 } else { tokens.len() };
 
     let starts_with_declare = tokens.first().is_some_and(|t| *t == "declare");
     if starts_with_declare {
@@ -1297,11 +1292,7 @@ fn get_suite_header_completions(slot: SuiteHeaderSlot) -> Vec<CompletionItem> {
                 "Suite type for runtime performance benchmarking",
                 "performance ",
             ),
-            header_keyword_item(
-                "memory",
-                "Suite type for memory-focused benchmarking",
-                "memory ",
-            ),
+            header_keyword_item("memory", "Suite type for memory-focused benchmarking", "memory "),
             // Keep run-mode keywords visible here as a forgiving UX fallback.
             header_keyword_item("timeBased", "Run mode calibrated by target time", "timeBased "),
             header_keyword_item(
@@ -2126,11 +2117,8 @@ mod tests {
     #[test]
     fn suite_completions_insert_runtime_defaults() {
         let top_level = get_top_level_completions();
-        let completions = top_level
-            .clone()
-            .into_iter()
-            .chain(get_suite_body_completions())
-            .collect::<Vec<_>>();
+        let completions =
+            top_level.clone().into_iter().chain(get_suite_body_completions()).collect::<Vec<_>>();
         let mut inserts = std::collections::HashMap::new();
         for item in completions {
             if let Some(insert_text) = item.insert_text {
@@ -2146,10 +2134,7 @@ mod tests {
                     .to_string()
             )
         );
-        assert_eq!(
-            inserts.get("declare"),
-            Some(&"declare suite ${1:name} ".to_string())
-        );
+        assert_eq!(inserts.get("declare"), Some(&"declare suite ${1:name} ".to_string()));
         assert_eq!(inserts.get("targetTime"), Some(&"targetTime: 3000".to_string()));
         assert_eq!(inserts.get("count"), Some(&"count: 1".to_string()));
         assert_eq!(
@@ -2158,9 +2143,9 @@ mod tests {
         );
 
         let has_top_level_insert = |label: &str, insert_text: &str| {
-            top_level.iter().any(|item| {
-                item.label == label && item.insert_text.as_deref() == Some(insert_text)
-            })
+            top_level
+                .iter()
+                .any(|item| item.label == label && item.insert_text.as_deref() == Some(insert_text))
         };
         assert!(has_top_level_insert("performance", "performance"));
         assert!(has_top_level_insert("memory", "memory"));
@@ -2171,14 +2156,8 @@ mod tests {
 
     #[test]
     fn suite_header_slot_detection() {
-        assert_eq!(
-            suite_header_slot_at_cursor("dec"),
-            Some(SuiteHeaderSlot::StartKeyword)
-        );
-        assert_eq!(
-            suite_header_slot_at_cursor("declare su"),
-            Some(SuiteHeaderSlot::SuiteKeyword)
-        );
+        assert_eq!(suite_header_slot_at_cursor("dec"), Some(SuiteHeaderSlot::StartKeyword));
+        assert_eq!(suite_header_slot_at_cursor("declare su"), Some(SuiteHeaderSlot::SuiteKeyword));
         assert_eq!(
             suite_header_slot_at_cursor("declare suite demo per"),
             Some(SuiteHeaderSlot::SuiteType)
@@ -2196,7 +2175,9 @@ mod tests {
             Some(SuiteHeaderSlot::SameDatasetBool)
         );
         assert_eq!(
-            suite_header_slot_at_cursor("declare suite demo performance timeBased sameDataset: true {"),
+            suite_header_slot_at_cursor(
+                "declare suite demo performance timeBased sameDataset: true {"
+            ),
             None
         );
     }
@@ -2257,10 +2238,7 @@ mod tests {
         );
         let pos = Position { line: 1, character: 6 };
         let line_text = "    de";
-        assert_eq!(
-            suite_header_slot_for_context(&doc.source, pos, line_text),
-            None
-        );
+        assert_eq!(suite_header_slot_for_context(&doc.source, pos, line_text), None);
     }
 
     #[test]

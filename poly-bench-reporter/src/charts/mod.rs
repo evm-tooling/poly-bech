@@ -13,6 +13,252 @@ use poly_bench_executor::comparison::BenchmarkResult;
 use poly_bench_ir::ChartDirectiveIR;
 use poly_bench_runtime::measurement::ComparisonWinner;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum YAxisScale {
+    Linear,
+    Log10,
+    Symlog,
+    Split,
+}
+
+impl YAxisScale {
+    pub fn from_str(value: Option<&str>) -> Self {
+        match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+            Some("log10") | Some("log") => Self::Log10,
+            Some("symlog") => Self::Symlog,
+            Some("split") => Self::Split,
+            _ => Self::Linear,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct YAxisScaleParams {
+    pub log_floor: f64,
+    pub symlog_threshold: f64,
+    pub split_low_max: f64,
+    pub split_high_min: f64,
+    pub split_gap_fraction: f64,
+}
+
+impl Default for YAxisScaleParams {
+    fn default() -> Self {
+        Self {
+            log_floor: 1.0,
+            symlog_threshold: 1.0,
+            split_low_max: 1.0,
+            split_high_min: 10.0,
+            split_gap_fraction: 0.08,
+        }
+    }
+}
+
+pub fn derive_y_scale_params(values: &[f64], scale: YAxisScale) -> YAxisScaleParams {
+    let mut params = YAxisScaleParams::default();
+    let positives: Vec<f64> =
+        values.iter().copied().filter(|v| *v > 0.0 && v.is_finite()).collect();
+    if let Some(min_pos) = positives.iter().copied().reduce(f64::min) {
+        params.log_floor = (min_pos * 0.5).max(1e-9);
+        params.symlog_threshold = (min_pos * 0.1).max(1e-9);
+    }
+    if matches!(scale, YAxisScale::Split) {
+        let mut sorted = positives;
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        if sorted.len() >= 4 {
+            let q1 = sorted[sorted.len() / 4];
+            let q3 = sorted[(sorted.len() * 3) / 4];
+            let iqr = (q3 - q1).max(0.0);
+            let fence = q3 + iqr * 1.5;
+            let low_max = sorted.iter().copied().filter(|v| *v <= fence).reduce(f64::max);
+            let high_min = sorted.iter().copied().filter(|v| *v > fence).reduce(f64::min);
+            if let (Some(lo), Some(hi)) = (low_max, high_min) {
+                if hi > lo {
+                    params.split_low_max = lo;
+                    params.split_high_min = hi;
+                }
+            }
+        }
+    }
+    params
+}
+
+pub fn transform_y(value: f64, scale: YAxisScale, params: YAxisScaleParams) -> f64 {
+    match scale {
+        YAxisScale::Linear => value,
+        YAxisScale::Log10 => value.max(params.log_floor).log10(),
+        YAxisScale::Symlog => symlog(value, params.symlog_threshold.max(1e-12)),
+        YAxisScale::Split => transform_split(value, params),
+    }
+}
+
+pub fn inverse_transform_y(value: f64, scale: YAxisScale, params: YAxisScaleParams) -> f64 {
+    match scale {
+        YAxisScale::Linear => value,
+        YAxisScale::Log10 => 10f64.powf(value),
+        YAxisScale::Symlog => symlog_inv(value, params.symlog_threshold.max(1e-12)),
+        YAxisScale::Split => inverse_transform_split(value, params),
+    }
+}
+
+pub fn axis_label_for_scale(base_label: &str, scale: YAxisScale) -> String {
+    match scale {
+        YAxisScale::Linear => base_label.to_string(),
+        YAxisScale::Log10 => format!("{} (log10 scale)", base_label),
+        YAxisScale::Symlog => format!("{} (symlog scale)", base_label),
+        YAxisScale::Split => format!("{} (split scale)", base_label),
+    }
+}
+
+pub fn y_upper_with_headroom(y_max: f64, scale: YAxisScale) -> f64 {
+    let base = y_max.max(1.0);
+    let factor = match scale {
+        YAxisScale::Linear => 1.0,
+        YAxisScale::Log10 => 1.06,
+        YAxisScale::Symlog => 1.04,
+        YAxisScale::Split => 1.06,
+    };
+    base * factor
+}
+
+pub fn make_y_to_px(
+    scale: YAxisScale,
+    y_min: f64,
+    y_max: f64,
+    plot_top: f64,
+    plot_height: f64,
+    params: YAxisScaleParams,
+) -> impl Fn(f64) -> f64 {
+    let t_min = transform_y(y_min, scale, params);
+    let t_max = transform_y(y_max, scale, params);
+    let span = (t_max - t_min).abs().max(f64::EPSILON);
+    move |y: f64| {
+        let t = transform_y(y, scale, params);
+        let ratio = ((t - t_min) / span).clamp(0.0, 1.0);
+        plot_top + (1.0 - ratio) * plot_height
+    }
+}
+
+pub fn generate_y_ticks(
+    scale: YAxisScale,
+    y_min: f64,
+    y_max: f64,
+    dense: bool,
+    params: YAxisScaleParams,
+) -> Vec<(f64, String)> {
+    match scale {
+        YAxisScale::Linear => linear_ticks(y_min, y_max, if dense { 7 } else { 6 }),
+        YAxisScale::Log10 => log_ticks(y_min, y_max, dense, params.log_floor),
+        YAxisScale::Symlog => symlog_ticks_labeled(y_min, y_max, params.symlog_threshold),
+        YAxisScale::Split => split_ticks(y_min, y_max, params),
+    }
+}
+
+pub fn split_gap_bounds(scale: YAxisScale, params: YAxisScaleParams) -> Option<(f64, f64)> {
+    if matches!(scale, YAxisScale::Split) && params.split_high_min > params.split_low_max {
+        Some((params.split_low_max, params.split_high_min))
+    } else {
+        None
+    }
+}
+
+fn transform_split(value: f64, params: YAxisScaleParams) -> f64 {
+    let gap = params.split_gap_fraction.clamp(0.0, 0.2);
+    let low_max = params.split_low_max.max(0.0);
+    let high_min = params.split_high_min.max(low_max + f64::EPSILON);
+    if value <= low_max {
+        if low_max <= f64::EPSILON {
+            0.0
+        } else {
+            (value / low_max).clamp(0.0, 1.0) * (0.5 - gap)
+        }
+    } else if value < high_min {
+        0.5
+    } else {
+        let high_span = (high_min.max(f64::EPSILON)).ln_1p().max(f64::EPSILON);
+        let mapped = (value.ln_1p() - high_min.ln_1p()) / high_span;
+        (0.5 + gap + mapped * (0.5 - gap)).clamp(0.5 + gap, 1.0)
+    }
+}
+
+fn inverse_transform_split(value: f64, params: YAxisScaleParams) -> f64 {
+    let gap = params.split_gap_fraction.clamp(0.0, 0.2);
+    let low_max = params.split_low_max.max(0.0);
+    let high_min = params.split_high_min.max(low_max + f64::EPSILON);
+    if value <= 0.5 - gap {
+        if low_max <= f64::EPSILON {
+            0.0
+        } else {
+            ((value / (0.5 - gap)).clamp(0.0, 1.0)) * low_max
+        }
+    } else if value < 0.5 + gap {
+        high_min
+    } else {
+        let high_span = (high_min.max(f64::EPSILON)).ln_1p().max(f64::EPSILON);
+        let pct = ((value - (0.5 + gap)) / (0.5 - gap)).clamp(0.0, 1.0);
+        ((high_min.ln_1p() + pct * high_span).exp()) - 1.0
+    }
+}
+
+fn linear_ticks(y_min: f64, y_max: f64, n: usize) -> Vec<(f64, String)> {
+    let start = y_min.min(y_max);
+    let end = y_max.max(y_min);
+    let span = (end - start).max(f64::EPSILON);
+    (0..n)
+        .map(|i| {
+            let ratio = i as f64 / (n.saturating_sub(1).max(1) as f64);
+            let value = end - ratio * span;
+            (value, format!("{:.0}", value))
+        })
+        .collect()
+}
+
+fn log_ticks(y_min: f64, y_max: f64, dense: bool, floor: f64) -> Vec<(f64, String)> {
+    let low = y_min.min(y_max).max(floor).max(1e-12);
+    let high = y_min.max(y_max).max(low * 10.0);
+    let min_pow = low.log10().floor() as i32;
+    let max_pow = high.log10().ceil() as i32;
+    let mut ticks = Vec::new();
+    for p in min_pow..=max_pow {
+        let base = 10f64.powi(p);
+        if base >= low && base <= high {
+            ticks.push((base, format!("{:.0e}", base)));
+        }
+        if dense {
+            for m in 2..=9 {
+                let v = base * m as f64;
+                if v >= low && v <= high {
+                    ticks.push((v, String::new()));
+                }
+            }
+        }
+    }
+    ticks.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    ticks
+}
+
+fn symlog_ticks_labeled(y_min: f64, y_max: f64, threshold: f64) -> Vec<(f64, String)> {
+    let mut vals = symlog_ticks(y_min, y_max, threshold.max(1e-12));
+    if vals.is_empty() {
+        vals.push(y_max);
+        vals.push(y_min);
+    }
+    vals.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+    vals.into_iter().map(|v| (v, format!("{:.0}", v))).collect()
+}
+
+fn split_ticks(y_min: f64, y_max: f64, params: YAxisScaleParams) -> Vec<(f64, String)> {
+    let low_part = linear_ticks(y_min.min(params.split_low_max), params.split_low_max, 4)
+        .into_iter()
+        .collect::<Vec<_>>();
+    let high_floor = params.split_high_min.max(y_min);
+    let high_part = log_ticks(high_floor, y_max.max(high_floor * 1.1), false, params.log_floor);
+    let mut ticks = Vec::new();
+    ticks.extend(low_part);
+    ticks.extend(high_part);
+    ticks.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    ticks
+}
+
 // Default chart dimensions
 pub const DEFAULT_WIDTH: i32 = 880;
 pub const DEFAULT_MARGIN_TOP: i32 = 56;
@@ -700,10 +946,10 @@ pub fn draw_annotations(
     annotations: &[poly_bench_ir::ChartAnnotation],
     x_scale: impl Fn(f64) -> i32,
     y_scale: impl Fn(f64) -> i32,
-    plot_width: i32,
-    plot_height: i32,
-    plot_x: i32,
-    plot_y: i32,
+    _plot_width: i32,
+    _plot_height: i32,
+    _plot_x: i32,
+    _plot_y: i32,
 ) {
     for ann in annotations {
         let x = x_scale(ann.x);
