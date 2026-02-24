@@ -169,7 +169,7 @@ mod tests {
         let mut parser = IncrementalParser::new();
 
         let source1 = r#"
-suite test {
+declare suite test performance timeBased sameDataset: true {
     bench foo {
         go: run()
     }
@@ -181,7 +181,7 @@ suite test {
 
         // Make a small edit - change "foo" to "bar"
         let source2 = r#"
-suite test {
+declare suite test performance timeBased sameDataset: true {
     bench bar {
         go: run()
     }
@@ -196,7 +196,8 @@ suite test {
     fn test_parse_fresh() {
         let mut parser = IncrementalParser::new();
 
-        let source = "suite test { bench foo { go: run() } }";
+        let source =
+            "declare suite test performance timeBased sameDataset: true { bench foo { go: run() } }";
         let _ = parser.parse(source, None);
         assert!(parser.has_cached_tree());
 

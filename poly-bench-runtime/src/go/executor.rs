@@ -619,7 +619,6 @@ func main() {{
                 "totalIterations"
             )
         ));
-        code.push_str("\n\titerations := totalIterations\n");
     }
 }
 

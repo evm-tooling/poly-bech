@@ -122,16 +122,15 @@ A suite groups related benchmarks with shared configuration, setup code, fixture
     {
       title: "All fields",
       language: "bench",
-      code: `suite <name> {
+      code: `declare suite <name> <suiteType> <runMode> sameDataset: <true|false> {
     # ── Metadata ──────────────────────────────────────
     description: "Human-readable description"
 
     # ── Iteration control ─────────────────────────────
-    iterations: 100000        # Fixed iteration count (used when mode: "fixed")
+    iterations: 100000        # Fixed iteration count (used when runMode: iterationBased)
     // [!code focus:4]
     warmup: 1000              # Warmup iterations before timing starts
-    mode: "auto"              # "auto" (calibrate) or "fixed"
-    targetTime: 3000ms        # Target wall-clock time for auto calibration
+    targetTime: 3000ms        # Target wall-clock time for runMode: timeBased
     minIterations: 10         # Floor for auto-calibrated iteration count
     maxIterations: 1000000    # Ceiling for auto-calibrated iteration count
 
@@ -174,10 +173,12 @@ A suite groups related benchmarks with shared configuration, setup code, fixture
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `description` | string | — | Human-readable description of the suite |
-| `iterations` | number | — | Fixed iteration count; required when `mode: "fixed"` |
+| `suiteType` | header token | — | Required in suite declaration: `memory` or `performance` |
+| `runMode` | header token | — | Required in suite declaration: `timeBased` or `iterationBased` |
+| `sameDataset` | header boolean | — | Required in suite declaration: `sameDataset: true|false` |
+| `iterations` | number | — | Fixed iteration count; used when runMode is `iterationBased` |
 | `warmup` | number | `1000` | Warmup iterations before timing |
-| `mode` | string | `"auto"` | `"auto"` (calibrate to `targetTime`) or `"fixed"` |
-| `targetTime` | duration | `3000ms` | Target run time for auto calibration |
+| `targetTime` | duration | `3000ms` | Target run time for runMode `timeBased` |
 | `minIterations` | number | `10` | Minimum iterations in auto mode |
 | `maxIterations` | number | `1000000` | Maximum iterations in auto mode |
 | `count` | number | `1` | Number of timed runs per benchmark |
@@ -193,7 +194,7 @@ A suite groups related benchmarks with shared configuration, setup code, fixture
 | `requires` | string[] | `[]` | Languages every benchmark in the suite must implement |
 
 <Aside type="tip">
-<span>Use <code>mode: "auto"</code> for most benchmarks. It automatically calibrates the iteration count to reach <code>targetTime</code>, ensuring stable measurements regardless of how fast the operation is.</span>
+<span>Use <code>timeBased</code> in the suite declaration for most suites. It calibrates runtime via <code>targetTime</code> and avoids per-benchmark mode drift.</span>
 </Aside>
 
 ### Duration Syntax

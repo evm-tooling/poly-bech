@@ -556,11 +556,12 @@ fn get_property_documentation(name: &str) -> String {
         "baseline" => {
             "**baseline**: `string`\n\nLanguage to use as the baseline for comparison.".to_string()
         }
-        "mode" => {
-            "**mode**: `auto | fixed | adaptive`\n\nBenchmark execution mode.".to_string()
+        "sameDataset" => {
+            "**sameDataset**: `boolean`\n\nSuite declaration header field for dataset relationship.".to_string()
         }
         "targetTime" => {
-            "**targetTime**: `duration`\n\nTarget time for adaptive mode.".to_string()
+            "**targetTime**: `duration`\n\nTarget duration when declaration run mode is `timeBased`."
+                .to_string()
         }
         "sink" => {
             "**sink**: `boolean`\n\nWhether to sink (consume) the result to prevent optimization."
@@ -716,19 +717,14 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             Baseline language for comparison ratios.\n\n\
             Other languages are compared against this baseline.",
         ),
-        "mode" => Some(
-            "**mode:** `auto | fixed`\n\n\
-            Execution mode for benchmarks:\n\n\
-            - `auto` - Time-based calibration. Runs until `targetTime` is reached,\n  \
-              automatically determining iteration count. *(Default)*\n\
-            - `fixed` - Uses explicit `iterations` count.\n\n\
-            Auto mode provides more accurate measurements for fast operations.",
+        "sameDataset" => Some(
+            "**sameDataset:** `true | false`\n\n\
+            Suite-level flag in the declaration header describing whether benchmarks share the same dataset.\n\n\
+            This metadata is used for chart-policy gating.",
         ),
         "targetTime" => Some(
             "**targetTime:** `<duration>`\n\n\
-            Target duration for auto-calibration mode.\n\n\
-            The benchmark will run approximately this long, automatically\n\
-            scaling the iteration count.\n\n\
+            Target duration when declaration run mode is `timeBased`.\n\n\
             Examples: `3000ms`, `10s`, `1m`\n\n\
             Default: `3000ms` (3 seconds)",
         ),

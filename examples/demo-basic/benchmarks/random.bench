@@ -1,10 +1,9 @@
 use std::charting
 
-suite randomN {
+declare suite randomN performance timeBased sameDataset: true {
     description: "Random number generation and statistical operations - produces Gaussian distribution"
     warmup: 50
     baseline: "go"
-    mode: "auto"
     targetTime: 500ms
     cvThreshold: 5
     count: 1
@@ -12,8 +11,8 @@ suite randomN {
 
     setup go {
         import (
-        "encoding/binary"
-        "math"
+            "encoding/binary"
+            "math"
         )
 
         helpers {
@@ -215,15 +214,11 @@ suite randomN {
             title: "Random Statistics - O(n)",
             description: "Sum/mean/variance calculation - linear complexity",
             output: "random-line.svg",
-            xlabel: "Array Size (n elements)"
         )
-
         charting.drawTable(
             title: "Random Statistics Comparison",
             description: "Vertical grouped bars - linear growth pattern",
             output: "random-bar.svg",
-            xlabel: "Array Size"
         )
     }
-
 }

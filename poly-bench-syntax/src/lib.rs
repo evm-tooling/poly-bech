@@ -61,7 +61,7 @@ pub use tree_sitter::{InputEdit, Point, Tree, TreeCursor};
 /// use poly_bench_syntax::parse;
 ///
 /// let source = r#"
-/// suite test {
+/// declare suite test performance timeBased sameDataset: true {
 ///     bench foo {
 ///         go: run()
 ///     }
@@ -95,7 +95,7 @@ mod tests {
     #[test]
     fn test_parse_simple() {
         let source = r#"
-suite test {
+declare suite test performance timeBased sameDataset: true {
     description: "A test"
     bench foo {
         go: run()
@@ -117,7 +117,7 @@ suite test {
     #[ignore]
     fn test_parse_with_errors() {
         let source = r#"
-suite test {
+declare suite test performance timeBased sameDataset: true {
     bench incomplete {
         go:
 "#;

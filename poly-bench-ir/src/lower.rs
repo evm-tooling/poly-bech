@@ -10,7 +10,7 @@ use crate::{
 };
 use miette::{miette, Result};
 use poly_bench_dsl::{
-    BenchMode, Benchmark, ChartDirective, ExecutionOrder, File, Fixture, Lang, Suite,
+    BenchMode, Benchmark, ChartDirective, ExecutionOrder, File, Fixture, Lang, RunMode, Suite,
 };
 use std::{collections::HashSet, path::Path};
 
@@ -74,9 +74,27 @@ fn lower_suite(
     ir.requires = suite.requires.clone();
     ir.order = suite.order.unwrap_or(ExecutionOrder::Sequential);
     ir.baseline = suite.baseline;
+    ir.suite_type = suite.suite_type.ok_or_else(|| {
+        miette!("Suite '{}' is missing required property 'suiteType'", suite.name)
+    })?;
+    ir.run_mode = suite
+        .run_mode
+        .ok_or_else(|| miette!("Suite '{}' is missing required property 'runMode'", suite.name))?;
+    ir.same_dataset = suite.same_dataset.ok_or_else(|| {
+        miette!("Suite '{}' is missing required property 'sameDataset'", suite.name)
+    })?;
 
     // Benchmark accuracy settings
-    ir.mode = suite.mode.unwrap_or(BenchMode::Auto); // Auto-calibration by default
+    if suite.mode.is_some() {
+        return Err(miette!(
+            "Suite '{}' uses legacy 'mode'. Use suite declaration run mode: timeBased | iterationBased",
+            suite.name
+        ));
+    }
+    ir.mode = match ir.run_mode {
+        RunMode::Time => BenchMode::Auto,
+        RunMode::Iterations => BenchMode::Fixed,
+    };
     ir.target_time_ms = suite.target_time_ms.unwrap_or(3000); // 3 seconds
     ir.sink = suite.sink; // Already defaults to true in AST
 
@@ -212,7 +230,14 @@ fn lower_benchmark(
     spec.tags = benchmark.tags.clone();
 
     // Benchmark accuracy settings (benchmark overrides suite, or inherit from suite)
-    spec.mode = benchmark.mode.unwrap_or(suite_ir.mode);
+    if benchmark.mode.is_some() {
+        return Err(miette!(
+            "Benchmark '{}' in suite '{}' uses legacy 'mode'. Configure suite-level 'runMode' instead",
+            benchmark.name,
+            suite_name
+        ));
+    }
+    spec.mode = suite_ir.mode;
     spec.target_time_ms = benchmark.target_time_ms.unwrap_or(suite_ir.target_time_ms);
     spec.use_sink = if benchmark.kind == poly_bench_dsl::BenchmarkKind::Async {
         true
@@ -312,7 +337,7 @@ mod tests {
     #[test]
     fn test_lower_simple() {
         let source = r#"
-suite hash {
+declare suite hash performance iterationBased sameDataset: false {
     iterations: 5000
     
     fixture data {
@@ -352,7 +377,7 @@ suite hash {
     #[test]
     fn test_lower_bench_async_kind() {
         let source = r#"
-suite async_suite {
+declare suite async_suite performance timeBased sameDataset: false {
     benchAsync rpc_call {
         ts: await getBlockNumber()
     }
@@ -369,7 +394,7 @@ suite async_suite {
         let source = r#"
 use std::constants
 
-suite math {
+declare suite math performance iterationBased sameDataset: false {
     iterations: 100
     
     bench pi_calc {
@@ -392,7 +417,7 @@ suite math {
 use std::constants
 use std::math
 
-suite test {
+declare suite test performance timeBased sameDataset: false {
     bench foo {
         go: test()
     }
@@ -411,7 +436,7 @@ suite test {
         let source = r#"
 use std::anvil
 
-suite evm {
+declare suite evm performance timeBased sameDataset: false {
     globalSetup {
         anvil.spawnAnvil()
     }
@@ -437,7 +462,7 @@ suite evm {
     #[test]
     fn test_lower_without_stdlib() {
         let source = r#"
-suite test {
+declare suite test performance timeBased sameDataset: false {
     fixture data {
         hex: "deadbeef"
     }
@@ -456,7 +481,7 @@ suite test {
     #[test]
     fn test_lower_with_fairness_and_async_policy() {
         let source = r#"
-suite fairnessTest {
+declare suite fairnessTest performance timeBased sameDataset: false {
     fairness: "strict"
     fairnessSeed: 42
     asyncSamplingPolicy: "timeBudgeted"

@@ -6,9 +6,15 @@
 ; ============================================================
 
 ; Top-level keywords
+"declare" @keyword
 "suite" @keyword
 "use" @keyword.import
 "globalSetup" @keyword
+"sameDataset" @property
+"performance" @type
+"memory" @type
+"timeBased" @keyword
+"iterationBased" @keyword
 
 ; Setup keywords
 "setup" @keyword

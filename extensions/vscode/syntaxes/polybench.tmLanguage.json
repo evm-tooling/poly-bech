@@ -131,14 +131,29 @@
       ]
     },
     "suite-block": {
-      "begin": "\\b(suite)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
+      "begin": "\\b(?:(declare)\\s+)?(suite)\\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s+(performance|memory)\\s+(timeBased|iterationBased)\\s+(sameDataset)\\s*:\\s*(true|false))?\\s*\\{",
       "end": "^\\}\\s*$",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.bench"
         },
         "2": {
+          "name": "keyword.control.bench"
+        },
+        "3": {
           "name": "entity.name.section.bench"
+        },
+        "4": {
+          "name": "constant.language.bench"
+        },
+        "5": {
+          "name": "constant.language.bench"
+        },
+        "6": {
+          "name": "keyword.other.bench"
+        },
+        "7": {
+          "name": "constant.language.boolean.bench"
         }
       },
       "endCaptures": {
@@ -354,6 +369,39 @@
           }
         },
         {
+          "match": "\\b(suiteType)\\s*:\\s*\"?(performance|memory)\"?",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.language.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(runMode)\\s*:\\s*\"?(time|iterations|timeBased|iterationBased)\"?",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.language.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(sameDataset)\\s*:\\s*(true|false)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.language.boolean.bench"
+            }
+          }
+        },
+        {
           "match": "\\b(sink|memory|outlierDetection)\\s*:\\s*(true|false)",
           "captures": {
             "1": {
@@ -409,13 +457,13 @@
     },
     "setup-go-block": {
       "name": "meta.block.setup.go.bench",
-      "begin": "\\b(setup)\\s+(go)\\s*\\{",
-      "end": "^(\\s{0,8})\\}\\s*$",
+      "begin": "^(\\s*)(setup)\\s+(go)\\s*\\{\\s*$",
+      "end": "^\\1\\}\\s*$",
       "beginCaptures": {
-        "1": {
+        "2": {
           "name": "keyword.control.bench"
         },
-        "2": {
+        "3": {
           "name": "entity.name.language.bench"
         }
       },
@@ -445,7 +493,7 @@
     "setup-import-go-block": {
       "name": "meta.block.import.go.bench",
       "begin": "^(\\s*)(import)\\s*(\\()",
-      "end": "^\\s*\\)",
+      "end": "^\\1\\)",
       "beginCaptures": {
         "2": {
           "name": "keyword.control.setup.bench"
@@ -468,7 +516,7 @@
     "setup-declare-go-block": {
       "name": "meta.block.declare.go.bench",
       "begin": "^(\\s*)(declare)\\s*\\{",
-      "end": "^\\s{0,12}\\}",
+      "end": "^\\1\\}",
       "beginCaptures": {
         "2": {
           "name": "keyword.control.setup.bench"
@@ -488,7 +536,7 @@
     "setup-init-go-block": {
       "name": "meta.block.init.go.bench",
       "begin": "^(\\s*)(init)\\s*\\{",
-      "end": "^\\s{0,12}\\}",
+      "end": "^\\1\\}",
       "beginCaptures": {
         "2": {
           "name": "keyword.control.setup.bench"
@@ -508,7 +556,7 @@
     "setup-helpers-go-block": {
       "name": "meta.block.helpers.go.bench",
       "begin": "^(\\s*)(helpers)\\s*\\{",
-      "end": "^\\s{0,12}\\}",
+      "end": "^\\1\\}",
       "beginCaptures": {
         "2": {
           "name": "keyword.control.setup.bench"
@@ -527,13 +575,13 @@
     },
     "setup-ts-block": {
       "name": "meta.block.setup.ts.bench",
-      "begin": "\\b(setup)\\s+(ts)\\s*\\{",
-      "end": "^(\\s{0,8})\\}\\s*$",
+      "begin": "^(\\s*)(setup)\\s+(ts)\\s*\\{\\s*$",
+      "end": "^\\1\\}\\s*$",
       "beginCaptures": {
-        "1": {
+        "2": {
           "name": "keyword.control.bench"
         },
-        "2": {
+        "3": {
           "name": "entity.name.language.bench"
         }
       },
@@ -563,7 +611,7 @@
     "setup-import-ts-block": {
       "name": "meta.block.import.ts.bench",
       "begin": "^(\\s*)(import)\\s*\\{",
-      "end": "^\\s{0,12}\\}",
+      "end": "^\\1\\}",
       "beginCaptures": {
         "2": {
           "name": "keyword.control.setup.bench"
@@ -583,7 +631,7 @@
     "setup-declare-ts-block": {
       "name": "meta.block.declare.ts.bench",
       "begin": "^(\\s*)(declare)\\s*\\{",
-      "end": "^\\s{0,12}\\}",
+      "end": "^\\1\\}",
       "beginCaptures": {
         "2": {
           "name": "keyword.control.setup.bench"
@@ -603,7 +651,7 @@
     "setup-init-ts-block": {
       "name": "meta.block.init.ts.bench",
       "begin": "^(\\s*)(init)\\s*\\{",
-      "end": "^\\s{0,12}\\}",
+      "end": "^\\1\\}",
       "beginCaptures": {
         "2": {
           "name": "keyword.control.setup.bench"
@@ -623,7 +671,7 @@
     "setup-helpers-ts-block": {
       "name": "meta.block.helpers.ts.bench",
       "begin": "^(\\s*)(helpers)\\s*\\{",
-      "end": "^\\s{0,12}\\}",
+      "end": "^\\1\\}",
       "beginCaptures": {
         "2": {
           "name": "keyword.control.setup.bench"
@@ -642,13 +690,13 @@
     },
     "setup-rust-block": {
       "name": "meta.block.setup.rust.bench",
-      "begin": "\\b(setup)\\s+(rust)\\s*\\{",
-      "end": "^(\\s{0,8})\\}\\s*$",
+      "begin": "^(\\s*)(setup)\\s+(rust)\\s*\\{\\s*$",
+      "end": "^\\1\\}\\s*$",
       "beginCaptures": {
-        "1": {
+        "2": {
           "name": "keyword.control.bench"
         },
-        "2": {
+        "3": {
           "name": "entity.name.language.bench"
         }
       },
@@ -681,7 +729,7 @@
     "setup-import-rust-block": {
       "name": "meta.block.import.rust.bench",
       "begin": "^(\\s*)(import)\\s*\\{",
-      "end": "^\\s{0,12}\\}",
+      "end": "^\\1\\}",
       "beginCaptures": {
         "2": {
           "name": "keyword.control.setup.bench"
@@ -701,7 +749,7 @@
     "setup-declare-rust-block": {
       "name": "meta.block.declare.rust.bench",
       "begin": "^(\\s*)(declare)\\s*\\{",
-      "end": "^\\s{0,12}\\}",
+      "end": "^\\1\\}",
       "beginCaptures": {
         "2": {
           "name": "keyword.control.setup.bench"
@@ -736,7 +784,7 @@
     "setup-init-rust-block": {
       "name": "meta.block.init.rust.bench",
       "begin": "^(\\s*)(init)\\s*\\{",
-      "end": "^\\s{0,12}\\}",
+      "end": "^\\1\\}",
       "beginCaptures": {
         "2": {
           "name": "keyword.control.setup.bench"
@@ -756,7 +804,7 @@
     "setup-helpers-rust-block": {
       "name": "meta.block.helpers.rust.bench",
       "begin": "^(\\s*)(helpers)\\s*\\{",
-      "end": "^\\s{0,12}\\}",
+      "end": "^\\1\\}",
       "beginCaptures": {
         "2": {
           "name": "keyword.control.setup.bench"

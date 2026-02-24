@@ -802,6 +802,11 @@
     "fields": {}
   },
   {
+    "type": "run_mode",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "setup_block",
     "named": true,
     "fields": {
@@ -988,6 +993,36 @@
             "named": true
           }
         ]
+      },
+      "run_mode": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "run_mode",
+            "named": true
+          }
+        ]
+      },
+      "same_dataset": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "boolean",
+            "named": true
+          }
+        ]
+      },
+      "suite_type": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "suite_type",
+            "named": true
+          }
+        ]
       }
     },
     "children": {
@@ -1035,6 +1070,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "suite_type",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "tags_property",
@@ -1291,6 +1331,10 @@
     "named": true
   },
   {
+    "type": "iterationBased",
+    "named": false
+  },
+  {
     "type": "iterations",
     "named": false
   },
@@ -1335,6 +1379,10 @@
     "named": false
   },
   {
+    "type": "performance",
+    "named": false
+  },
+  {
     "type": "python",
     "named": false
   },
@@ -1352,6 +1400,10 @@
   },
   {
     "type": "s",
+    "named": false
+  },
+  {
+    "type": "sameDataset",
     "named": false
   },
   {
@@ -1400,6 +1452,10 @@
   },
   {
     "type": "theme",
+    "named": false
+  },
+  {
+    "type": "timeBased",
     "named": false
   },
   {

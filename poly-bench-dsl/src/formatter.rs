@@ -233,7 +233,17 @@ fn format_suite_with_source(
     let pad = INDENT.repeat(indent_level);
     let inner = INDENT.repeat(indent_level + 1);
 
-    write!(out, "{}suite {} {{\n", pad, suite.name).unwrap();
+    write!(out, "{}declare suite {}", pad, suite.name).unwrap();
+    if let Some(suite_type) = suite.suite_type {
+        write!(out, " {}", suite_type.as_str()).unwrap();
+    }
+    if let Some(run_mode) = suite.run_mode {
+        write!(out, " {}", run_mode.as_header_str()).unwrap();
+    }
+    if let Some(same_dataset) = suite.same_dataset {
+        write!(out, " sameDataset: {}", if same_dataset { "true" } else { "false" }).unwrap();
+    }
+    out.push_str(" {\n");
 
     // Suite properties in canonical order
     if let Some(ref desc) = suite.description {
@@ -447,7 +457,17 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
     let pad = INDENT.repeat(indent_level);
     let inner = INDENT.repeat(indent_level + 1);
 
-    write!(out, "{}suite {} {{\n", pad, suite.name).unwrap();
+    write!(out, "{}declare suite {}", pad, suite.name).unwrap();
+    if let Some(suite_type) = suite.suite_type {
+        write!(out, " {}", suite_type.as_str()).unwrap();
+    }
+    if let Some(run_mode) = suite.run_mode {
+        write!(out, " {}", run_mode.as_header_str()).unwrap();
+    }
+    if let Some(same_dataset) = suite.same_dataset {
+        write!(out, " sameDataset: {}", if same_dataset { "true" } else { "false" }).unwrap();
+    }
+    out.push_str(" {\n");
 
     // Suite properties in canonical order
     if let Some(ref desc) = suite.description {
@@ -1155,7 +1175,7 @@ suite example {
 
     #[test]
     fn test_format_roundtrip() {
-        let input = r#"suite example {
+        let input = r#"declare suite example performance iterationBased sameDataset: true {
     description: "Example benchmark"
     iterations: 50
     warmup: 100

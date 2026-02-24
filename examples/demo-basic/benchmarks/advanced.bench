@@ -1,20 +1,19 @@
 use std::charting
 
-suite example {
+declare suite example performance timeBased sameDataset: false {
     description: "Comprehensive benchmark showcasing all DSL features"
     warmup: 0
     baseline: "go"
-    mode: "auto"
     targetTime: 5000ms
     cvThreshold: 10
     count: 10
 
     setup go {
         import (
-        "crypto/sha256"
-        "sync"
-        "github.com/ethereum/go-ethereum/common"
-        "github.com/ChefBingbong/viem-go/abi"
+            "crypto/sha256"
+            "sync"
+            "github.com/ethereum/go-ethereum/common"
+            "github.com/ChefBingbong/viem-go/abi"
         )
 
         declare {
@@ -138,7 +137,6 @@ suite example {
 
     bench auto_mode_example {
         description: "Auto mode with 3 second target time"
-        mode: "auto"
         targetTime: 2000ms
         sink: true
         go: mustEncodeBalanceOf(balanceOfAddr)
@@ -147,9 +145,7 @@ suite example {
 
     bench fixed_mode_example {
         description: "Fixed mode with explicit iteration count"
-        iterations: 100000
         warmup: 1000
-        mode: "fixed"
         sink: true
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
@@ -157,7 +153,6 @@ suite example {
 
     bench sink_enabled_example {
         description: "Benchmark with sink pattern enabled"
-        mode: "auto"
         targetTime: 2000ms
         sink: false
         go: sha256SumGo(data)
@@ -166,7 +161,6 @@ suite example {
 
     bench sink_disabled_example {
         description: "Benchmark with sink pattern disabled"
-        mode: "auto"
         targetTime: 2000ms
         sink: false
         go: {
@@ -179,7 +173,6 @@ suite example {
 
     bench memory_profiling_example {
         description: "Benchmark with memory profiling enabled"
-        mode: "auto"
         targetTime: 2000ms
         memory: true
         go: allocateMemory(1024)
@@ -188,16 +181,12 @@ suite example {
 
     bench concurrent_execution_example {
         description: "Fixed execution example"
-        iterations: 100000
-        mode: "fixed"
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
     }
 
     bench concurrent_with_memory {
         description: "Fixed execution with memory profiling"
-        iterations: 50000
-        mode: "fixed"
         memory: true
         go: allocateMemory(512)
         ts: allocateMemory(512)
@@ -205,7 +194,6 @@ suite example {
 
     bench outlier_detection_example {
         description: "Benchmark with outlier detection enabled"
-        mode: "auto"
         targetTime: 2000ms
         outlierDetection: true
         go: sha256SumGo(data)
@@ -214,7 +202,6 @@ suite example {
 
     bench cv_threshold_example {
         description: "Benchmark with strict CV threshold (5%)"
-        mode: "auto"
         targetTime: 2000ms
         outlierDetection: true
         cvThreshold: 5
@@ -224,7 +211,6 @@ suite example {
 
     bench iteration_bounds_example {
         description: "Auto mode iteration example"
-        mode: "auto"
         targetTime: 2000ms
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
@@ -232,21 +218,19 @@ suite example {
 
     bench lifecycle_hooks_example {
         description: "Benchmark with before, after, and each hooks"
-        iterations: 10000
         warmup: 100
-        mode: "fixed"
-        before go: resetCounter()
         before ts: resetCounter()
+        before go: resetCounter()
+        after ts: {
+            void setupCounter 
+        }
+        after go: {
+            _ = setupCounter 
+        }
         each go: incrementCounter()
         each ts: incrementCounter()
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
-        after go: {
-            _ = setupCounter 
-        }
-        after ts: {
-            void setupCounter 
-        }
     }
 
     after {
@@ -254,21 +238,15 @@ suite example {
             title: "Performance Comparison",
             description: "Go vs TypeScript Benchmark Results",
             sortBy: "speedup",
-            sortOrder: "desc"
+            sortOrder: "desc",
         )
-
         charting.drawSpeedupChart(
             title: "Performance Trends",
             description: "Timing across all benchmarks",
-            xlabel: "Benchmark",
-            timeUnit: "auto"
         )
-
         charting.drawTable(
             title: "Detailed Results",
             description: "Relative time spent in each benchmark",
-            showTotalTime: true
         )
     }
-
 }

@@ -107,10 +107,22 @@ module.exports = grammar({
     // ============================================================
 
     suite: $ => seq(
+      optional('declare'),
       'suite',
       field('name', $.identifier),
+      optional(seq(
+        field('suite_type', $.suite_type),
+        field('run_mode', $.run_mode),
+        'sameDataset',
+        ':',
+        field('same_dataset', $.boolean),
+      )),
       $.suite_body,
     ),
+
+    suite_type: $ => choice('performance', 'memory'),
+
+    run_mode: $ => choice('timeBased', 'iterationBased'),
 
     suite_body: $ => seq(
       '{',

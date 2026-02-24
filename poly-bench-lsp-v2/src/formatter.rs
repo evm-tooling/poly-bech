@@ -161,7 +161,20 @@ fn format_suite_content(suite: &PartialSuite, config: &FormatterConfig) -> Strin
     let inner_indent = make_indent(config, 1);
 
     // Suite header
-    formatted.push_str(&format!("suite {} {{\n", suite.name));
+    match (&suite.suite_type, &suite.run_mode, suite.same_dataset) {
+        (Some(suite_type), Some(run_mode), Some(same_dataset)) => {
+            formatted.push_str(&format!(
+                "declare suite {} {} {} sameDataset: {} {{\n",
+                suite.name,
+                suite_type,
+                run_mode,
+                if same_dataset { "true" } else { "false" }
+            ));
+        }
+        _ => {
+            formatted.push_str(&format!("suite {} {{\n", suite.name));
+        }
+    }
 
     // Properties
     for prop in &suite.properties {
@@ -705,5 +718,27 @@ bench foo{go:run()}}"#;
 
         assert!(formatted.contains("bench hash {"));
         assert!(!formatted.contains("benchAsync hash {"));
+    }
+
+    #[test]
+    fn test_format_preserves_declare_suite_header_semantics() {
+        let source = r#"declare suite evmBench performance timeBased sameDataset: false {
+    targetTime: 5000ms
+
+    setup go {
+        helpers {
+            func helper() {}
+        }
+    }
+
+    bench foo {
+        go: helper()
+    }
+}
+"#;
+        let formatted = format_source(source);
+
+        assert!(formatted
+            .starts_with("declare suite evmBench performance timeBased sameDataset: false {"));
     }
 }

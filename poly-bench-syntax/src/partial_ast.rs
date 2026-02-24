@@ -224,6 +224,9 @@ pub enum GlobalSetupStatement {
 pub struct PartialSuite {
     pub name: String,
     pub span: Span,
+    pub suite_type: Option<String>,
+    pub run_mode: Option<String>,
+    pub same_dataset: Option<bool>,
     pub properties: Vec<Node<Property>>,
     pub setups: HashMap<Lang, Node<StructuredSetup>>,
     pub setup_order: Vec<Lang>,
@@ -238,6 +241,9 @@ impl PartialSuite {
         Self {
             name,
             span,
+            suite_type: None,
+            run_mode: None,
+            same_dataset: None,
             properties: Vec::new(),
             setups: HashMap::new(),
             setup_order: Vec::new(),

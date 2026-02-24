@@ -1,10 +1,9 @@
 use std::charting
 
-suite sortN {
+declare suite sortN performance timeBased sameDataset: true {
     description: "O(n log n) sort - stdlib sort on int32 array"
     warmup: 50
     baseline: "go"
-    mode: "auto"
     targetTime: 500ms
     cvThreshold: 5
     count: 1

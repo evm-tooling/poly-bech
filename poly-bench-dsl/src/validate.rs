@@ -6,7 +6,7 @@
 //! Note: Stdlib-specific validation (e.g., validating use std::module names)
 //! is handled by higher-level crates that depend on both dsl and stdlib.
 
-use crate::{Benchmark, CodeBlock, File, Lang, StructuredSetup, Suite, UseStd};
+use crate::{Benchmark, CodeBlock, File, Lang, RunMode, StructuredSetup, Suite, UseStd};
 use std::collections::HashSet;
 
 /// A validation warning (non-fatal issue)
@@ -120,6 +120,9 @@ fn validate_use_stds_duplicates(use_stds: &[UseStd], result: &mut ValidationResu
 pub fn validate_suite(suite: &Suite) -> ValidationResult {
     let mut result = ValidationResult::new();
 
+    // Validate suite-level semantic contract
+    validate_suite_semantics(suite, &mut result);
+
     // Validate: all benchmarks have required languages
     validate_requires(suite, &mut result);
 
@@ -141,6 +144,75 @@ pub fn validate_suite(suite: &Suite) -> ValidationResult {
     validate_spawn_anvil_restrictions(suite, &mut result);
 
     result
+}
+
+/// Validate required suite-level semantics and run-mode dependent property constraints
+fn validate_suite_semantics(suite: &Suite, result: &mut ValidationResult) {
+    let suite_location = format!("suite.{}", suite.name);
+
+    if suite.suite_type.is_none() {
+        result.add_error(
+            ValidationError::new(format!(
+                "Suite '{}' is missing required property 'suiteType' (expected \"memory\" or \"performance\")",
+                suite.name
+            ))
+            .with_location(suite_location.clone()),
+        );
+    }
+
+    if suite.run_mode.is_none() {
+        result.add_error(
+            ValidationError::new(format!(
+                "Suite '{}' is missing required run mode in suite declaration (expected \"timeBased\" or \"iterationBased\")",
+                suite.name
+            ))
+            .with_location(suite_location.clone()),
+        );
+    }
+
+    if suite.same_dataset.is_none() {
+        result.add_error(
+            ValidationError::new(format!(
+                "Suite '{}' is missing required property 'sameDataset' (expected true or false)",
+                suite.name
+            ))
+            .with_location(suite_location.clone()),
+        );
+    }
+
+    if suite.mode.is_some() {
+        result.add_error(
+            ValidationError::new(
+                "Property 'mode' is no longer supported. Use suite declaration run mode: timeBased | iterationBased",
+            )
+            .with_location(suite_location.clone()),
+        );
+    }
+
+    if let Some(run_mode) = suite.run_mode {
+        match run_mode {
+            RunMode::Time => {
+                if suite.iterations.is_some() {
+                    result.add_error(
+                        ValidationError::new(
+                            "Property 'iterations' is invalid when run mode is timeBased. Use 'targetTime' instead",
+                        )
+                        .with_location(suite_location.clone()),
+                    );
+                }
+            }
+            RunMode::Iterations => {
+                if suite.target_time_ms.is_some() {
+                    result.add_error(
+                        ValidationError::new(
+                            "Property 'targetTime' is invalid when run mode is iterationBased. Use 'iterations' instead",
+                        )
+                        .with_location(suite_location.clone()),
+                    );
+                }
+            }
+        }
+    }
 }
 
 /// Validate charting directives: check that std::charting is imported when charting is used
@@ -307,6 +379,40 @@ fn validate_benchmark(benchmark: &Benchmark, suite: &Suite, result: &mut Validat
                 ))
                 .with_location(location.clone()),
             );
+        }
+    }
+
+    if benchmark.mode.is_some() {
+        result.add_error(
+            ValidationError::new(
+                "Benchmark-level 'mode' is no longer supported. Configure suite-level 'runMode' instead",
+            )
+            .with_location(location.clone()),
+        );
+    }
+
+    if let Some(run_mode) = suite.run_mode {
+        match run_mode {
+            RunMode::Time => {
+                if benchmark.iterations.is_some() {
+                    result.add_error(
+                        ValidationError::new(
+                            "Benchmark-level 'iterations' is invalid when suite run mode is timeBased",
+                        )
+                        .with_location(location.clone()),
+                    );
+                }
+            }
+            RunMode::Iterations => {
+                if benchmark.target_time_ms.is_some() {
+                    result.add_error(
+                        ValidationError::new(
+                            "Benchmark-level 'targetTime' is invalid when suite run mode is iterationBased",
+                        )
+                        .with_location(location.clone()),
+                    );
+                }
+            }
         }
     }
 }
@@ -549,5 +655,41 @@ suite test {
 
         assert!(result.has_warnings());
         assert!(result.warnings.iter().any(|w| w.message.contains("Duplicate import")));
+    }
+
+    #[test]
+    fn test_validate_requires_suite_semantics() {
+        let source = r#"
+suite test {
+    bench foo {
+        go: work()
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let result = validate_suite(&ast.suites[0]);
+        assert!(result.errors.iter().any(|e| e.message.contains("suiteType")));
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.message.contains("run mode") || e.message.contains("timeBased")));
+        assert!(result.errors.iter().any(|e| e.message.contains("sameDataset")));
+    }
+
+    #[test]
+    fn test_validate_run_mode_property_rules() {
+        let source = r#"
+declare suite test performance timeBased sameDataset: true {
+    iterations: 1000
+
+    bench foo {
+        iterations: 10
+        go: work()
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let result = validate_suite(&ast.suites[0]);
+        assert!(result.errors.iter().any(|e| e.message.contains("timeBased")));
     }
 }

@@ -961,7 +961,6 @@ fn is_suite_param_value_context(line_text: &str) -> bool {
             "requires" |
             "order" |
             "baseline" |
-            "mode" |
             "targetTime" |
             "sink" |
             "outlierDetection" |
@@ -1407,7 +1406,10 @@ fn get_top_level_completions() -> Vec<CompletionItem> {
         CompletionItem {
             label: "suite".to_string(),
             kind: Some(CompletionItemKind::KEYWORD),
-            insert_text: Some("suite ${1:name} {\n\t$0\n}".to_string()),
+            insert_text: Some(
+                "declare suite ${1:name} ${2|performance,memory|} ${3|timeBased,iterationBased|} sameDataset: ${4|true,false|} {\n\t$0\n}"
+                    .to_string(),
+            ),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Define a benchmark suite".to_string()),
             ..Default::default()
@@ -1550,23 +1552,13 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
             detail: Some("Benchmark execution order".to_string()),
             ..Default::default()
         },
-        // Auto-calibration settings
-        CompletionItem {
-            label: "mode".to_string(),
-            kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("mode: \"auto\"".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            detail: Some(
-                "Execution mode: auto (time-based) or fixed (iteration count)".to_string(),
-            ),
-            ..Default::default()
-        },
+        // Run-mode controlled timing settings
         CompletionItem {
             label: "targetTime".to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
             insert_text: Some("targetTime: 3000".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
-            detail: Some("Target duration for auto-calibration mode".to_string()),
+            detail: Some("Target duration for declaration run mode: timeBased".to_string()),
             ..Default::default()
         },
         // Performance settings
@@ -1872,7 +1864,10 @@ mod tests {
 
     #[test]
     fn suite_completions_insert_runtime_defaults() {
-        let completions = get_suite_body_completions();
+        let completions = get_top_level_completions()
+            .into_iter()
+            .chain(get_suite_body_completions())
+            .collect::<Vec<_>>();
         let mut inserts = std::collections::HashMap::new();
         for item in completions {
             if let Some(insert_text) = item.insert_text {
@@ -1881,7 +1876,13 @@ mod tests {
         }
 
         assert_eq!(inserts.get("warmup"), Some(&"warmup: 1000".to_string()));
-        assert_eq!(inserts.get("mode"), Some(&"mode: \"auto\"".to_string()));
+        assert_eq!(
+            inserts.get("suite"),
+            Some(
+                &"declare suite ${1:name} ${2|performance,memory|} ${3|timeBased,iterationBased|} sameDataset: ${4|true,false|} {\n\t$0\n}"
+                    .to_string()
+            )
+        );
         assert_eq!(inserts.get("targetTime"), Some(&"targetTime: 3000".to_string()));
         assert_eq!(inserts.get("count"), Some(&"count: 1".to_string()));
         assert_eq!(
@@ -1893,7 +1894,6 @@ mod tests {
     #[test]
     fn suite_value_context_detection() {
         assert!(is_suite_param_value_context("warmup: "));
-        assert!(is_suite_param_value_context("    mode: \"a"));
         assert!(is_suite_param_value_context("targetTime: 30"));
         assert!(!is_suite_param_value_context("bench foo {"));
         assert!(!is_suite_param_value_context("charting.drawTable("));

@@ -177,7 +177,7 @@ mod tests {
     #[test]
     fn test_syntax_tree() {
         let source = r#"
-suite test {
+declare suite test performance timeBased sameDataset: true {
     bench foo {
         go: run()
     }
@@ -194,7 +194,7 @@ suite test {
     #[test]
     fn test_find_nodes() {
         let source = r#"
-suite test {
+declare suite test performance timeBased sameDataset: true {
     bench foo {
         go: run()
     }

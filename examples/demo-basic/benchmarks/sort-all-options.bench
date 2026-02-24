@@ -1,10 +1,9 @@
 use std::charting
 
-suite sortN {
+declare suite sortN performance timeBased sameDataset: true {
     description: "O(n log n) sort - stdlib sort on int32 array"
     warmup: 50
     baseline: "go"
-    mode: "auto"
     targetTime: 3000ms
     outlierDetection: false
     cvThreshold: 5
@@ -13,8 +12,8 @@ suite sortN {
 
     setup go {
         import (
-        "encoding/binary"
-        "sort"
+            "encoding/binary"
+            "sort"
         )
 
         helpers {
@@ -179,17 +178,11 @@ suite sortN {
             output: "sort-line-all-options.svg",
             description: "Stdlib sort comparison across Go, TypeScript, and Rust",
             title: "Sort Performance - O(n log n) [All Options]",
-            xlabel: "Array Size (n elements)"
         )
-
         charting.drawTable(
-            xlabel: "Benchmark",
             output: "sort-bar-all-options.svg",
             description: "Vertical grouped bars - Go vs TypeScript vs Rust",
-            showTotalTime: true,
-            showMemory: true,
-            title: "Sort Performance Comparison [All Options]"
+            title: "Sort Performance Comparison [All Options]",
         )
     }
-
 }

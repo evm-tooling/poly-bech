@@ -132,6 +132,16 @@ fn convert_suite(node: TsNode, source: &str) -> Node<PartialSuite> {
 
     let mut suite = PartialSuite::new(name, span);
 
+    if let Some(suite_type) = node.field("suite_type") {
+        suite.suite_type = Some(suite_type.text(source).to_string());
+    }
+    if let Some(run_mode) = node.field("run_mode") {
+        suite.run_mode = Some(run_mode.text(source).to_string());
+    }
+    if let Some(same_dataset) = node.field("same_dataset") {
+        suite.same_dataset = Some(same_dataset.text(source) == "true");
+    }
+
     // Find suite_body
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -694,7 +704,7 @@ mod tests {
     #[test]
     fn test_convert_simple_suite() {
         let source = r#"
-suite test {
+declare suite test performance timeBased sameDataset: true {
     description: "A test"
     iterations: 100
     
@@ -714,7 +724,7 @@ suite test {
     #[test]
     fn test_convert_with_setup() {
         let source = r#"
-suite test {
+declare suite test performance timeBased sameDataset: true {
     setup go {
         helpers {
             func helper() {}
@@ -735,7 +745,7 @@ suite test {
     #[ignore]
     fn test_convert_with_errors() {
         let source = r#"
-suite test {
+declare suite test performance timeBased sameDataset: true {
     bench incomplete {
         go:
 "#;
@@ -754,7 +764,7 @@ globalSetup {
     anvil.spawnAnvil()
 }
 
-suite test {
+declare suite test performance timeBased sameDataset: true {
     globalSetup {
         anvil.spawnAnvil(fork: "https://mainnet.infura.io")
     }

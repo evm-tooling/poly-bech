@@ -274,6 +274,18 @@
       "type": "SEQ",
       "members": [
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "declare"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
           "type": "STRING",
           "value": "suite"
         },
@@ -286,8 +298,79 @@
           }
         },
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "FIELD",
+                  "name": "suite_type",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "suite_type"
+                  }
+                },
+                {
+                  "type": "FIELD",
+                  "name": "run_mode",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "run_mode"
+                  }
+                },
+                {
+                  "type": "STRING",
+                  "value": "sameDataset"
+                },
+                {
+                  "type": "STRING",
+                  "value": ":"
+                },
+                {
+                  "type": "FIELD",
+                  "name": "same_dataset",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "boolean"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
           "type": "SYMBOL",
           "name": "suite_body"
+        }
+      ]
+    },
+    "suite_type": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "performance"
+        },
+        {
+          "type": "STRING",
+          "value": "memory"
+        }
+      ]
+    },
+    "run_mode": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "timeBased"
+        },
+        {
+          "type": "STRING",
+          "value": "iterationBased"
         }
       ]
     },
