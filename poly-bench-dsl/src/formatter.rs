@@ -423,11 +423,20 @@ fn format_global_setup(out: &mut String, global_setup: &GlobalSetup, indent_leve
     writeln!(out, "{}globalSetup {{", pad).unwrap();
 
     if let Some(ref anvil_config) = global_setup.anvil_config {
-        if let Some(ref fork_url) = anvil_config.fork_url {
-            writeln!(out, "{}anvil.spawnAnvil(fork: \"{}\")", inner, escape_string(fork_url))
-                .unwrap();
-        } else {
-            writeln!(out, "{}anvil.spawnAnvil()", inner).unwrap();
+        match (&anvil_config.fork_url, anvil_config.use_proxy) {
+            (Some(fork_url), true) => writeln!(
+                out,
+                "{}anvil.spawnAnvil(fork: \"{}\", tokioProxy: true)",
+                inner,
+                escape_string(fork_url)
+            )
+            .unwrap(),
+            (Some(fork_url), false) => {
+                writeln!(out, "{}anvil.spawnAnvil(fork: \"{}\")", inner, escape_string(fork_url))
+                    .unwrap()
+            }
+            (None, true) => writeln!(out, "{}anvil.spawnAnvil(tokioProxy: true)", inner).unwrap(),
+            (None, false) => writeln!(out, "{}anvil.spawnAnvil()", inner).unwrap(),
         }
     }
 
@@ -1252,7 +1261,7 @@ suite example {
 
     #[test]
     fn test_format_suite_fairness_and_async_policy_fields() {
-        let input = r#"suite fairness {
+        let input = r#"suite fairnessTest {
     fairness: "strict"
     fairnessSeed: 2026
     asyncSamplingPolicy: "timeBudgeted"

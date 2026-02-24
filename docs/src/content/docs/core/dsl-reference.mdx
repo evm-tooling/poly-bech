@@ -495,7 +495,7 @@ benchAsync <name> {
 />
 
 <Aside type="note">
-<span><code>benchAsync</code> applies internal caps for practical runtime behavior: warmup ≤ 5 and samples ≤ 50. Async implementations should return a value so errors/no-ops are not silently hidden.</span>
+<span><code>benchAsync</code> applies internal caps for practical runtime behavior: warmup ≤ 5 and samples ≤ 50. Async implementations should fail fast on operation errors (throw/panic) rather than returning error objects as normal values, so error metrics stay accurate.</span>
 </Aside>
 
 ### Bench Field Reference

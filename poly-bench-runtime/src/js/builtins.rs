@@ -219,11 +219,28 @@ pub const BENCHMARK_HARNESS: &str = r#"
         return 'timeBudgeted';
     }
 
+    function reservoirSamplePush(samples, sampleCap, value, seenCount) {
+        const nextSeenCount = seenCount + 1;
+        if (sampleCap <= 0) {
+            return nextSeenCount;
+        }
+        if (samples.length < sampleCap) {
+            samples.push(value);
+            return nextSeenCount;
+        }
+        const replaceIdx = Math.floor(Math.random() * nextSeenCount);
+        if (replaceIdx < sampleCap) {
+            samples[replaceIdx] = value;
+        }
+        return nextSeenCount;
+    }
+
     // Run an async benchmark function
     async function runBenchmarkAsync(fn, iterations, warmup, useSink = true, trackMemory = false, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
         const effectiveWarmup = Math.min(warmup, warmupCap);
         const effectiveSampleCount = Math.min(sampleCap, iterations);
-        const samples = new Array(iterations);
+        const samples = [];
+        let sampleSeenCount = 0;
         let lastResult;
         const successfulResults = [];
         const errorSamples = [];
@@ -274,7 +291,7 @@ pub const BENCHMARK_HARNESS: &str = r#"
                 }
             }
             const elapsed = now() - start;
-            samples[i] = elapsed;
+            sampleSeenCount = reservoirSamplePush(samples, effectiveSampleCount, elapsed, sampleSeenCount);
             totalNanos += elapsed;
         }
         
@@ -285,18 +302,13 @@ pub const BENCHMARK_HARNESS: &str = r#"
         const nanosPerOp = totalNanos / iterations;
         const opsPerSec = 1e9 / nanosPerOp;
 
-        let reportedSamples = samples;
-        if (effectiveSampleCount < samples.length) {
-            reportedSamples = samples.slice(0, effectiveSampleCount);
-        }
-        
         return {
             iterations: iterations,
             totalNanos: totalNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
             bytesPerOp: bytesPerOp,
-            samples: reportedSamples,
+            samples: samples,
             rawResult: normalizeRawResult(lastResult),
             successfulResults: successfulResults,
             successfulCount: successfulCount,
@@ -309,6 +321,7 @@ pub const BENCHMARK_HARNESS: &str = r#"
     async function runBenchmarkAutoAsync(fn, targetTimeMs, useSink = true, trackMemory = false, warmupCount = 100, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
         const targetNanos = targetTimeMs * 1e6;
         const effectiveWarmup = Math.min(warmupCount, warmupCap);
+        const effectiveSampleCount = Math.max(0, sampleCap);
         const policy = normalizeAsyncSamplingPolicy(samplingPolicy);
         let lastResult;
         const successfulResults = [];
@@ -316,6 +329,7 @@ pub const BENCHMARK_HARNESS: &str = r#"
         let successfulCount = 0;
         let errorCount = 0;
         const samples = [];
+        let sampleSeenCount = 0;
         
         // Brief warmup
         for (let i = 0; i < effectiveWarmup; i++) {
@@ -360,7 +374,7 @@ pub const BENCHMARK_HARNESS: &str = r#"
                 const elapsed = now() - start;
                 totalIterations += 1;
                 totalNanos += elapsed;
-                samples.push(elapsed);
+                sampleSeenCount = reservoirSamplePush(samples, effectiveSampleCount, elapsed, sampleSeenCount);
             }
         } else {
             // Time-budgeted policy: execute until measured async time reaches target budget.
@@ -384,9 +398,7 @@ pub const BENCHMARK_HARNESS: &str = r#"
                 const elapsed = now() - start;
                 totalIterations += 1;
                 totalNanos += elapsed;
-                if (samples.length < sampleCap) {
-                    samples.push(elapsed);
-                }
+                sampleSeenCount = reservoirSamplePush(samples, effectiveSampleCount, elapsed, sampleSeenCount);
             }
         }
         
@@ -629,5 +641,12 @@ mod tests {
         assert!(BENCHMARK_HARNESS.contains("errorCount"));
         assert!(BENCHMARK_HARNESS.contains("errorSamples"));
         assert!(BENCHMARK_HARNESS.contains("normalizeErrorResult"));
+    }
+
+    #[test]
+    fn test_harness_uses_reservoir_sampling_for_async_samples() {
+        assert!(BENCHMARK_HARNESS.contains("function reservoirSamplePush"));
+        assert!(BENCHMARK_HARNESS.contains("sampleSeenCount = reservoirSamplePush"));
+        assert!(!BENCHMARK_HARNESS.contains("samples.slice(0, effectiveSampleCount)"));
     }
 }

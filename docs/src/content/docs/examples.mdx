@@ -312,7 +312,7 @@ suite rpcBenchmarks {
 </Aside>
 
 <Aside type="note">
-<span>Use <code>benchAsync</code> for async operations. It runs in async-sequential mode (one awaited call per iteration), applies internal caps (<code>warmup &lt;= 5</code>, <code>samples &lt;= 50</code>), and expects implementations to return a value.</span>
+<span>Use <code>benchAsync</code> for async operations. It runs in async-sequential mode (one awaited call per iteration), applies internal caps (<code>warmup &lt;= 5</code>, <code>samples &lt;= 50</code>), and expects implementations to fail fast on operation errors (throw/panic) instead of returning error values.</span>
 </Aside>
 
 

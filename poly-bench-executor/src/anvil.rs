@@ -18,6 +18,8 @@ pub struct AnvilConfig {
     pub fork_url: Option<String>,
     /// Optional block number to fork from (requires fork_url)
     pub fork_block: Option<u64>,
+    /// Whether to route Anvil RPC through toxiproxy/tokio proxy
+    pub use_proxy: bool,
 }
 
 /// A running Anvil instance managed by the scheduler
@@ -79,8 +81,8 @@ impl AnvilService {
         // Wait for direct Anvil first.
         service.wait_ready_on_port(anvil_port, Duration::from_secs(30))?;
 
-        // Default behavior: route through Toxiproxy and inject latency.
-        if Self::use_toxiproxy_enabled() {
+        // Optional behavior: route through Toxiproxy and inject latency.
+        if config.use_proxy || Self::use_toxiproxy_enabled() {
             let proxy_port = Self::find_available_port()?;
             let api_port = Self::find_available_port()?;
             let toxiproxy_child = Command::new("toxiproxy-server")
@@ -196,7 +198,7 @@ Install with `brew install toxiproxy` or disable via POLY_BENCH_ANVIL_USE_TOXIPR
                 let normalized = v.trim().to_ascii_lowercase();
                 normalized != "0" && normalized != "false" && normalized != "off"
             }
-            Err(_) => true,
+            Err(_) => false,
         }
     }
 

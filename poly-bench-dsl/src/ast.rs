@@ -357,13 +357,15 @@ impl UseStd {
 pub struct AnvilSetupConfig {
     /// Optional RPC URL to fork from
     pub fork_url: Option<String>,
+    /// Whether to route Anvil RPC through toxiproxy/tokio proxy
+    pub use_proxy: bool,
     /// Source location of the spawnAnvil() call
     pub span: Span,
 }
 
 impl AnvilSetupConfig {
-    pub fn new(fork_url: Option<String>, span: Span) -> Self {
-        Self { fork_url, span }
+    pub fn new(fork_url: Option<String>, use_proxy: bool, span: Span) -> Self {
+        Self { fork_url, use_proxy, span }
     }
 }
 
