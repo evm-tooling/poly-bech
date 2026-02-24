@@ -266,7 +266,7 @@
           }
         },
         {
-          "match": "\\b(iterations|warmup|count)\\s*:\\s*(\\d+)",
+          "match": "\\b(iterations|warmup|count|fairnessSeed|asyncWarmupCap|asyncSampleCap)\\s*:\\s*(\\d+)",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
@@ -322,6 +322,28 @@
         },
         {
           "match": "\\b(mode)\\s*:\\s*\"?(auto|fixed)\"?",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.language.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(fairness)\\s*:\\s*\"?(legacy|strict)\"?",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.language.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(asyncSamplingPolicy)\\s*:\\s*\"?(timeBudgeted|fixedCap)\"?",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
@@ -865,7 +887,7 @@
           }
         },
         {
-          "match": "\\b(iterations|warmup|count)\\s*:\\s*(\\d+)",
+          "match": "\\b(iterations|warmup|count|fairnessSeed|asyncWarmupCap|asyncSampleCap)\\s*:\\s*(\\d+)",
           "captures": {
             "1": {
               "name": "keyword.other.bench"
@@ -902,6 +924,28 @@
         },
         {
           "match": "\\b(mode)\\s*:\\s*\"?(auto|fixed)\"?",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.language.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(fairness)\\s*:\\s*\"?(legacy|strict)\"?",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bench"
+            },
+            "2": {
+              "name": "constant.language.bench"
+            }
+          }
+        },
+        {
+          "match": "\\b(asyncSamplingPolicy)\\s*:\\s*\"?(timeBudgeted|fixedCap)\"?",
           "captures": {
             "1": {
               "name": "keyword.other.bench"

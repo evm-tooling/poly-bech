@@ -268,6 +268,12 @@ fn format_suite_with_source(
     if let Some(mode) = suite.mode {
         write!(out, "{}mode: \"{}\"\n", inner, mode.as_str()).unwrap();
     }
+    if let Some(fairness_mode) = suite.fairness_mode {
+        write!(out, "{}fairness: \"{}\"\n", inner, fairness_mode.as_str()).unwrap();
+    }
+    if let Some(fairness_seed) = suite.fairness_seed {
+        write!(out, "{}fairnessSeed: {}\n", inner, fairness_seed).unwrap();
+    }
     if let Some(target_time) = suite.target_time_ms {
         write!(out, "{}targetTime: {}ms\n", inner, target_time).unwrap();
     }
@@ -285,6 +291,19 @@ fn format_suite_with_source(
     }
     if suite.memory {
         write!(out, "{}memory: true\n", inner).unwrap();
+    }
+    if let Some(policy) = suite.async_sampling_policy {
+        let policy_name = match policy {
+            AsyncSamplingPolicy::FixedCap => "fixedCap",
+            AsyncSamplingPolicy::TimeBudgeted => "timeBudgeted",
+        };
+        write!(out, "{}asyncSamplingPolicy: \"{}\"\n", inner, policy_name).unwrap();
+    }
+    if let Some(cap) = suite.async_warmup_cap {
+        write!(out, "{}asyncWarmupCap: {}\n", inner, cap).unwrap();
+    }
+    if let Some(cap) = suite.async_sample_cap {
+        write!(out, "{}asyncSampleCap: {}\n", inner, cap).unwrap();
     }
 
     // Add blank line after properties
@@ -454,6 +473,12 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
     if let Some(mode) = suite.mode {
         write!(out, "{}mode: \"{}\"\n", inner, mode.as_str()).unwrap();
     }
+    if let Some(fairness_mode) = suite.fairness_mode {
+        write!(out, "{}fairness: \"{}\"\n", inner, fairness_mode.as_str()).unwrap();
+    }
+    if let Some(fairness_seed) = suite.fairness_seed {
+        write!(out, "{}fairnessSeed: {}\n", inner, fairness_seed).unwrap();
+    }
     if let Some(target_time) = suite.target_time_ms {
         write!(out, "{}targetTime: {}ms\n", inner, target_time).unwrap();
     }
@@ -478,6 +503,19 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
     if suite.memory {
         // Only output memory: true since false is the default
         write!(out, "{}memory: true\n", inner).unwrap();
+    }
+    if let Some(policy) = suite.async_sampling_policy {
+        let policy_name = match policy {
+            AsyncSamplingPolicy::FixedCap => "fixedCap",
+            AsyncSamplingPolicy::TimeBudgeted => "timeBudgeted",
+        };
+        write!(out, "{}asyncSamplingPolicy: \"{}\"\n", inner, policy_name).unwrap();
+    }
+    if let Some(cap) = suite.async_warmup_cap {
+        write!(out, "{}asyncWarmupCap: {}\n", inner, cap).unwrap();
+    }
+    if let Some(cap) = suite.async_sample_cap {
+        write!(out, "{}asyncSampleCap: {}\n", inner, cap).unwrap();
     }
 
     // Add blank line after properties if there are any setups, fixtures, or benchmarks
@@ -1210,5 +1248,26 @@ suite example {
         assert!(comments.contains("# Comment 1"));
         assert!(comments.contains("# Comment 2"));
         assert!(!comments.contains("use std::anvil"));
+    }
+
+    #[test]
+    fn test_format_suite_fairness_and_async_policy_fields() {
+        let input = r#"suite fairness {
+    fairness: "strict"
+    fairnessSeed: 2026
+    asyncSamplingPolicy: "timeBudgeted"
+    asyncWarmupCap: 8
+    asyncSampleCap: 64
+    bench test {
+        ts: doWork()
+    }
+}"#;
+        let ast = parse(input, "test.bench").unwrap();
+        let formatted = format_file(&ast);
+        assert!(formatted.contains("fairness: \"strict\""));
+        assert!(formatted.contains("fairnessSeed: 2026"));
+        assert!(formatted.contains("asyncSamplingPolicy: \"timeBudgeted\""));
+        assert!(formatted.contains("asyncWarmupCap: 8"));
+        assert!(formatted.contains("asyncSampleCap: 64"));
     }
 }

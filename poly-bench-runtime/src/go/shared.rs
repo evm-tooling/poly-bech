@@ -3,7 +3,7 @@
 //! This module contains common code generation functions used by both
 //! the plugin codegen (codegen.rs) and the standalone executor (executor.rs).
 
-use poly_bench_dsl::Lang;
+use poly_bench_dsl::{AsyncSamplingPolicy, Lang};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use std::collections::HashSet;
 
@@ -18,6 +18,9 @@ pub const BENCH_RESULT_STRUCT: &str = r#"type BenchResult struct {
 	Samples     []uint64 `json:"samples"`
 	RawResult   string   `json:"raw_result,omitempty"`
 	SuccessfulResults []string `json:"successful_results,omitempty"`
+	SuccessfulCount uint64 `json:"successful_count,omitempty"`
+	ErrorCount uint64 `json:"error_count,omitempty"`
+	ErrorSamples []string `json:"error_samples,omitempty"`
 }
 "#;
 
@@ -253,6 +256,7 @@ pub fn generate_async_auto_mode_loop(
     sink_keepalive: &str,
     each_hook: Option<&String>,
     target_time_ms: u64,
+    sample_cap: u64,
 ) -> String {
     let each_hook_code = each_hook
         .map(|h| h.trim().lines().map(|line| format!("\t\t{}\n", line)).collect::<String>())
@@ -263,29 +267,122 @@ pub fn generate_async_auto_mode_loop(
 	targetNanos := int64({})
 	var totalIterations int
 	var totalNanos int64
-	samples := make([]uint64, 0, 50)
+	samples := make([]uint64, 0, {sample_cap})
 
 	for totalNanos < targetNanos {{
 {}		start := time.Now()
-		{}
-{}		elapsed := time.Since(start).Nanoseconds()
-		totalNanos += elapsed
-		totalIterations++
-		if len(samples) < 50 {{
-			samples = append(samples, uint64(elapsed))
+		iterFailed := false
+		func() {{
+			defer func() {{
+				if recover() != nil {{
+					iterFailed = true
+					errorCount++
+					if len(errorSamples) < {sample_cap} {{
+						errorSamples = append(errorSamples, "panic")
+					}}
+				}}
+			}}()
+			{}
+{}		}}()
+		elapsed := time.Since(start).Nanoseconds()
+		if !iterFailed {{
+			totalNanos += elapsed
+			if len(samples) < {sample_cap} {{
+				samples = append(samples, uint64(elapsed))
+			}}
+			successfulCount++
 		}}
-
-		resultBytes, _ := json.Marshal(__sink)
-		if string(resultBytes) != "null" {{
-			successfulResults = append(successfulResults, string(resultBytes))
+		totalIterations++
+		if !iterFailed {{
+			resultBytes, _ := json.Marshal(__sink)
+			if string(resultBytes) != "null" {{
+				successfulResults = append(successfulResults, string(resultBytes))
+			}}
 		}}
 	}}
 "#,
         target_time_ms * 1_000_000,
         each_hook_code,
         bench_call,
-        sink_keepalive
+        sink_keepalive,
+        sample_cap = sample_cap
     )
+}
+
+/// Generate fixed-cap async loop (bounded iterations by sample cap)
+pub fn generate_async_fixed_cap_loop(
+    bench_call: &str,
+    sink_keepalive: &str,
+    each_hook: Option<&String>,
+    sample_cap: u64,
+) -> String {
+    let each_hook_code = each_hook
+        .map(|h| h.trim().lines().map(|line| format!("\t\t{}\n", line)).collect::<String>())
+        .unwrap_or_default();
+
+    format!(
+        r#"	// Async fixed-cap mode: run a bounded number of completed async calls.
+	totalIterations := 0
+	var totalNanos int64
+	samples := make([]uint64, 0, {sample_cap})
+	for totalIterations < {sample_cap} {{
+{}		start := time.Now()
+		iterFailed := false
+		func() {{
+			defer func() {{
+				if recover() != nil {{
+					iterFailed = true
+					errorCount++
+					if len(errorSamples) < {sample_cap} {{
+						errorSamples = append(errorSamples, "panic")
+					}}
+				}}
+			}}()
+			{}
+{}		}}()
+		elapsed := time.Since(start).Nanoseconds()
+		if !iterFailed {{
+			totalNanos += elapsed
+			samples = append(samples, uint64(elapsed))
+			successfulCount++
+		}}
+		totalIterations++
+		if !iterFailed {{
+			resultBytes, _ := json.Marshal(__sink)
+			if string(resultBytes) != "null" {{
+				successfulResults = append(successfulResults, string(resultBytes))
+			}}
+		}}
+	}}
+"#,
+        each_hook_code,
+        bench_call,
+        sink_keepalive,
+        sample_cap = sample_cap
+    )
+}
+
+/// Select async loop strategy based on policy
+pub fn generate_async_loop_by_policy(
+    policy: AsyncSamplingPolicy,
+    bench_call: &str,
+    sink_keepalive: &str,
+    each_hook: Option<&String>,
+    target_time_ms: u64,
+    sample_cap: u64,
+) -> String {
+    match policy {
+        AsyncSamplingPolicy::FixedCap => {
+            generate_async_fixed_cap_loop(bench_call, sink_keepalive, each_hook, sample_cap)
+        }
+        AsyncSamplingPolicy::TimeBudgeted => generate_async_auto_mode_loop(
+            bench_call,
+            sink_keepalive,
+            each_hook,
+            target_time_ms,
+            sample_cap,
+        ),
+    }
 }
 
 /// Generate the warmup loop
@@ -439,6 +536,9 @@ pub fn generate_result_return(
 	if successfulResults == nil {{
 		successfulResults = []string{{}}
 	}}
+	if errorSamples == nil {{
+		errorSamples = []string{{}}
+	}}
 	
 	result := BenchResult{{
 		Iterations:  uint64({iter_var}),
@@ -448,6 +548,9 @@ pub fn generate_result_return(
 {memory_result}		Samples:     samples,
 		RawResult:   rawResult,
 		SuccessfulResults: successfulResults,
+		SuccessfulCount: uint64(successfulCount),
+		ErrorCount: uint64(errorCount),
+		ErrorSamples: errorSamples,
 	}}
 {output}"#
     )
@@ -456,12 +559,16 @@ pub fn generate_result_return(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use poly_bench_dsl::AsyncSamplingPolicy;
 
     #[test]
     fn test_bench_result_struct() {
         assert!(BENCH_RESULT_STRUCT.contains("type BenchResult struct"));
         assert!(BENCH_RESULT_STRUCT.contains("Iterations"));
         assert!(BENCH_RESULT_STRUCT.contains("json:"));
+        assert!(BENCH_RESULT_STRUCT.contains("successful_count"));
+        assert!(BENCH_RESULT_STRUCT.contains("error_count"));
+        assert!(BENCH_RESULT_STRUCT.contains("error_samples"));
     }
 
     #[test]
@@ -478,5 +585,37 @@ mod tests {
 
         let result = SinkMemoryDecls::memory_result_fields(false, "iterations");
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_generate_async_loop_by_policy_time_budgeted() {
+        let loop_code = generate_async_loop_by_policy(
+            AsyncSamplingPolicy::TimeBudgeted,
+            "__sink = call()",
+            "",
+            None,
+            1000,
+            10,
+        );
+        assert!(loop_code.contains("targetNanos := int64("));
+        assert!(loop_code.contains("for totalNanos < targetNanos"));
+        assert!(loop_code.contains("recover()"));
+        assert!(loop_code.contains("errorCount++"));
+    }
+
+    #[test]
+    fn test_generate_async_loop_by_policy_fixed_cap() {
+        let loop_code = generate_async_loop_by_policy(
+            AsyncSamplingPolicy::FixedCap,
+            "__sink = call()",
+            "",
+            None,
+            1000,
+            10,
+        );
+        assert!(loop_code.contains("for totalIterations < 10"));
+        assert!(!loop_code.contains("targetNanos := int64("));
+        assert!(loop_code.contains("recover()"));
+        assert!(loop_code.contains("successfulCount++"));
     }
 }

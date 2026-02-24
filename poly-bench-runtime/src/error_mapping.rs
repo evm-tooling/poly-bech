@@ -169,7 +169,7 @@ static GO_LINE_REGEX: LazyLock<Regex> =
 
 /// Remap error message line numbers from generated code to .bench file
 pub fn remap_rust_error(error: &str, mappings: &LineMappings) -> String {
-    remap_error_lines(error, mappings, &RUST_LINE_REGEX, |line, bench_line, section| {
+    remap_error_lines(error, mappings, &RUST_LINE_REGEX, |_line, bench_line, section| {
         format!("  --> .bench file line {} (in {})", bench_line, section)
     })
 }

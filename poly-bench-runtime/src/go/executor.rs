@@ -7,7 +7,7 @@ use miette::{miette, Result};
 use poly_bench_dsl::{BenchMode, BenchmarkKind, Lang};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use poly_bench_stdlib as stdlib;
-use std::{collections::HashSet, path::PathBuf};
+use std::{collections::HashSet, path::PathBuf, process::Stdio};
 
 use super::shared::{
     self, generate_bench_call, generate_fixtures_for_spec, generate_suite_code, SinkMemoryDecls,
@@ -259,8 +259,27 @@ impl GoRuntime {
             cmd.env("ANVIL_RPC_URL", url);
         }
 
-        let output =
-            cmd.output().await.map_err(|e| miette!("Failed to run Go benchmark: {}", e))?;
+        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        cmd.kill_on_drop(true);
+        let child = cmd.spawn().map_err(|e| miette!("Failed to run Go benchmark: {}", e))?;
+        let output = if let Some(timeout_ms) = spec.timeout {
+            match tokio::time::timeout(
+                tokio::time::Duration::from_millis(timeout_ms),
+                child.wait_with_output(),
+            )
+            .await
+            {
+                Ok(result) => result.map_err(|e| miette!("Failed to run Go benchmark: {}", e))?,
+                Err(_) => {
+                    return Err(miette!("Go benchmark timed out after {}ms", timeout_ms));
+                }
+            }
+        } else {
+            child
+                .wait_with_output()
+                .await
+                .map_err(|e| miette!("Failed to run Go benchmark: {}", e))?
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -368,6 +387,12 @@ struct BenchResultJson {
     raw_result: Option<String>,
     #[serde(default)]
     successful_results: Vec<String>,
+    #[serde(default)]
+    successful_count: Option<u64>,
+    #[serde(default)]
+    error_count: Option<u64>,
+    #[serde(default)]
+    error_samples: Vec<String>,
 }
 
 impl BenchResultJson {
@@ -393,6 +418,11 @@ impl BenchResultJson {
         m.raw_result = self.raw_result;
         if !self.successful_results.is_empty() {
             m.successful_results = Some(self.successful_results);
+        }
+        m.async_success_count = self.successful_count;
+        m.async_error_count = self.error_count;
+        if !self.error_samples.is_empty() {
+            m.async_error_samples = Some(self.error_samples);
         }
 
         m
@@ -520,6 +550,9 @@ fn generate_auto_main(
 func main() {{
 {}{}
 	var successfulResults []string
+	successfulCount := 0
+	errorCount := 0
+	var errorSamples []string
 "#,
         decls.sink_decl, decls.memory_decl
     ));
@@ -542,7 +575,7 @@ func main() {{
             decls.sink_keepalive,
             each_hook,
             &if spec.kind == BenchmarkKind::Async {
-                spec.warmup.min(5).to_string()
+                spec.warmup.min(spec.async_warmup_cap).to_string()
             } else {
                 spec.warmup.to_string()
             }
@@ -553,11 +586,13 @@ func main() {{
     if is_async {
         code.push_str(&format!(
             "\n{}",
-            shared::generate_async_auto_mode_loop(
+            shared::generate_async_loop_by_policy(
+                spec.async_sampling_policy,
                 bench_call,
                 decls.sink_keepalive,
                 each_hook,
-                spec.target_time_ms
+                spec.target_time_ms,
+                spec.async_sample_cap,
             )
         ));
     } else {
@@ -605,6 +640,9 @@ func main() {{
 	warmup := {}
 	samples := make([]uint64, iterations)
 	var successfulResults []string
+	successfulCount := 0
+	errorCount := 0
+	var errorSamples []string
 {}{}
 "#,
         spec.iterations, spec.warmup, decls.sink_decl, decls.memory_decl

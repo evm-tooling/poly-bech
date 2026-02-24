@@ -577,6 +577,24 @@ fn get_property_documentation(name: &str) -> String {
             "**cvThreshold**: `number`\n\nCoefficient of variation threshold (%) for stability warnings."
                 .to_string()
         }
+        "fairness" => {
+            "**fairness**: `\"legacy\" | \"strict\"`\n\nRuntime scheduling fairness mode.\n- `legacy`: previous grouped execution order\n- `strict`: interleaved per-run ordering across runtimes (fairness-first)"
+                .to_string()
+        }
+        "fairnessSeed" => {
+            "**fairnessSeed**: `number`\n\nDeterministic seed used to randomize strict fairness runtime order reproducibly."
+                .to_string()
+        }
+        "asyncSamplingPolicy" => {
+            "**asyncSamplingPolicy**: `\"timeBudgeted\" | \"fixedCap\"`\n\nControls async auto-mode sampling strategy.\n- `timeBudgeted`: sample until target time budget\n- `fixedCap`: sample a fixed number of async iterations"
+                .to_string()
+        }
+        "asyncWarmupCap" => {
+            "**asyncWarmupCap**: `number`\n\nUpper bound for async warmup iterations in auto mode.".to_string()
+        }
+        "asyncSampleCap" => {
+            "**asyncSampleCap**: `number`\n\nUpper bound for stored async samples per run.".to_string()
+        }
         "tags" => "**tags**: `string[]`\n\nLabels for filtering and grouping benchmarks.".to_string(),
         "requires" => {
             "**requires**: `string[]`\n\nLanguages that must have implementations.".to_string()
@@ -744,6 +762,51 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             - **Go:** Uses `runtime.ReadMemStats` to measure bytes/allocs per op\n\
             - **TypeScript:** Uses `process.memoryUsage()` to track heap usage\n\n\
             Default: `false`",
+        ),
+        "fairness" => Some(
+            "**fairness:** `\"legacy\" | \"strict\"`\n\n\
+            Runtime scheduling fairness mode.\n\n\
+            - `legacy` keeps previous grouped execution behavior\n\
+            - `strict` interleaves runtime execution per run to reduce temporal bias\n\n\
+            Default: `legacy`",
+        ),
+        "fairnessSeed" => Some(
+            "**fairnessSeed:** `<number>`\n\n\
+            Seed used for deterministic strict-fairness ordering.\n\n\
+            Use a fixed value to reproduce runtime ordering and results.",
+        ),
+        "asyncSamplingPolicy" => Some(
+            "**asyncSamplingPolicy:** `\"timeBudgeted\" | \"fixedCap\"`\n\n\
+            Sampling strategy for async auto benchmarks.\n\n\
+            - `timeBudgeted` samples until `targetTime` budget is reached\n\
+            - `fixedCap` samples up to `asyncSampleCap` completed iterations\n\n\
+            Default: `timeBudgeted`",
+        ),
+        "asyncWarmupCap" => Some(
+            "**asyncWarmupCap:** `<number>`\n\n\
+            Cap on async warmup iterations in auto mode.\n\n\
+            Effective warmup is `min(warmup, asyncWarmupCap)`.",
+        ),
+        "asyncSampleCap" => Some(
+            "**asyncSampleCap:** `<number>`\n\n\
+            Cap on collected async samples per run.\n\n\
+            Helps bound sample storage and run-time variance.",
+        ),
+        "legacy" => Some(
+            "**legacy**\n\n\
+            Fairness mode that preserves prior grouped runtime execution behavior.",
+        ),
+        "strict" => Some(
+            "**strict**\n\n\
+            Fairness mode that interleaves runtimes per run using deterministic ordering.",
+        ),
+        "timeBudgeted" => Some(
+            "**timeBudgeted**\n\n\
+            Async sampling policy that continues collecting iterations until target time is reached.",
+        ),
+        "fixedCap" => Some(
+            "**fixedCap**\n\n\
+            Async sampling policy that limits sampling to `asyncSampleCap` iterations.",
         ),
         "skip" => Some(
             "**skip** `<lang>:` `<condition>`\n\n\

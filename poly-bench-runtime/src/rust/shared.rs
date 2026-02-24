@@ -95,7 +95,7 @@ pub struct SinkMemoryDecls {
 
 impl SinkMemoryDecls {
     /// Create declarations based on benchmark spec
-    pub fn from_spec(spec: &BenchmarkSpec) -> Self {
+    pub fn from_spec(_spec: &BenchmarkSpec) -> Self {
         Self {
             // No sink declaration needed - we use black_box directly on the result
             sink_decl: "",

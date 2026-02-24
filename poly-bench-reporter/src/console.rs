@@ -275,7 +275,26 @@ fn print_suite_with_options(suite: &SuiteResults, options: &ReportOptions) {
 
     let has_async = suite.benchmarks.iter().any(|b| b.kind == BenchmarkKind::Async);
     if has_async {
-        println!("   {}", "Async-sequential mode detected (warmup<=5, samples<=50)".dimmed());
+        let mut warmup_cap = None;
+        let mut sample_cap = None;
+        let mut sampling_policy = None;
+        for bench in &suite.benchmarks {
+            if let Some(details) = &bench.async_details {
+                warmup_cap.get_or_insert(details.warmup_cap);
+                sample_cap.get_or_insert(details.sample_cap);
+                sampling_policy.get_or_insert(details.sampling_policy.as_str());
+            }
+        }
+        println!(
+            "   {}",
+            format!(
+                "Async-sequential mode detected (policy: {}, warmup<={}, samples<={})",
+                sampling_policy.unwrap_or("timeBudgeted"),
+                warmup_cap.unwrap_or(5),
+                sample_cap.unwrap_or(50)
+            )
+            .dimmed()
+        );
         println!();
     }
 }

@@ -234,11 +234,24 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
     // Footer metadata for async charts
     let has_async = filtered.iter().any(|b| b.kind == BenchmarkKind::Async);
     if has_async {
+        let mut warmup_cap = None;
+        let mut sample_cap = None;
+        let mut sampling_policy = None;
+        for bench in &filtered {
+            if let Some(details) = &bench.async_details {
+                warmup_cap.get_or_insert(details.warmup_cap);
+                sample_cap.get_or_insert(details.sample_cap);
+                sampling_policy.get_or_insert(details.sampling_policy.as_str());
+            }
+        }
         svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"10\" fill=\"{}\">async-sequential benchmarks present (internal caps: warmup<=5, samples<=50)</text>\n",
+            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"10\" fill=\"{}\">async-sequential benchmarks present (policy: {}, warmup<={}, samples<={})</text>\n",
             chart_width / 2,
             chart_height - 10,
-            TEXT_MUTED
+            TEXT_MUTED,
+            sampling_policy.unwrap_or("timeBudgeted"),
+            warmup_cap.unwrap_or(5),
+            sample_cap.unwrap_or(50)
         ));
     }
 

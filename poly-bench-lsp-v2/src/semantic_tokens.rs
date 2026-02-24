@@ -251,11 +251,15 @@ fn is_keyword_text(node: Node, source: &str) -> bool {
             "skip" |
             "validate" |
             "async" |
+            "legacy" |
+            "strict" |
+            "timeBudgeted" |
+            "fixedCap" |
             "use"
     )
 }
 
-fn emit_identifier(node: Node, source: &str, builder: &mut TokenBuilder) {
+fn emit_identifier(node: Node, _source: &str, builder: &mut TokenBuilder) {
     let start = node.start_position();
     let end = node.end_position();
 

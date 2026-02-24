@@ -1281,6 +1281,26 @@
         {
           "type": "STRING",
           "value": "memory"
+        },
+        {
+          "type": "STRING",
+          "value": "fairness"
+        },
+        {
+          "type": "STRING",
+          "value": "fairnessSeed"
+        },
+        {
+          "type": "STRING",
+          "value": "asyncSamplingPolicy"
+        },
+        {
+          "type": "STRING",
+          "value": "asyncWarmupCap"
+        },
+        {
+          "type": "STRING",
+          "value": "asyncSampleCap"
         }
       ]
     },

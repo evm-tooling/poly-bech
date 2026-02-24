@@ -198,10 +198,11 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
                 code.push_str(&format!(
                     r#"func bench_{}(iterations int) BenchResult {{
 	// Async-sequential auto mode: one completed call per iteration
-	targetNanos := int64({})
-	deadline := time.Now().Add(time.Duration(targetNanos))
 {}{}
 	var successfulResults []string
+	successfulCount := 0
+	errorCount := 0
+	var errorSamples []string
 {}{}	// Brief warmup ({} iterations)
 	for i := 0; i < {}; i++ {{
 {}		{}
@@ -209,21 +210,8 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 	
 	var totalIterations int
 	var totalNanos int64
-	samples := make([]uint64, 0, 50)
-	for time.Now().Before(deadline) {{
-{}		start := time.Now()
-		{}
-{}		elapsed := time.Since(start).Nanoseconds()
-		totalNanos += elapsed
-		totalIterations++
-		if len(samples) < 50 {{
-			samples = append(samples, uint64(elapsed))
-		}}
-		resultBytes, _ := json.Marshal(__sink)
-		if string(resultBytes) != "null" {{
-			successfulResults = append(successfulResults, string(resultBytes))
-		}}
-	}}
+	samples := make([]uint64, 0, {})
+{}
 
 	nanosPerOp := float64(totalNanos) / float64(totalIterations)
 	opsPerSec := 1e9 / nanosPerOp
@@ -242,24 +230,32 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 {}		Samples:     samples,
 		RawResult:   rawResult,
 		SuccessfulResults: successfulResults,
+		SuccessfulCount: uint64(successfulCount),
+		ErrorCount: uint64(errorCount),
+		ErrorSamples: errorSamples,
 	}}
 }}
 
 "#,
                     bench.full_name,
-                    bench.target_time_ms * 1_000_000,
                     decls.sink_decl,
                     decls.memory_decl,
                     before_hook,
                     decls.memory_before,
-                    bench.warmup.min(5),
-                    bench.warmup.min(5),
+                    bench.warmup.min(bench.async_warmup_cap),
+                    bench.warmup.min(bench.async_warmup_cap),
                     each_hook_code,
                     bench_call,
                     decls.sink_keepalive,
-                    each_hook_code,
-                    bench_call,
-                    decls.sink_keepalive,
+                    bench.async_sample_cap,
+                    shared::generate_async_loop_by_policy(
+                        bench.async_sampling_policy,
+                        &bench_call,
+                        decls.sink_keepalive,
+                        each_hook,
+                        bench.target_time_ms,
+                        bench.async_sample_cap
+                    ),
                     after_hook,
                     memory_result,
                 ));
@@ -373,8 +369,9 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 #[cfg(test)]
 mod tests {
     use super::*;
-    use poly_bench_dsl::parse;
+    use poly_bench_dsl::{parse, AsyncSamplingPolicy};
     use poly_bench_ir::lower;
+    use std::collections::HashMap;
 
     #[test]
     fn test_generate_simple() {
@@ -464,5 +461,39 @@ suite rpc {
         let code = generate(&ir).unwrap();
 
         assert!(code.contains("func bench_rpc_block"));
+    }
+
+    #[test]
+    fn test_generate_bench_async_policy_fixed_cap() {
+        let mut suite = SuiteIR::new("rpc".to_string());
+        let mut bench = BenchmarkSpec::new("block".to_string(), "rpc", 100, 10);
+        bench.kind = BenchmarkKind::Async;
+        bench.mode = BenchMode::Auto;
+        bench.async_sampling_policy = AsyncSamplingPolicy::FixedCap;
+        bench.async_sample_cap = 7;
+        bench.implementations.insert(Lang::Go, "getBlock()".to_string());
+        suite.benchmarks.push(bench);
+
+        let ir = BenchmarkIR::new(vec![suite]);
+        let code = generate(&ir).unwrap();
+
+        assert!(code.contains("for totalIterations < 7"));
+        assert!(!code.contains("for time.Now().Before(deadline)"));
+    }
+
+    #[test]
+    fn test_generate_bench_async_policy_time_budgeted() {
+        let mut suite = SuiteIR::new("rpc".to_string());
+        let mut bench = BenchmarkSpec::new("block".to_string(), "rpc", 100, 10);
+        bench.kind = BenchmarkKind::Async;
+        bench.mode = BenchMode::Auto;
+        bench.async_sampling_policy = AsyncSamplingPolicy::TimeBudgeted;
+        bench.implementations.insert(Lang::Go, "getBlock()".to_string());
+        suite.benchmarks.push(bench);
+
+        let ir = BenchmarkIR::new(vec![suite]);
+        let code = generate(&ir).unwrap();
+
+        assert!(code.contains("for totalNanos < targetNanos"));
     }
 }

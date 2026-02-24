@@ -1,6 +1,8 @@
 //! IR types - normalized benchmark specifications
 
-use poly_bench_dsl::{BenchMode, BenchmarkKind, ChartType, ExecutionOrder, Lang};
+use poly_bench_dsl::{
+    AsyncSamplingPolicy, BenchMode, BenchmarkKind, ChartType, ExecutionOrder, FairnessMode, Lang,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -149,10 +151,20 @@ pub struct SuiteIR {
     pub cv_threshold: f64,
     /// Number of times to run each benchmark for statistical consistency
     pub count: u64,
+    /// Fairness mode for cross-runtime execution/comparison
+    pub fairness_mode: FairnessMode,
+    /// Optional deterministic seed for fairness randomization
+    pub fairness_seed: Option<u64>,
 
     // Observability settings (Phase 2B)
     /// Enable memory allocation profiling
     pub memory: bool,
+    /// Async sampling policy
+    pub async_sampling_policy: AsyncSamplingPolicy,
+    /// Async warmup cap
+    pub async_warmup_cap: u64,
+    /// Async sample cap
+    pub async_sample_cap: u64,
 
     /// Standard library modules imported (e.g., "constants", "anvil")
     pub stdlib_imports: HashSet<String>,
@@ -207,8 +219,13 @@ impl SuiteIR {
             outlier_detection: true, // Enabled by default for statistical accuracy
             cv_threshold: DEFAULT_CV_THRESHOLD, // 5% threshold
             count: 1,                // Single run by default (backward compatible)
+            fairness_mode: FairnessMode::Strict,
+            fairness_seed: None,
             // Observability defaults
             memory: false, // Memory profiling disabled by default
+            async_sampling_policy: AsyncSamplingPolicy::TimeBudgeted,
+            async_warmup_cap: 5,
+            async_sample_cap: 50,
             stdlib_imports: HashSet::new(),
             imports: HashMap::new(),
             declarations: HashMap::new(),
@@ -363,10 +380,20 @@ pub struct BenchmarkSpec {
     pub cv_threshold: f64,
     /// Number of times to run this benchmark for statistical consistency
     pub count: u64,
+    /// Fairness mode for this benchmark (resolved from suite + benchmark overrides)
+    pub fairness_mode: FairnessMode,
+    /// Optional deterministic seed for fairness randomization
+    pub fairness_seed: Option<u64>,
 
     // Observability settings (Phase 2B)
     /// Enable memory allocation profiling
     pub memory: bool,
+    /// Async sampling policy
+    pub async_sampling_policy: AsyncSamplingPolicy,
+    /// Async warmup cap
+    pub async_warmup_cap: u64,
+    /// Async sample cap
+    pub async_sample_cap: u64,
 
     // Phase 3: Lifecycle hooks
     /// Pre-benchmark hook (runs once before iterations)
@@ -402,7 +429,12 @@ impl BenchmarkSpec {
             outlier_detection: true,
             cv_threshold: DEFAULT_CV_THRESHOLD,
             count: 1,
+            fairness_mode: FairnessMode::Strict,
+            fairness_seed: None,
             memory: false,
+            async_sampling_policy: AsyncSamplingPolicy::TimeBudgeted,
+            async_warmup_cap: 5,
+            async_sample_cap: 50,
             before_hooks: HashMap::new(),
             after_hooks: HashMap::new(),
             each_hooks: HashMap::new(),

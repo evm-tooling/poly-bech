@@ -667,10 +667,23 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         }
     }
     if has_async {
-        footer_lines.push(
-            "contains async-sequential benchmarks (internal caps: warmup<=5, samples<=50)"
-                .to_string(),
-        );
+        let mut warmup_cap = None;
+        let mut sample_cap = None;
+        let mut sampling_policy = None;
+        for bench in &filtered {
+            if let Some(details) = &bench.async_details {
+                warmup_cap.get_or_insert(details.warmup_cap);
+                sample_cap.get_or_insert(details.sample_cap);
+                sampling_policy.get_or_insert(details.sampling_policy.as_str());
+            }
+        }
+        let warmup_text = warmup_cap.unwrap_or(5);
+        let sample_text = sample_cap.unwrap_or(50);
+        let policy_text = sampling_policy.unwrap_or("timeBudgeted");
+        footer_lines.push(format!(
+            "contains async-sequential benchmarks (policy: {}, warmup<={}, samples<={})",
+            policy_text, warmup_text, sample_text
+        ));
     }
     for (idx, line) in footer_lines.iter().enumerate() {
         let y = chart_height - 8 - ((footer_lines.len() as i32 - 1 - idx as i32) * 12);

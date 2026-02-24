@@ -84,9 +84,14 @@ fn lower_suite(
     ir.outlier_detection = suite.outlier_detection; // Already defaults to true in AST
     ir.cv_threshold = suite.cv_threshold.unwrap_or(crate::DEFAULT_CV_THRESHOLD);
     ir.count = suite.count.unwrap_or(1); // Default: single run (backward compatible)
+    ir.fairness_mode = suite.fairness_mode.unwrap_or_default();
+    ir.fairness_seed = suite.fairness_seed;
 
     // Observability settings (Phase 2B)
     ir.memory = suite.memory; // Already defaults to false in AST
+    ir.async_sampling_policy = suite.async_sampling_policy.unwrap_or_default();
+    ir.async_warmup_cap = suite.async_warmup_cap.unwrap_or(5);
+    ir.async_sample_cap = suite.async_sample_cap.unwrap_or(50);
 
     // Copy stdlib imports to suite
     ir.stdlib_imports = stdlib_imports.clone();
@@ -217,9 +222,14 @@ fn lower_benchmark(
     spec.outlier_detection = benchmark.outlier_detection.unwrap_or(suite_ir.outlier_detection);
     spec.cv_threshold = benchmark.cv_threshold.unwrap_or(suite_ir.cv_threshold);
     spec.count = benchmark.count.unwrap_or(suite_ir.count);
+    spec.fairness_mode = suite_ir.fairness_mode;
+    spec.fairness_seed = suite_ir.fairness_seed;
 
     // Observability settings (Phase 2B)
     spec.memory = benchmark.memory.unwrap_or(suite_ir.memory);
+    spec.async_sampling_policy = suite_ir.async_sampling_policy;
+    spec.async_warmup_cap = suite_ir.async_warmup_cap;
+    spec.async_sample_cap = suite_ir.async_sample_cap;
 
     // Copy skip conditions
     for (lang, code_block) in &benchmark.skip {
@@ -440,5 +450,33 @@ suite test {
         let ir = lower(&ast, None).unwrap();
 
         assert!(ir.stdlib_imports.is_empty());
+    }
+
+    #[test]
+    fn test_lower_with_fairness_and_async_policy() {
+        let source = r#"
+suite fairness {
+    fairness: "strict"
+    fairnessSeed: 42
+    asyncSamplingPolicy: "timeBudgeted"
+    asyncWarmupCap: 7
+    asyncSampleCap: 88
+
+    benchAsync call {
+        ts: fetchValue()
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let ir = lower(&ast, None).unwrap();
+        let suite = &ir.suites[0];
+        let bench = &suite.benchmarks[0];
+
+        assert_eq!(suite.fairness_seed, Some(42));
+        assert_eq!(suite.async_warmup_cap, 7);
+        assert_eq!(suite.async_sample_cap, 88);
+        assert_eq!(bench.fairness_seed, Some(42));
+        assert_eq!(bench.async_warmup_cap, 7);
+        assert_eq!(bench.async_sample_cap, 88);
     }
 }
