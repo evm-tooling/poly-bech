@@ -1,0 +1,11 @@
+[package]
+name = "poly-bench-ir-traits"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Traits and types for poly-bench IR (ImportExtractor, ParsedSetup)"
+
+[dependencies]
+poly-bench-dsl.workspace = true
