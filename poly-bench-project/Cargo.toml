@@ -9,6 +9,7 @@ description = "Project management for poly-bench"
 
 [dependencies]
 poly-bench-dsl.workspace = true
+poly-bench-runtime.workspace = true
 miette.workspace = true
 serde.workspace = true
 serde_json.workspace = true
