@@ -8,8 +8,8 @@ use miette::{miette, Result};
 use poly_bench_dsl::{BenchmarkKind, ExecutionOrder, FairnessMode, Lang, SuiteType};
 use poly_bench_ir::{BenchmarkIR, BenchmarkSpec, SuiteIR};
 use poly_bench_runtime::{
-    extract_generated_snippet, extract_runtime_error_reason, go::GoRuntime, js::JsRuntime,
-    measurement::Measurement, rust::RustRuntime, traits::Runtime,
+    create_runtimes, extract_generated_snippet, extract_runtime_error_reason, lang_label,
+    measurement::Measurement, traits::Runtime, RuntimeConfig,
 };
 use std::{
     collections::HashMap,
@@ -93,8 +93,8 @@ fn strict_run_lang_order(
     available_langs
 }
 
-async fn run_with_optional_timeout<R: Runtime>(
-    rt: &mut R,
+async fn run_with_optional_timeout(
+    rt: &mut dyn Runtime,
     spec: &BenchmarkSpec,
     suite: &SuiteIR,
 ) -> Result<Measurement> {
@@ -173,15 +173,6 @@ fn async_error_measurement(err: &str) -> Measurement {
     m.estimator_source = Some("async-error".to_string());
     m.timed_out = Some(err.contains("timed out"));
     m
-}
-
-fn lang_label(lang: Lang) -> &'static str {
-    match lang {
-        Lang::Go => "Go",
-        Lang::TypeScript => "TS",
-        Lang::Rust => "Rust",
-        _ => "Unknown",
-    }
 }
 
 fn parse_generated_line(raw: &str) -> Option<usize> {
@@ -265,10 +256,12 @@ fn format_runtime_error(
 }
 
 fn colorize_lang_label(label: &str, lang: Lang) -> String {
-    match lang {
-        Lang::Go => label.green().to_string(),
-        Lang::TypeScript => label.cyan().to_string(),
-        Lang::Rust => label.yellow().to_string(),
+    use poly_bench_runtime::lang_display;
+    match lang_display(lang).terminal_color {
+        "green" => label.green().to_string(),
+        "cyan" => label.cyan().to_string(),
+        "yellow" => label.yellow().to_string(),
+        "bright_blue" | "blue" => label.bright_blue().to_string(),
         _ => label.to_string(),
     }
 }
@@ -444,51 +437,23 @@ pub async fn run(
 
         let mut benchmark_results = Vec::new();
 
-        // Initialize runtimes
-        let mut go_runtime: Option<GoRuntime> = None;
-        let mut js_runtime: Option<JsRuntime> = None;
-        let mut rust_runtime: Option<RustRuntime> = None;
+        // Initialize runtimes via registry
+        let config = RuntimeConfig {
+            go_root: project_roots.go_root.clone(),
+            node_root: project_roots.node_root.clone(),
+            rust_root: project_roots.rust_root.clone(),
+            python_root: project_roots.python_root.clone(),
+        };
+        let mut runtimes = create_runtimes(langs, &config)
+            .map_err(|e| miette!("Runtime initialization failed: {}", e))?;
 
-        if langs.contains(&Lang::Go) {
-            let mut rt = GoRuntime::new();
-            rt.set_module_root(project_roots.go_root.clone());
+        for (_, rt) in runtimes.iter_mut() {
             if let Some(ref url) = anvil_rpc_url {
                 rt.set_anvil_rpc_url(url.clone());
             }
             rt.initialize(suite)
                 .await
-                .map_err(|e| miette!("Go runtime initialization failed: {}", e))?;
-            go_runtime = Some(rt);
-        }
-
-        if langs.contains(&Lang::TypeScript) {
-            match JsRuntime::new() {
-                Ok(mut rt) => {
-                    rt.set_project_root(project_roots.node_root.clone());
-                    if let Some(ref url) = anvil_rpc_url {
-                        rt.set_anvil_rpc_url(url.clone());
-                    }
-                    rt.initialize(suite)
-                        .await
-                        .map_err(|e| miette!("JS runtime initialization failed: {}", e))?;
-                    js_runtime = Some(rt);
-                }
-                Err(e) => {
-                    return Err(miette!("JS runtime not available: {}", e));
-                }
-            }
-        }
-
-        if langs.contains(&Lang::Rust) {
-            let mut rt = RustRuntime::new();
-            rt.set_project_root(project_roots.rust_root.clone());
-            if let Some(ref url) = anvil_rpc_url {
-                rt.set_anvil_rpc_url(url.clone());
-            }
-            rt.initialize(suite)
-                .await
-                .map_err(|e| miette!("Rust runtime initialization failed: {}", e))?;
-            rust_runtime = Some(rt);
+                .map_err(|e| miette!("Runtime initialization failed: {}", e))?;
         }
 
         // Route to memory or performance path based on suite type.
@@ -525,25 +490,18 @@ pub async fn run(
             if strict_fairness {
                 // Precompile all participating runtimes before timed runs so interleaving does not
                 // include compile overhead in any runtime's measured path.
-                if spec.has_lang(Lang::Go) {
-                    if let Some(ref mut rt) = go_runtime {
-                        rt.precompile(&spec_clone, suite).await.map_err(|e| {
-                            miette!("Go pre-compilation failed ({}): {}", spec_clone.full_name, e)
-                        })?;
-                    }
-                }
-                if spec.has_lang(Lang::TypeScript) {
-                    if let Some(ref mut rt) = js_runtime {
-                        rt.precompile(&spec_clone, suite).await.map_err(|e| {
-                            miette!("TS pre-compilation failed ({}): {}", spec_clone.full_name, e)
-                        })?;
-                    }
-                }
-                if spec.has_lang(Lang::Rust) {
-                    if let Some(ref mut rt) = rust_runtime {
-                        rt.precompile(&spec_clone, suite).await.map_err(|e| {
-                            miette!("Rust pre-compilation failed ({}): {}", spec_clone.full_name, e)
-                        })?;
+                for lang in langs {
+                    if spec.has_lang(*lang) {
+                        if let Some(ref mut rt) = runtimes.get_mut(lang) {
+                            rt.precompile(&spec_clone, suite).await.map_err(|e| {
+                                miette!(
+                                    "{} pre-compilation failed ({}): {}",
+                                    lang_label(*lang),
+                                    spec_clone.full_name,
+                                    e
+                                )
+                            })?;
+                        }
                     }
                 }
 
@@ -555,122 +513,46 @@ pub async fn run(
                 // Run-block interleaving: execute run k across all runtimes before run k+1.
                 for run_idx in 0..run_count {
                     strict_timer.current_run.store(run_idx + 1, Ordering::Relaxed);
-                    let mut run_langs = Vec::new();
-                    if spec.has_lang(Lang::Go) && go_runtime.is_some() {
-                        run_langs.push(Lang::Go);
-                    }
-                    if spec.has_lang(Lang::TypeScript) && js_runtime.is_some() {
-                        run_langs.push(Lang::TypeScript);
-                    }
-                    if spec.has_lang(Lang::Rust) && rust_runtime.is_some() {
-                        run_langs.push(Lang::Rust);
-                    }
-
+                    let run_langs: Vec<Lang> = langs
+                        .iter()
+                        .copied()
+                        .filter(|l| spec.has_lang(*l) && runtimes.contains_key(l))
+                        .collect();
                     let run_langs = strict_run_lang_order(&spec_clone, suite, run_idx, run_langs);
 
                     for lang in run_langs {
-                        match lang {
-                            Lang::Go => {
-                                if let Some(ref mut rt) = go_runtime {
-                                    match run_with_optional_timeout(rt, &spec_clone, suite).await {
-                                        Ok(m) => {
-                                            run_measurements.entry(Lang::Go).or_default().push(m)
-                                        }
-                                        Err(e) => {
-                                            let err = format!("{}", e);
-                                            if spec_clone.kind == BenchmarkKind::Async {
-                                                eprintln!(
-                                                    "\n    {} run {} failed for {} (recorded as async error)",
-                                                    "Go:".yellow(),
-                                                    run_idx + 1,
-                                                    spec_clone.full_name
-                                                );
-                                                run_measurements
-                                                    .entry(Lang::Go)
-                                                    .or_default()
-                                                    .push(async_error_measurement(&err));
-                                            } else {
-                                                return Err(format_runtime_error(
-                                                    Lang::Go,
-                                                    run_idx + 1,
-                                                    &spec_clone,
-                                                    &suite.name,
-                                                    &e.to_string(),
-                                                    options.verbose,
-                                                ));
-                                            }
-                                        }
-                                    }
+                        if let Some(ref mut rt) = runtimes.get_mut(&lang) {
+                            match run_with_optional_timeout(rt.as_mut(), &spec_clone, suite).await {
+                                Ok(m) => {
+                                    run_measurements.entry(lang).or_default().push(m);
                                 }
-                            }
-                            Lang::TypeScript => {
-                                if let Some(ref mut rt) = js_runtime {
-                                    match run_with_optional_timeout(rt, &spec_clone, suite).await {
-                                        Ok(m) => run_measurements
-                                            .entry(Lang::TypeScript)
+                                Err(e) => {
+                                    let err = format!("{}", e);
+                                    let label = &format!("{}:", lang_label(lang));
+                                    let colored_label = colorize_lang_label(label, lang);
+                                    if spec_clone.kind == BenchmarkKind::Async {
+                                        eprintln!(
+                                            "\n    {} run {} failed for {} (recorded as async error)",
+                                            colored_label,
+                                            run_idx + 1,
+                                            spec_clone.full_name
+                                        );
+                                        run_measurements
+                                            .entry(lang)
                                             .or_default()
-                                            .push(m),
-                                        Err(e) => {
-                                            let err = format!("{}", e);
-                                            if spec_clone.kind == BenchmarkKind::Async {
-                                                eprintln!(
-                                                    "\n    {} run {} failed for {} (recorded as async error)",
-                                                    "TS:".yellow(),
-                                                    run_idx + 1,
-                                                    spec_clone.full_name
-                                                );
-                                                run_measurements
-                                                    .entry(Lang::TypeScript)
-                                                    .or_default()
-                                                    .push(async_error_measurement(&err));
-                                            } else {
-                                                return Err(format_runtime_error(
-                                                    Lang::TypeScript,
-                                                    run_idx + 1,
-                                                    &spec_clone,
-                                                    &suite.name,
-                                                    &e.to_string(),
-                                                    options.verbose,
-                                                ));
-                                            }
-                                        }
+                                            .push(async_error_measurement(&err));
+                                    } else {
+                                        return Err(format_runtime_error(
+                                            lang,
+                                            run_idx + 1,
+                                            &spec_clone,
+                                            &suite.name,
+                                            &e.to_string(),
+                                            options.verbose,
+                                        ));
                                     }
                                 }
                             }
-                            Lang::Rust => {
-                                if let Some(ref mut rt) = rust_runtime {
-                                    match run_with_optional_timeout(rt, &spec_clone, suite).await {
-                                        Ok(m) => {
-                                            run_measurements.entry(Lang::Rust).or_default().push(m)
-                                        }
-                                        Err(e) => {
-                                            let err = format!("{}", e);
-                                            if spec_clone.kind == BenchmarkKind::Async {
-                                                eprintln!(
-                                                    "\n    {} run {} failed for {} (recorded as async error)",
-                                                    "Rust:".yellow(),
-                                                    run_idx + 1,
-                                                    spec_clone.full_name
-                                                );
-                                                run_measurements
-                                                    .entry(Lang::Rust)
-                                                    .or_default()
-                                                    .push(async_error_measurement(&err));
-                                            } else {
-                                                return Err(format_runtime_error(
-                                                    Lang::Rust,
-                                                    run_idx + 1,
-                                                    &spec_clone,
-                                                    &suite.name,
-                                                    &e.to_string(),
-                                                    options.verbose,
-                                                ));
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            _ => {}
                         }
                     }
                 }
@@ -690,104 +572,48 @@ pub async fn run(
                     measurements.insert(lang, aggregated);
                 }
             } else {
-                // Run Go benchmark
-                if spec.has_lang(Lang::Go) {
-                    if let Some(ref mut rt) = go_runtime {
-                        // Pre-compile the benchmark binary before timing starts
-                        // This ensures compilation overhead is not included in the wall-clock time
-                        let precompile_start = Instant::now();
-                        rt.precompile(&spec_clone, suite).await.map_err(|e| {
-                            miette!("Go pre-compilation failed ({}): {}", spec_clone.full_name, e)
-                        })?;
-                        let _precompile_elapsed = precompile_start.elapsed();
+                // Run each language benchmark (non-strict fairness: sequential per lang)
+                for lang in langs {
+                    if !spec.has_lang(*lang) {
+                        continue;
+                    }
+                    let Some(ref mut rt) = runtimes.get_mut(lang) else {
+                        continue;
+                    };
 
-                        let lang_start = Instant::now();
+                    let precompile_start = Instant::now();
+                    rt.precompile(&spec_clone, suite).await.map_err(|e| {
+                        miette!(
+                            "{} pre-compilation failed ({}): {}",
+                            lang_label(*lang),
+                            spec_clone.full_name,
+                            e
+                        )
+                    })?;
+                    let _precompile_elapsed = precompile_start.elapsed();
 
-                        if spec_clone.count > 1 {
-                            // Multiple runs for statistical consistency with live timer
-                            let go_label = format!("{} Go:", suite.name);
-                            let timer = start_multi_run_timer(&go_label, "green", spec_clone.count);
-                            let mut run_measurements = Vec::new();
+                    let lang_start = Instant::now();
+                    let timer_color = poly_bench_runtime::lang_display(*lang).terminal_color;
+                    let lang_label_str = lang_label(*lang);
 
-                            for run_idx in 0..spec_clone.count {
-                                timer.current_run.store(run_idx + 1, Ordering::Relaxed);
+                    if spec_clone.count > 1 {
+                        let label = format!("{} {}:", suite.name, lang_label_str);
+                        let timer = start_multi_run_timer(&label, timer_color, spec_clone.count);
+                        let mut run_measurements = Vec::new();
 
-                                match run_with_optional_timeout(rt, &spec_clone, suite).await {
-                                    Ok(m) => run_measurements.push(m),
-                                    Err(e) => {
-                                        let err = format!("{}", e);
-                                        if spec_clone.kind == BenchmarkKind::Async {
-                                            run_measurements.push(async_error_measurement(&err));
-                                        } else {
-                                            return Err(format_runtime_error(
-                                                Lang::Go,
-                                                run_idx + 1,
-                                                &spec_clone,
-                                                &suite.name,
-                                                &e.to_string(),
-                                                options.verbose,
-                                            ));
-                                        }
-                                    }
-                                }
-                            }
+                        for run_idx in 0..spec_clone.count {
+                            timer.current_run.store(run_idx + 1, Ordering::Relaxed);
 
-                            stop_multi_run_timer(&timer);
-
-                            if !run_measurements.is_empty() {
-                                let aggregated = if is_memory_suite {
-                                    Measurement::aggregate_runs_memory(run_measurements)
-                                } else {
-                                    Measurement::aggregate_runs(run_measurements)
-                                };
-                                let elapsed = lang_start.elapsed();
-                                let ci_str = if let (Some(median), Some(ci_upper)) =
-                                    (aggregated.median_across_runs, aggregated.ci_95_upper)
-                                {
-                                    format!(" ±{}", Measurement::format_duration(ci_upper - median))
-                                } else {
-                                    String::new()
-                                };
-                                print!(
-                                    "\r    {} {}{}{} ({}x runs, {:.2}s)                    ",
-                                    "Go:".green(),
-                                    format_primary_metric(&aggregated, suite.suite_type),
-                                    ci_str,
-                                    async_outcome_suffix(spec.kind, &aggregated),
-                                    spec_clone.count,
-                                    elapsed.as_secs_f64()
-                                );
-                                measurements.insert(Lang::Go, aggregated);
-                            }
-                        } else {
-                            // Single run with live timer
-                            let go_label = format!("{} Go:", suite.name);
-                            let timer = start_timer(&go_label);
-                            let result = run_with_optional_timeout(rt, &spec_clone, suite).await;
-                            stop_timer(&timer);
-
-                            match result {
-                                Ok(m) => {
-                                    let elapsed = lang_start.elapsed();
-                                    print!(
-                                        "\r    {} {}{} ({})                    ",
-                                        "Go:".green(),
-                                        format_primary_metric(&m, suite.suite_type),
-                                        async_outcome_suffix(spec.kind, &m),
-                                        format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
-                                    );
-                                    measurements.insert(Lang::Go, m);
-                                }
+                            match run_with_optional_timeout(rt.as_mut(), &spec_clone, suite).await {
+                                Ok(m) => run_measurements.push(m),
                                 Err(e) => {
+                                    let err = format!("{}", e);
                                     if spec_clone.kind == BenchmarkKind::Async {
-                                        measurements.insert(
-                                            Lang::Go,
-                                            async_error_measurement(&format!("{}", e)),
-                                        );
+                                        run_measurements.push(async_error_measurement(&err));
                                     } else {
                                         return Err(format_runtime_error(
-                                            Lang::Go,
-                                            1,
+                                            *lang,
+                                            run_idx + 1,
                                             &spec_clone,
                                             &suite.name,
                                             &e.to_string(),
@@ -797,246 +623,89 @@ pub async fn run(
                                 }
                             }
                         }
-                        println!();
-                    }
-                }
 
-                // Run TypeScript benchmark
-                if spec.has_lang(Lang::TypeScript) {
-                    if let Some(ref mut rt) = js_runtime {
-                        // Pre-compile/prepare the benchmark script before timing starts
-                        // This ensures script writing and syntax checking is not included in the
-                        // wall-clock time
-                        let precompile_start = Instant::now();
-                        rt.precompile(&spec_clone, suite).await.map_err(|e| {
-                            miette!("TS pre-compilation failed ({}): {}", spec_clone.full_name, e)
-                        })?;
-                        let _precompile_elapsed = precompile_start.elapsed();
+                        stop_multi_run_timer(&timer);
 
-                        let lang_start = Instant::now();
+                        if !run_measurements.is_empty() {
+                            let aggregated = if is_memory_suite {
+                                Measurement::aggregate_runs_memory(run_measurements)
+                            } else {
+                                Measurement::aggregate_runs(run_measurements)
+                            };
+                            let elapsed = lang_start.elapsed();
+                            let ci_str = if let (Some(median), Some(ci_upper)) =
+                                (aggregated.median_across_runs, aggregated.ci_95_upper)
+                            {
+                                format!(" ±{}", Measurement::format_duration(ci_upper - median))
+                            } else {
+                                String::new()
+                            };
+                            let colored_label =
+                                colorize_lang_label(&format!("{}:", lang_label_str), *lang);
+                            print!(
+                                "\r    {} {}{}{} ({}x runs, {:.2}s)                    ",
+                                colored_label,
+                                format_primary_metric(&aggregated, suite.suite_type),
+                                ci_str,
+                                async_outcome_suffix(spec.kind, &aggregated),
+                                spec_clone.count,
+                                elapsed.as_secs_f64()
+                            );
+                            measurements.insert(*lang, aggregated);
+                        }
+                    } else {
+                        let label = format!("{} {}:", suite.name, lang_label_str);
+                        let timer = start_timer(&label);
+                        let result =
+                            run_with_optional_timeout(rt.as_mut(), &spec_clone, suite).await;
+                        stop_timer(&timer);
 
-                        if spec_clone.count > 1 {
-                            // Multiple runs for statistical consistency with live timer
-                            let ts_label = format!("{} TS:", suite.name);
-                            let timer = start_multi_run_timer(&ts_label, "cyan", spec_clone.count);
-                            let mut run_measurements = Vec::new();
-
-                            for run_idx in 0..spec_clone.count {
-                                timer.current_run.store(run_idx + 1, Ordering::Relaxed);
-
-                                match run_with_optional_timeout(rt, &spec_clone, suite).await {
-                                    Ok(m) => run_measurements.push(m),
-                                    Err(e) => {
-                                        let err = format!("{}", e);
-                                        if spec_clone.kind == BenchmarkKind::Async {
-                                            run_measurements.push(async_error_measurement(&err));
-                                        } else {
-                                            return Err(format_runtime_error(
-                                                Lang::TypeScript,
-                                                run_idx + 1,
-                                                &spec_clone,
-                                                &suite.name,
-                                                &e.to_string(),
-                                                options.verbose,
-                                            ));
-                                        }
-                                    }
-                                }
-                            }
-
-                            stop_multi_run_timer(&timer);
-
-                            if !run_measurements.is_empty() {
-                                let aggregated = if is_memory_suite {
-                                    Measurement::aggregate_runs_memory(run_measurements)
-                                } else {
-                                    Measurement::aggregate_runs(run_measurements)
-                                };
+                        match result {
+                            Ok(m) => {
                                 let elapsed = lang_start.elapsed();
-                                let ci_str = if let (Some(median), Some(ci_upper)) =
-                                    (aggregated.median_across_runs, aggregated.ci_95_upper)
-                                {
-                                    format!(" ±{}", Measurement::format_duration(ci_upper - median))
-                                } else {
-                                    String::new()
-                                };
+                                let colored_label =
+                                    colorize_lang_label(&format!("{}:", lang_label_str), *lang);
                                 print!(
-                                    "\r    {} {}{}{} ({}x runs, {:.2}s)                    ",
-                                    "TS:".cyan(),
-                                    format_primary_metric(&aggregated, suite.suite_type),
-                                    ci_str,
-                                    async_outcome_suffix(spec.kind, &aggregated),
-                                    spec_clone.count,
-                                    elapsed.as_secs_f64()
+                                    "\r    {} {}{} ({})                    ",
+                                    colored_label,
+                                    format_primary_metric(&m, suite.suite_type),
+                                    async_outcome_suffix(spec.kind, &m),
+                                    format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
                                 );
-                                measurements.insert(Lang::TypeScript, aggregated);
+                                measurements.insert(*lang, m);
                             }
-                        } else {
-                            // Single run with live timer
-                            let ts_label = format!("{} TS:", suite.name);
-                            let timer = start_timer(&ts_label);
-                            let result = run_with_optional_timeout(rt, &spec_clone, suite).await;
-                            stop_timer(&timer);
-
-                            match result {
-                                Ok(m) => {
-                                    let elapsed = lang_start.elapsed();
-                                    print!(
-                                        "\r    {} {}{} ({})                    ",
-                                        "TS:".cyan(),
-                                        format_primary_metric(&m, suite.suite_type),
-                                        async_outcome_suffix(spec.kind, &m),
-                                        format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
-                                    );
-                                    measurements.insert(Lang::TypeScript, m);
-                                }
-                                Err(e) => {
-                                    if spec_clone.kind == BenchmarkKind::Async {
-                                        measurements.insert(
-                                            Lang::TypeScript,
-                                            async_error_measurement(&format!("{}", e)),
-                                        );
-                                    } else {
-                                        return Err(format_runtime_error(
-                                            Lang::TypeScript,
-                                            1,
-                                            &spec_clone,
-                                            &suite.name,
-                                            &e.to_string(),
-                                            options.verbose,
-                                        ));
-                                    }
+                            Err(e) => {
+                                if spec_clone.kind == BenchmarkKind::Async {
+                                    measurements
+                                        .insert(*lang, async_error_measurement(&format!("{}", e)));
+                                } else {
+                                    return Err(format_runtime_error(
+                                        *lang,
+                                        1,
+                                        &spec_clone,
+                                        &suite.name,
+                                        &e.to_string(),
+                                        options.verbose,
+                                    ));
                                 }
                             }
                         }
-                        println!();
                     }
-                }
-
-                // Run Rust benchmark
-                if spec.has_lang(Lang::Rust) {
-                    if let Some(ref mut rt) = rust_runtime {
-                        // Pre-compile the benchmark binary before timing starts
-                        // This ensures compilation overhead is not included in the wall-clock time
-                        let precompile_start = Instant::now();
-                        rt.precompile(&spec_clone, suite).await.map_err(|e| {
-                            miette!("Rust pre-compilation failed ({}): {}", spec_clone.full_name, e)
-                        })?;
-                        let _precompile_elapsed = precompile_start.elapsed();
-
-                        let lang_start = Instant::now();
-
-                        if spec_clone.count > 1 {
-                            // Multiple runs for statistical consistency with live timer
-                            let rust_label = format!("{} Rust:", suite.name);
-                            let timer =
-                                start_multi_run_timer(&rust_label, "yellow", spec_clone.count);
-                            let mut run_measurements = Vec::new();
-
-                            for run_idx in 0..spec_clone.count {
-                                timer.current_run.store(run_idx + 1, Ordering::Relaxed);
-
-                                match run_with_optional_timeout(rt, &spec_clone, suite).await {
-                                    Ok(m) => run_measurements.push(m),
-                                    Err(e) => {
-                                        let err = format!("{}", e);
-                                        if spec_clone.kind == BenchmarkKind::Async {
-                                            run_measurements.push(async_error_measurement(&err));
-                                        } else {
-                                            return Err(format_runtime_error(
-                                                Lang::Rust,
-                                                run_idx + 1,
-                                                &spec_clone,
-                                                &suite.name,
-                                                &e.to_string(),
-                                                options.verbose,
-                                            ));
-                                        }
-                                    }
-                                }
-                            }
-
-                            stop_multi_run_timer(&timer);
-
-                            if !run_measurements.is_empty() {
-                                let aggregated = if is_memory_suite {
-                                    Measurement::aggregate_runs_memory(run_measurements)
-                                } else {
-                                    Measurement::aggregate_runs(run_measurements)
-                                };
-                                let elapsed = lang_start.elapsed();
-                                let ci_str = if let (Some(median), Some(ci_upper)) =
-                                    (aggregated.median_across_runs, aggregated.ci_95_upper)
-                                {
-                                    format!(" ±{}", Measurement::format_duration(ci_upper - median))
-                                } else {
-                                    String::new()
-                                };
-                                print!(
-                                    "\r    {} {}{}{} ({}x runs, {:.2}s)                    ",
-                                    "Rust:".yellow(),
-                                    format_primary_metric(&aggregated, suite.suite_type),
-                                    ci_str,
-                                    async_outcome_suffix(spec.kind, &aggregated),
-                                    spec_clone.count,
-                                    elapsed.as_secs_f64()
-                                );
-                                measurements.insert(Lang::Rust, aggregated);
-                            }
-                        } else {
-                            // Single run with live timer
-                            let rust_label = format!("{} Rust:", suite.name);
-                            let timer = start_timer(&rust_label);
-                            let result = run_with_optional_timeout(rt, &spec_clone, suite).await;
-                            stop_timer(&timer);
-
-                            match result {
-                                Ok(m) => {
-                                    let elapsed = lang_start.elapsed();
-                                    print!(
-                                        "\r    {} {}{} ({})                    ",
-                                        "Rust:".yellow(),
-                                        format_primary_metric(&m, suite.suite_type),
-                                        async_outcome_suffix(spec.kind, &m),
-                                        format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
-                                    );
-                                    measurements.insert(Lang::Rust, m);
-                                }
-                                Err(e) => {
-                                    if spec_clone.kind == BenchmarkKind::Async {
-                                        measurements.insert(
-                                            Lang::Rust,
-                                            async_error_measurement(&format!("{}", e)),
-                                        );
-                                    } else {
-                                        return Err(format_runtime_error(
-                                            Lang::Rust,
-                                            1,
-                                            &spec_clone,
-                                            &suite.name,
-                                            &e.to_string(),
-                                            options.verbose,
-                                        ));
-                                    }
-                                }
-                            }
-                        }
-                        println!();
-                    }
+                    println!();
                 }
             }
 
             let bench_elapsed = bench_start.elapsed();
 
             println!("  ▸ {} {:.2}s", spec.name.bold(), bench_elapsed.as_secs_f64());
-            for lang in [Lang::Go, Lang::TypeScript, Lang::Rust] {
+            for lang in langs {
                 if let Some(m) = measurements.get(&lang) {
                     let metric = format_primary_metric(m, suite.suite_type);
-                    let rel = lang_versus_counterpart(&measurements, lang, suite.suite_type)
+                    let rel = lang_versus_counterpart(&measurements, *lang, suite.suite_type)
                         .map(|(peer, ratio)| format!("{:.2}x vs {}", ratio, lang_label(peer)))
                         .unwrap_or_default();
-                    let padded_label = format!("{:<6}", format!("{}:", lang_label(lang)));
-                    let colored_label = colorize_lang_label(&padded_label, lang);
+                    let padded_label = format!("{:<6}", format!("{}:", lang_label(*lang)));
+                    let colored_label = colorize_lang_label(&padded_label, *lang);
                     println!("    {} {:<16} {}", colored_label, metric, rel);
                 }
             }
@@ -1061,14 +730,8 @@ pub async fn run(
         }
 
         // Shutdown runtimes
-        if let Some(mut rt) = go_runtime {
-            let _ = rt.shutdown().await;
-        }
-        if let Some(mut rt) = js_runtime {
-            let _ = rt.shutdown().await;
-        }
-        if let Some(mut rt) = rust_runtime {
-            let _ = rt.shutdown().await;
+        for (_, rt) in runtimes.iter_mut() {
+            let _ = rt.as_mut().shutdown().await;
         }
 
         suite_results.push(SuiteResults::new(

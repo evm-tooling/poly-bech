@@ -7,7 +7,7 @@ use super::{compile_cache::CompileCache, ProjectRoots};
 use miette::Result;
 use poly_bench_dsl::Lang;
 use poly_bench_ir::BenchmarkIR;
-use poly_bench_runtime::{go::GoRuntime, js::JsRuntime, rust::RustRuntime, traits::Runtime};
+use poly_bench_runtime::{create_runtimes_arc, traits::Runtime, RuntimeConfig};
 use std::{
     collections::HashSet,
     sync::{
@@ -136,31 +136,14 @@ pub async fn validate_benchmarks(
     let error_map: Arc<Mutex<std::collections::HashMap<(Lang, String), CompileError>>> =
         Arc::new(Mutex::new(std::collections::HashMap::new()));
 
-    // Initialize runtimes for each language
-    let go_runtime: Option<Arc<GoRuntime>> = if langs.contains(&Lang::Go) {
-        let mut rt = GoRuntime::new();
-        rt.set_module_root(project_roots.go_root.clone());
-        Some(Arc::new(rt))
-    } else {
-        None
+    // Initialize runtimes for each language via registry
+    let config = RuntimeConfig {
+        go_root: project_roots.go_root.clone(),
+        node_root: project_roots.node_root.clone(),
+        rust_root: project_roots.rust_root.clone(),
+        python_root: project_roots.python_root.clone(),
     };
-
-    let js_runtime: Option<Arc<JsRuntime>> = if langs.contains(&Lang::TypeScript) {
-        JsRuntime::new().ok().map(|mut rt| {
-            rt.set_project_root(project_roots.node_root.clone());
-            Arc::new(rt)
-        })
-    } else {
-        None
-    };
-
-    let rust_runtime: Option<Arc<RustRuntime>> = if langs.contains(&Lang::Rust) {
-        let mut rt = RustRuntime::new();
-        rt.set_project_root(project_roots.rust_root.clone());
-        Some(Arc::new(rt))
-    } else {
-        None
-    };
+    let runtimes = create_runtimes_arc(langs, &config);
 
     // Helper to add an error with deduplication
     async fn add_error(
@@ -200,134 +183,48 @@ pub async fn validate_benchmarks(
         // Phase 1: Validate shared code by checking the first benchmark per language
         // This catches setup/helper errors early without running all benchmarks
         for spec in &suite.benchmarks {
-            // Check Go (first benchmark only)
-            if spec.has_lang(Lang::Go) && !shared_validated.contains(&Lang::Go) {
-                if let Some(ref rt) = go_runtime {
-                    if let Err(e) = rt.compile_check(spec, suite).await {
-                        let msg = e.to_string();
-                        // If this is a shared code error, mark all benchmarks as affected
-                        let source = classify_error_source(&msg);
-                        if matches!(source, ErrorSource::Setup | ErrorSource::Helper) {
-                            let all_go_benchmarks: Vec<String> = suite
-                                .benchmarks
-                                .iter()
-                                .filter(|s| s.has_lang(Lang::Go))
-                                .map(|s| s.full_name.clone())
-                                .collect();
+            for lang in langs {
+                if spec.has_lang(*lang) && !shared_validated.contains(lang) {
+                    if let Some(ref rt) = runtimes.get(lang) {
+                        if let Err(e) = rt.compile_check(spec, suite).await {
+                            let msg = e.to_string();
+                            let source = classify_error_source(&msg);
+                            if matches!(source, ErrorSource::Setup | ErrorSource::Helper) {
+                                let all_benchmarks: Vec<String> = suite
+                                    .benchmarks
+                                    .iter()
+                                    .filter(|s| s.has_lang(*lang))
+                                    .map(|s| s.full_name.clone())
+                                    .collect();
 
-                            let normalized = normalize_error_message(&msg);
-                            let key = (Lang::Go, normalized);
-                            let mut map = error_map.lock().await;
-                            map.insert(
-                                key,
-                                CompileError {
-                                    benchmarks: all_go_benchmarks,
-                                    lang: Lang::Go,
-                                    message: msg,
-                                    source,
-                                },
-                            );
-                            shared_failed.insert(Lang::Go);
-                        } else {
-                            add_error(
-                                &seen_errors,
-                                &error_map,
-                                Lang::Go,
-                                spec.full_name.clone(),
-                                msg,
-                            )
-                            .await;
+                                let normalized = normalize_error_message(&msg);
+                                let key = (*lang, normalized);
+                                let mut map = error_map.lock().await;
+                                map.insert(
+                                    key,
+                                    CompileError {
+                                        benchmarks: all_benchmarks,
+                                        lang: *lang,
+                                        message: msg,
+                                        source,
+                                    },
+                                );
+                                shared_failed.insert(*lang);
+                            } else {
+                                add_error(
+                                    &seen_errors,
+                                    &error_map,
+                                    *lang,
+                                    spec.full_name.clone(),
+                                    msg,
+                                )
+                                .await;
+                            }
                         }
+                        shared_validated.insert(*lang);
                     }
-                    shared_validated.insert(Lang::Go);
                 }
             }
-
-            // Check TypeScript (first benchmark only)
-            if spec.has_lang(Lang::TypeScript) && !shared_validated.contains(&Lang::TypeScript) {
-                if let Some(ref rt) = js_runtime {
-                    if let Err(e) = rt.compile_check(spec, suite).await {
-                        let msg = e.to_string();
-                        let source = classify_error_source(&msg);
-                        if matches!(source, ErrorSource::Setup | ErrorSource::Helper) {
-                            let all_ts_benchmarks: Vec<String> = suite
-                                .benchmarks
-                                .iter()
-                                .filter(|s| s.has_lang(Lang::TypeScript))
-                                .map(|s| s.full_name.clone())
-                                .collect();
-
-                            let normalized = normalize_error_message(&msg);
-                            let key = (Lang::TypeScript, normalized);
-                            let mut map = error_map.lock().await;
-                            map.insert(
-                                key,
-                                CompileError {
-                                    benchmarks: all_ts_benchmarks,
-                                    lang: Lang::TypeScript,
-                                    message: msg,
-                                    source,
-                                },
-                            );
-                            shared_failed.insert(Lang::TypeScript);
-                        } else {
-                            add_error(
-                                &seen_errors,
-                                &error_map,
-                                Lang::TypeScript,
-                                spec.full_name.clone(),
-                                msg,
-                            )
-                            .await;
-                        }
-                    }
-                    shared_validated.insert(Lang::TypeScript);
-                }
-            }
-
-            // Check Rust (first benchmark only)
-            if spec.has_lang(Lang::Rust) && !shared_validated.contains(&Lang::Rust) {
-                if let Some(ref rt) = rust_runtime {
-                    if let Err(e) = rt.compile_check(spec, suite).await {
-                        let msg = e.to_string();
-                        let source = classify_error_source(&msg);
-                        if matches!(source, ErrorSource::Setup | ErrorSource::Helper) {
-                            let all_rust_benchmarks: Vec<String> = suite
-                                .benchmarks
-                                .iter()
-                                .filter(|s| s.has_lang(Lang::Rust))
-                                .map(|s| s.full_name.clone())
-                                .collect();
-
-                            let normalized = normalize_error_message(&msg);
-                            let key = (Lang::Rust, normalized);
-                            let mut map = error_map.lock().await;
-                            map.insert(
-                                key,
-                                CompileError {
-                                    benchmarks: all_rust_benchmarks,
-                                    lang: Lang::Rust,
-                                    message: msg,
-                                    source,
-                                },
-                            );
-                            shared_failed.insert(Lang::Rust);
-                        } else {
-                            add_error(
-                                &seen_errors,
-                                &error_map,
-                                Lang::Rust,
-                                spec.full_name.clone(),
-                                msg,
-                            )
-                            .await;
-                        }
-                    }
-                    shared_validated.insert(Lang::Rust);
-                }
-            }
-
-            // Once all languages are validated, break out of the first-pass loop
             if shared_validated.len() >= langs.len() {
                 break;
             }
@@ -341,27 +238,13 @@ pub async fn validate_benchmarks(
             .skip(1) // Skip the first benchmark (already checked)
             .flat_map(|spec| {
                 let mut checks = Vec::new();
-
-                if spec.has_lang(Lang::Go) && !shared_failed.contains(&Lang::Go) {
-                    if let Some(ref rt) = go_runtime {
-                        checks.push((spec.clone(), Lang::Go, rt.clone() as Arc<dyn Runtime>));
+                for lang in langs {
+                    if spec.has_lang(*lang) && !shared_failed.contains(lang) {
+                        if let Some(rt) = runtimes.get(lang) {
+                            checks.push((spec.clone(), *lang, Arc::clone(rt)));
+                        }
                     }
                 }
-                if spec.has_lang(Lang::TypeScript) && !shared_failed.contains(&Lang::TypeScript) {
-                    if let Some(ref rt) = js_runtime {
-                        checks.push((
-                            spec.clone(),
-                            Lang::TypeScript,
-                            rt.clone() as Arc<dyn Runtime>,
-                        ));
-                    }
-                }
-                if spec.has_lang(Lang::Rust) && !shared_failed.contains(&Lang::Rust) {
-                    if let Some(ref rt) = rust_runtime {
-                        checks.push((spec.clone(), Lang::Rust, rt.clone() as Arc<dyn Runtime>));
-                    }
-                }
-
                 checks
             })
             .collect();
@@ -446,31 +329,14 @@ pub async fn validate_benchmarks_with_cache(
     let error_map: Arc<Mutex<std::collections::HashMap<(Lang, String), CompileError>>> =
         Arc::new(Mutex::new(std::collections::HashMap::new()));
 
-    // Initialize runtimes for each language
-    let go_runtime: Option<Arc<GoRuntime>> = if langs.contains(&Lang::Go) {
-        let mut rt = GoRuntime::new();
-        rt.set_module_root(project_roots.go_root.clone());
-        Some(Arc::new(rt))
-    } else {
-        None
+    // Initialize runtimes for each language via registry
+    let config = RuntimeConfig {
+        go_root: project_roots.go_root.clone(),
+        node_root: project_roots.node_root.clone(),
+        rust_root: project_roots.rust_root.clone(),
+        python_root: project_roots.python_root.clone(),
     };
-
-    let js_runtime: Option<Arc<JsRuntime>> = if langs.contains(&Lang::TypeScript) {
-        JsRuntime::new().ok().map(|mut rt| {
-            rt.set_project_root(project_roots.node_root.clone());
-            Arc::new(rt)
-        })
-    } else {
-        None
-    };
-
-    let rust_runtime: Option<Arc<RustRuntime>> = if langs.contains(&Lang::Rust) {
-        let mut rt = RustRuntime::new();
-        rt.set_project_root(project_roots.rust_root.clone());
-        Some(Arc::new(rt))
-    } else {
-        None
-    };
+    let runtimes = create_runtimes_arc(langs, &config);
 
     // Helper to add an error with deduplication
     async fn add_error(
@@ -565,12 +431,7 @@ pub async fn validate_benchmarks_with_cache(
                     .map(|s| s.full_name.clone())
                     .collect();
 
-                let rt: Option<Arc<dyn Runtime>> = match lang {
-                    Lang::Go => go_runtime.as_ref().map(|r| r.clone() as Arc<dyn Runtime>),
-                    Lang::TypeScript => js_runtime.as_ref().map(|r| r.clone() as Arc<dyn Runtime>),
-                    Lang::Rust => rust_runtime.as_ref().map(|r| r.clone() as Arc<dyn Runtime>),
-                    _ => None,
-                };
+                let rt: Option<Arc<dyn Runtime>> = runtimes.get(lang).cloned();
 
                 if let Some(runtime) = rt {
                     phase1_checks.push((spec.clone(), *lang, runtime, all_benchmarks));
@@ -635,28 +496,13 @@ pub async fn validate_benchmarks_with_cache(
             .skip(1)
             .flat_map(|spec| {
                 let mut checks = Vec::new();
-
-                if spec.has_lang(Lang::Go) && !shared_failed_set.contains(&Lang::Go) {
-                    if let Some(ref rt) = go_runtime {
-                        checks.push((spec.clone(), Lang::Go, rt.clone() as Arc<dyn Runtime>));
+                for lang in langs {
+                    if spec.has_lang(*lang) && !shared_failed_set.contains(lang) {
+                        if let Some(rt) = runtimes.get(lang) {
+                            checks.push((spec.clone(), *lang, Arc::clone(rt)));
+                        }
                     }
                 }
-                if spec.has_lang(Lang::TypeScript) && !shared_failed_set.contains(&Lang::TypeScript)
-                {
-                    if let Some(ref rt) = js_runtime {
-                        checks.push((
-                            spec.clone(),
-                            Lang::TypeScript,
-                            rt.clone() as Arc<dyn Runtime>,
-                        ));
-                    }
-                }
-                if spec.has_lang(Lang::Rust) && !shared_failed_set.contains(&Lang::Rust) {
-                    if let Some(ref rt) = rust_runtime {
-                        checks.push((spec.clone(), Lang::Rust, rt.clone() as Arc<dyn Runtime>));
-                    }
-                }
-
                 checks
             })
             .collect();

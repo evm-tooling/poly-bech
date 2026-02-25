@@ -225,6 +225,12 @@ fn emit_token_for_node(node: Node, source: &str, builder: &mut TokenBuilder) {
             builder.push(line, start_col, length, STRING, 0);
         }
 
+        // Embedded code (Go, TS, Rust, Python) - treat as string.special for base highlighting
+        // Language-specific injection highlighting may be provided by the editor via Tree-sitter
+        "embedded_code" => {
+            builder.push(line, start_col, length, STRING, 0);
+        }
+
         _ => {
             // Don't emit tokens for structural nodes
         }

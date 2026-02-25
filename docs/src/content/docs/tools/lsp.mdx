@@ -16,7 +16,7 @@ poly-bench includes a full Language Server Protocol (LSP) implementation that pr
 | Completions | Intelligent completions for keywords, stdlib, and user symbols |
 | Hover | Documentation and type information on hover |
 | Semantic highlighting | Syntax highlighting tokens for accurate coloring |
-| Embedded languages | Delegates to gopls, tsserver, and rust-analyzer for code blocks |
+| Embedded languages | Delegates to gopls, tsserver, rust-analyzer, and pyright/pylsp for code blocks |
 
 </div>
 
@@ -424,6 +424,7 @@ The LSP delegates to language-specific servers for code inside `helpers` and `in
 | Go | gopls |
 | TypeScript | tsserver |
 | Rust | rust-analyzer |
+| Python | pyright or pylsp |
 
 This provides:
 - Completions from language-specific libraries

@@ -2,11 +2,11 @@
 
 /// Generate the example.bench file content
 /// Uses only standard library features - no external dependencies required
-pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool) -> String {
+pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool, has_python: bool) -> String {
     let mut content = String::new();
 
     // Add charting import for the after block
-    let lang_count = has_go as i32 + has_ts as i32 + has_rust as i32;
+    let lang_count = has_go as i32 + has_ts as i32 + has_rust as i32 + has_python as i32;
     if lang_count > 1 {
         content.push_str("use std::charting\n\n");
     }
@@ -87,6 +87,22 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool) -> String {
         content.push('\n');
     }
 
+    if has_python {
+        content.push_str("    setup python {\n");
+        content.push_str("        helpers {\n");
+        content.push_str("            def fib_python(data: bytes) -> bytes:\n");
+        content.push_str("                n = data[0]\n");
+        content.push_str("                if n <= 1:\n");
+        content.push_str("                    return bytes([n])\n");
+        content.push_str("                a, b = 0, 1\n");
+        content.push_str("                for _ in range(2, n + 1):\n");
+        content.push_str("                    a, b = b, a + b\n");
+        content.push_str("                return bytes([b & 0xFF])\n");
+        content.push_str("        }\n");
+        content.push_str("    }\n");
+        content.push('\n');
+    }
+
     // Fixtures with different input sizes (n values encoded as single bytes)
     content.push_str("    fixture n20 {\n");
     content.push_str("        hex: \"14\"\n");
@@ -124,6 +140,9 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool) -> String {
     if has_rust {
         content.push_str("        rust: fib_rust(&n20)\n");
     }
+    if has_python {
+        content.push_str("        python: fib_python(n20)\n");
+    }
     content.push_str("    }\n");
     content.push('\n');
 
@@ -136,6 +155,9 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool) -> String {
     }
     if has_rust {
         content.push_str("        rust: fib_rust(&n30)\n");
+    }
+    if has_python {
+        content.push_str("        python: fib_python(n30)\n");
     }
     content.push_str("    }\n");
     content.push('\n');
@@ -150,6 +172,9 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool) -> String {
     if has_rust {
         content.push_str("        rust: fib_rust(&n40)\n");
     }
+    if has_python {
+        content.push_str("        python: fib_python(n40)\n");
+    }
     content.push_str("    }\n");
     content.push('\n');
 
@@ -162,6 +187,9 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool) -> String {
     }
     if has_rust {
         content.push_str("        rust: fib_rust(&n50)\n");
+    }
+    if has_python {
+        content.push_str("        python: fib_python(n50)\n");
     }
     content.push_str("    }\n");
     content.push('\n');
@@ -176,6 +204,9 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool) -> String {
     if has_rust {
         content.push_str("        rust: fib_rust(&n60)\n");
     }
+    if has_python {
+        content.push_str("        python: fib_python(n60)\n");
+    }
     content.push_str("    }\n");
     content.push('\n');
 
@@ -188,6 +219,9 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool) -> String {
     }
     if has_rust {
         content.push_str("        rust: fib_rust(&n70)\n");
+    }
+    if has_python {
+        content.push_str("        python: fib_python(n70)\n");
     }
     content.push_str("    }\n");
 
@@ -410,6 +444,24 @@ pub fn tsconfig_json() -> String {
     .to_string()
 }
 
+/// Generate requirements.txt for Python runtime env
+pub fn requirements_txt(deps: &[(String, String)]) -> String {
+    if deps.is_empty() {
+        "# Python dependencies for poly-bench runtime\n# Add packages with: poly-bench add --py \"package==version\"\n".to_string()
+    } else {
+        let mut lines = vec!["# Python dependencies for poly-bench runtime".to_string()];
+        for (pkg, ver) in deps {
+            let line = if ver.eq_ignore_ascii_case("latest") {
+                pkg.clone()
+            } else {
+                format!("{}=={}", pkg, ver)
+            };
+            lines.push(line);
+        }
+        lines.join("\n") + "\n"
+    }
+}
+
 /// Generate .gitignore content
 pub fn gitignore() -> &'static str {
     r#"# poly-bench generated files
@@ -447,7 +499,7 @@ Thumbs.db
 }
 
 /// Generate README.md content
-pub fn readme(name: &str, has_go: bool, has_ts: bool, has_rust: bool) -> String {
+pub fn readme(name: &str, has_go: bool, has_ts: bool, has_rust: bool, has_python: bool) -> String {
     let mut content = String::new();
 
     content.push_str(&format!("# {}\n\n", name));
@@ -486,6 +538,9 @@ pub fn readme(name: &str, has_go: bool, has_ts: bool, has_rust: bool) -> String 
     if has_rust {
         content.push_str("        └── rust/         # Cargo.toml, target/, generated bench code\n");
     }
+    if has_python {
+        content.push_str("        └── python/       # requirements.txt, generated bench code\n");
+    }
     content.push_str("```\n\n");
 
     content.push_str("## Adding Dependencies\n\n");
@@ -508,6 +563,13 @@ pub fn readme(name: &str, has_go: bool, has_ts: bool, has_rust: bool) -> String 
         content.push_str("### Rust\n\n");
         content.push_str("```bash\n");
         content.push_str("poly-bench add --rs \"sha2@0.10\"\n");
+        content.push_str("```\n\n");
+    }
+
+    if has_python {
+        content.push_str("### Python\n\n");
+        content.push_str("```bash\n");
+        content.push_str("poly-bench add --py \"numpy==1.0\"\n");
         content.push_str("```\n\n");
     }
 
@@ -570,7 +632,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_both_languages() {
-        let content = example_bench(true, true, false);
+        let content = example_bench(true, true, false, false);
         assert!(content.contains("setup go"));
         assert!(content.contains("setup ts"));
         assert!(content.contains("fibGo(n20)"));
@@ -584,7 +646,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_go_only() {
-        let content = example_bench(true, false, false);
+        let content = example_bench(true, false, false, false);
         assert!(content.contains("setup go"));
         assert!(!content.contains("setup ts"));
         assert!(!content.contains("baseline: \"go\"")); // No baseline with single language
@@ -593,7 +655,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_all_languages() {
-        let content = example_bench(true, true, true);
+        let content = example_bench(true, true, true, true);
         assert!(content.contains("setup go"));
         assert!(content.contains("setup ts"));
         assert!(content.contains("setup rust"));
@@ -609,7 +671,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_rust_only() {
-        let content = example_bench(false, false, true);
+        let content = example_bench(false, false, true, false);
         assert!(!content.contains("setup go"));
         assert!(!content.contains("setup ts"));
         assert!(content.contains("setup rust"));
@@ -620,7 +682,7 @@ mod tests {
     #[test]
     fn test_example_bench_no_external_deps() {
         // Verify no external dependencies are required
-        let content = example_bench(true, true, true);
+        let content = example_bench(true, true, true, true);
         assert!(!content.contains("sha2"));
         assert!(!content.contains("crypto/sha256"));
         assert!(!content.contains("node:crypto"));

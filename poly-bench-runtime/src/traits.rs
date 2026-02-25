@@ -15,6 +15,14 @@ pub trait Runtime: Send + Sync {
     /// Get the language this runtime executes
     fn lang(&self) -> Lang;
 
+    /// Set the Anvil RPC URL when std::anvil is used (default: no-op)
+    fn set_anvil_rpc_url(&mut self, _url: String) {}
+
+    /// Pre-compile a benchmark before timed runs (e.g. for fairness). Default: no-op.
+    async fn precompile(&mut self, _spec: &BenchmarkSpec, _suite: &SuiteIR) -> Result<()> {
+        Ok(())
+    }
+
     /// Initialize the runtime with suite-level setup
     async fn initialize(&mut self, suite: &SuiteIR) -> Result<()>;
 

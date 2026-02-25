@@ -7,6 +7,82 @@ use poly_bench_ir::SuiteIR;
 use regex::Regex;
 use std::sync::LazyLock;
 
+/// Trait for language-specific error line remapping
+pub trait ErrorMapper: Send + Sync {
+    /// The language this mapper handles
+    fn lang(&self) -> Lang;
+
+    /// Build line mappings from suite and generated code
+    fn build_mappings(&self, suite: &SuiteIR, generated_code: &str) -> LineMappings;
+
+    /// Remap compiler error output to reference .bench file lines
+    fn remap_error(&self, error: &str, mappings: &LineMappings) -> String;
+}
+
+struct GoErrorMapper;
+impl ErrorMapper for GoErrorMapper {
+    fn lang(&self) -> Lang {
+        Lang::Go
+    }
+    fn build_mappings(&self, suite: &SuiteIR, generated_code: &str) -> LineMappings {
+        build_go_mappings(suite, generated_code)
+    }
+    fn remap_error(&self, error: &str, mappings: &LineMappings) -> String {
+        remap_go_error(error, mappings)
+    }
+}
+
+struct TsErrorMapper;
+impl ErrorMapper for TsErrorMapper {
+    fn lang(&self) -> Lang {
+        Lang::TypeScript
+    }
+    fn build_mappings(&self, suite: &SuiteIR, generated_code: &str) -> LineMappings {
+        build_typescript_mappings(suite, generated_code)
+    }
+    fn remap_error(&self, error: &str, mappings: &LineMappings) -> String {
+        remap_typescript_error(error, mappings)
+    }
+}
+
+struct RustErrorMapper;
+impl ErrorMapper for RustErrorMapper {
+    fn lang(&self) -> Lang {
+        Lang::Rust
+    }
+    fn build_mappings(&self, suite: &SuiteIR, generated_code: &str) -> LineMappings {
+        build_rust_mappings(suite, generated_code)
+    }
+    fn remap_error(&self, error: &str, mappings: &LineMappings) -> String {
+        remap_rust_error(error, mappings)
+    }
+}
+
+/// Python error mapper - passthrough (no line remapping for generated Python)
+struct PythonErrorMapper;
+impl ErrorMapper for PythonErrorMapper {
+    fn lang(&self) -> Lang {
+        Lang::Python
+    }
+    fn build_mappings(&self, _suite: &SuiteIR, _generated_code: &str) -> LineMappings {
+        LineMappings::default()
+    }
+    fn remap_error(&self, error: &str, _mappings: &LineMappings) -> String {
+        error.to_string()
+    }
+}
+
+/// Get the error mapper for a language
+pub fn get_error_mapper(lang: Lang) -> Option<&'static dyn ErrorMapper> {
+    match lang {
+        Lang::Go => Some(&GoErrorMapper),
+        Lang::TypeScript => Some(&TsErrorMapper),
+        Lang::Rust => Some(&RustErrorMapper),
+        Lang::Python => Some(&PythonErrorMapper),
+        _ => None,
+    }
+}
+
 /// A mapping entry from generated code line to .bench file line
 #[derive(Debug, Clone)]
 pub struct LineMapping {

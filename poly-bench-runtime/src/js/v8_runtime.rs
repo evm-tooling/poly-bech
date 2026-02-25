@@ -225,7 +225,8 @@ impl Runtime for JsRuntime {
             .map_err(|e| miette!("Failed to write TypeScript check file: {}", e))?;
 
         // Build line mappings for error remapping
-        let mappings = crate::build_typescript_mappings(suite, &script);
+        let mapper = crate::get_error_mapper(Lang::TypeScript).expect("TypeScript error mapper");
+        let mappings = mapper.build_mappings(suite, &script);
 
         // Try esbuild first (much faster for syntax validation)
         // esbuild doesn't do full type checking but catches most errors quickly
@@ -280,7 +281,7 @@ impl Runtime for JsRuntime {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let error_output = if stderr.is_empty() { stdout } else { stderr };
-                let remapped = crate::remap_typescript_error(&error_output, &mappings);
+                let remapped = mapper.remap_error(&error_output, &mappings);
                 return Err(miette!("TypeScript compilation failed:\n{}", remapped));
             }
         } else {
@@ -299,7 +300,7 @@ impl Runtime for JsRuntime {
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                let remapped = crate::remap_typescript_error(&stderr, &mappings);
+                let remapped = mapper.remap_error(&stderr, &mappings);
                 return Err(miette!("JavaScript syntax check failed:\n{}", remapped));
             }
         }

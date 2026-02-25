@@ -2,8 +2,8 @@
 
 use crate::{
     manifest::{self, Manifest},
-    runtime_env_go, runtime_env_rust, runtime_env_ts, templates, terminal, BENCHMARKS_DIR,
-    MANIFEST_FILENAME,
+    runtime_env_go, runtime_env_python, runtime_env_rust, runtime_env_ts, templates, terminal,
+    BENCHMARKS_DIR, MANIFEST_FILENAME,
 };
 use miette::Result;
 use std::{path::PathBuf, process::Command};
@@ -60,6 +60,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         .map(|l| match l.as_str() {
             "typescript" => "ts".to_string(),
             "rs" => "rust".to_string(),
+            "py" => "python".to_string(),
             other => other.to_string(),
         })
         .collect();
@@ -67,6 +68,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     let has_go = languages.iter().any(|l| l == "go");
     let has_ts = languages.iter().any(|l| l == "ts");
     let has_rust = languages.iter().any(|l| l == "rust");
+    let has_python = languages.iter().any(|l| l == "python");
 
     // Create manifest
     let manifest = Manifest::new(&project_name, &languages);
@@ -87,7 +89,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     // Create example benchmark
     if !options.no_example {
         let example_path = benchmarks_dir.join("example.bench");
-        let example_content = templates::example_bench(has_go, has_ts, has_rust);
+        let example_content = templates::example_bench(has_go, has_ts, has_rust, has_python);
         std::fs::write(&example_path, example_content)
             .map_err(|e| miette::miette!("Failed to write example.bench: {}", e))?;
         if !options.quiet {
@@ -183,6 +185,20 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         }
     }
 
+    if has_python {
+        let python_env = runtime_env_python(&project_dir);
+        std::fs::create_dir_all(&python_env)
+            .map_err(|e| miette::miette!("Failed to create {}: {}", python_env.display(), e))?;
+        // Include pyright[nodejs] for LSP (provides pyright-langserver)
+        let requirements_content =
+            templates::requirements_txt(&[("pyright[nodejs]".to_string(), "latest".to_string())]);
+        std::fs::write(python_env.join("requirements.txt"), requirements_content)
+            .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
+        if !options.quiet {
+            terminal::success("Created .polybench/runtime-env/python/ (requirements.txt)");
+        }
+    }
+
     // Create .gitignore
     let gitignore_path = project_dir.join(".gitignore");
     // Append to existing .gitignore or create new one
@@ -205,7 +221,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     // Create README.md
     let readme_path = project_dir.join("README.md");
     if !readme_path.exists() {
-        let readme_content = templates::readme(&project_name, has_go, has_ts, has_rust);
+        let readme_content = templates::readme(&project_name, has_go, has_ts, has_rust, has_python);
         std::fs::write(&readme_path, readme_content)
             .map_err(|e| miette::miette!("Failed to write README.md: {}", e))?;
         if !options.quiet {

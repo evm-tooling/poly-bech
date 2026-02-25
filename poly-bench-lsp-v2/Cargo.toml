@@ -8,6 +8,9 @@ license = "MIT"
 [dependencies]
 poly-bench-syntax = { path = "../poly-bench-syntax" }
 poly-bench-stdlib = { path = "../poly-bench-stdlib" }
+poly-bench-project = { path = "../poly-bench-project" }
+poly-bench-runtime = { path = "../poly-bench-runtime" }
+poly-bench-dsl = { path = "../poly-bench-dsl" }
 tree-sitter-polybench = { path = "../poly-bench-grammar" }
 tree-sitter = "0.22"
 

@@ -4,7 +4,7 @@
 //! with any language server over stdin/stdout (JSON-RPC).
 
 use std::{
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, ErrorKind, Write},
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio},
     sync::{
         atomic::{AtomicBool, AtomicI64, Ordering},
@@ -31,8 +31,31 @@ pub trait LspConfig: Send + Sync + 'static {
     /// Find the language server executable
     fn find_executable() -> Option<String>;
 
+    /// Find the executable in a workspace-specific location (e.g. venv). Override to check
+    /// workspace first; default returns None.
+    fn find_executable_in_workspace(_workspace_root: &str) -> Option<String> {
+        None
+    }
+
     /// Get the arguments to pass to the server
     fn server_args() -> Vec<String>;
+
+    /// Override args based on executable path (e.g. pyright-langserver uses --stdio, pyright uses
+    /// --langserver).
+    fn server_args_for_path(_path: &str) -> Option<Vec<String>> {
+        None
+    }
+
+    /// Working directory for the subprocess. Default None = inherit. Override to set cwd
+    /// (e.g. pyright needs to run from the python module root to find venv/config).
+    fn current_dir(_workspace_root: &str) -> Option<std::path::PathBuf> {
+        None
+    }
+
+    /// Request timeout in ms. Override for slow servers (e.g. pyright can take 10s+ to init).
+    fn request_timeout_ms() -> u64 {
+        REQUEST_TIMEOUT_MS
+    }
 
     /// Additional capabilities for initialization
     fn additional_capabilities() -> Value {
@@ -56,6 +79,8 @@ pub struct LspClient<C: LspConfig> {
     available: AtomicBool,
     /// Workspace root
     workspace_root: String,
+    /// Resolved server path (workspace venv preferred over PATH)
+    server_path: Option<String>,
     /// Virtual files that have been opened
     open_files: DashMap<String, i32>,
     /// Stored diagnostics from publishDiagnostics notifications, keyed by URI
@@ -67,8 +92,9 @@ pub struct LspClient<C: LspConfig> {
 impl<C: LspConfig> LspClient<C> {
     /// Create a new LSP client
     pub fn new(workspace_root: &str) -> Result<Self, String> {
-        let server_path =
-            C::find_executable().ok_or_else(|| format!("{} not found in PATH", C::SERVER_NAME))?;
+        let server_path = C::find_executable_in_workspace(workspace_root)
+            .or_else(C::find_executable)
+            .ok_or_else(|| format!("{} not found in PATH", C::SERVER_NAME))?;
 
         tracing::debug!("[{}] Found server at: {}", C::SERVER_NAME, server_path);
 
@@ -80,6 +106,7 @@ impl<C: LspConfig> LspClient<C> {
             initialized: AtomicBool::new(false),
             available: AtomicBool::new(true),
             workspace_root: workspace_root.to_string(),
+            server_path: Some(server_path),
             open_files: DashMap::new(),
             stored_diagnostics: Arc::new(DashMap::new()),
             _config: std::marker::PhantomData,
@@ -94,19 +121,22 @@ impl<C: LspConfig> LspClient<C> {
             return Ok(());
         }
 
-        let server_path =
-            C::find_executable().ok_or_else(|| format!("{} not found", C::SERVER_NAME))?;
+        let server_path = self
+            .server_path
+            .clone()
+            .or_else(C::find_executable)
+            .ok_or_else(|| format!("{} not found", C::SERVER_NAME))?;
 
         tracing::debug!("[{}] Starting subprocess...", C::SERVER_NAME);
 
-        let args = C::server_args();
-        let mut child = Command::new(&server_path)
-            .args(&args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Failed to spawn {}: {}", C::SERVER_NAME, e))?;
+        let args = C::server_args_for_path(&server_path).unwrap_or_else(|| C::server_args());
+        let mut cmd = Command::new(&server_path);
+        cmd.args(&args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        if let Some(ref cwd) = C::current_dir(&self.workspace_root) {
+            cmd.current_dir(cwd);
+        }
+        let mut child =
+            cmd.spawn().map_err(|e| format!("Failed to spawn {}: {}", C::SERVER_NAME, e))?;
 
         let stdin =
             child.stdin.take().ok_or_else(|| format!("Failed to get {} stdin", C::SERVER_NAME))?;
@@ -127,6 +157,19 @@ impl<C: LspConfig> LspClient<C> {
 
         tracing::debug!("[{}] Subprocess started", C::SERVER_NAME);
         Ok(())
+    }
+
+    /// Clear the process and stdin (e.g. after broken pipe). Next ensure_started will restart.
+    fn clear_process(&self) {
+        *self.process.lock().expect("process lock") = None;
+        *self.stdin.lock().expect("stdin lock") = None;
+        self.initialized.store(false, Ordering::SeqCst);
+        tracing::debug!("[{}] Cleared process (will restart on next use)", C::SERVER_NAME);
+    }
+
+    /// Returns true if the write error indicates the process died (broken pipe, connection reset).
+    fn is_process_dead_error(&self, e: &std::io::Error) -> bool {
+        matches!(e.kind(), ErrorKind::BrokenPipe | ErrorKind::ConnectionReset)
     }
 
     /// Start a thread to read responses from the server
@@ -263,7 +306,7 @@ impl<C: LspConfig> LspClient<C> {
 
     /// Send an LSP request and wait for response
     pub fn send_request(&self, method: &str, params: Value) -> Result<Value, String> {
-        self.send_request_with_timeout(method, params, REQUEST_TIMEOUT_MS)
+        self.send_request_with_timeout(method, params, C::request_timeout_ms())
     }
 
     /// Send an LSP request and wait for response with custom timeout
@@ -296,12 +339,22 @@ impl<C: LspConfig> LspClient<C> {
         {
             let mut stdin_guard = self.stdin.lock().map_err(|e| e.to_string())?;
             if let Some(ref mut stdin) = *stdin_guard {
-                stdin
-                    .write_all(message.as_bytes())
-                    .map_err(|e| format!("Failed to write to {}: {}", C::SERVER_NAME, e))?;
-                stdin
-                    .flush()
-                    .map_err(|e| format!("Failed to flush {} stdin: {}", C::SERVER_NAME, e))?;
+                if let Err(e) = stdin.write_all(message.as_bytes()) {
+                    if self.is_process_dead_error(&e) {
+                        drop(stdin_guard);
+                        self.clear_process();
+                    }
+                    self.pending.remove(&id);
+                    return Err(format!("Failed to write to {}: {}", C::SERVER_NAME, e));
+                }
+                if let Err(e) = stdin.flush() {
+                    if self.is_process_dead_error(&e) {
+                        drop(stdin_guard);
+                        self.clear_process();
+                    }
+                    self.pending.remove(&id);
+                    return Err(format!("Failed to flush {} stdin: {}", C::SERVER_NAME, e));
+                }
             } else {
                 self.pending.remove(&id);
                 return Err(format!("{} stdin not available", C::SERVER_NAME));
@@ -339,12 +392,20 @@ impl<C: LspConfig> LspClient<C> {
 
         let mut stdin_guard = self.stdin.lock().map_err(|e| e.to_string())?;
         if let Some(ref mut stdin) = *stdin_guard {
-            stdin
-                .write_all(message.as_bytes())
-                .map_err(|e| format!("Failed to write to {}: {}", C::SERVER_NAME, e))?;
-            stdin
-                .flush()
-                .map_err(|e| format!("Failed to flush {} stdin: {}", C::SERVER_NAME, e))?;
+            if let Err(e) = stdin.write_all(message.as_bytes()) {
+                if self.is_process_dead_error(&e) {
+                    drop(stdin_guard);
+                    self.clear_process();
+                }
+                return Err(format!("Failed to write to {}: {}", C::SERVER_NAME, e));
+            }
+            if let Err(e) = stdin.flush() {
+                if self.is_process_dead_error(&e) {
+                    drop(stdin_guard);
+                    self.clear_process();
+                }
+                return Err(format!("Failed to flush {} stdin: {}", C::SERVER_NAME, e));
+            }
         }
 
         Ok(())

@@ -6,6 +6,7 @@
 use poly_bench_dsl::{BenchmarkKind, Lang};
 use poly_bench_executor::comparison::BenchmarkResult;
 use poly_bench_ir::ChartDirectiveIR;
+use poly_bench_runtime::{lang_color, lang_full_name, lang_gradient_id, lang_label};
 
 use super::{escape_xml, filter_benchmarks, format_duration, sort_benchmarks};
 
@@ -207,30 +208,15 @@ pub fn generate(
     let theme = ThemeColors::from_name(directive.theme.as_deref());
 
     // Determine baseline language (default to Go)
-    let baseline_lang = directive
-        .baseline_benchmark
-        .as_ref()
-        .and_then(|s| match s.to_lowercase().as_str() {
-            "go" => Some(Lang::Go),
-            "ts" | "typescript" => Some(Lang::TypeScript),
-            "rust" => Some(Lang::Rust),
-            _ => None,
-        })
-        .unwrap_or(Lang::Go);
+    let baseline_lang =
+        directive.baseline_benchmark.as_ref().and_then(|s| Lang::from_str(s)).unwrap_or(Lang::Go);
 
-    // Determine which languages have data
-    let has_go = filtered.iter().any(|b| b.measurements.contains_key(&Lang::Go));
-    let has_ts = filtered.iter().any(|b| b.measurements.contains_key(&Lang::TypeScript));
-    let has_rust = filtered.iter().any(|b| b.measurements.contains_key(&Lang::Rust));
-
-    let all_langs: Vec<Lang> = [
-        if has_go { Some(Lang::Go) } else { None },
-        if has_ts { Some(Lang::TypeScript) } else { None },
-        if has_rust { Some(Lang::Rust) } else { None },
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
+    // Determine which languages have data (use supported_languages for consistency)
+    let all_langs: Vec<Lang> = poly_bench_runtime::supported_languages()
+        .iter()
+        .copied()
+        .filter(|&lang| filtered.iter().any(|b| b.measurements.contains_key(&lang)))
+        .collect();
 
     if all_langs.is_empty() {
         return empty_chart("No comparison data available", &theme);
@@ -513,7 +499,7 @@ pub fn generate(
                 let metric_value = bench_metric_value(*bench_mode, ls);
                 let bar_width = ((metric_value / bench_max_metric) * max_inner_width as f64) as i32;
                 let gradient_id = lang_gradient_id(ls.lang);
-                let lang_color = get_lang_color(ls.lang);
+                let color = lang_color(ls.lang);
 
                 svg.push_str(&format!(
                     "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.2\"/>\n",
@@ -533,7 +519,7 @@ pub fn generate(
                     theme.bar_outline
                 ));
 
-                let lang_name = short_lang_name(ls.lang);
+                let lang_name = lang_label(ls.lang);
                 let metric_label = format_primary_metric(*bench_mode, ls);
                 let speedup_label = format!("{} · {}", lang_name, metric_label);
                 let bar_end = inner_x + bar_width.max(6);
@@ -557,7 +543,7 @@ pub fn generate(
                     "  <circle cx=\"{}\" cy=\"{}\" r=\"3\" fill=\"{}\"/>\n",
                     row_x - 8,
                     y + bar_height / 2,
-                    lang_color
+                    color
                 ));
 
                 y += bar_height + BAR_GAP;
@@ -585,7 +571,7 @@ pub fn generate(
                 let metric_value = bench_metric_value(*bench_mode, ls);
                 let bar_width = ((metric_value / bench_max_metric) * max_inner_width as f64) as i32;
                 let gradient_id = lang_gradient_id(ls.lang);
-                let lang_color = get_lang_color(ls.lang);
+                let color = lang_color(ls.lang);
 
                 svg.push_str(&format!(
                     "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.2\"/>\n",
@@ -605,7 +591,7 @@ pub fn generate(
                     theme.bar_outline
                 ));
 
-                let lang_name = short_lang_name(ls.lang);
+                let lang_name = lang_label(ls.lang);
                 let metric_label = format_primary_metric(*bench_mode, ls);
                 let speedup_label = format!("{} · {}", lang_name, metric_label);
                 let bar_end = inner_x + bar_width.max(6);
@@ -629,7 +615,7 @@ pub fn generate(
                     "  <circle cx=\"{}\" cy=\"{}\" r=\"3\" fill=\"{}\"/>\n",
                     plot_x - 12,
                     y + bar_height / 2,
-                    lang_color
+                    color
                 ));
 
                 y += bar_height + BAR_GAP;
@@ -672,15 +658,7 @@ pub fn generate(
     ));
 
     // Legend and detail stats below axis label.
-    svg.push_str(&svg_legend(
-        chart_width,
-        legend_y,
-        has_go,
-        has_ts,
-        has_rust,
-        baseline_lang,
-        &theme,
-    ));
+    svg.push_str(&svg_legend(chart_width, legend_y, &all_langs, baseline_lang, &theme));
     svg.push_str(&svg_detail_legend(
         chart_width,
         details_y,
@@ -779,6 +757,10 @@ fn svg_header(width: i32, height: i32, theme: &ThemeColors) -> String {
     <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
     <stop offset=\"100%\" stop-color=\"#B7410E\" stop-opacity=\"0.8\"/>\n\
   </linearGradient>\n\
+  <linearGradient id=\"pythonGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
+    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
+    <stop offset=\"100%\" stop-color=\"#FFD43B\" stop-opacity=\"0.8\"/>\n\
+  </linearGradient>\n\
   <filter id=\"barShadow\" x=\"-5%\" y=\"-15%\" width=\"110%\" height=\"140%\">\n\
     <feDropShadow dx=\"0\" dy=\"2\" stdDeviation=\"2\" flood-opacity=\"0.25\"/>\n\
   </filter>\n\
@@ -790,6 +772,7 @@ fn svg_header(width: i32, height: i32, theme: &ThemeColors) -> String {
         width, height, theme.bg_color,
         ACCENT_COLOR, ACCENT_GLOW,
         GO_COLOR, TS_COLOR, RUST_COLOR,
+        lang_color(Lang::Python),
         ACCENT_COLOR
     )
 }
@@ -835,22 +818,14 @@ fn svg_title(
 fn svg_legend(
     width: i32,
     y: i32,
-    has_go: bool,
-    has_ts: bool,
-    has_rust: bool,
+    all_langs: &[Lang],
     baseline_lang: Lang,
     theme: &ThemeColors,
 ) -> String {
     let mut items: Vec<(&str, &str, bool)> = Vec::new();
 
-    if has_go {
-        items.push((GO_COLOR, "Go", baseline_lang == Lang::Go));
-    }
-    if has_ts {
-        items.push((TS_COLOR, "TypeScript", baseline_lang == Lang::TypeScript));
-    }
-    if has_rust {
-        items.push((RUST_COLOR, "Rust", baseline_lang == Lang::Rust));
+    for &lang in all_langs {
+        items.push((lang_color(lang), lang_full_name(lang), baseline_lang == lang));
     }
 
     let item_width = 130;
@@ -907,7 +882,7 @@ fn svg_detail_legend(
 
     let mut text_y = y + 14;
     for summary in summaries {
-        let lang_name = full_lang_name(summary.lang);
+        let lang_name = lang_full_name(summary.lang);
         let total = format_duration(summary.total_nanos);
         let iters = format_iterations_short(summary.total_iterations);
         let speedup = format_speedup_phrase(
@@ -1006,7 +981,7 @@ fn svg_combined_summary(
             row_y + 10,
             FONT_FAMILY,
             theme.text_muted,
-            full_lang_name(summary.lang),
+            lang_full_name(summary.lang),
             label
         ));
         svg.push_str(&format!(
@@ -1019,7 +994,7 @@ fn svg_combined_summary(
             row_y,
             fill_width.max(4),
             track_height,
-            get_lang_color(summary.lang)
+            lang_color(summary.lang)
         ));
 
         if summary.lang != baseline_lang {
@@ -1037,44 +1012,6 @@ fn svg_combined_summary(
     svg
 }
 
-/// Get gradient ID for a language
-fn lang_gradient_id(lang: Lang) -> &'static str {
-    match lang {
-        Lang::Go => "goGrad",
-        Lang::TypeScript => "tsGrad",
-        Lang::Rust => "rustGrad",
-        _ => "goGrad",
-    }
-}
-
-/// Get solid color for a language
-fn get_lang_color(lang: Lang) -> &'static str {
-    match lang {
-        Lang::Go => GO_COLOR,
-        Lang::TypeScript => TS_COLOR,
-        Lang::Rust => RUST_COLOR,
-        _ => GO_COLOR,
-    }
-}
-
-fn short_lang_name(lang: Lang) -> &'static str {
-    match lang {
-        Lang::Go => "Go",
-        Lang::TypeScript => "TS",
-        Lang::Rust => "Rust",
-        _ => "?",
-    }
-}
-
-fn full_lang_name(lang: Lang) -> &'static str {
-    match lang {
-        Lang::Go => "Go",
-        Lang::TypeScript => "TypeScript",
-        Lang::Rust => "Rust",
-        _ => "Unknown",
-    }
-}
-
 fn format_speedup_phrase(
     speedup: f64,
     is_baseline: bool,
@@ -1085,7 +1022,7 @@ fn format_speedup_phrase(
         return "baseline".to_string();
     }
 
-    let baseline_name = full_lang_name(baseline_lang);
+    let baseline_name = lang_full_name(baseline_lang);
     if is_memory {
         if speedup >= 1.0 {
             format!("{:.2}x less memory vs {}", speedup, baseline_name)

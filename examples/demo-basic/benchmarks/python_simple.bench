@@ -1,0 +1,17 @@
+declare suite pythonTest performance timeBased sameDataset: false {
+    setup python {
+        import {
+            import matplotlib.pyplot as plt
+        }
+
+        helpers {
+            def add_one(x):
+                return x + 1;
+        }
+    }
+
+    bench add {
+        python: add_one(42)
+    }
+
+}

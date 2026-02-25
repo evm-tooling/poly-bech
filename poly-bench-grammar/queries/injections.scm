@@ -170,7 +170,8 @@
     (import_section
       (code_block
         (embedded_code) @injection.content)))
-  (#eq? @_lang "python"))
+  (#any-of? @_lang "python" "py")
+  (#set! injection.language "python"))
 
 (setup_block
   language: (language_tag) @_lang
@@ -178,7 +179,8 @@
     (declare_section
       (code_block
         (embedded_code) @injection.content)))
-  (#eq? @_lang "python"))
+  (#any-of? @_lang "python" "py")
+  (#set! injection.language "python"))
 
 (setup_block
   language: (language_tag) @_lang
@@ -186,7 +188,8 @@
     (init_section
       (code_block
         (embedded_code) @injection.content)))
-  (#eq? @_lang "python"))
+  (#any-of? @_lang "python" "py")
+  (#set! injection.language "python"))
 
 (setup_block
   language: (language_tag) @_lang
@@ -194,21 +197,22 @@
     (helpers_section
       (code_block
         (embedded_code) @injection.content)))
-  (#eq? @_lang "python"))
+  (#any-of? @_lang "python" "py")
+  (#set! injection.language "python"))
 
 ; Language implementation with Python
 (language_implementation
   language: (language_tag) @_lang
   (code_block
     (embedded_code) @injection.content)
-  (#eq? @_lang "python"))
+  (#any-of? @_lang "python" "py"))
 
 ; Hook with Python
 (hook_flat
   language: (language_tag) @_lang
   (code_block
     (embedded_code) @injection.content)
-  (#eq? @_lang "python"))
+  (#any-of? @_lang "python" "py"))
 
 ; ============================================================
 ; Inline code injections (single-line expressions)
@@ -239,5 +243,5 @@
 (language_implementation
   language: (language_tag) @_lang
   (inline_code) @injection.content
-  (#eq? @_lang "python")
+  (#any-of? @_lang "python" "py")
   (#set! injection.language "python"))

@@ -280,20 +280,16 @@ pub const TEXT_MUTED: &str = "#9CA3AF";
 pub const GO_GRADIENT_END: &str = "#0891B2";
 pub const TS_GRADIENT_END: &str = "#1D4ED8";
 pub const RUST_GRADIENT_END: &str = "#B7410E"; // Darker rust color
+pub const PYTHON_GRADIENT_END: &str = "#FFD43B";
 
 /// Escape XML special characters
 pub fn escape_xml(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
-/// Get color for a language
+/// Get color for a language (delegates to poly-bench-runtime for consistency)
 pub fn lang_color(lang: Lang) -> &'static str {
-    match lang {
-        Lang::Go => GO_COLOR,
-        Lang::TypeScript => TS_COLOR,
-        Lang::Rust => RUST_COLOR,
-        _ => TIE_COLOR,
-    }
+    poly_bench_runtime::lang_color(lang)
 }
 
 /// Get t-distribution multiplier for confidence interval calculation
@@ -378,6 +374,10 @@ pub fn svg_header(width: i32, height: i32) -> String {
     <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
     <stop offset=\"100%\" stop-color=\"{}\" stop-opacity=\"0.85\"/>\n\
   </linearGradient>\n\
+  <linearGradient id=\"pythonGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
+    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
+    <stop offset=\"100%\" stop-color=\"{}\" stop-opacity=\"0.85\"/>\n\
+  </linearGradient>\n\
 </defs>\n\
 <rect width=\"{}\" height=\"{}\" fill=\"{}\" rx=\"12\"/>\n\
 <rect x=\".5\" y=\".5\" width=\"{}\" height=\"{}\" fill=\"none\" stroke=\"{}\" rx=\"12\"/>\n",
@@ -385,6 +385,8 @@ pub fn svg_header(width: i32, height: i32) -> String {
         GO_COLOR, GO_GRADIENT_END,
         TS_COLOR, TS_GRADIENT_END,
         RUST_COLOR, RUST_GRADIENT_END,
+        poly_bench_runtime::lang_color(Lang::Python),
+        PYTHON_GRADIENT_END,
         width, height, BG_COLOR,
         width - 1, height - 1, BORDER_COLOR
     )

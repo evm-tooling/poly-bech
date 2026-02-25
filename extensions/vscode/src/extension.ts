@@ -233,6 +233,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
         workspace.createFileSystemWatcher('**/node_modules/.package-lock.json'),
         workspace.createFileSystemWatcher('**/Cargo.lock'),
         workspace.createFileSystemWatcher('**/go.sum'),
+        workspace.createFileSystemWatcher('**/requirements.txt'),
       ],
     },
     outputChannel,

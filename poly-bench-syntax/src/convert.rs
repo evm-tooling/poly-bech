@@ -333,11 +333,13 @@ fn extract_code_block_from_section(node: TsNode, source: &str) -> Option<CodeBlo
 fn extract_code_block(node: TsNode, source: &str) -> Option<CodeBlock> {
     let span = Span::from_node(&node);
 
-    // Find embedded_code child
+    // Find embedded_code child - use its span so it matches the code content (LSP position mapping)
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "embedded_code" {
-            return Some(CodeBlock { code: child.text(source).to_string(), span });
+            let code = child.text(source).to_string();
+            let content_span = Span::from_node(&child);
+            return Some(CodeBlock { code, span: content_span });
         }
     }
 

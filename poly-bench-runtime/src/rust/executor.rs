@@ -121,7 +121,8 @@ impl Runtime for RustRuntime {
         let source = self.generate_check_source(spec, suite)?;
 
         // Build line mappings for error remapping
-        let mappings = crate::build_rust_mappings(suite, &source);
+        let mapper = crate::get_error_mapper(Lang::Rust).expect("Rust error mapper");
+        let mappings = mapper.build_mappings(suite, &source);
 
         // Set up working directory and Cargo.toml based on project_root type
         let (work_dir, cleanup) = if let Some(ref project_root) = self.project_root {
@@ -221,7 +222,7 @@ impl Runtime for RustRuntime {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             // Remap error line numbers to .bench file locations
-            let remapped = crate::remap_rust_error(&stderr, &mappings);
+            let remapped = mapper.remap_error(&stderr, &mappings);
             return Err(miette!("Rust compilation failed:\n{}", remapped));
         }
 

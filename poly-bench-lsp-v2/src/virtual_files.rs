@@ -11,10 +11,134 @@ use std::{
 };
 
 use dashmap::DashMap;
-use poly_bench_syntax::Span;
+use poly_bench_syntax::{Lang, Span};
 use tower_lsp::lsp_types::Position;
 
 use crate::embedded::{BlockType, EmbeddedBlock};
+
+/// Normalize Python code indentation by stripping common leading whitespace
+fn normalize_python_indent(code: &str) -> String {
+    let lines: Vec<&str> = code.lines().collect();
+    if lines.is_empty() {
+        return String::new();
+    }
+    let min_indent = lines
+        .iter()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.len() - l.trim_start().len())
+        .min()
+        .unwrap_or(0);
+    lines
+        .iter()
+        .map(|l| {
+            if l.trim().is_empty() {
+                l.to_string()
+            } else {
+                l.get(min_indent.min(l.len())..).unwrap_or(l).to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Parameters for building a virtual file from embedded blocks
+#[derive(Debug, Clone)]
+pub struct VirtualFileParams<'a> {
+    pub bench_uri: &'a str,
+    pub bench_path: &'a str,
+    pub module_root: &'a str,
+    pub blocks: &'a [&'a EmbeddedBlock],
+    pub fixture_names: &'a [String],
+    pub version: i32,
+}
+
+/// Trait for building virtual files from embedded blocks
+pub trait VirtualFileBuilder: Send + Sync {
+    /// The language this builder handles
+    fn lang(&self) -> Lang;
+
+    /// Build a virtual file from the given parameters
+    fn build(&self, params: VirtualFileParams<'_>) -> Box<dyn VirtualFile>;
+}
+
+struct GoVirtualFileBuilder;
+impl VirtualFileBuilder for GoVirtualFileBuilder {
+    fn lang(&self) -> Lang {
+        Lang::Go
+    }
+    fn build(&self, params: VirtualFileParams<'_>) -> Box<dyn VirtualFile> {
+        Box::new(VirtualGoFile::from_blocks_with_fixtures(
+            params.bench_uri,
+            params.bench_path,
+            params.module_root,
+            params.blocks,
+            params.version,
+            params.fixture_names,
+        ))
+    }
+}
+
+struct TsVirtualFileBuilder;
+impl VirtualFileBuilder for TsVirtualFileBuilder {
+    fn lang(&self) -> Lang {
+        Lang::TypeScript
+    }
+    fn build(&self, params: VirtualFileParams<'_>) -> Box<dyn VirtualFile> {
+        Box::new(VirtualTsFile::from_blocks_with_fixtures(
+            params.bench_uri,
+            params.bench_path,
+            params.module_root,
+            params.blocks,
+            params.version,
+            params.fixture_names,
+        ))
+    }
+}
+
+struct RustVirtualFileBuilder;
+impl VirtualFileBuilder for RustVirtualFileBuilder {
+    fn lang(&self) -> Lang {
+        Lang::Rust
+    }
+    fn build(&self, params: VirtualFileParams<'_>) -> Box<dyn VirtualFile> {
+        Box::new(VirtualRustFile::from_blocks_with_fixtures(
+            params.bench_uri,
+            params.bench_path,
+            params.module_root,
+            params.blocks,
+            params.version,
+            params.fixture_names,
+        ))
+    }
+}
+
+struct PythonVirtualFileBuilder;
+impl VirtualFileBuilder for PythonVirtualFileBuilder {
+    fn lang(&self) -> Lang {
+        Lang::Python
+    }
+    fn build(&self, params: VirtualFileParams<'_>) -> Box<dyn VirtualFile> {
+        Box::new(VirtualPythonFile::from_blocks_with_fixtures(
+            params.bench_uri,
+            params.bench_path,
+            params.module_root,
+            params.blocks,
+            params.version,
+            params.fixture_names,
+        ))
+    }
+}
+
+/// Get the virtual file builder for a language
+pub fn get_virtual_file_builder(lang: Lang) -> Option<&'static dyn VirtualFileBuilder> {
+    match lang {
+        Lang::Go => Some(&GoVirtualFileBuilder),
+        Lang::TypeScript => Some(&TsVirtualFileBuilder),
+        Lang::Rust => Some(&RustVirtualFileBuilder),
+        Lang::Python => Some(&PythonVirtualFileBuilder),
+        _ => None,
+    }
+}
 
 /// A section in the virtual file with its mapping back to .bench source
 #[derive(Debug, Clone)]
@@ -27,8 +151,14 @@ pub struct SectionMapping {
     pub bench_span: Span,
     /// Block type for this section
     pub block_type: BlockType,
-    /// The code content
+    /// The code content (original for position mapping; must match bench_span)
     pub code: String,
+    /// If Some(n), each virtual line has n leading indent chars; subtract from character when
+    /// mapping
+    pub bench_indent: Option<u32>,
+    /// If Some(n), bench content had n leading chars stripped per line; subtract from col when
+    /// mapping bench->virtual
+    pub indent_stripped: Option<u32>,
 }
 
 /// Common interface for virtual files
@@ -73,8 +203,10 @@ pub trait VirtualFile {
                 }
 
                 let virtual_line = mapping.virtual_start_line + line_in_block;
+                let virtual_char =
+                    mapping.indent_stripped.map(|n| col.saturating_sub(n)).unwrap_or(col);
 
-                return Some(Position { line: virtual_line, character: col });
+                return Some(Position { line: virtual_line, character: virtual_char });
             }
         }
 
@@ -88,12 +220,17 @@ pub trait VirtualFile {
 
             if line >= mapping.virtual_start_line && line < section_end_line {
                 let line_in_block = line - mapping.virtual_start_line;
+                let mut char =
+                    mapping.bench_indent.map(|n| character.saturating_sub(n)).unwrap_or(character);
+                if let Some(n) = mapping.indent_stripped {
+                    char += n;
+                }
                 let mut offset_in_code = 0usize;
                 let mut current_line = 0u32;
 
                 for (i, byte) in mapping.code.bytes().enumerate() {
                     if current_line == line_in_block {
-                        offset_in_code = i + character as usize;
+                        offset_in_code = i + char as usize;
                         break;
                     }
                     if byte == b'\n' {
@@ -166,7 +303,8 @@ impl VirtualGoFile {
         version: i32,
         fixture_names: &[String],
     ) -> Self {
-        let mut builder = VirtualFileBuilder::new_go(bench_uri, bench_path, go_mod_root, version);
+        let mut builder =
+            VirtualFileBuilderImpl::new_go(bench_uri, bench_path, go_mod_root, version);
         builder.build_go(blocks, fixture_names);
         Self(builder.finish())
     }
@@ -230,7 +368,7 @@ impl VirtualTsFile {
         fixture_names: &[String],
     ) -> Self {
         let mut builder =
-            VirtualFileBuilder::new_ts(bench_uri, bench_path, ts_module_root, version);
+            VirtualFileBuilderImpl::new_ts(bench_uri, bench_path, ts_module_root, version);
         builder.build_ts(blocks, fixture_names);
         Self(builder.finish())
     }
@@ -300,7 +438,7 @@ impl VirtualRustFile {
         fixture_names: &[String],
     ) -> Self {
         let mut builder =
-            VirtualFileBuilder::new_rust(bench_uri, bench_path, rust_project_root, version);
+            VirtualFileBuilderImpl::new_rust(bench_uri, bench_path, rust_project_root, version);
         builder.build_rust(blocks, fixture_names);
         Self(builder.finish())
     }
@@ -337,8 +475,71 @@ impl VirtualFile for VirtualRustFile {
     }
 }
 
-/// Builder for constructing virtual files
-struct VirtualFileBuilder {
+/// A virtual Python file generated from embedded blocks
+#[derive(Debug, Clone)]
+pub struct VirtualPythonFile(VirtualFileData);
+
+impl VirtualPythonFile {
+    /// Create a new virtual Python file from embedded blocks
+    pub fn from_blocks(
+        bench_uri: &str,
+        bench_path: &str,
+        python_root: &str,
+        blocks: &[&EmbeddedBlock],
+        version: i32,
+    ) -> Self {
+        Self::from_blocks_with_fixtures(bench_uri, bench_path, python_root, blocks, version, &[])
+    }
+
+    /// Create a new virtual Python file from embedded blocks with fixture names for stub injection
+    pub fn from_blocks_with_fixtures(
+        bench_uri: &str,
+        bench_path: &str,
+        python_root: &str,
+        blocks: &[&EmbeddedBlock],
+        version: i32,
+        fixture_names: &[String],
+    ) -> Self {
+        let mut builder =
+            VirtualFileBuilderImpl::new_python(bench_uri, bench_path, python_root, version);
+        builder.build_python(blocks, fixture_names);
+        Self(builder.finish())
+    }
+
+    /// Translate bench offset to Python position (convenience method)
+    pub fn bench_to_python(&self, bench_offset: usize) -> Option<Position> {
+        self.bench_to_virtual(bench_offset)
+    }
+
+    /// Translate Python position to bench offset (convenience method)
+    pub fn python_to_bench(&self, line: u32, character: u32) -> Option<usize> {
+        self.virtual_to_bench(line, character)
+    }
+}
+
+impl VirtualFile for VirtualPythonFile {
+    fn uri(&self) -> &str {
+        &self.0.uri
+    }
+    fn path(&self) -> &str {
+        &self.0.path
+    }
+    fn content(&self) -> &str {
+        &self.0.content
+    }
+    fn version(&self) -> i32 {
+        self.0.version
+    }
+    fn section_mappings(&self) -> &[SectionMapping] {
+        &self.0.section_mappings
+    }
+    fn bench_uri(&self) -> &str {
+        &self.0.bench_uri
+    }
+}
+
+/// Internal builder for constructing virtual files (concrete implementation)
+struct VirtualFileBuilderImpl {
     bench_uri: String,
     uri: String,
     path: String,
@@ -348,7 +549,7 @@ struct VirtualFileBuilder {
     section_mappings: Vec<SectionMapping>,
 }
 
-impl VirtualFileBuilder {
+impl VirtualFileBuilderImpl {
     fn new_go(bench_uri: &str, bench_path: &str, go_mod_root: &str, version: i32) -> Self {
         let mut hasher = DefaultHasher::new();
         bench_path.hash(&mut hasher);
@@ -402,6 +603,28 @@ impl VirtualFileBuilder {
         // This allows rust-analyzer to resolve dependencies from Cargo.toml
         let subdir = Path::new(rust_project_root).join("src/bin");
         let filename = format!("_lsp_virtual_{:016x}.rs", hash);
+        let path = subdir.join(&filename);
+        let path_str = path.to_string_lossy().to_string();
+        let uri = format!("file://{}", path_str);
+
+        Self {
+            bench_uri: bench_uri.to_string(),
+            uri,
+            path: path_str,
+            content: String::new(),
+            version,
+            current_line: 0,
+            section_mappings: Vec::new(),
+        }
+    }
+
+    fn new_python(bench_uri: &str, bench_path: &str, python_root: &str, version: i32) -> Self {
+        let mut hasher = DefaultHasher::new();
+        bench_path.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        let subdir = Path::new(python_root).join(".lsp_virtual");
+        let filename = format!("_lsp_virtual_{:016x}.py", hash);
         let path = subdir.join(&filename);
         let path_str = path.to_string_lossy().to_string();
         let uri = format!("file://{}", path_str);
@@ -591,6 +814,55 @@ impl VirtualFileBuilder {
         self.write_line("fn main() {}");
     }
 
+    fn build_python(&mut self, blocks: &[&EmbeddedBlock], fixture_names: &[String]) {
+        let (imports, declares, helpers, inits, other) = Self::categorize_blocks(blocks);
+
+        // Python imports
+        for block in &imports {
+            self.add_block_content_normalized(block, normalize_python_indent);
+            self.write_line("");
+        }
+
+        // Declarations
+        for block in &declares {
+            self.add_block_content_normalized(block, normalize_python_indent);
+            self.write_line("");
+        }
+
+        // Helpers
+        for block in &helpers {
+            self.add_block_content_normalized(block, normalize_python_indent);
+            self.write_line("");
+        }
+
+        // Init code (top-level in Python)
+        for block in &inits {
+            self.add_block_content_normalized(block, normalize_python_indent);
+            self.write_line("");
+        }
+
+        // Other blocks (benchmarks, fixtures, etc.) wrapped in Python functions
+        for (i, block) in other.iter().enumerate() {
+            let func_name = Self::func_name_for_block(block.block_type, i);
+            self.write_line(&format!("def {}():", func_name));
+
+            if matches!(
+                block.block_type,
+                BlockType::Benchmark | BlockType::Validate | BlockType::Skip
+            ) {
+                for fixture_name in fixture_names {
+                    self.write_line(&format!("    {} = bytes()", fixture_name));
+                }
+                for fixture_name in fixture_names {
+                    self.write_line(&format!("    _ = {}", fixture_name));
+                }
+            }
+
+            self.add_block_content_indented(block, "    ", normalize_python_indent);
+            self.write_line("");
+        }
+    }
+
     fn categorize_blocks<'a>(
         blocks: &[&'a EmbeddedBlock],
     ) -> (
@@ -652,6 +924,8 @@ impl VirtualFileBuilder {
             bench_span: block.span,
             block_type: block.block_type,
             code: code.clone(),
+            bench_indent: None,
+            indent_stripped: None,
         });
 
         self.content.push_str(code);
@@ -673,6 +947,8 @@ impl VirtualFileBuilder {
             bench_span: block.span,
             block_type: block.block_type,
             code: code.clone(),
+            bench_indent: None,
+            indent_stripped: None,
         });
 
         // Add the code content
@@ -684,6 +960,76 @@ impl VirtualFileBuilder {
         self.content.push('\n');
 
         self.current_line += line_count;
+    }
+
+    fn add_block_content_with_code(&mut self, block: &EmbeddedBlock, code: &str) {
+        let line_count = code.lines().count().max(1) as u32;
+        self.section_mappings.push(SectionMapping {
+            virtual_start_line: self.current_line,
+            line_count,
+            bench_span: block.span,
+            block_type: block.block_type,
+            code: code.to_string(),
+            bench_indent: None,
+            indent_stripped: None,
+        });
+        self.content.push_str(code);
+        if !code.ends_with('\n') {
+            self.content.push('\n');
+        }
+        self.current_line += line_count;
+    }
+
+    fn add_block_content_normalized<F>(&mut self, block: &EmbeddedBlock, normalizer: F)
+    where
+        F: Fn(&str) -> String,
+    {
+        let normalized = normalizer(&block.code);
+        // Use ORIGINAL block.code for position mapping (bench_span covers original content).
+        // Write normalized to virtual file for valid syntax.
+        let min_indent = block
+            .code
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| l.len().saturating_sub(l.trim_start().len()))
+            .min()
+            .unwrap_or(0) as u32;
+        let line_count = normalized.lines().count().max(1) as u32;
+        self.section_mappings.push(SectionMapping {
+            virtual_start_line: self.current_line,
+            line_count,
+            bench_span: block.span,
+            block_type: block.block_type,
+            code: block.code.clone(),
+            bench_indent: None,
+            indent_stripped: if min_indent > 0 { Some(min_indent) } else { None },
+        });
+        self.content.push_str(&normalized);
+        if !normalized.ends_with('\n') {
+            self.content.push('\n');
+        }
+        self.current_line += line_count;
+    }
+
+    fn add_block_content_indented<F>(&mut self, block: &EmbeddedBlock, indent: &str, normalizer: F)
+    where
+        F: Fn(&str) -> String,
+    {
+        let code = normalizer(&block.code);
+        let line_count = code.lines().count().max(1) as u32;
+        let indent_len = indent.len() as u32;
+        self.section_mappings.push(SectionMapping {
+            virtual_start_line: self.current_line,
+            line_count,
+            bench_span: block.span,
+            block_type: block.block_type,
+            code: code.clone(),
+            bench_indent: Some(indent_len),
+            indent_stripped: None,
+        });
+        for line in code.lines() {
+            self.write_line(&format!("{}{}", indent, line));
+        }
     }
 
     fn finish(self) -> VirtualFileData {
@@ -923,11 +1269,74 @@ impl Default for VirtualRustFileManager {
     }
 }
 
+/// Manager for virtual Python files
+pub struct VirtualPythonFileManager {
+    files: DashMap<String, VirtualPythonFile>,
+}
+
+impl VirtualPythonFileManager {
+    pub fn new() -> Self {
+        Self { files: DashMap::new() }
+    }
+
+    pub fn get_or_create(
+        &self,
+        bench_uri: &str,
+        bench_path: &str,
+        python_root: &str,
+        blocks: &[&EmbeddedBlock],
+        version: i32,
+    ) -> VirtualPythonFile {
+        if let Some(existing) = self.files.get(bench_uri) {
+            if existing.version() >= version {
+                return existing.clone();
+            }
+        }
+
+        let virtual_file =
+            VirtualPythonFile::from_blocks(bench_uri, bench_path, python_root, blocks, version);
+
+        if let Some(parent) = Path::new(virtual_file.path()).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Err(e) = std::fs::write(virtual_file.path(), virtual_file.content()) {
+            tracing::warn!("Failed to write virtual Python file: {}", e);
+        }
+
+        self.files.insert(bench_uri.to_string(), virtual_file.clone());
+        virtual_file
+    }
+
+    pub fn remove(&self, bench_uri: &str) {
+        if let Some((_, vf)) = self.files.remove(bench_uri) {
+            let _ = std::fs::remove_file(vf.path());
+        }
+    }
+
+    pub fn get(&self, bench_uri: &str) -> Option<VirtualPythonFile> {
+        self.files.get(bench_uri).map(|r| r.clone())
+    }
+
+    pub fn clear_caches(&self) {
+        for entry in self.files.iter() {
+            let _ = std::fs::remove_file(entry.value().path());
+        }
+        self.files.clear();
+    }
+}
+
+impl Default for VirtualPythonFileManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Container for all virtual file managers
 pub struct VirtualFileManagers {
     pub go: VirtualGoFileManager,
     pub ts: VirtualTsFileManager,
     pub rust: VirtualRustFileManager,
+    pub python: VirtualPythonFileManager,
 }
 
 impl VirtualFileManagers {
@@ -936,6 +1345,7 @@ impl VirtualFileManagers {
             go: VirtualGoFileManager::new(),
             ts: VirtualTsFileManager::new(),
             rust: VirtualRustFileManager::new(),
+            python: VirtualPythonFileManager::new(),
         }
     }
 
@@ -943,12 +1353,14 @@ impl VirtualFileManagers {
         self.go.remove(bench_uri);
         self.ts.remove(bench_uri);
         self.rust.remove(bench_uri);
+        self.python.remove(bench_uri);
     }
 
     pub fn clear_all_caches(&self) {
         self.go.clear_caches();
         self.ts.clear_caches();
         self.rust.clear_caches();
+        self.python.clear_caches();
     }
 }
 
