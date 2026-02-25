@@ -378,6 +378,8 @@ fn lower_benchmark(
     // Copy implementations and extract fixture references
     for (lang, code_block) in &benchmark.implementations {
         spec.implementations.insert(*lang, code_block.code.clone());
+        spec.implementation_sources
+            .insert(*lang, SourceLocation::new(code_block.span.line, code_block.span.col));
 
         // Extract fixture references from the code
         let refs = extract_fixture_refs(&code_block.code, fixture_names);

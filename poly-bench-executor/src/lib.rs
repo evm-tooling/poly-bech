@@ -25,7 +25,7 @@ pub struct ProjectRoots {
 }
 
 pub use comparison::{BenchmarkResult, BenchmarkResults, SuiteResults};
-pub use scheduler::run;
+pub use scheduler::{run, RunOptions};
 pub use validation::{
     validate_benchmarks, validate_benchmarks_with_cache, CompileError, ValidationStats,
 };

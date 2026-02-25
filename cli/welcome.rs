@@ -64,25 +64,45 @@ pub fn show_welcome_and_maybe_mark_seen() {
     println!();
     println!("Usage: poly-bench [OPTIONS] <COMMAND>");
     println!();
-    println!("Commands:");
-    println!("  init             Create a new poly-bench project (interactive or with NAME)");
-    println!("  run              Run benchmarks from a DSL file or project");
-    println!("  build            Build/regenerate the .polybench runtime environment");
-    println!("  new <name>       Create a new benchmark file");
-    println!("  add              Add a Go or TypeScript dependency (--go, --ts)");
-    println!("  install          Install dependencies from polybench.toml");
-    println!("  fmt              Format .bench files");
-    println!("  check <file>      Parse and validate a benchmark DSL file");
-    println!("  codegen          Generate code from a DSL file without running");
-    println!("  upgrade          Upgrade to the latest poly-bench binary");
-    println!("  help             Print this message or the help of the given subcommand(s)");
+    print_table(
+        "Commands",
+        &[
+            ("init", "Create a new poly-bench project"),
+            ("run", "Run benchmarks from a DSL file or project"),
+            ("compile", "Compile-check benchmarks without running"),
+            ("check", "Parse and validate a benchmark DSL file"),
+            ("codegen", "Generate code from a DSL file without running"),
+            ("new", "Create a new benchmark file"),
+            ("add", "Add dependency (--go / --ts / --rs)"),
+            ("remove", "Remove dependency (--go / --ts / --rs)"),
+            ("install", "Install dependencies from polybench.toml"),
+            ("build", "Build/regenerate .polybench runtime environment"),
+            ("cache", "Show/clear/clean compile cache and workspace"),
+            ("fmt", "Format .bench files"),
+            ("upgrade", "Upgrade to the latest poly-bench binary"),
+            ("lsp", "Start the language server"),
+            ("help", "Print this message or subcommand help"),
+        ],
+    );
+    print_table(
+        "Options",
+        &[
+            ("-h, --help", "Print help (use '--help' with a command for details)"),
+            ("-V, --version", "Print version"),
+            ("--color <WHEN>", "Colorize output [auto, always, never]"),
+            ("-q, --quiet", "Reduce log output"),
+        ],
+    );
     println!();
-    println!("Options:");
-    println!("  -h, --help       Print help (see more with '--help')");
-    println!("  -V, --version    Print version");
-    println!();
-    println!("Display options:");
-    println!("      --color <WHEN>  Colorize output [possible values: auto, always, never]");
-    println!("  -q, --quiet        Reduce log output");
+}
+
+fn print_table(title: &str, rows: &[(&str, &str)]) {
+    use colored::Colorize;
+
+    const COL_WIDTH: usize = 18;
+    println!("{}:", title.bold().green());
+    for (left, right) in rows {
+        println!("  {:<width$} {}", left.bright_cyan().bold(), right.dimmed(), width = COL_WIDTH);
+    }
     println!();
 }

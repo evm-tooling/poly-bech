@@ -414,6 +414,8 @@ pub struct BenchmarkSpec {
 
     /// Per-language implementations
     pub implementations: HashMap<Lang, String>,
+    /// Source locations for per-language benchmark implementations
+    pub implementation_sources: HashMap<Lang, SourceLocation>,
     /// Referenced fixtures
     pub fixture_refs: Vec<String>,
 }
@@ -448,6 +450,7 @@ impl BenchmarkSpec {
             after_hooks: HashMap::new(),
             each_hooks: HashMap::new(),
             implementations: HashMap::new(),
+            implementation_sources: HashMap::new(),
             fixture_refs: Vec::new(),
         }
     }

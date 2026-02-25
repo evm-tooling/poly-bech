@@ -5,7 +5,10 @@ mod ui;
 mod version_check;
 mod welcome;
 
-use clap::{Parser, Subcommand};
+use clap::{
+    builder::styling::{AnsiColor, Effects, Styles},
+    Parser, Subcommand,
+};
 use indicatif::ProgressBar;
 use miette::Result;
 use std::{io::Read, path::PathBuf};
@@ -20,14 +23,41 @@ use poly_bench_runtime as runtime;
 /// Current binary version (set at compile time).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+const HELP_BANNER: &str = r#"
+POLY BENCH
+"#;
+
+const ROOT_HELP_TEMPLATE: &str = "\
+{before-help}\
+{about-with-newline}\
+{usage-heading} {usage}\n\n\
+{subcommands}\
+{options}\
+{after-help}\
+";
+
+fn cli_styles() -> Styles {
+    Styles::styled()
+        .header(AnsiColor::Green.on_default() | Effects::BOLD)
+        .usage(AnsiColor::Cyan.on_default() | Effects::BOLD)
+        .literal(AnsiColor::Yellow.on_default() | Effects::BOLD)
+        .placeholder(AnsiColor::Magenta.on_default())
+        .error(AnsiColor::Red.on_default() | Effects::BOLD)
+        .valid(AnsiColor::Green.on_default() | Effects::BOLD)
+        .invalid(AnsiColor::Red.on_default() | Effects::BOLD)
+}
+
 #[derive(Parser)]
 #[command(name = "poly-bench")]
 #[command(author = "Evan McGrane")]
 #[command(disable_version_flag(true))]
+#[command(before_help = HELP_BANNER)]
+#[command(help_template = ROOT_HELP_TEMPLATE)]
+#[command(styles = cli_styles())]
 #[command(about = "Build, run, and compare benchmarks across Go and TypeScript with a custom DSL.", long_about = None)]
 struct Cli {
     /// Print version and exit
-    #[arg(long, short = 'V', alias("v"), short_alias('v'), global = true)]
+    #[arg(long, short = 'V', global = true)]
     version: bool,
 
     /// Colorize output [possible values: auto, always, never]
@@ -37,6 +67,10 @@ struct Cli {
     /// Reduce log output
     #[arg(short, long, global = true, help_heading = "Display options")]
     quiet: bool,
+
+    /// Show verbose runtime diagnostics (raw external traces)
+    #[arg(short = 'v', long, global = true, help_heading = "Display options")]
+    verbose: bool,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -264,13 +298,14 @@ async fn main() -> Result<()> {
             cmd_check(&file, show_ast).await?;
         }
         Commands::Compile { file, lang, no_cache, clear_cache } => {
-            cmd_compile(file, lang, no_cache, clear_cache).await?;
+            cmd_compile(file, lang, no_cache, clear_cache, cli.verbose).await?;
         }
         Commands::Cache { action } => {
             cmd_cache(action).await?;
         }
         Commands::Run { file, lang, iterations, report, output, go_project, ts_project } => {
-            cmd_run(file, lang, iterations, &report, output, go_project, ts_project).await?;
+            cmd_run(file, lang, iterations, &report, output, go_project, ts_project, cli.verbose)
+                .await?;
         }
         Commands::Codegen { file, lang, output } => {
             cmd_codegen(&file, &lang, &output).await?;
@@ -357,6 +392,7 @@ async fn cmd_compile(
     lang: Option<String>,
     no_cache: bool,
     clear_cache: bool,
+    verbose: bool,
 ) -> Result<()> {
     use colored::Colorize;
 
@@ -412,9 +448,9 @@ async fn cmd_compile(
     };
 
     if run_parallel && files.len() > 1 {
-        compile_files_parallel_cached(&files, &langs, &cache).await
+        compile_files_parallel_cached(&files, &langs, &cache, verbose).await
     } else {
-        compile_files_sequential_cached(&files, &langs, &cache).await
+        compile_files_sequential_cached(&files, &langs, &cache, verbose).await
     }
 }
 
@@ -451,6 +487,7 @@ async fn compile_files_parallel_cached(
     files: &[PathBuf],
     langs: &[dsl::Lang],
     cache: &executor::CompileCache,
+    verbose: bool,
 ) -> Result<()> {
     use colored::Colorize;
     use futures::future::join_all;
@@ -515,7 +552,7 @@ async fn compile_files_parallel_cached(
     }
 
     for result in &failed_results {
-        print_compile_errors_for_file(&result.file, &result.errors);
+        print_compile_errors_for_file(&result.file, &result.errors, verbose);
     }
 
     if total_errors > 0 {
@@ -548,6 +585,7 @@ async fn compile_files_sequential_cached(
     files: &[PathBuf],
     langs: &[dsl::Lang],
     cache: &executor::CompileCache,
+    verbose: bool,
 ) -> Result<()> {
     use colored::Colorize;
 
@@ -581,7 +619,7 @@ async fn compile_files_sequential_cached(
 
         if !compile_errors.is_empty() {
             total_errors += compile_errors.len();
-            print_compile_errors_for_file(bench_file, &compile_errors);
+            print_compile_errors_for_file(bench_file, &compile_errors, verbose);
         } else {
             let cache_info = if stats.cache_hits > 0 {
                 format!(" ({} cached)", stats.cache_hits)
@@ -674,17 +712,9 @@ async fn cmd_run(
     output: Option<PathBuf>,
     go_project: Option<PathBuf>,
     ts_project: Option<PathBuf>,
+    verbose: bool,
 ) -> Result<()> {
     use colored::Colorize;
-
-    ui::section("Run benchmarks");
-    ui::kv("report", report_format.to_string());
-    if let Some(ref l) = lang {
-        ui::kv("language-filter", l);
-    }
-    if let Some(i) = iterations {
-        ui::kv("iterations-override", i.to_string());
-    }
 
     // Get benchmark files to run
     let files = match file {
@@ -747,13 +777,14 @@ async fn cmd_run(
         let project_roots =
             resolve_project_roots(go_project.clone(), ts_project.clone(), bench_file)?;
 
+        println!("▸ Compile validation");
         // Pre-run validation: compile-check all benchmarks before running
         let spinner = create_compiling_spinner();
         let compile_errors = executor::validate_benchmarks(&ir, &langs, &project_roots).await?;
         spinner.finish_and_clear();
 
         if !compile_errors.is_empty() {
-            print_compile_errors_for_file(bench_file, &compile_errors);
+            print_compile_errors_for_file(bench_file, &compile_errors, verbose);
 
             // Count total affected benchmarks for the summary
             let total_affected: usize = compile_errors.iter().map(|e| e.benchmarks.len()).sum();
@@ -763,11 +794,16 @@ async fn cmd_run(
                 total_affected
             ));
         }
-        ui::success("Pre-run compile validation passed");
-        ui::subsection(&format!("Executing {}", bench_file.display()));
+        println!("  ✓ Compile validation passed");
+        println!();
+        println!("{}", "─".repeat(78));
+        println!("■ Run benchmarks ▸ Executing {}", bench_file.display());
+        println!("{}", "─".repeat(78));
+        println!();
 
         // Execute benchmarks
-        let results = executor::run(&ir, &langs, iterations, &project_roots).await?;
+        let run_opts = executor::RunOptions { verbose };
+        let results = executor::run(&ir, &langs, iterations, &project_roots, &run_opts).await?;
         all_results.push(results);
     }
 
@@ -782,31 +818,19 @@ async fn cmd_run(
     // Default output directory for auto-saved results
     let default_output_dir = PathBuf::from("out");
 
-    // Auto-save results to .polybench/results.json
-    {
-        std::fs::create_dir_all(&default_output_dir)
-            .map_err(|e| miette::miette!("Failed to create output directory: {}", e))?;
-
-        let json = reporter::json::report(&results)?;
-        let results_path = default_output_dir.join("results.json");
-        std::fs::write(&results_path, &json)
-            .map_err(|e| miette::miette!("Failed to save results: {}", e))?;
-
-        println!("\n{} Results saved to {}", "💾".cyan(), results_path.display());
-    }
+    // Auto-save results to out/results.json
+    std::fs::create_dir_all(&default_output_dir)
+        .map_err(|e| miette::miette!("Failed to create output directory: {}", e))?;
+    let json = reporter::json::report(&results)?;
+    let results_path = default_output_dir.join("results.json");
+    std::fs::write(&results_path, &json)
+        .map_err(|e| miette::miette!("Failed to save results: {}", e))?;
 
     // Execute chart directives if any
     if !all_chart_directives.is_empty() {
         let chart_output_dir = output.clone().unwrap_or_else(|| default_output_dir.clone());
-
-        println!("{} Generating {} chart(s)...", "📊".cyan(), all_chart_directives.len());
-
-        let generated_charts =
+        let _ =
             reporter::execute_chart_directives(&all_chart_directives, &results, &chart_output_dir)?;
-
-        for chart in &generated_charts {
-            println!("  {} Generated: {}", "✓".green(), chart.path);
-        }
     }
 
     // Generate reports
@@ -844,6 +868,8 @@ async fn cmd_run(
             return Err(miette::miette!("Unknown report format: {}", report_format));
         }
     }
+
+    println!("Benchmark successful. Results saved to {}", results_path.display());
 
     Ok(())
 }
@@ -1292,35 +1318,118 @@ fn create_compiling_spinner() -> ProgressBar {
     ui::spinner("Compiling...")
 }
 
-fn print_compile_errors_for_file(file: &std::path::Path, errors: &[executor::CompileError]) {
-    ui::failure(format!("{} - {} compile error(s)", file.display(), errors.len()));
+fn print_compile_errors_for_file(
+    file: &std::path::Path,
+    errors: &[executor::CompileError],
+    verbose: bool,
+) {
     for err in errors {
-        print_compile_error(err);
+        print_compile_error(file, err, verbose);
     }
 }
 
-fn print_compile_error(err: &executor::CompileError) {
-    use colored::Colorize;
-
-    let header = if err.benchmarks.len() == 1 {
-        format!("[{}] {}", err.lang, err.benchmarks[0])
-    } else {
-        format!("[{}] {} error (affects {} benchmarks)", err.lang, err.source, err.benchmarks.len())
-    };
-    eprintln!("    {} {}", "•".red(), header.bold());
-
-    let lines: Vec<&str> = err.message.lines().collect();
-    for line in lines.iter().take(40) {
-        if line.contains(".bench file line") {
-            eprintln!("      {}", line.yellow());
-        } else if line.starts_with("error") || line.contains("error TS") {
-            eprintln!("      {}", line.red());
-        } else {
-            eprintln!("      {}", line.dimmed());
+fn extract_compile_reason(message: &str) -> String {
+    for line in message.lines() {
+        let l = line.trim();
+        if l.is_empty() {
+            continue;
+        }
+        if l.contains(" error TS") || l.starts_with("error[") || l.starts_with("error:") {
+            return l.to_string();
         }
     }
-    if lines.len() > 40 {
-        eprintln!("      {}", "... (truncated)".dimmed());
+    message
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("Unknown compile error")
+        .to_string()
+}
+
+fn extract_compile_location(message: &str) -> Option<String> {
+    for line in message.lines() {
+        let l = line.trim();
+        if l.contains(".bench file line") {
+            return Some(l.to_string());
+        }
+    }
+    None
+}
+
+fn extract_compile_snippet(message: &str) -> Option<Vec<String>> {
+    let lines: Vec<&str> = message.lines().collect();
+    // TS-style single-line diagnostic already carries useful context in the reason line.
+    // For Rust/go style, try to show the source line and caret marker.
+    let caret_idx = lines.iter().position(|l| l.trim() == "^")?;
+    if caret_idx == 0 {
+        return None;
+    }
+    let code_idx = caret_idx - 1;
+    let start = code_idx.saturating_sub(1);
+    let end = std::cmp::min(lines.len().saturating_sub(1), caret_idx + 1);
+    let mut out = Vec::new();
+    for (i, line) in lines[start..=end].iter().enumerate() {
+        let abs = start + i;
+        let marker = if abs == code_idx { ">" } else { " " };
+        out.push(format!("{} {}", marker, line.trim_end()));
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+fn compile_lang_label(lang: dsl::Lang) -> &'static str {
+    match lang {
+        dsl::Lang::Go => "Go",
+        dsl::Lang::TypeScript => "TS",
+        dsl::Lang::Rust => "Rust",
+        _ => "Unknown",
+    }
+}
+
+fn print_compile_error(file: &std::path::Path, err: &executor::CompileError, verbose: bool) {
+    use colored::Colorize;
+
+    let scope = if err.benchmarks.len() == 1 {
+        err.benchmarks[0].clone()
+    } else {
+        format!("{} error (affects {} benchmarks)", err.source, err.benchmarks.len())
+    };
+    eprintln!(
+        "Error:   {} {} compile failed for {}",
+        "×".red().bold(),
+        compile_lang_label(err.lang),
+        scope
+    );
+    eprintln!("  │ file: {}", file.display());
+    eprintln!("  │ reason: {}", extract_compile_reason(&err.message));
+
+    if let Some(loc) = extract_compile_location(&err.message) {
+        eprintln!("  │ location: {}", loc.yellow());
+    }
+    if let Some(snippet) = extract_compile_snippet(&err.message) {
+        eprintln!("  │ snippet:");
+        for line in snippet.into_iter().take(4) {
+            eprintln!("  │   {}", line.dimmed());
+        }
+    }
+
+    if verbose {
+        eprintln!("  │ raw trace:");
+        let lines: Vec<&str> = err.message.lines().collect();
+        for line in lines.iter().take(40) {
+            if line.trim().is_empty() {
+                continue;
+            }
+            eprintln!("  │   {}", line.dimmed());
+        }
+        if lines.len() > 40 {
+            eprintln!("  │   {}", "... (truncated)".dimmed());
+        }
+    } else {
+        eprintln!("  │ hint: re-run with -v to see full compiler trace");
     }
     eprintln!();
 }

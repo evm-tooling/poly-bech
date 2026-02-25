@@ -638,6 +638,62 @@ fn parse_benchmark_result(
     Ok(result.into_measurement_with_options(outlier_detection, cv_threshold))
 }
 
+pub fn extract_runtime_error_reason(raw: &str) -> String {
+    let mut last_non_empty = "";
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.starts_with("at ") || trimmed.contains("node:internal/") {
+            continue;
+        }
+        last_non_empty = trimmed;
+        if trimmed.contains("Error:") || trimmed.contains("Exception:") {
+            return trimmed.to_string();
+        }
+    }
+    if last_non_empty.is_empty() {
+        "Unknown runtime error".to_string()
+    } else {
+        last_non_empty.to_string()
+    }
+}
+
+pub fn extract_generated_snippet(raw: &str, context: usize) -> Option<Vec<String>> {
+    let lines: Vec<&str> = raw.lines().collect();
+    if lines.is_empty() {
+        return None;
+    }
+    // Keep original line ordering but search for the caret marker.
+    let caret_idx = lines.iter().position(|l| l.trim() == "^")?;
+    if caret_idx == 0 {
+        return None;
+    }
+
+    // Try to locate a "file:line" header right before the source line and skip it.
+    let mut code_idx = caret_idx.saturating_sub(1);
+    if code_idx > 0 {
+        let candidate = lines[code_idx - 1].trim();
+        if candidate.contains(':') && candidate.contains(".mjs") {
+            code_idx = code_idx.saturating_sub(0);
+        }
+    }
+
+    let start = code_idx.saturating_sub(context);
+    let end = std::cmp::min(lines.len().saturating_sub(1), code_idx + context);
+    let mut out = Vec::new();
+    for (i, line) in lines[start..=end].iter().enumerate() {
+        let marker = if start + i == code_idx { ">" } else { " " };
+        out.push(format!("{} {}", marker, line.trim_end()));
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
 /// JSON format for benchmark results
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]

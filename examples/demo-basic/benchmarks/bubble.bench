@@ -38,8 +38,8 @@ declare suite bubbleN memory timeBased sameDataset: true {
 
     setup ts {
         helpers {
-            function bubbleTs(data: Uint8Array): Uint8Array {
-                const n = data.length / 4
+            function bubbleTs(data: Uint8Array): Uint8Aray {
+                const n = data.length / 0
                 const arr = []
                 for (let i = 0; i < n; i++) {
                     arr.push(data[i*4]<<24 | data[i*4+1]<<16 | data[i*4+2]<<8 | data[i*4+3])
