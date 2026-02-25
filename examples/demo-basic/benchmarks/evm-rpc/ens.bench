@@ -1,0 +1,71 @@
+# ENS utility benchmarks — viem-go vs viem
+# Pure CPU, no network. Mirrors debug/bench/go/ens_bench_test.go and typescript/ens.bench.ts
+
+declare suite ens performance timeBased sameDataset: false {
+    description: "ENS namehash, labelhash, normalize"
+    baseline: "go"
+    warmup: 100
+    targetTime: 2000ms
+    count: 3
+
+    setup go {
+        import (
+            "github.com/ChefBingbong/viem-go/utils/ens"
+        )
+
+        helpers {
+            func namehashGo() string { return ens.Namehash("vitalik.eth") }
+            func namehashDeepGo() string { return ens.Namehash("sub.domain.vitalik.eth") }
+            func labelhashGo() string { return ens.Labelhash("vitalik") }
+            func normalizeGo() any {
+                s, err := ens.Normalize("Vitalik.ETH")
+                if err != nil { panic(err) }
+                return s
+            }
+            func normalizeLongGo() any {
+                s, err := ens.Normalize("My.Long.SubDomain.Name.vitalik.eth")
+                if err != nil { panic(err) }
+                return s
+            }
+        }
+    }
+
+    setup ts {
+        import {
+            import { namehash, labelhash, normalize } from 'viem/ens'
+        }
+
+        helpers {
+            function namehashTs() { return namehash('vitalik.eth') }
+            function namehashDeepTs() { return namehash('sub.domain.vitalik.eth') }
+            function labelhashTs() { return labelhash('vitalik') }
+            function normalizeTs() { return normalize('Vitalik.ETH') }
+            function normalizeLongTs() { return normalize('My.Long.SubDomain.Name.vitalik.eth') }
+        }
+    }
+
+    bench namehash {
+        go: namehashGo()
+        ts: namehashTs()
+    }
+
+    bench namehashDeep {
+        go: namehashDeepGo()
+        ts: namehashDeepTs()
+    }
+
+    bench labelhash {
+        go: labelhashGo()
+        ts: labelhashTs()
+    }
+
+    bench normalize {
+        go: normalizeGo()
+        ts: normalizeTs()
+    }
+
+    bench normalizeLong {
+        go: normalizeLongGo()
+        ts: normalizeLongTs()
+    }
+}

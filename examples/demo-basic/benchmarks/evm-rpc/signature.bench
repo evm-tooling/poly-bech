@@ -1,0 +1,99 @@
+# Signature benchmarks — viem-go vs viem
+# Pure CPU, no network. Mirrors debug/bench/go/signature_bench_test.go and typescript/signature.bench.ts
+
+declare suite signature performance timeBased sameDataset: false {
+    description: "hashMessage, recoverMessageAddress, verifyMessage, parseSignature"
+    baseline: "go"
+    warmup: 100
+    targetTime: 2000ms
+    count: 3
+
+    setup go {
+        import (
+            "github.com/ChefBingbong/viem-go/utils/signature"
+        )
+
+        declare {
+            var testSignature = "0x6e100a352ec6ad1b70802290e18aeed190704973570f3b8ed42cb9808e2ea6bf4a90a229a244495b41890987806fcbd2d5d23fc0dbe5f5256c2613c039d76db81c"
+            var testAddress = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+        }
+
+        helpers {
+            func hashMessageGo() []byte {
+                msg := signature.NewSignableMessage("hello world")
+                return signature.HashMessage(msg)
+            }
+            func hashMessageLongGo() []byte {
+                longMsg := "The quick brown fox jumps over the lazy dog. This is a much longer message that simulates real-world signing scenarios where users might sign terms of service, governance proposals, or other text content."
+                msg := signature.NewSignableMessage(longMsg)
+                return signature.HashMessage(msg)
+            }
+            func recoverAddressGo() any {
+                msg := signature.NewSignableMessage("hello world")
+                addr, err := signature.RecoverMessageAddress(msg, testSignature)
+                if err != nil { panic(err) }
+                return addr
+            }
+            func verifyMessageGo() any {
+                msg := signature.NewSignableMessage("hello world")
+                ok, err := signature.VerifyMessage(testAddress, msg, testSignature)
+                if err != nil { panic(err) }
+                return ok
+            }
+            func parseSignatureGo() any {
+                sig, err := signature.ParseSignature(testSignature)
+                if err != nil { panic(err) }
+                return sig
+            }
+        }
+    }
+
+    setup ts {
+        import {
+            import { hashMessage, recoverMessageAddress, verifyMessage, parseSignature } from 'viem'
+        }
+
+        declare {
+            const testSignature = '0x6e100a352ec6ad1b70802290e18aeed190704973570f3b8ed42cb9808e2ea6bf4a90a229a244495b41890987806fcbd2d5d23fc0dbe5f5256c2613c039d76db81c'
+            const testAddress = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266'
+            const longMessage = 'The quick brown fox jumps over the lazy dog. This is a much longer message that simulates real-world signing scenarios where users might sign terms of service, governance proposals, or other text content.'
+        }
+
+        helpers {
+            function hashMessageTs() { return hashMessage('hello world') }
+            function hashMessageLongTs() { return hashMessage(longMessage) }
+            async function recoverAddressTs() {
+                return await recoverMessageAddress({ message: 'hello world', signature: testSignature })
+            }
+            async function verifyMessageTs() {
+                return await verifyMessage({ address: testAddress, message: 'hello world', signature: testSignature })
+            }
+            function parseSignatureTs() { return parseSignature(testSignature) }
+        }
+    }
+
+    bench hashMessage {
+        go: hashMessageGo()
+        ts: hashMessageTs()
+    }
+
+    bench hashMessageLong {
+        go: hashMessageLongGo()
+        ts: hashMessageLongTs()
+    }
+
+    benchAsync recoverAddress {
+        go: recoverAddressGo()
+        ts: recoverAddressTs()
+    }
+
+    benchAsync verifyMessage {
+        go: verifyMessageGo()
+        ts: verifyMessageTs()
+    }
+
+    bench parseSignature {
+        go: parseSignatureGo()
+        ts: parseSignatureTs()
+    }
+}
