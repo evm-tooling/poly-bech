@@ -290,6 +290,8 @@ enum CacheAction {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    runtime::init_import_extractors();
+
     let cli = Cli::parse();
 
     if cli.version {
