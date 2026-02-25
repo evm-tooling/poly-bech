@@ -3,7 +3,7 @@ resolver = "2"
 members = ["poly-bench-*", "poly-bench-grammar", "poly-bench-syntax", "poly-bench-lsp-v2"]
 
 [workspace.package]
-version = "0.1.14"
+version = "0.1.15"
 edition = "2021"
 authors = ["Evan McGrane"]
 license = "MIT"
