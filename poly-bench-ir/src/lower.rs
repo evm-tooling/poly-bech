@@ -8,7 +8,7 @@ use crate::{
         load_hex_file, load_raw_file, load_utf8_file, normalize_csv_to_bytes,
         normalize_json_to_bytes,
     },
-    imports::{extract_imports, ParsedSetup},
+    imports::extract_imports,
     AnvilConfigIR, BenchmarkIR, BenchmarkSpec, ChartDirectiveIR, FixtureIR, FixtureParamIR,
     SourceLocation, SuiteIR,
 };

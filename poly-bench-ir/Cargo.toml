@@ -9,6 +9,7 @@ description = "Intermediate representation for poly-bench benchmarks"
 
 [dependencies]
 poly-bench-dsl.workspace = true
+poly-bench-ir-traits.workspace = true
 miette.workspace = true
 serde.workspace = true
 serde_json.workspace = true
