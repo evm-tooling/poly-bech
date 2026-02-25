@@ -191,6 +191,10 @@ pub fn generate(
   <stop offset=\"0%\" stop-color=\"#DEA584\" stop-opacity=\"0.95\"/>\n\
   <stop offset=\"100%\" stop-color=\"#B7410E\" stop-opacity=\"0.8\"/>\n\
 </linearGradient>\n\
+<linearGradient id=\"pythonGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
+  <stop offset=\"0%\" stop-color=\"#3776AB\" stop-opacity=\"0.95\"/>\n\
+  <stop offset=\"100%\" stop-color=\"#FFD43B\" stop-opacity=\"0.8\"/>\n\
+</linearGradient>\n\
 <filter id=\"barShadow\" x=\"-5%\" y=\"-15%\" width=\"110%\" height=\"140%\">\n\
   <feDropShadow dx=\"0\" dy=\"2\" stdDeviation=\"2\" flood-opacity=\"0.25\"/>\n\
 </filter>\n\
@@ -731,12 +735,7 @@ fn stats_panel(
 }
 
 fn lang_label(lang: Lang) -> &'static str {
-    match lang {
-        Lang::Go => "Go",
-        Lang::TypeScript => "TypeScript",
-        Lang::Rust => "Rust",
-        _ => "Unknown",
-    }
+    poly_bench_runtime::lang_full_name(lang)
 }
 
 fn model_label(model: &SelectedModel) -> &'static str {

@@ -2,7 +2,8 @@
 //!
 //! This module provides hover information for keywords and identifiers
 //! in poly-bench files, including embedded Go code via gopls,
-//! TypeScript code via typescript-language-server, and Rust code via rust-analyzer.
+//! TypeScript code via typescript-language-server, Rust code via rust-analyzer,
+//! and Python code via pyright/pylsp.
 
 use poly_bench_syntax::Lang;
 use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position, Url};
@@ -14,6 +15,7 @@ use crate::{
     },
     gopls_client::init_gopls_client,
     hover_cache::{cache_hover, get_cached_hover},
+    pyright_client::init_pyright_client,
     rust_analyzer_client::init_rust_analyzer_client,
     tsserver_client::init_tsserver_client,
     virtual_files::{VirtualFile, VirtualFileManagers},
@@ -40,29 +42,11 @@ pub fn get_hover(
             return cached;
         }
 
-        let hover = match block.lang {
-            Lang::Go => {
-                if let Some(go_mod_root) = &config.go_mod_root {
-                    get_gopls_hover(doc, uri, offset, &blocks, go_mod_root, managers)
-                } else {
-                    None
-                }
-            }
-            Lang::TypeScript => {
-                if let Some(ts_module_root) = &config.ts_module_root {
-                    get_tsserver_hover(doc, uri, offset, &blocks, ts_module_root, managers)
-                } else {
-                    None
-                }
-            }
-            Lang::Rust => {
-                if let Some(rust_project_root) = &config.rust_project_root {
-                    get_rust_analyzer_hover(doc, uri, offset, &blocks, rust_project_root, managers)
-                } else {
-                    None
-                }
-            }
-            Lang::Python => None,
+        let hover = if let Some(module_root) = config.module_root(block.lang) {
+            crate::hover_providers::get_embedded_hover_provider(block.lang)
+                .and_then(|p| p.get_hover(doc, uri, offset, &blocks, module_root, managers))
+        } else {
+            None
         };
 
         // Cache the result
@@ -82,8 +66,8 @@ pub fn get_hover(
     get_dsl_hover(doc, position, &source)
 }
 
-/// Get hover from gopls for Go code
-fn get_gopls_hover(
+/// Get hover from gopls for Go code (used by hover_providers)
+pub fn get_gopls_hover_impl(
     doc: &Document,
     bench_uri: &Url,
     bench_offset: usize,
@@ -147,8 +131,8 @@ fn get_gopls_hover(
     }
 }
 
-/// Get hover from tsserver for TypeScript code
-fn get_tsserver_hover(
+/// Get hover from tsserver for TypeScript code (used by hover_providers)
+pub fn get_tsserver_hover_impl(
     doc: &Document,
     bench_uri: &Url,
     bench_offset: usize,
@@ -212,8 +196,8 @@ fn get_tsserver_hover(
     }
 }
 
-/// Get hover from rust-analyzer for Rust code
-fn get_rust_analyzer_hover(
+/// Get hover from rust-analyzer for Rust code (used by hover_providers)
+pub fn get_rust_analyzer_hover_impl(
     doc: &Document,
     bench_uri: &Url,
     bench_offset: usize,
@@ -274,6 +258,71 @@ fn get_rust_analyzer_hover(
         Ok(None) => None,
         Err(e) => {
             tracing::warn!("rust-analyzer hover failed: {}", e);
+            None
+        }
+    }
+}
+
+/// Get hover from pyright/pylsp for Python code (used by hover_providers)
+pub fn get_pyright_hover_impl(
+    doc: &Document,
+    bench_uri: &Url,
+    bench_offset: usize,
+    blocks: &[crate::embedded::EmbeddedBlock],
+    python_root: &str,
+    managers: &VirtualFileManagers,
+) -> Option<Hover> {
+    let client = init_pyright_client(python_root)?;
+
+    let bench_uri_str = bench_uri.as_str();
+    let bench_path = bench_uri.to_file_path().ok()?;
+    let bench_path_str = bench_path.to_string_lossy();
+
+    let python_blocks: Vec<_> = blocks_for_language(blocks, Lang::Python);
+
+    let virtual_file = managers.python.get_or_create(
+        bench_uri_str,
+        &bench_path_str,
+        python_root,
+        &python_blocks,
+        doc.version,
+    );
+
+    let python_position = virtual_file.bench_to_python(bench_offset)?;
+
+    if let Err(e) =
+        client.did_change(virtual_file.uri(), virtual_file.content(), virtual_file.version())
+    {
+        tracing::warn!("Failed to sync virtual Python file: {}", e);
+        return None;
+    }
+
+    match client.hover(virtual_file.uri(), python_position.line, python_position.character) {
+        Ok(Some(mut hover)) => {
+            if let Some(ref python_range) = hover.range {
+                if let Some(bench_start_offset) = virtual_file
+                    .python_to_bench(python_range.start.line, python_range.start.character)
+                {
+                    if let Some(bench_end_offset) = virtual_file
+                        .python_to_bench(python_range.end.line, python_range.end.character)
+                    {
+                        let (start_line, start_col) = doc.byte_to_position(bench_start_offset);
+                        let (end_line, end_col) = doc.byte_to_position(bench_end_offset);
+                        hover.range = Some(tower_lsp::lsp_types::Range {
+                            start: Position {
+                                line: start_line as u32,
+                                character: start_col as u32,
+                            },
+                            end: Position { line: end_line as u32, character: end_col as u32 },
+                        });
+                    }
+                }
+            }
+            Some(hover)
+        }
+        Ok(None) => None,
+        Err(e) => {
+            tracing::warn!("pyright/pylsp hover failed: {}", e);
             None
         }
     }
@@ -900,7 +949,7 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             Native Rust benchmark support.",
         ),
         "python" | "py" => Some(
-            "**Python** language *(planned)*\n\n\
+            "**Python** language\n\n\
             Python benchmark support.",
         ),
         _ => None,

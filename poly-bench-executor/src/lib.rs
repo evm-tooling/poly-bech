@@ -22,6 +22,8 @@ pub struct ProjectRoots {
     pub node_root: Option<PathBuf>,
     /// Rust project root (directory containing Cargo.toml)
     pub rust_root: Option<PathBuf>,
+    /// Python project root (directory containing requirements.txt or pyproject.toml)
+    pub python_root: Option<PathBuf>,
 }
 
 pub use comparison::{BenchmarkResult, BenchmarkResults, SuiteResults};

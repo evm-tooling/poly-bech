@@ -307,7 +307,7 @@ poly-bench includes a full-featured language server for editor integration.
 | **Completions** | Context-aware completions for keywords, stdlib, and user symbols |
 | **Hover** | Documentation for DSL keywords and stdlib; delegates to gopls/tsserver/rust-analyzer for embedded code |
 | **Semantic Highlighting** | Full syntax highlighting via semantic tokens |
-| **Embedded Language Support** | Go, TypeScript, and Rust code blocks are checked by their respective language servers |
+| **Embedded Language Support** | Go, TypeScript, Rust, and Python code blocks are checked by their respective language servers |
 
 ### Editor Extensions
 

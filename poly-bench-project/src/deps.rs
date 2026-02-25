@@ -1,8 +1,8 @@
 //! Dependency management for poly-bench projects
 
 use crate::{
-    error::ProjectError, manifest, runtime_env_go, runtime_env_rust, runtime_env_ts, templates,
-    terminal,
+    error::ProjectError, manifest, runtime_env_go, runtime_env_python, runtime_env_rust,
+    runtime_env_ts, templates, terminal,
 };
 use miette::Result;
 use std::{
@@ -38,6 +38,48 @@ fn resolve_rust_root(project_root: &Path) -> std::path::PathBuf {
     } else {
         project_root.to_path_buf()
     }
+}
+
+/// Resolve the directory used for Python (runtime-env if present, else project root)
+fn resolve_python_root(project_root: &Path) -> std::path::PathBuf {
+    let env_python = runtime_env_python(project_root);
+    if env_python.exists() {
+        env_python
+    } else {
+        project_root.to_path_buf()
+    }
+}
+
+/// Ensure Python venv exists in python_root and return path to pip (venv's pip or "pip")
+fn ensure_python_venv_and_get_pip(python_root: &Path) -> Result<std::path::PathBuf> {
+    let venv_path = python_root.join(".venv");
+    let venv_pip = venv_path.join("bin").join("pip");
+
+    if venv_pip.exists() {
+        return Ok(venv_pip);
+    }
+
+    // Create venv
+    let python_cmd = which::which("python3")
+        .or_else(|_| which::which("python"))
+        .map_err(|_| miette::miette!("Python not found in PATH. Please install Python 3."))?;
+
+    let output = Command::new(&python_cmd)
+        .args(["-m", "venv", ".venv"])
+        .current_dir(python_root)
+        .output()
+        .map_err(|e| miette::miette!("Failed to create venv: {}", e))?;
+
+    if !output.status.success() {
+        return Err(command_failure(
+            "python -m venv .venv",
+            python_root,
+            &output,
+            "Ensure Python 3 venv module is available (python3-venv on Debian/Ubuntu).",
+        ));
+    }
+
+    Ok(venv_pip)
 }
 
 /// Ensure go.mod exists in go_root (for add when runtime-env exists but empty)
@@ -484,6 +526,121 @@ pub fn remove_rust_dependency(crate_name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Parse Python dependency spec: "numpy==1.0" or "numpy" (latest) or "numpy@1.0"
+fn parse_python_dep_spec(spec: &str) -> (String, String) {
+    if let Some(idx) = spec.find("==") {
+        (spec[..idx].to_string(), spec[idx + 2..].to_string())
+    } else {
+        let (pkg, ver) = parse_dep_spec(spec);
+        (pkg, ver)
+    }
+}
+
+/// Add a Python dependency to the project
+pub fn add_python_dependency(spec: &str) -> Result<()> {
+    let current_dir = std::env::current_dir()
+        .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+
+    let project_root = crate::find_project_root(&current_dir)
+        .ok_or_else(|| miette::miette!("Not in a poly-bench project"))?;
+
+    let mut manifest = crate::load_manifest(&project_root)?;
+
+    if !manifest.has_python() {
+        return Err(miette::miette!("Python is not enabled in this project"));
+    }
+
+    let (package, version) = parse_python_dep_spec(spec);
+
+    manifest.add_python_dependency(&package, &version)?;
+    crate::save_manifest(&project_root, &manifest)?;
+
+    let python_root = resolve_python_root(&project_root);
+    std::fs::create_dir_all(&python_root)
+        .map_err(|e| miette::miette!("Failed to create Python env dir: {}", e))?;
+
+    let deps: Vec<(String, String)> = manifest
+        .python
+        .as_ref()
+        .unwrap()
+        .dependencies
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let requirements_content = templates::requirements_txt(&deps);
+    std::fs::write(python_root.join("requirements.txt"), requirements_content)
+        .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
+
+    if version != "latest" {
+        let pip_path = ensure_python_venv_and_get_pip(&python_root)?;
+        let pip_spec = format!("{}=={}", package, version);
+        let spinner = terminal::step_spinner(&format!("Installing {}...", pip_spec));
+        let output = terminal::run_command_with_spinner(
+            &spinner,
+            Command::new(&pip_path).args(["install", &pip_spec]).current_dir(&python_root),
+        )
+        .map_err(|e| miette::miette!("Failed to run pip install: {}", e))?;
+
+        if !output.status.success() {
+            terminal::finish_failure(&spinner, "pip install failed");
+            terminal::print_stderr_excerpt(&output.stderr, 8);
+            return Err(command_failure(
+                &format!("pip install {}", pip_spec),
+                &python_root,
+                &output,
+                "Fix pip dependency issues.",
+            ));
+        }
+        terminal::finish_success(&spinner, &pip_spec);
+    }
+
+    terminal::success(&format!("Added {} to polybench.toml", package));
+
+    Ok(())
+}
+
+/// Remove a Python dependency from the project
+pub fn remove_python_dependency(package: &str) -> Result<()> {
+    let current_dir = std::env::current_dir()
+        .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+
+    let project_root = crate::find_project_root(&current_dir)
+        .ok_or_else(|| miette::miette!("Not in a poly-bench project"))?;
+
+    let mut manifest = crate::load_manifest(&project_root)?;
+
+    if !manifest.has_python() {
+        return Err(miette::miette!("Python is not enabled in this project"));
+    }
+
+    if !manifest.python.as_ref().unwrap().dependencies.contains_key(package) {
+        return Err(miette::miette!(
+            "Dependency '{}' is not installed. Check polybench.toml for installed Python dependencies.",
+            package
+        ));
+    }
+
+    manifest.remove_python_dependency(package)?;
+    crate::save_manifest(&project_root, &manifest)?;
+
+    let python_root = resolve_python_root(&project_root);
+    let deps: Vec<(String, String)> = manifest
+        .python
+        .as_ref()
+        .unwrap()
+        .dependencies
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let requirements_content = templates::requirements_txt(&deps);
+    std::fs::write(python_root.join("requirements.txt"), requirements_content)
+        .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
+
+    terminal::success(&format!("Removed {} from polybench.toml", package));
+
+    Ok(())
+}
+
 /// Read a dependency version from Cargo.toml
 fn read_cargo_dep_version(rust_root: &Path, crate_name: &str) -> Option<String> {
     let cargo_toml_path = rust_root.join("Cargo.toml");
@@ -568,6 +725,11 @@ pub fn install_all() -> Result<()> {
     // Install Rust dependencies
     if let Some(ref rust_config) = manifest.rust {
         install_rust_deps(&project_root, rust_config, &manifest.project.name)?;
+    }
+
+    // Install Python dependencies
+    if let Some(ref python_config) = manifest.python {
+        install_python_deps(&project_root, python_config)?;
     }
 
     println!();
@@ -753,6 +915,51 @@ fn install_rust_deps(
             &rust_root,
             &output,
             "Resolve Cargo registry/dependency issues before running Rust benchmarks.",
+        ));
+    }
+
+    Ok(())
+}
+
+/// Install Python dependencies from manifest
+fn install_python_deps(project_root: &Path, python_config: &manifest::PythonConfig) -> Result<()> {
+    terminal::section("Python dependencies");
+
+    let python_root = runtime_env_python(project_root);
+    std::fs::create_dir_all(&python_root)
+        .map_err(|e| miette::miette!("Failed to create Python env dir: {}", e))?;
+
+    let deps: Vec<(String, String)> =
+        python_config.dependencies.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let requirements_content = templates::requirements_txt(&deps);
+    std::fs::write(python_root.join("requirements.txt"), requirements_content)
+        .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
+
+    if python_config.dependencies.is_empty() {
+        terminal::success_indented("No Python dependencies to install");
+        return Ok(());
+    }
+
+    let pip_path = ensure_python_venv_and_get_pip(&python_root)?;
+    let spinner = terminal::indented_spinner("Installing Python dependencies...");
+    let output = terminal::run_command_with_spinner(
+        &spinner,
+        Command::new(&pip_path)
+            .args(["install", "-r", "requirements.txt"])
+            .current_dir(&python_root),
+    )
+    .map_err(|e| miette::miette!("Failed to run pip install: {}", e))?;
+
+    if output.status.success() {
+        terminal::finish_success_indented(&spinner, "Python dependencies ready");
+    } else {
+        terminal::finish_failure_indented(&spinner, "pip install failed");
+        terminal::print_stderr_excerpt(&output.stderr, 8);
+        return Err(command_failure(
+            "pip install -r requirements.txt",
+            &python_root,
+            &output,
+            "Ensure pip is available and fix dependency issues.",
         ));
     }
 

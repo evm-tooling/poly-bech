@@ -1,5 +1,5 @@
 use poly_bench_dsl::{BenchmarkKind, FairnessMode, Lang};
-use poly_bench_executor::{comparison::BenchmarkResult, run, ProjectRoots};
+use poly_bench_executor::{comparison::BenchmarkResult, run, ProjectRoots, RunOptions};
 use poly_bench_ir::{BenchmarkIR, BenchmarkSpec, SuiteIR};
 use poly_bench_runtime::measurement::Measurement;
 use std::collections::HashMap;
@@ -92,12 +92,13 @@ async fn test_scheduler_emits_strict_and_legacy_modes() {
     legacy_bench.fairness_mode = FairnessMode::Legacy;
     legacy_suite.benchmarks.push(legacy_bench);
 
+    let opts = RunOptions::default();
     let strict_results =
-        run(&BenchmarkIR::new(vec![strict_suite]), &[], None, &ProjectRoots::default())
+        run(&BenchmarkIR::new(vec![strict_suite]), &[], None, &ProjectRoots::default(), &opts)
             .await
             .unwrap();
     let legacy_results =
-        run(&BenchmarkIR::new(vec![legacy_suite]), &[], None, &ProjectRoots::default())
+        run(&BenchmarkIR::new(vec![legacy_suite]), &[], None, &ProjectRoots::default(), &opts)
             .await
             .unwrap();
 

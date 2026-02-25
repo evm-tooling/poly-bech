@@ -10,12 +10,12 @@ use regex::Regex;
 use tempfile::TempDir;
 use tower_lsp::lsp_types::DiagnosticSeverity;
 
-use crate::virtual_files::{VirtualFile, VirtualTsFile};
+use crate::virtual_files::VirtualFile;
 
 use super::EmbeddedDiagnostic;
 
 /// Check TypeScript blocks by running tsc directly
-pub fn check_ts_blocks(virtual_file: &VirtualTsFile) -> Vec<EmbeddedDiagnostic> {
+pub fn check_ts_blocks(virtual_file: &dyn VirtualFile) -> Vec<EmbeddedDiagnostic> {
     let content = virtual_file.content();
     let path = virtual_file.path();
 
@@ -203,7 +203,7 @@ fn run_tsc(
 }
 
 /// Parse TypeScript compiler error output and map to virtual file positions
-fn parse_ts_errors(output: &str, virtual_file: &VirtualTsFile) -> Vec<EmbeddedDiagnostic> {
+fn parse_ts_errors(output: &str, virtual_file: &dyn VirtualFile) -> Vec<EmbeddedDiagnostic> {
     let mut diagnostics = Vec::new();
 
     // TSC error formats:

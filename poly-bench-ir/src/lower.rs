@@ -8,7 +8,7 @@ use crate::{
         load_hex_file, load_raw_file, load_utf8_file, normalize_csv_to_bytes,
         normalize_json_to_bytes,
     },
-    imports::{extract_go_imports, extract_rust_imports, extract_ts_imports, ParsedSetup},
+    imports::{extract_imports, ParsedSetup},
     AnvilConfigIR, BenchmarkIR, BenchmarkSpec, ChartDirectiveIR, FixtureIR, FixtureParamIR,
     SourceLocation, SuiteIR,
 };
@@ -122,12 +122,7 @@ fn lower_suite(
         // Handle imports - extract from import section or parse from code
         if let Some(ref import_block) = structured_setup.imports {
             // For structured setups, imports are already in the import block
-            let parsed = match lang {
-                Lang::Go => extract_go_imports(&import_block.code),
-                Lang::TypeScript => extract_ts_imports(&import_block.code),
-                Lang::Rust => extract_rust_imports(&import_block.code),
-                _ => ParsedSetup::passthrough(&import_block.code),
-            };
+            let parsed = extract_imports(*lang, &import_block.code);
             ir.imports.insert(*lang, parsed.imports);
             // Preserve source location
             ir.imports_source

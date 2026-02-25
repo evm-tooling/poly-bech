@@ -10,7 +10,7 @@
 //! - **Full semantic token coverage**: All syntax elements are highlighted
 //! - **Incremental formatting**: Small edits instead of whole-document replacement
 //! - **Better diagnostics**: Syntax errors from Tree-sitter + semantic validation
-//! - **Embedded language hover**: Full hover support for Go, TypeScript, and Rust code
+//! - **Embedded language hover**: Full hover support for Go, TypeScript, Rust, and Python code
 
 pub mod diagnostics;
 pub mod document;
@@ -20,7 +20,9 @@ pub mod formatter;
 pub mod gopls_client;
 pub mod hover;
 pub mod hover_cache;
+pub mod hover_providers;
 pub mod lsp_client;
+pub mod pyright_client;
 pub mod rust_analyzer_client;
 pub mod semantic_tokens;
 pub mod server;

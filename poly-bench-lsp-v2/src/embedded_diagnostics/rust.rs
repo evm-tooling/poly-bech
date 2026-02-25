@@ -10,7 +10,7 @@ use regex::Regex;
 use serde::Deserialize;
 use tower_lsp::lsp_types::DiagnosticSeverity;
 
-use crate::virtual_files::{VirtualFile, VirtualRustFile};
+use crate::virtual_files::VirtualFile;
 
 use super::EmbeddedDiagnostic;
 
@@ -51,7 +51,7 @@ struct DiagnosticSpan {
 }
 
 /// Check Rust blocks by running cargo check
-pub fn check_rust_blocks(virtual_file: &VirtualRustFile) -> Vec<EmbeddedDiagnostic> {
+pub fn check_rust_blocks(virtual_file: &dyn VirtualFile) -> Vec<EmbeddedDiagnostic> {
     let content = virtual_file.content();
     let virtual_path = virtual_file.path();
 
@@ -166,7 +166,7 @@ fn run_cargo_check(cargo_cmd: &str, project_root: &Path) -> Option<String> {
 }
 
 /// Parse cargo check JSON output and filter to virtual file diagnostics
-fn parse_cargo_json(json_output: &str, virtual_file: &VirtualRustFile) -> Vec<EmbeddedDiagnostic> {
+fn parse_cargo_json(json_output: &str, virtual_file: &dyn VirtualFile) -> Vec<EmbeddedDiagnostic> {
     let mut diagnostics = Vec::new();
     let virtual_path = virtual_file.path();
     let content = virtual_file.content();

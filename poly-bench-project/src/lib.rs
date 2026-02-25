@@ -8,11 +8,14 @@
 
 pub mod build;
 pub mod deps;
+pub mod detectors;
 pub mod error;
 pub mod init;
 pub mod manifest;
 pub mod templates;
 pub mod terminal;
+
+pub use detectors::{detect_from_markers, get_detector, ProjectRootDetector};
 
 use miette::Result;
 use std::path::{Path, PathBuf};
@@ -33,6 +36,7 @@ pub const RUNTIME_ENV_GO: &str = "go";
 pub const RUNTIME_ENV_TS: &str = "ts";
 /// Rust runtime env subdir (Cargo.toml, Cargo.lock, generated bench code)
 pub const RUNTIME_ENV_RUST: &str = "rust";
+pub const RUNTIME_ENV_PYTHON: &str = "python";
 
 /// Path to the Go runtime env for a project (where go.mod and deps live)
 pub fn runtime_env_go(project_root: &Path) -> PathBuf {
@@ -47,6 +51,11 @@ pub fn runtime_env_ts(project_root: &Path) -> PathBuf {
 /// Path to the Rust runtime env for a project
 pub fn runtime_env_rust(project_root: &Path) -> PathBuf {
     project_root.join(RUNTIME_ENV_DIR).join(RUNTIME_ENV_RUST)
+}
+
+/// Path to the Python runtime env for a project
+pub fn runtime_env_python(project_root: &Path) -> PathBuf {
+    project_root.join(RUNTIME_ENV_DIR).join(RUNTIME_ENV_PYTHON)
 }
 
 /// True if path looks like a runtime-env root (e.g. .../runtime-env/go)

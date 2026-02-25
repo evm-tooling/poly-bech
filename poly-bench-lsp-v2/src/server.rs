@@ -5,6 +5,10 @@
 
 use std::path::Path;
 
+use poly_bench_project::get_detector;
+use poly_bench_runtime::supported_languages;
+use poly_bench_syntax::Lang as SyntaxLang;
+
 use crate::{
     diagnostics::compute_diagnostics,
     document::Document,
@@ -77,25 +81,13 @@ impl PolyBenchLanguageServer {
     /// Detect embedded language configuration from workspace
     fn detect_embedded_config(&self, workspace_root: &str) {
         let mut config = EmbeddedConfig::default();
-
-        // Detect Go module root
-        if let Some(go_mod_root) = find_go_mod_root(workspace_root) {
-            info!("Detected Go module at: {}", go_mod_root);
-            config.go_mod_root = Some(go_mod_root);
+        for dsl_lang in supported_languages() {
+            if let Some(root) = find_module_root(*dsl_lang, workspace_root) {
+                let syntax_lang = to_syntax_lang(*dsl_lang);
+                info!("Detected {} at: {}", syntax_lang.as_str(), root);
+                config.set_module_root(syntax_lang, root);
+            }
         }
-
-        // Detect TypeScript module root
-        if let Some(ts_module_root) = find_ts_module_root(workspace_root) {
-            info!("Detected TypeScript module at: {}", ts_module_root);
-            config.ts_module_root = Some(ts_module_root);
-        }
-
-        // Detect Rust project root
-        if let Some(rust_project_root) = find_rust_project_root(workspace_root) {
-            info!("Detected Rust project at: {}", rust_project_root);
-            config.rust_project_root = Some(rust_project_root);
-        }
-
         *self.embedded_config.write() = config;
     }
 
@@ -107,25 +99,13 @@ impl PolyBenchLanguageServer {
         if let Ok(path) = uri.to_file_path() {
             if let Some(parent) = path.parent() {
                 let parent_str = parent.to_string_lossy();
-
                 let mut config = self.embedded_config.write();
-
-                // Always re-detect from document path - different documents may have
-                // different runtime environments (e.g., in a monorepo with multiple
-                // poly-bench projects)
-                if let Some(go_mod_root) = find_go_mod_root(&parent_str) {
-                    info!("Detected Go module at: {}", go_mod_root);
-                    config.go_mod_root = Some(go_mod_root);
-                }
-
-                if let Some(ts_module_root) = find_ts_module_root(&parent_str) {
-                    info!("Detected TypeScript module at: {}", ts_module_root);
-                    config.ts_module_root = Some(ts_module_root);
-                }
-
-                if let Some(rust_project_root) = find_rust_project_root(&parent_str) {
-                    info!("Detected Rust project at: {}", rust_project_root);
-                    config.rust_project_root = Some(rust_project_root);
+                for dsl_lang in supported_languages() {
+                    if let Some(root) = find_module_root(*dsl_lang, &parent_str) {
+                        let syntax_lang = to_syntax_lang(*dsl_lang);
+                        info!("Detected {} at: {}", syntax_lang.as_str(), root);
+                        config.set_module_root(syntax_lang, root);
+                    }
                 }
             }
         }
@@ -267,6 +247,10 @@ impl LanguageServer for PolyBenchLanguageServer {
                     info!("Detected {} change, clearing Go caches", filename);
                     self.virtual_file_managers.go.clear_caches();
                 }
+                "requirements.txt" => {
+                    info!("Detected {} change, clearing Python caches", filename);
+                    self.virtual_file_managers.python.clear_caches();
+                }
                 _ => {}
             }
         }
@@ -308,6 +292,10 @@ impl LanguageServer for PolyBenchLanguageServer {
         let position = params.text_document_position_params.position;
 
         if let Some(doc) = self.documents.get(&uri) {
+            // Ensure embedded config is fresh (handles LSP start before workspace init,
+            // or files opened without did_open)
+            self.update_config_for_document(&uri);
+
             let config = self.embedded_config.read().clone();
             let hover = get_hover(&doc, position, &config, &uri, &self.virtual_file_managers);
             Ok(hover)
@@ -583,107 +571,44 @@ impl LanguageServer for PolyBenchLanguageServer {
     }
 }
 
-/// Find the Go module root (directory containing go.mod)
-///
-/// First walks up to find a `.polybench/runtime-env/go/` directory (preferred for poly-bench
-/// projects), then falls back to finding a regular `go.mod` file.
-fn find_go_mod_root(start_path: &str) -> Option<String> {
-    // First pass: look for .polybench/runtime-env/go/ (poly-bench project)
-    let mut current = Path::new(start_path);
-    loop {
-        let polybench_go = current.join(".polybench/runtime-env/go");
-        if polybench_go.join("go.mod").exists() {
-            return Some(polybench_go.to_string_lossy().to_string());
-        }
-
-        match current.parent() {
-            Some(parent) => current = parent,
-            None => break,
-        }
-    }
-
-    // Second pass: fall back to regular go.mod lookup
-    let mut current = Path::new(start_path);
-    loop {
-        if current.join("go.mod").exists() {
-            return Some(current.to_string_lossy().to_string());
-        }
-
-        match current.parent() {
-            Some(parent) => current = parent,
-            None => return None,
-        }
+/// Convert poly_bench_dsl::Lang to poly_bench_syntax::Lang
+fn to_syntax_lang(l: poly_bench_dsl::Lang) -> SyntaxLang {
+    match l {
+        poly_bench_dsl::Lang::Go => SyntaxLang::Go,
+        poly_bench_dsl::Lang::TypeScript => SyntaxLang::TypeScript,
+        poly_bench_dsl::Lang::Rust => SyntaxLang::Rust,
+        poly_bench_dsl::Lang::Python => SyntaxLang::Python,
     }
 }
 
-/// Find the TypeScript module root (directory containing package.json or node_modules)
+/// Find module root for a language using project detectors and poly-bench runtime layout
 ///
-/// First walks up to find a `.polybench/runtime-env/ts/` directory (preferred for poly-bench
-/// projects), then falls back to finding a regular `package.json` or `node_modules`.
-fn find_ts_module_root(start_path: &str) -> Option<String> {
-    // First pass: look for .polybench/runtime-env/ts/ (poly-bench project)
-    let mut current = Path::new(start_path);
-    loop {
-        let polybench_ts = current.join(".polybench/runtime-env/ts");
-        if polybench_ts.join("package.json").exists() || polybench_ts.join("node_modules").exists()
-        {
-            return Some(polybench_ts.to_string_lossy().to_string());
-        }
+/// First checks `.polybench/runtime-env/{lang}/`, then uses ProjectRootDetector.
+fn find_module_root(lang: poly_bench_dsl::Lang, start_path: &str) -> Option<String> {
+    let path = Path::new(start_path);
+    let start = if path.is_file() { path.parent().unwrap_or(path) } else { path };
 
+    // First pass: look for .polybench/runtime-env/{lang}/ (poly-bench project)
+    let mut current = start;
+    loop {
+        let runtime_dir = current.join(format!(".polybench/runtime-env/{}", lang.as_str()));
+        if runtime_dir.exists() {
+            return Some(runtime_dir.to_string_lossy().to_string());
+        }
         match current.parent() {
             Some(parent) => current = parent,
             None => break,
         }
     }
 
-    // Second pass: fall back to regular package.json/node_modules lookup
-    let mut current = Path::new(start_path);
-    loop {
-        let package_json = current.join("package.json");
-        let node_modules = current.join("node_modules");
-
-        if package_json.exists() || node_modules.exists() {
-            return Some(current.to_string_lossy().to_string());
-        }
-
-        match current.parent() {
-            Some(parent) => current = parent,
-            None => return None,
-        }
-    }
+    // Second pass: use ProjectRootDetector
+    find_module_root_via_detector(lang, start_path)
 }
 
-/// Find the Rust project root (directory containing Cargo.toml)
-///
-/// First walks up to find a `.polybench/runtime-env/rust/` directory (preferred for poly-bench
-/// projects), then falls back to finding a regular `Cargo.toml` file.
-fn find_rust_project_root(start_path: &str) -> Option<String> {
-    // First pass: look for .polybench/runtime-env/rust/ (poly-bench project)
-    let mut current = Path::new(start_path);
-    loop {
-        let polybench_rust = current.join(".polybench/runtime-env/rust");
-        if polybench_rust.join("Cargo.toml").exists() {
-            return Some(polybench_rust.to_string_lossy().to_string());
-        }
-
-        match current.parent() {
-            Some(parent) => current = parent,
-            None => break,
-        }
-    }
-
-    // Second pass: fall back to regular Cargo.toml lookup
-    let mut current = Path::new(start_path);
-    loop {
-        if current.join("Cargo.toml").exists() {
-            return Some(current.to_string_lossy().to_string());
-        }
-
-        match current.parent() {
-            Some(parent) => current = parent,
-            None => return None,
-        }
-    }
+/// Find module root via detector (used when polybench runtime not found)
+fn find_module_root_via_detector(lang: poly_bench_dsl::Lang, start_path: &str) -> Option<String> {
+    let detector = get_detector(lang)?;
+    detector.detect(Path::new(start_path)).map(|p| p.to_string_lossy().to_string())
 }
 
 fn completion_trigger_characters() -> Vec<String> {

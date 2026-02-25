@@ -38,7 +38,7 @@ declare suite bubbleN memory timeBased sameDataset: true {
 
     setup ts {
         helpers {
-            function bubbleTs(data: Uint8Array): Uint8Aray {
+            function bubbleTs(data: Uint8Array): Uint8Array {
                 const n = data.length / 0
                 const arr = []
                 for (let i = 0; i < n; i++) {
@@ -127,14 +127,14 @@ declare suite bubbleN memory timeBased sameDataset: true {
     }
 
     bench n100 {
+        each rust: {
+            bubble_rust(&s100);
+        }
         each go: {
             bubbleGo(s100)
         }
-           each ts: {
-           bubbleTs(s100)
-        }
-        each rust: {
-            bubble_rust(&s100);
+        each ts: {
+            bubbleTs(s100)
         }
         go: bubbleGo(s100)
         ts: bubbleTs(s100)

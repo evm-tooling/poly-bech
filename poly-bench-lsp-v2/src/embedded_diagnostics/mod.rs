@@ -1,6 +1,6 @@
 //! Embedded language diagnostics
 //!
-//! This module provides diagnostics for embedded code blocks (Go, TypeScript, Rust)
+//! This module provides diagnostics for embedded code blocks (Go, TypeScript, Rust, Python)
 //! by running compilers directly (tsc, rustc) or communicating with language servers (gopls).
 //!
 //! Architecture:
@@ -10,6 +10,7 @@
 //! - Position mappings translate between .bench file and virtual file positions
 
 pub mod go;
+pub mod python;
 pub mod rust;
 pub mod typescript;
 
@@ -17,8 +18,10 @@ use crate::{
     document::Document,
     embedded::{extract_embedded_blocks, EmbeddedBlock},
     gopls_client::init_gopls_client,
-    virtual_files::{VirtualFile, VirtualGoFile, VirtualRustFile, VirtualTsFile},
+    pyright_client::init_pyright_client,
+    virtual_files::{get_virtual_file_builder, VirtualFile, VirtualFileParams},
 };
+use poly_bench_project::get_detector;
 use poly_bench_syntax::{Lang, Node};
 use std::{
     collections::{HashMap, HashSet},
@@ -43,13 +46,125 @@ pub struct EmbeddedDiagnostic {
 }
 
 /// Trait for language-specific diagnostic providers
-#[allow(dead_code)]
 pub trait EmbeddedDiagnosticProvider: Send + Sync {
-    /// Check embedded blocks and return diagnostics
-    fn check_blocks(&self, blocks: &[EmbeddedBlock], bench_uri: &str) -> Vec<EmbeddedDiagnostic>;
+    /// Check a virtual file and return diagnostics
+    fn check_blocks(&self, virtual_file: &dyn VirtualFile) -> Vec<EmbeddedDiagnostic>;
 
     /// Get the language this provider handles
     fn language(&self) -> Lang;
+}
+
+struct GoEmbeddedDiagnosticProvider;
+impl EmbeddedDiagnosticProvider for GoEmbeddedDiagnosticProvider {
+    fn check_blocks(&self, virtual_file: &dyn VirtualFile) -> Vec<EmbeddedDiagnostic> {
+        go::check_go_blocks(virtual_file)
+    }
+    fn language(&self) -> Lang {
+        Lang::Go
+    }
+}
+
+struct TsEmbeddedDiagnosticProvider;
+impl EmbeddedDiagnosticProvider for TsEmbeddedDiagnosticProvider {
+    fn check_blocks(&self, virtual_file: &dyn VirtualFile) -> Vec<EmbeddedDiagnostic> {
+        typescript::check_ts_blocks(virtual_file)
+    }
+    fn language(&self) -> Lang {
+        Lang::TypeScript
+    }
+}
+
+struct RustEmbeddedDiagnosticProvider;
+impl EmbeddedDiagnosticProvider for RustEmbeddedDiagnosticProvider {
+    fn check_blocks(&self, virtual_file: &dyn VirtualFile) -> Vec<EmbeddedDiagnostic> {
+        rust::check_rust_blocks(virtual_file)
+    }
+    fn language(&self) -> Lang {
+        Lang::Rust
+    }
+}
+
+struct PythonEmbeddedDiagnosticProvider;
+impl EmbeddedDiagnosticProvider for PythonEmbeddedDiagnosticProvider {
+    fn check_blocks(&self, virtual_file: &dyn VirtualFile) -> Vec<EmbeddedDiagnostic> {
+        python::check_python_blocks(virtual_file)
+    }
+    fn language(&self) -> Lang {
+        Lang::Python
+    }
+}
+
+/// Trait for language-specific setup before running diagnostics
+/// (e.g. init gopls, ensure tsconfig, create src/bin)
+pub trait EmbeddedDiagnosticSetup: Send + Sync {
+    fn lang(&self) -> Lang;
+    /// Called before checking; e.g. init gopls, ensure tsconfig, etc.
+    fn prepare(&self, module_root: &str);
+}
+
+struct GoEmbeddedDiagnosticSetup;
+impl EmbeddedDiagnosticSetup for GoEmbeddedDiagnosticSetup {
+    fn lang(&self) -> Lang {
+        Lang::Go
+    }
+    fn prepare(&self, module_root: &str) {
+        let _ = init_gopls_client(module_root);
+    }
+}
+
+struct TsEmbeddedDiagnosticSetup;
+impl EmbeddedDiagnosticSetup for TsEmbeddedDiagnosticSetup {
+    fn lang(&self) -> Lang {
+        Lang::TypeScript
+    }
+    fn prepare(&self, module_root: &str) {
+        tracing::debug!("[embedded-diagnostics] TypeScript module root: {}", module_root);
+        ensure_tsconfig(module_root);
+    }
+}
+
+struct RustEmbeddedDiagnosticSetup;
+impl EmbeddedDiagnosticSetup for RustEmbeddedDiagnosticSetup {
+    fn lang(&self) -> Lang {
+        Lang::Rust
+    }
+    fn prepare(&self, module_root: &str) {
+        tracing::debug!("[embedded-diagnostics] Rust project root: {}", module_root);
+    }
+}
+
+struct PythonEmbeddedDiagnosticSetup;
+impl EmbeddedDiagnosticSetup for PythonEmbeddedDiagnosticSetup {
+    fn lang(&self) -> Lang {
+        Lang::Python
+    }
+    fn prepare(&self, module_root: &str) {
+        let _ = init_pyright_client(module_root);
+    }
+}
+
+/// Get the embedded diagnostic setup for a language
+pub fn get_embedded_diagnostic_setup(lang: Lang) -> Option<&'static dyn EmbeddedDiagnosticSetup> {
+    match lang {
+        Lang::Go => Some(&GoEmbeddedDiagnosticSetup),
+        Lang::TypeScript => Some(&TsEmbeddedDiagnosticSetup),
+        Lang::Rust => Some(&RustEmbeddedDiagnosticSetup),
+        Lang::Python => Some(&PythonEmbeddedDiagnosticSetup),
+        _ => None,
+    }
+}
+
+/// Get the embedded diagnostic provider for a language
+pub fn get_embedded_diagnostic_provider(
+    lang: Lang,
+) -> Option<&'static dyn EmbeddedDiagnosticProvider> {
+    match lang {
+        Lang::Go => Some(&GoEmbeddedDiagnosticProvider),
+        Lang::TypeScript => Some(&TsEmbeddedDiagnosticProvider),
+        Lang::Rust => Some(&RustEmbeddedDiagnosticProvider),
+        Lang::Python => Some(&PythonEmbeddedDiagnosticProvider),
+        _ => None,
+    }
 }
 
 /// Check all embedded code in a document and return diagnostics
@@ -80,94 +195,42 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
     // Convert fixture names to Vec<String> for passing to virtual file builders
     let fixture_names_vec: Vec<String> = fixture_names.iter().cloned().collect();
 
-    // Check Go blocks
-    if let Some(go_blocks) = blocks_by_lang.get(&Lang::Go) {
-        let go_mod_root = find_module_root(&bench_path, "go.mod")
-            .or_else(|| find_polybench_runtime(&bench_path, "go"))
-            .unwrap_or_else(|| bench_path.clone());
+    // Check each language via registry
+    for (lang, blocks) in &blocks_by_lang {
+        let Some(builder) = get_virtual_file_builder(*lang) else {
+            continue;
+        };
+        let Some(provider) = get_embedded_diagnostic_provider(*lang) else {
+            continue;
+        };
 
-        // Initialize gopls client if not already done
-        let _ = init_gopls_client(&go_mod_root);
+        let module_root = find_module_root_for_lang(*lang, &bench_path);
 
-        let virtual_file = VirtualGoFile::from_blocks_with_fixtures(
+        // Language-specific setup via registry
+        if let Some(setup) = get_embedded_diagnostic_setup(*lang) {
+            setup.prepare(&module_root);
+        }
+
+        let params = VirtualFileParams {
             bench_uri,
-            &bench_path,
-            &go_mod_root,
-            go_blocks,
-            1,
-            &fixture_names_vec,
-        );
+            bench_path: &bench_path,
+            module_root: &module_root,
+            blocks,
+            fixture_names: &fixture_names_vec,
+            version: 1,
+        };
 
-        // Write virtual file to disk for gopls
+        let virtual_file = builder.build(params);
         write_virtual_file_to_disk(virtual_file.path(), virtual_file.content());
 
-        let diagnostics = go::check_go_blocks(&virtual_file);
-        let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names, has_anvil_stdlib);
-        all_diagnostics.extend(map_diagnostics_to_bench(filtered, &virtual_file, doc, Lang::Go));
-    }
-
-    // Check TypeScript blocks using direct tsc execution
-    if let Some(ts_blocks) = blocks_by_lang.get(&Lang::TypeScript) {
-        // Prioritize .polybench/runtime-env/ts/ over general package.json search
-        // This ensures we use the polybench runtime environment for linting
-        let ts_module_root = find_polybench_runtime(&bench_path, "ts")
-            .or_else(|| find_module_root(&bench_path, "package.json"))
-            .unwrap_or_else(|| bench_path.clone());
-
-        tracing::debug!("[embedded-diagnostics] TypeScript module root: {}", ts_module_root);
-
-        // Ensure tsconfig.json exists for TypeScript
-        ensure_tsconfig(&ts_module_root);
-
-        let virtual_file = VirtualTsFile::from_blocks_with_fixtures(
-            bench_uri,
-            &bench_path,
-            &ts_module_root,
-            ts_blocks,
-            1,
-            &fixture_names_vec,
-        );
-
-        // Write virtual file to disk - tsc needs files on disk for module resolution
-        write_virtual_file_to_disk(virtual_file.path(), virtual_file.content());
-
-        // Run tsc directly for reliable diagnostics
-        let diagnostics = typescript::check_ts_blocks(&virtual_file);
+        let diagnostics = provider.check_blocks(virtual_file.as_ref());
         let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names, has_anvil_stdlib);
         all_diagnostics.extend(map_diagnostics_to_bench(
             filtered,
-            &virtual_file,
+            virtual_file.as_ref(),
             doc,
-            Lang::TypeScript,
+            *lang,
         ));
-    }
-
-    // Check Rust blocks using direct rustc execution
-    if let Some(rust_blocks) = blocks_by_lang.get(&Lang::Rust) {
-        // Prioritize .polybench/runtime-env/rust/ over general Cargo.toml search
-        // This ensures we use the polybench runtime environment for linting
-        let rust_project_root = find_polybench_runtime(&bench_path, "rust")
-            .or_else(|| find_module_root(&bench_path, "Cargo.toml"))
-            .unwrap_or_else(|| bench_path.clone());
-
-        tracing::debug!("[embedded-diagnostics] Rust project root: {}", rust_project_root);
-
-        let virtual_file = VirtualRustFile::from_blocks_with_fixtures(
-            bench_uri,
-            &bench_path,
-            &rust_project_root,
-            rust_blocks,
-            1,
-            &fixture_names_vec,
-        );
-
-        // Write virtual file to disk for reference
-        write_virtual_file_to_disk(virtual_file.path(), virtual_file.content());
-
-        // Run rustc directly for reliable diagnostics
-        let diagnostics = rust::check_rust_blocks(&virtual_file);
-        let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names, has_anvil_stdlib);
-        all_diagnostics.extend(map_diagnostics_to_bench(filtered, &virtual_file, doc, Lang::Rust));
     }
 
     all_diagnostics
@@ -313,6 +376,31 @@ fn ensure_tsconfig(ts_module_root: &str) {
     }
 }
 
+/// Convert poly_bench_syntax::Lang to poly_bench_dsl::Lang for detector lookup
+fn to_dsl_lang(lang: Lang) -> poly_bench_dsl::Lang {
+    match lang {
+        Lang::Go => poly_bench_dsl::Lang::Go,
+        Lang::TypeScript => poly_bench_dsl::Lang::TypeScript,
+        Lang::Rust => poly_bench_dsl::Lang::Rust,
+        Lang::Python => poly_bench_dsl::Lang::Python,
+    }
+}
+
+/// Find module root for a language (used by embedded diagnostics)
+/// Uses poly-bench runtime layout first, then ProjectRootDetector
+fn find_module_root_for_lang(lang: Lang, bench_path: &str) -> String {
+    let dsl_lang = to_dsl_lang(lang);
+    find_polybench_runtime(bench_path, lang.as_str())
+        .or_else(|| find_module_root_via_detector(dsl_lang, bench_path))
+        .unwrap_or_else(|| bench_path.to_string())
+}
+
+/// Find module root via ProjectRootDetector
+fn find_module_root_via_detector(lang: poly_bench_dsl::Lang, start_path: &str) -> Option<String> {
+    let detector = get_detector(lang)?;
+    detector.detect(Path::new(start_path)).map(|p| p.to_string_lossy().to_string())
+}
+
 /// Find .polybench/runtime-env/{lang}/ directory
 fn find_polybench_runtime(start_path: &str, lang: &str) -> Option<String> {
     let mut current = std::path::Path::new(start_path);
@@ -330,27 +418,10 @@ fn find_polybench_runtime(start_path: &str, lang: &str) -> Option<String> {
     }
 }
 
-/// Find a module root by walking up from the given path looking for a marker file
-fn find_module_root(start_path: &str, marker_file: &str) -> Option<String> {
-    let mut current = std::path::Path::new(start_path);
-
-    // If start_path is a file, start from its parent directory
-    if current.is_file() {
-        current = current.parent()?;
-    }
-
-    loop {
-        if current.join(marker_file).exists() {
-            return Some(current.to_string_lossy().to_string());
-        }
-        current = current.parent()?;
-    }
-}
-
 /// Map embedded diagnostics back to .bench file positions
-fn map_diagnostics_to_bench<V: VirtualFile>(
+fn map_diagnostics_to_bench(
     diagnostics: Vec<EmbeddedDiagnostic>,
-    virtual_file: &V,
+    virtual_file: &dyn VirtualFile,
     doc: &Document,
     lang: Lang,
 ) -> Vec<Diagnostic> {
@@ -441,17 +512,8 @@ pub fn validate_all_embedded_code(doc: &Document) -> Vec<ValidationError> {
             let lang = d
                 .source
                 .as_ref()
-                .and_then(|s| {
-                    if s.contains("go") {
-                        Some(Lang::Go)
-                    } else if s.contains("typescript") || s.contains("ts") {
-                        Some(Lang::TypeScript)
-                    } else if s.contains("rust") {
-                        Some(Lang::Rust)
-                    } else {
-                        None
-                    }
-                })
+                .and_then(|s| s.strip_prefix("poly-bench/"))
+                .and_then(|suffix| Lang::from_str(suffix))
                 .unwrap_or(Lang::Go);
 
             ValidationError {

@@ -26,6 +26,10 @@ pub struct Manifest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rust: Option<RustConfig>,
 
+    /// Python-specific configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub python: Option<PythonConfig>,
+
     /// Output configuration
     #[serde(default)]
     pub output: OutputConfig,
@@ -133,6 +137,22 @@ pub struct RustConfig {
 
 fn default_rust_edition() -> String {
     "2021".to_string()
+}
+
+/// Python-specific configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PythonConfig {
+    /// Minimum Python version (e.g., "3.11", "3.12")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+
+    /// Python dependencies (package -> version, for requirements.txt)
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub dependencies: HashMap<String, String>,
+}
+
+fn default_python_version() -> String {
+    "3.11".to_string()
 }
 
 /// Rust dependency specification - supports both simple version strings and detailed specs
@@ -245,6 +265,7 @@ impl Manifest {
         let has_go = languages.iter().any(|l| l == "go");
         let has_ts = languages.iter().any(|l| l == "ts" || l == "typescript");
         let has_rust = languages.iter().any(|l| l == "rust" || l == "rs");
+        let has_python = languages.iter().any(|l| l == "python" || l == "py");
 
         Self {
             project: ProjectConfig {
@@ -272,6 +293,14 @@ impl Manifest {
             } else {
                 None
             },
+            python: if has_python {
+                Some(PythonConfig {
+                    version: Some(default_python_version()),
+                    dependencies: HashMap::new(),
+                })
+            } else {
+                None
+            },
             output: OutputConfig::default(),
         }
     }
@@ -291,6 +320,11 @@ impl Manifest {
         self.rust.is_some()
     }
 
+    /// Check if Python is enabled
+    pub fn has_python(&self) -> bool {
+        self.python.is_some()
+    }
+
     /// Get enabled languages
     pub fn enabled_languages(&self) -> Vec<String> {
         let mut langs = Vec::new();
@@ -302,6 +336,9 @@ impl Manifest {
         }
         if self.has_rust() {
             langs.push("rust".to_string());
+        }
+        if self.has_python() {
+            langs.push("python".to_string());
         }
         langs
     }
@@ -385,6 +422,26 @@ impl Manifest {
         rust.dependencies.remove(crate_name);
         Ok(())
     }
+
+    /// Add a Python dependency
+    pub fn add_python_dependency(&mut self, package: &str, version: &str) -> Result<()> {
+        let python = self
+            .python
+            .as_mut()
+            .ok_or_else(|| miette::miette!("Python is not enabled in this project"))?;
+        python.dependencies.insert(package.to_string(), version.to_string());
+        Ok(())
+    }
+
+    /// Remove a Python dependency
+    pub fn remove_python_dependency(&mut self, package: &str) -> Result<()> {
+        let python = self
+            .python
+            .as_mut()
+            .ok_or_else(|| miette::miette!("Python is not enabled in this project"))?;
+        python.dependencies.remove(package);
+        Ok(())
+    }
 }
 
 /// Load a manifest from a file
@@ -456,6 +513,18 @@ mod tests {
         assert!(!parsed.has_ts());
         assert!(parsed.has_rust());
         assert_eq!(parsed.rust.as_ref().unwrap().edition, "2021");
+    }
+
+    #[test]
+    fn test_manifest_new_with_python() {
+        let manifest = Manifest::new(
+            "my-project",
+            &["go".to_string(), "ts".to_string(), "python".to_string()],
+        );
+
+        assert_eq!(manifest.project.name, "my-project");
+        assert!(manifest.has_python());
+        assert_eq!(manifest.python.as_ref().unwrap().version, Some("3.11".to_string()));
     }
 
     #[test]

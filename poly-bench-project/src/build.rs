@@ -8,8 +8,8 @@
 //! a repo where it was gitignored.
 
 use crate::{
-    error::ProjectError, manifest, runtime_env_go, runtime_env_rust, runtime_env_ts, templates,
-    terminal,
+    error::ProjectError, manifest, runtime_env_go, runtime_env_python, runtime_env_rust,
+    runtime_env_ts, templates, terminal,
 };
 use miette::Result;
 use std::{
@@ -88,6 +88,11 @@ pub fn build_project(options: &BuildOptions) -> Result<()> {
     // Build Rust environment
     if manifest.has_rust() {
         build_rust_env(&project_root, manifest.rust.as_ref().unwrap(), options)?;
+    }
+
+    // Build Python environment
+    if manifest.has_python() {
+        build_python_env(&project_root, manifest.python.as_ref().unwrap(), options)?;
     }
 
     println!();
@@ -352,6 +357,134 @@ fn build_rust_env(
     }
 
     terminal::success_indented("Rust environment ready");
+
+    Ok(())
+}
+
+/// Build/regenerate the Python runtime environment
+///
+/// Creates a virtual environment (.venv) in the python runtime-env directory and installs
+/// dependencies into it. This ensures benchmarks run with the same Python that has the
+/// installed packages (avoids pip/python mismatch with pyenv, conda, or system Python).
+fn build_python_env(
+    project_root: &Path,
+    python_config: &manifest::PythonConfig,
+    options: &BuildOptions,
+) -> Result<()> {
+    terminal::section("Python environment");
+
+    let python_env = runtime_env_python(project_root);
+
+    std::fs::create_dir_all(&python_env)
+        .map_err(|e| miette::miette!("Failed to create {}: {}", python_env.display(), e))?;
+
+    let requirements_path = python_env.join("requirements.txt");
+    let mut deps: Vec<(String, String)> =
+        python_config.dependencies.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    // Add pyright for LSP (hover, diagnostics). The pip package provides pyright-langserver.
+    // Use pyright[nodejs] for reliable Node.js bundling (recommended by PyPI).
+    if !deps.iter().any(|(k, _)| k == "pyright" || k == "pyright[nodejs]") {
+        deps.push(("pyright[nodejs]".to_string(), "latest".to_string()));
+    }
+    let requirements_content = templates::requirements_txt(&deps);
+    std::fs::write(&requirements_path, requirements_content)
+        .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
+
+    if python_config.dependencies.is_empty() {
+        terminal::success_indented("Created requirements.txt (no dependencies)");
+    } else {
+        terminal::success_indented(&format!(
+            "Created requirements.txt ({} dependencies)",
+            python_config.dependencies.len()
+        ));
+    }
+
+    if !options.skip_install {
+        let venv_path = python_env.join(".venv");
+        let venv_python = venv_path.join("bin").join("python");
+        let venv_pip = venv_path.join("bin").join("pip");
+
+        // Create venv if it doesn't exist (needed for deps and LSP tooling)
+        if !venv_python.exists() {
+            let spinner = terminal::indented_spinner("Creating Python virtual environment...");
+            let python_cmd =
+                which::which("python3").or_else(|_| which::which("python")).map_err(|_| {
+                    miette::miette!("Python not found in PATH. Please install Python 3.")
+                })?;
+
+            let output = terminal::run_command_with_spinner(
+                &spinner,
+                Command::new(&python_cmd).args(["-m", "venv", ".venv"]).current_dir(&python_env),
+            );
+
+            match output {
+                Ok(out) if out.status.success() => {
+                    terminal::finish_success_indented(&spinner, "Virtual environment created");
+                }
+                Ok(out) => {
+                    terminal::finish_failure_indented(&spinner, "venv creation failed");
+                    terminal::print_stderr_excerpt(&out.stderr, 8);
+                    return Err(command_failure(
+                        "python -m venv .venv",
+                        &python_env,
+                        &out,
+                        "Ensure Python 3 venv module is available (python3-venv on Debian/Ubuntu).",
+                    ));
+                }
+                Err(e) => {
+                    terminal::finish_warning_indented(
+                        &spinner,
+                        &format!("Could not create venv: {}", e),
+                    );
+                    return Err(miette::miette!(
+                        "Could not create venv in {}: {}",
+                        python_env.display(),
+                        e
+                    ));
+                }
+            }
+        } else {
+            terminal::info_indented("Virtual environment exists");
+        }
+
+        // Install dependencies into venv (always run: requirements.txt includes pyright for LSP)
+        let spinner = terminal::indented_spinner("Installing Python dependencies...");
+
+        let output = terminal::run_command_with_spinner(
+            &spinner,
+            Command::new(&venv_pip)
+                .args(["install", "-r", "requirements.txt"])
+                .current_dir(&python_env),
+        );
+
+        match output {
+            Ok(out) if out.status.success() => {
+                terminal::finish_success_indented(&spinner, "Python dependencies installed");
+            }
+            Ok(out) => {
+                terminal::finish_failure_indented(&spinner, "pip install failed");
+                terminal::print_stderr_excerpt(&out.stderr, 8);
+                return Err(command_failure(
+                    "pip install -r requirements.txt",
+                    &python_env,
+                    &out,
+                    "Ensure pip is available in the venv and fix dependency issues.",
+                ));
+            }
+            Err(e) => {
+                terminal::finish_warning_indented(&spinner, &format!("Could not run pip: {}", e));
+                return Err(miette::miette!(
+                    "Could not run pip install in {}: {}",
+                    python_env.display(),
+                    e
+                ));
+            }
+        }
+    } else if options.skip_install {
+        terminal::info_indented("Skipping pip install (--skip-install)");
+    }
+
+    terminal::success_indented("Python environment ready");
 
     Ok(())
 }

@@ -3,16 +3,13 @@
 //! This module provides diagnostics for embedded Go code by communicating
 //! with gopls (the Go language server).
 
-use crate::{
-    gopls_client::get_gopls_client,
-    virtual_files::{VirtualFile, VirtualGoFile},
-};
+use crate::{gopls_client::get_gopls_client, virtual_files::VirtualFile};
 use tower_lsp::lsp_types::DiagnosticSeverity;
 
 use super::EmbeddedDiagnostic;
 
 /// Check Go blocks using gopls
-pub fn check_go_blocks(virtual_file: &VirtualGoFile) -> Vec<EmbeddedDiagnostic> {
+pub fn check_go_blocks(virtual_file: &dyn VirtualFile) -> Vec<EmbeddedDiagnostic> {
     let mut diagnostics = Vec::new();
 
     // Get the gopls client

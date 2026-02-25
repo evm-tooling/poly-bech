@@ -95,7 +95,7 @@ enum Commands {
         #[arg(value_name = "FILE")]
         file: Option<PathBuf>,
 
-        /// Check only benchmarks for a specific language (go, ts, rust)
+        /// Check only benchmarks for a specific language (go, ts, rust, python)
         #[arg(long, value_name = "LANG")]
         lang: Option<String>,
 
@@ -120,7 +120,7 @@ enum Commands {
         #[arg(value_name = "FILE")]
         file: Option<PathBuf>,
 
-        /// Run only benchmarks for a specific language (go, ts)
+        /// Run only benchmarks for a specific language (go, ts, rust, python)
         #[arg(long, value_name = "LANG")]
         lang: Option<String>,
 
@@ -145,6 +145,14 @@ enum Commands {
         /// If not specified, searches parent directories of the bench file.
         #[arg(long, value_name = "DIR")]
         ts_project: Option<PathBuf>,
+
+        /// Rust project root directory (where Cargo.toml is located).
+        #[arg(long, value_name = "DIR")]
+        rust_project: Option<PathBuf>,
+
+        /// Python project root directory (where requirements.txt or pyproject.toml is located).
+        #[arg(long, value_name = "DIR")]
+        python_project: Option<PathBuf>,
     },
 
     /// Generate code from a DSL file without running
@@ -168,7 +176,8 @@ enum Commands {
         #[arg(value_name = "NAME")]
         name: Option<String>,
 
-        /// Languages to include (comma-separated: go,ts); used only when NAME is provided
+        /// Languages to include (comma-separated: go,ts,rust,python); used only when NAME is
+        /// provided
         #[arg(long, short, value_delimiter = ',', default_value = "go,ts")]
         languages: Vec<String>,
 
@@ -198,9 +207,20 @@ enum Commands {
         #[arg(long)]
         rs: Option<String>,
 
+        /// Python package (e.g., "numpy==1.0" or "requests")
+        #[arg(long)]
+        py: Option<String>,
+
         /// Rust crate features (comma-separated, e.g., "keccak,sha3")
         #[arg(long, value_delimiter = ',')]
         features: Option<Vec<String>>,
+    },
+
+    /// Add a runtime to the project (adds to polybench.toml and builds .polybench)
+    AddRuntime {
+        /// Runtime to add (go, ts, rust, python)
+        #[arg(value_name = "RUNTIME")]
+        runtime: String,
     },
 
     /// Remove a dependency
@@ -216,6 +236,10 @@ enum Commands {
         /// Rust crate to remove (e.g., "sha2")
         #[arg(long)]
         rs: Option<String>,
+
+        /// Python package to remove (e.g., "numpy")
+        #[arg(long)]
+        py: Option<String>,
     },
 
     /// Install dependencies from polybench.toml
@@ -303,9 +327,30 @@ async fn main() -> Result<()> {
         Commands::Cache { action } => {
             cmd_cache(action).await?;
         }
-        Commands::Run { file, lang, iterations, report, output, go_project, ts_project } => {
-            cmd_run(file, lang, iterations, &report, output, go_project, ts_project, cli.verbose)
-                .await?;
+        Commands::Run {
+            file,
+            lang,
+            iterations,
+            report,
+            output,
+            go_project,
+            ts_project,
+            rust_project,
+            python_project,
+        } => {
+            cmd_run(
+                file,
+                lang,
+                iterations,
+                &report,
+                output,
+                go_project,
+                ts_project,
+                rust_project,
+                python_project,
+                cli.verbose,
+            )
+            .await?;
         }
         Commands::Codegen { file, lang, output } => {
             cmd_codegen(&file, &lang, &output).await?;
@@ -316,11 +361,14 @@ async fn main() -> Result<()> {
         Commands::New { name } => {
             cmd_new(&name)?;
         }
-        Commands::Add { go, ts, rs, features } => {
-            cmd_add(go, ts, rs, features)?;
+        Commands::Add { go, ts, rs, py, features } => {
+            cmd_add(go, ts, rs, py, features)?;
         }
-        Commands::Remove { go, ts, rs } => {
-            cmd_remove(go, ts, rs)?;
+        Commands::AddRuntime { runtime } => {
+            cmd_add_runtime(&runtime)?;
+        }
+        Commands::Remove { go, ts, rs, py } => {
+            cmd_remove(go, ts, rs, py)?;
         }
         Commands::Install => {
             cmd_install()?;
@@ -443,8 +491,9 @@ async fn cmd_compile(
         Some("go") => vec![dsl::Lang::Go],
         Some("ts") | Some("typescript") => vec![dsl::Lang::TypeScript],
         Some("rust") | Some("rs") => vec![dsl::Lang::Rust],
+        Some("python") | Some("py") => vec![dsl::Lang::Python],
         Some(l) => return Err(miette::miette!("Unknown language: {}", l)),
-        None => vec![dsl::Lang::Go, dsl::Lang::TypeScript, dsl::Lang::Rust],
+        None => vec![dsl::Lang::Go, dsl::Lang::TypeScript, dsl::Lang::Rust, dsl::Lang::Python],
     };
 
     if run_parallel && files.len() > 1 {
@@ -475,7 +524,7 @@ async fn compile_single_file_cached(
     let ir_result = ir::lower(&ast, bench_file.parent())?;
 
     let bench_count: usize = ir_result.suites.iter().map(|s| s.benchmarks.len()).sum();
-    let project_roots = resolve_project_roots(None, None, &bench_file)?;
+    let project_roots = resolve_project_roots(None, None, None, None, &bench_file)?;
 
     let (compile_errors, stats) =
         executor::validate_benchmarks_with_cache(&ir_result, &langs, &project_roots, cache).await?;
@@ -602,7 +651,7 @@ async fn compile_files_sequential_cached(
         let bench_count: usize = ir_result.suites.iter().map(|s| s.benchmarks.len()).sum();
         total_benchmarks += bench_count;
 
-        let project_roots = resolve_project_roots(None, None, bench_file)?;
+        let project_roots = resolve_project_roots(None, None, None, None, bench_file)?;
 
         let spinner = create_compiling_spinner();
         let (compile_errors, stats) =
@@ -704,6 +753,8 @@ async fn cmd_run(
     output: Option<PathBuf>,
     go_project: Option<PathBuf>,
     ts_project: Option<PathBuf>,
+    rust_project: Option<PathBuf>,
+    python_project: Option<PathBuf>,
     verbose: bool,
 ) -> Result<()> {
     use colored::Colorize;
@@ -742,8 +793,9 @@ async fn cmd_run(
         Some("go") => vec![dsl::Lang::Go],
         Some("ts") | Some("typescript") => vec![dsl::Lang::TypeScript],
         Some("rust") | Some("rs") => vec![dsl::Lang::Rust],
+        Some("python") | Some("py") => vec![dsl::Lang::Python],
         Some(l) => return Err(miette::miette!("Unknown language: {}", l)),
-        None => vec![dsl::Lang::Go, dsl::Lang::TypeScript, dsl::Lang::Rust],
+        None => vec![dsl::Lang::Go, dsl::Lang::TypeScript, dsl::Lang::Rust, dsl::Lang::Python],
     };
 
     // Run each benchmark file
@@ -766,8 +818,13 @@ async fn cmd_run(
         all_chart_directives.extend(ir.chart_directives.clone());
 
         // Resolve project roots for module resolution
-        let project_roots =
-            resolve_project_roots(go_project.clone(), ts_project.clone(), bench_file)?;
+        let project_roots = resolve_project_roots(
+            go_project.clone(),
+            ts_project.clone(),
+            rust_project.clone(),
+            python_project.clone(),
+            bench_file,
+        )?;
 
         println!("▸ Compile validation");
         // Pre-run validation: compile-check all benchmarks before running
@@ -879,6 +936,8 @@ fn merge_results(mut results: Vec<BenchmarkResults>) -> BenchmarkResults {
 fn resolve_project_roots(
     go_explicit: Option<PathBuf>,
     ts_explicit: Option<PathBuf>,
+    rust_explicit: Option<PathBuf>,
+    python_explicit: Option<PathBuf>,
     bench_file: &PathBuf,
 ) -> Result<ProjectRoots> {
     let mut roots = ProjectRoots::default();
@@ -910,6 +969,35 @@ fn resolve_project_roots(
         roots.node_root = Some(canonical);
     }
 
+    // Handle explicit Rust project root
+    if let Some(ref dir) = rust_explicit {
+        let canonical = dir.canonicalize().map_err(|e| {
+            miette::miette!("Cannot access Rust project root {}: {}", dir.display(), e)
+        })?;
+
+        if !canonical.join("Cargo.toml").exists() {
+            return Err(miette::miette!("No Cargo.toml found in {}", canonical.display()));
+        }
+        roots.rust_root = Some(canonical);
+    }
+
+    // Handle explicit Python project root
+    if let Some(ref dir) = python_explicit {
+        let canonical = dir.canonicalize().map_err(|e| {
+            miette::miette!("Cannot access Python project root {}: {}", dir.display(), e)
+        })?;
+
+        if !canonical.join("requirements.txt").exists() &&
+            !canonical.join("pyproject.toml").exists()
+        {
+            return Err(miette::miette!(
+                "No requirements.txt or pyproject.toml found in {}",
+                canonical.display()
+            ));
+        }
+        roots.python_root = Some(canonical);
+    }
+
     // Search parent directories of the bench file for any missing roots
     let start_dir = bench_file.parent().unwrap_or(std::path::Path::new("."));
     let mut current = start_dir.canonicalize().ok();
@@ -934,17 +1022,34 @@ fn resolve_project_roots(
                 roots.rust_root = Some(rust_env);
             }
         }
-        // Fallback: classic layout (go.mod / package.json / Cargo.toml at project root)
-        if roots.go_root.is_none() && dir.join("go.mod").exists() {
-            roots.go_root = Some(dir.clone());
+        if roots.python_root.is_none() && dir.join(project::MANIFEST_FILENAME).exists() {
+            let python_env = project::runtime_env_python(&dir);
+            if python_env.join("requirements.txt").exists() ||
+                python_env.join("pyproject.toml").exists()
+            {
+                roots.python_root = Some(python_env);
+            }
         }
-        if roots.node_root.is_none() &&
-            (dir.join("package.json").exists() || dir.join("node_modules").exists())
-        {
-            roots.node_root = Some(dir.clone());
+        // Fallback: classic layout via detectors (go.mod / package.json / Cargo.toml)
+        if roots.go_root.is_none() {
+            if let Some(det) = project::get_detector(dsl::Lang::Go) {
+                roots.go_root = det.detect(&dir);
+            }
         }
-        if roots.rust_root.is_none() && dir.join("Cargo.toml").exists() {
-            roots.rust_root = Some(dir.clone());
+        if roots.node_root.is_none() {
+            if let Some(det) = project::get_detector(dsl::Lang::TypeScript) {
+                roots.node_root = det.detect(&dir);
+            }
+        }
+        if roots.rust_root.is_none() {
+            if let Some(det) = project::get_detector(dsl::Lang::Rust) {
+                roots.rust_root = det.detect(&dir);
+            }
+        }
+        if roots.python_root.is_none() {
+            if let Some(det) = project::get_detector(dsl::Lang::Python) {
+                roots.python_root = det.detect(&dir);
+            }
         }
         if roots.go_root.is_some() && roots.node_root.is_some() && roots.rust_root.is_some() {
             break;
@@ -1145,12 +1250,25 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
 
     thread::sleep(Duration::from_millis(80));
 
-    let lang_choices = &["All (Go + TypeScript + Rust)", "Go", "TypeScript", "Rust"];
-    let defaults = vec![false, false, false, false]; // Nothing selected by default
+    // Build choices from supported_languages (All + each language)
+    let supported = poly_bench_runtime::supported_languages();
+    let all_label = format!(
+        "All ({})",
+        supported
+            .iter()
+            .map(|l| poly_bench_runtime::lang_label(*l))
+            .collect::<Vec<_>>()
+            .join(" + ")
+    );
+    let mut lang_choices = vec![all_label.as_str()];
+    for lang in supported {
+        lang_choices.push(poly_bench_runtime::lang_label(*lang));
+    }
+    let defaults = vec![false; lang_choices.len()];
     let prompt = "Which languages to include? (Space = toggle)";
     let selected: Vec<usize> = MultiSelect::with_theme(&theme)
         .with_prompt(prompt)
-        .items(lang_choices)
+        .items(&lang_choices)
         .defaults(&defaults)
         .interact()
         .map_err(|e| miette!("Prompt failed: {}", e))?;
@@ -1160,35 +1278,24 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
     }
 
     // Resolve selection to language list.
-    // Index mapping: 0 = All, 1 = Go, 2 = TypeScript, 3 = Rust
+    // Index 0 = All, 1..=supported.len() = individual languages
+    let lang_to_str = |i: usize| -> Option<String> {
+        if i == 0 {
+            None
+        } else {
+            supported.get(i - 1).map(|l| l.as_str().to_string())
+        }
+    };
     let languages: Vec<String> = if selected.contains(&0) {
-        // "All" is selected - check which individual langs are also selected
-        let individual_langs: Vec<String> = selected
-            .iter()
-            .filter_map(|&i| match i {
-                1 => Some("go".to_string()),
-                2 => Some("ts".to_string()),
-                3 => Some("rust".to_string()),
-                _ => None,
-            })
-            .collect();
+        let individual_langs: Vec<String> =
+            selected.iter().filter_map(|&i| lang_to_str(i)).collect();
         if individual_langs.is_empty() {
-            // All alone = all three languages
-            vec!["go".to_string(), "ts".to_string(), "rust".to_string()]
+            supported.iter().map(|l| l.as_str().to_string()).collect()
         } else {
             individual_langs
         }
     } else {
-        // No "All" selected, just use individual selections
-        selected
-            .into_iter()
-            .filter_map(|i| match i {
-                1 => Some("go".to_string()),
-                2 => Some("ts".to_string()),
-                3 => Some("rust".to_string()),
-                _ => None,
-            })
-            .collect()
+        selected.into_iter().filter_map(lang_to_str).collect()
     };
 
     Ok((name, languages))
@@ -1203,11 +1310,12 @@ fn cmd_add(
     go: Option<String>,
     ts: Option<String>,
     rs: Option<String>,
+    py: Option<String>,
     features: Option<Vec<String>>,
 ) -> Result<()> {
-    if go.is_none() && ts.is_none() && rs.is_none() {
+    if go.is_none() && ts.is_none() && rs.is_none() && py.is_none() {
         return Err(miette::miette!(
-            "No dependency specified. Use --go, --ts, or --rs to add a dependency."
+            "No dependency specified. Use --go, --ts, --rs, or --py to add a dependency."
         ));
     }
 
@@ -1223,13 +1331,22 @@ fn cmd_add(
         project::deps::add_rust_dependency_with_features(spec, features.as_deref())?;
     }
 
+    if let Some(ref spec) = py {
+        project::deps::add_python_dependency(spec)?;
+    }
+
     Ok(())
 }
 
-fn cmd_remove(go: Option<String>, ts: Option<String>, rs: Option<String>) -> Result<()> {
-    if go.is_none() && ts.is_none() && rs.is_none() {
+fn cmd_remove(
+    go: Option<String>,
+    ts: Option<String>,
+    rs: Option<String>,
+    py: Option<String>,
+) -> Result<()> {
+    if go.is_none() && ts.is_none() && rs.is_none() && py.is_none() {
         return Err(miette::miette!(
-            "No dependency specified. Use --go, --ts, or --rs to remove a dependency."
+            "No dependency specified. Use --go, --ts, --rs, or --py to remove a dependency."
         ));
     }
 
@@ -1244,6 +1361,107 @@ fn cmd_remove(go: Option<String>, ts: Option<String>, rs: Option<String>) -> Res
     if let Some(ref crate_name) = rs {
         project::deps::remove_rust_dependency(crate_name)?;
     }
+
+    if let Some(ref package) = py {
+        project::deps::remove_python_dependency(package)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_add_runtime(runtime: &str) -> Result<()> {
+    use colored::Colorize;
+    use poly_bench_dsl::Lang;
+
+    let lang = Lang::from_str(runtime).ok_or_else(|| {
+        miette::miette!("Unknown runtime '{}'. Supported: go, ts, rust, python", runtime)
+    })?;
+
+    let supported = poly_bench_runtime::supported_languages();
+    if !supported.contains(&lang) {
+        return Err(miette::miette!(
+            "Runtime '{}' is not supported. Supported: {}",
+            runtime,
+            supported.iter().map(|l| l.as_str()).collect::<Vec<_>>().join(", ")
+        ));
+    }
+
+    let current_dir = std::env::current_dir()
+        .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+
+    let project_root = project::find_project_root(&current_dir).ok_or_else(|| {
+        miette::miette!("Not in a poly-bench project. Run 'poly-bench init' first.")
+    })?;
+
+    let mut manifest = project::load_manifest(&project_root)?;
+
+    let lang_str = lang.as_str();
+    let already_has = match lang {
+        Lang::Go => manifest.has_go(),
+        Lang::TypeScript => manifest.has_ts(),
+        Lang::Rust => manifest.has_rust(),
+        Lang::Python => manifest.has_python(),
+        _ => false,
+    };
+
+    if already_has {
+        return Err(miette::miette!(
+            "{} is already enabled in this project.",
+            poly_bench_runtime::lang_label(lang)
+        ));
+    }
+
+    // Add to defaults.languages
+    if !manifest.defaults.languages.iter().any(|l| {
+        let lower = l.to_lowercase();
+        matches!(
+            (lang, lower.as_str()),
+            (Lang::Go, "go") |
+                (Lang::TypeScript, "ts" | "typescript") |
+                (Lang::Rust, "rust" | "rs") |
+                (Lang::Python, "python" | "py")
+        )
+    }) {
+        manifest.defaults.languages.push(lang_str.to_string());
+    }
+
+    // Add the runtime config section
+    match lang {
+        Lang::Go => {
+            manifest.go = Some(project::manifest::GoConfig {
+                module: manifest.project.name.clone(),
+                version: Some("1.21".to_string()),
+                dependencies: std::collections::HashMap::new(),
+            });
+        }
+        Lang::TypeScript => {
+            manifest.ts = Some(project::manifest::TsConfig {
+                runtime: "node".to_string(),
+                dependencies: std::collections::HashMap::new(),
+            });
+        }
+        Lang::Rust => {
+            manifest.rust = Some(project::manifest::RustConfig {
+                edition: "2021".to_string(),
+                dependencies: std::collections::HashMap::new(),
+            });
+        }
+        Lang::Python => {
+            manifest.python = Some(project::manifest::PythonConfig {
+                version: Some("3.11".to_string()),
+                dependencies: std::collections::HashMap::new(),
+            });
+        }
+        _ => {}
+    }
+
+    project::save_manifest(&project_root, &manifest)?;
+
+    println!("{} Added {} to polybench.toml", "✔".green(), poly_bench_runtime::lang_label(lang));
+
+    // Run build to set up .polybench
+    let options = project::build::BuildOptions { force: false, skip_install: false };
+    project::build::build_project(&options)?;
 
     Ok(())
 }
@@ -1366,12 +1584,7 @@ fn extract_compile_snippet(message: &str) -> Option<Vec<String>> {
 }
 
 fn compile_lang_label(lang: dsl::Lang) -> &'static str {
-    match lang {
-        dsl::Lang::Go => "Go",
-        dsl::Lang::TypeScript => "TS",
-        dsl::Lang::Rust => "Rust",
-        _ => "Unknown",
-    }
+    poly_bench_runtime::lang_label(lang)
 }
 
 fn print_compile_error(file: &std::path::Path, err: &executor::CompileError, verbose: bool) {

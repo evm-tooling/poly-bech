@@ -1,12 +1,13 @@
 //! Embedded language support for poly-bench LSP v2
 //!
-//! This module extracts embedded code blocks (Go, TypeScript, Rust) from
+//! This module extracts embedded code blocks (Go, TypeScript, Rust, Python) from
 //! the partial AST and provides utilities for working with them.
 
 use poly_bench_syntax::{
     CodeBlock, Lang, Node, PartialBenchmark, PartialFile, PartialFixture, PartialSuite, Span,
     StructuredSetup,
 };
+use std::collections::HashMap;
 
 /// The type of embedded block (affects how code is wrapped in virtual files)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,14 +48,28 @@ pub struct EmbeddedBlock {
 }
 
 /// Configuration for embedded language checking
+/// Module roots are keyed by language (registry-based)
 #[derive(Debug, Clone, Default)]
 pub struct EmbeddedConfig {
-    /// Path to Go module root (containing go.mod)
-    pub go_mod_root: Option<String>,
-    /// Path to TypeScript module root (containing package.json/node_modules)
-    pub ts_module_root: Option<String>,
-    /// Path to Rust project root (containing Cargo.toml)
-    pub rust_project_root: Option<String>,
+    /// Map from language to module/project root path
+    module_roots: HashMap<Lang, String>,
+}
+
+impl EmbeddedConfig {
+    /// Get the module root for a language
+    pub fn module_root(&self, lang: Lang) -> Option<&str> {
+        self.module_roots.get(&lang).map(String::as_str)
+    }
+
+    /// Set the module root for a language
+    pub fn set_module_root(&mut self, lang: Lang, root: String) {
+        self.module_roots.insert(lang, root);
+    }
+
+    /// Clear all module roots
+    pub fn clear(&mut self) {
+        self.module_roots.clear();
+    }
 }
 
 /// Extract all embedded code blocks from a partial AST

@@ -4,6 +4,78 @@
 
 use poly_bench_syntax::{parse, parse_with_tree, Lang, Node};
 
+/// Debug test for pyright client: spawns pyright, initializes, opens a file, and requests hover.
+/// Run with: cargo test --test integration pyright_client_request -- --ignored --nocapture
+#[test]
+#[ignore = "requires demo-basic venv with pyright; run manually for debugging"]
+fn pyright_client_request() {
+    let _ = tracing_subscriber::fmt().with_env_filter("poly_bench_lsp_v2=debug,info").try_init();
+
+    // Resolve path to examples/demo-basic/.polybench/runtime-env/python
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir.ancestors().nth(1).expect("workspace root");
+    let python_root = workspace_root.join("examples/demo-basic/.polybench/runtime-env/python");
+    let python_root_str = python_root.to_string_lossy();
+
+    if !python_root.exists() {
+        eprintln!("Skipping: {} does not exist", python_root_str);
+        return;
+    }
+
+    let venv_langserver = python_root.join(".venv/bin/pyright-langserver");
+    let venv_pyright = python_root.join(".venv/bin/pyright");
+    if !venv_langserver.exists() && !venv_pyright.exists() {
+        eprintln!(
+            "Skipping: venv pyright-langserver/pyright not found. Run `poly-bench build` in examples/demo-basic.",
+        );
+        return;
+    }
+
+    eprintln!("Using python_root: {}", python_root_str);
+
+    let client = match poly_bench_lsp_v2::pyright_client::PyrightClient::new(&python_root_str) {
+        Ok(c) => {
+            eprintln!("PyrightClient::new OK");
+            c
+        }
+        Err(e) => {
+            eprintln!("PyrightClient::new failed: {}", e);
+            return;
+        }
+    };
+
+    eprintln!("Calling initialize()...");
+    if let Err(e) = client.initialize() {
+        eprintln!("initialize() failed: {}", e);
+        return;
+    }
+    eprintln!("initialize() OK");
+
+    let uri = "file:///tmp/test_pyright_debug.py";
+    let content = "def foo(x: int) -> int:\n    return x + 1\n";
+    eprintln!("Calling did_open()...");
+    if let Err(e) = client.did_open(uri, content, 1) {
+        eprintln!("did_open() failed: {}", e);
+        return;
+    }
+    eprintln!("did_open() OK");
+
+    eprintln!("Calling hover() at line 0, char 4 (on 'foo')...");
+    match client.hover(uri, 0, 4) {
+        Ok(Some(hover)) => {
+            eprintln!("hover() OK: {:?}", hover);
+        }
+        Ok(None) => {
+            eprintln!("hover() returned None (no hover at position)");
+        }
+        Err(e) => {
+            eprintln!("hover() failed: {}", e);
+        }
+    }
+
+    eprintln!("pyright_client_request test complete");
+}
+
 mod formatting {
     use super::*;
 

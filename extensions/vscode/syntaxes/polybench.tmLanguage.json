@@ -181,6 +181,9 @@
           "include": "#setup-rust-block"
         },
         {
+          "include": "#setup-python-block"
+        },
+        {
           "include": "#fixture-block"
         },
         {
@@ -832,6 +835,125 @@
         }
       ]
     },
+    "setup-python-block": {
+      "name": "meta.block.setup.python.bench",
+      "begin": "^(\\s*)(setup)\\s+(python|py)\\s*\\{\\s*$",
+      "end": "^\\1\\}\\s*$",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.bench"
+        },
+        "3": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#setup-import-python-block"
+        },
+        {
+          "include": "#setup-declare-python-block"
+        },
+        {
+          "include": "#setup-init-python-block"
+        },
+        {
+          "include": "#setup-helpers-python-block"
+        },
+        {
+          "include": "#comment"
+        }
+      ]
+    },
+    "setup-import-python-block": {
+      "name": "meta.block.import.python.bench",
+      "contentName": "source.python.embedded.bench",
+      "begin": "^(\\s*)(import)\\s*\\{",
+      "end": "^\\1\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.python"
+        }
+      ]
+    },
+    "setup-declare-python-block": {
+      "name": "meta.block.declare.python.bench",
+      "contentName": "source.python.embedded.bench",
+      "begin": "^(\\s*)(declare)\\s*\\{",
+      "end": "^\\1\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.python"
+        }
+      ]
+    },
+    "setup-init-python-block": {
+      "name": "meta.block.init.python.bench",
+      "contentName": "source.python.embedded.bench",
+      "begin": "^(\\s*)(init)\\s*\\{",
+      "end": "^\\1\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.python"
+        }
+      ]
+    },
+    "setup-helpers-python-block": {
+      "name": "meta.block.helpers.python.bench",
+      "contentName": "source.python.embedded.bench",
+      "begin": "^(\\s*)(helpers)\\s*\\{",
+      "end": "^\\1\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.python"
+        }
+      ]
+    },
     "fixture-block": {
       "begin": "\\b(fixture)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
       "end": "^\\s{0,8}\\}\\s*$",
@@ -863,6 +985,9 @@
         },
         {
           "include": "#fixture-rust-block"
+        },
+        {
+          "include": "#fixture-python-block"
         },
         {
           "name": "string.quoted.double.bench",
@@ -925,6 +1050,9 @@
           "include": "#bench-rust-block"
         },
         {
+          "include": "#bench-python-block"
+        },
+        {
           "include": "#bench-go-line"
         },
         {
@@ -932,6 +1060,9 @@
         },
         {
           "include": "#bench-rust-line"
+        },
+        {
+          "include": "#bench-python-line"
         }
       ]
     },
@@ -1071,7 +1202,7 @@
     "bench-hooks": {
       "patterns": [
         {
-          "match": "\\b(skip|validate)\\s+(go|ts|rust)\\s*:",
+          "match": "\\b(skip|validate)\\s+(go|ts|rust|python|py)\\s*:",
           "captures": {
             "1": {
               "name": "keyword.control.hook.bench"
@@ -1082,7 +1213,7 @@
           }
         },
         {
-          "match": "\\b(before|after|each)\\s+(go|ts|rust)\\s*:",
+          "match": "\\b(before|after|each)\\s+(go|ts|rust|python|py)\\s*:",
           "captures": {
             "1": {
               "name": "keyword.control.hook.bench"
@@ -1273,6 +1404,64 @@
       "patterns": [
         {
           "include": "source.rust"
+        }
+      ]
+    },
+    "fixture-python-block": {
+      "name": "meta.block.fixture.python.bench",
+      "begin": "\\b(python|py)\\s*:\\s*\\{\\s*$",
+      "end": "^\\s{0,12}\\}\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "contentName": "source.python.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.python"
+        }
+      ]
+    },
+    "bench-python-block": {
+      "name": "meta.block.bench.python.bench",
+      "begin": "\\b(python|py)\\s*:\\s*\\{\\s*$",
+      "end": "^\\s{0,12}\\}\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "contentName": "source.python.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.python"
+        }
+      ]
+    },
+    "bench-python-line": {
+      "name": "meta.expression.python.bench",
+      "begin": "\\b(python|py)\\s*:\\s*",
+      "end": "$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "contentName": "source.python.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.python"
         }
       ]
     }

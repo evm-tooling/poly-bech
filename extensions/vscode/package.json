@@ -2,7 +2,7 @@
   "name": "polybench-lsp",
   "displayName": "Poly Bench",
   "description": "Language support for .bench files with embedded Go, TypeScript, and Rust - powered by poly-bench LSP",
-  "version": "0.1.15",
+  "version": "0.1.18",
   "publisher": "evm-tooling",
   "repository": {
     "type": "git",
@@ -57,7 +57,7 @@
         },
         "poly-bench.useTreeSitterHighlighting": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Use Tree-sitter WASM for client-side syntax highlighting (experimental). Provides faster initial highlighting."
         }
       }
@@ -83,7 +83,8 @@
         "embeddedLanguages": {
           "source.go.embedded.bench": "go",
           "source.ts.embedded.bench": "typescript",
-          "source.rust.embedded.bench": "rust"
+          "source.rust.embedded.bench": "rust",
+          "source.python.embedded.bench": "python"
         }
       }
     ]

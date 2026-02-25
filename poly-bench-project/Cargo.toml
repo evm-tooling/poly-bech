@@ -8,6 +8,7 @@ repository.workspace = true
 description = "Project management for poly-bench"
 
 [dependencies]
+poly-bench-dsl.workspace = true
 miette.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -17,3 +18,4 @@ colored.workspace = true
 indicatif.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
+which.workspace = true
