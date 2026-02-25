@@ -12,6 +12,7 @@ use std::{
 
 /// Minimum display time for spinners (500ms) so users can follow progress
 const MIN_DISPLAY_MS: u64 = 500;
+const ERROR_EXCERPT_MAX_LINES: usize = 24;
 
 /// Create a spinner for a step with the [±] style prefix
 pub fn step_spinner(msg: &str) -> ProgressBar {
@@ -20,7 +21,7 @@ pub fn step_spinner(msg: &str) -> ProgressBar {
         ProgressStyle::default_spinner()
             .template("{spinner:.cyan} {msg}")
             .unwrap()
-            .tick_strings(&["[±]", "[∓]", "[±]", "[∓]"]),
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
     );
     pb.set_message(msg.to_string());
     pb.enable_steady_tick(Duration::from_millis(120));
@@ -34,7 +35,7 @@ pub fn indented_spinner(msg: &str) -> ProgressBar {
         ProgressStyle::default_spinner()
             .template("  {spinner:.cyan} {msg}")
             .unwrap()
-            .tick_strings(&["[±]", "[∓]", "[±]", "[∓]"]),
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
     );
     pb.set_message(msg.to_string());
     pb.enable_steady_tick(Duration::from_millis(120));
@@ -53,60 +54,63 @@ pub fn ensure_min_display(pb: &ProgressBar) {
 pub fn finish_success(pb: &ProgressBar, msg: &str) {
     ensure_min_display(pb);
     pb.finish_and_clear();
-    println!("{} {}", "[✓]".green().bold(), msg);
+    println!("{} {}", "✓".green().bold(), msg);
 }
 
 /// Finish a spinner with a success message (indented)
 pub fn finish_success_indented(pb: &ProgressBar, msg: &str) {
     ensure_min_display(pb);
     pb.finish_and_clear();
-    println!("  {} {}", "[✓]".green(), msg);
+    println!("  {} {}", "✓".green(), msg);
 }
 
 /// Finish a spinner with a failure message
 pub fn finish_failure(pb: &ProgressBar, msg: &str) {
     ensure_min_display(pb);
     pb.finish_and_clear();
-    eprintln!("{} {}", "[✗]".red().bold(), msg);
+    eprintln!("{} {}", "✗".red().bold(), msg);
 }
 
 /// Finish a spinner with a failure message (indented)
 pub fn finish_failure_indented(pb: &ProgressBar, msg: &str) {
     ensure_min_display(pb);
     pb.finish_and_clear();
-    eprintln!("  {} {}", "[✗]".red(), msg);
+    eprintln!("  {} {}", "✗".red(), msg);
 }
 
 /// Finish a spinner with a warning message (indented)
 pub fn finish_warning_indented(pb: &ProgressBar, msg: &str) {
     ensure_min_display(pb);
     pb.finish_and_clear();
-    eprintln!("  {} {}", "[⚠]".yellow(), msg);
+    eprintln!("  {} {}", "⚠".yellow(), msg);
 }
 
 /// Print a success message (no spinner)
 pub fn success(msg: &str) {
-    println!("{} {}", "[✓]".green().bold(), msg);
+    println!("{} {}", "✓".green().bold(), msg);
 }
 
 /// Print an indented success message (no spinner)
 pub fn success_indented(msg: &str) {
-    println!("  {} {}", "[✓]".green(), msg);
+    println!("  {} {}", "✓".green(), msg);
 }
 
 /// Print a failure message (no spinner)
 pub fn failure(msg: &str) {
-    eprintln!("{} {}", "[✗]".red().bold(), msg);
+    eprintln!("{} {}", "✗".red().bold(), msg);
 }
 
 /// Print an indented info message
 pub fn info_indented(msg: &str) {
-    println!("  {} {}", "[·]".dimmed(), msg);
+    println!("  {} {}", "·".dimmed(), msg);
 }
 
 /// Print a section header
 pub fn section(msg: &str) {
-    println!("\n{}", msg.bold());
+    println!();
+    println!("{}", "─".repeat(72).dimmed());
+    println!("{} {}", "■".cyan(), msg.bold());
+    println!("{}", "─".repeat(72).dimmed());
 }
 
 /// Run a command with output suppressed, showing a spinner instead
@@ -124,7 +128,31 @@ pub fn run_command_with_spinner(
 /// Helper to extract the first line of stderr for error messages
 pub fn first_error_line(stderr: &[u8]) -> String {
     let text = String::from_utf8_lossy(stderr);
-    text.lines().next().unwrap_or("Unknown error").trim().to_string()
+    text.lines().map(|l| l.trim()).find(|l| !l.is_empty()).unwrap_or("Unknown error").to_string()
+}
+
+/// Extract a compact but useful stderr excerpt.
+/// Keeps up to `max_lines` non-empty lines and appends a truncation marker.
+pub fn stderr_excerpt(stderr: &[u8], max_lines: usize) -> String {
+    let text = String::from_utf8_lossy(stderr);
+    let lines: Vec<&str> = text.lines().map(|l| l.trim_end()).filter(|l| !l.is_empty()).collect();
+    if lines.is_empty() {
+        return "Unknown error".to_string();
+    }
+
+    let cap = max_lines.min(ERROR_EXCERPT_MAX_LINES).max(1);
+    let mut excerpt = lines.iter().take(cap).cloned().collect::<Vec<_>>().join("\n");
+    if lines.len() > cap {
+        excerpt.push_str("\n... (truncated)");
+    }
+    excerpt
+}
+
+/// Render stderr excerpt as indented diagnostic lines.
+pub fn print_stderr_excerpt(stderr: &[u8], max_lines: usize) {
+    for line in stderr_excerpt(stderr, max_lines).lines() {
+        eprintln!("    {}", line.dimmed());
+    }
 }
 
 #[cfg(test)]
@@ -141,5 +169,11 @@ mod tests {
     fn test_first_error_line_empty() {
         let stderr = b"";
         assert_eq!(first_error_line(stderr), "Unknown error");
+    }
+
+    #[test]
+    fn test_stderr_excerpt_truncates() {
+        let stderr = b"line1\nline2\nline3\nline4";
+        assert_eq!(stderr_excerpt(stderr, 2), "line1\nline2\n... (truncated)");
     }
 }

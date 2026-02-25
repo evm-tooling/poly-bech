@@ -7,7 +7,6 @@ declare suite matmulN performance timeBased sameDataset: true {
     targetTime: 500ms
     cvThreshold: 5
     count: 1
-    memory: true
 
     setup go {
         import (

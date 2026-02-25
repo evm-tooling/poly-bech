@@ -8,6 +8,7 @@
 
 pub mod build;
 pub mod deps;
+pub mod error;
 pub mod init;
 pub mod manifest;
 pub mod templates;

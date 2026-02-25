@@ -1,8 +1,14 @@
 //! Dependency management for poly-bench projects
 
-use crate::{manifest, runtime_env_go, runtime_env_rust, runtime_env_ts, templates, terminal};
+use crate::{
+    error::ProjectError, manifest, runtime_env_go, runtime_env_rust, runtime_env_ts, templates,
+    terminal,
+};
 use miette::Result;
-use std::{path::Path, process::Command};
+use std::{
+    path::Path,
+    process::{Command, Output},
+};
 
 /// Resolve the directory used for Go (runtime-env if present, else project root)
 fn resolve_go_root(project_root: &Path) -> std::path::PathBuf {
@@ -56,6 +62,27 @@ fn parse_dep_spec(spec: &str) -> (String, String) {
         // No version specified
         (spec.to_string(), "latest".to_string())
     }
+}
+
+fn command_status_string(output: &Output) -> String {
+    output
+        .status
+        .code()
+        .map(|c| format!("exit code {}", c))
+        .unwrap_or_else(|| "terminated by signal".to_string())
+}
+
+fn command_failure(command: &str, cwd: &Path, output: &Output, hint: &str) -> miette::Report {
+    miette::miette!(
+        "{}",
+        ProjectError::command_failed(
+            command,
+            cwd.display().to_string(),
+            command_status_string(output),
+            terminal::stderr_excerpt(&output.stderr, 12),
+            hint
+        )
+    )
 }
 
 /// Build the argument for `go get` so that transitive deps are added to go.sum.
@@ -115,9 +142,14 @@ pub fn add_go_dependency(spec: &str) -> Result<()> {
     .map_err(|e| miette::miette!("Failed to run go get: {}", e))?;
 
     if !output.status.success() {
-        let err_msg = terminal::first_error_line(&output.stderr);
-        terminal::finish_failure(&spinner, &format!("go get failed: {}", err_msg));
-        return Err(miette::miette!("go get failed"));
+        terminal::finish_failure(&spinner, "go get failed");
+        terminal::print_stderr_excerpt(&output.stderr, 8);
+        return Err(command_failure(
+            &format!("go get {}", go_get_arg),
+            &go_root,
+            &output,
+            "Verify the package path/version and ensure network access to Go modules.",
+        ));
     }
 
     // Note: We intentionally skip `go mod tidy` here.
@@ -172,9 +204,14 @@ pub fn add_ts_dependency(spec: &str) -> Result<()> {
     .map_err(|e| miette::miette!("Failed to run npm install: {}", e))?;
 
     if !output.status.success() {
-        let err_msg = terminal::first_error_line(&output.stderr);
-        terminal::finish_failure(&spinner, &format!("npm install failed: {}", err_msg));
-        return Err(miette::miette!("npm install failed"));
+        terminal::finish_failure(&spinner, "npm install failed");
+        terminal::print_stderr_excerpt(&output.stderr, 8);
+        return Err(command_failure(
+            &format!("npm install {}", npm_spec),
+            &ts_root,
+            &output,
+            "Check package name/version and npm registry/network configuration.",
+        ));
     }
 
     terminal::finish_success(&spinner, &format!("Added {}@{} to polybench.toml", package, version));
@@ -241,9 +278,14 @@ pub fn add_rust_dependency_with_features(spec: &str, features: Option<&[String]>
     .map_err(|e| miette::miette!("Failed to run cargo add: {}", e))?;
 
     if !output.status.success() {
-        let err_msg = terminal::first_error_line(&output.stderr);
-        terminal::finish_failure(&spinner, &format!("cargo add failed: {}", err_msg));
-        return Err(miette::miette!("cargo add failed"));
+        terminal::finish_failure(&spinner, "cargo add failed");
+        terminal::print_stderr_excerpt(&output.stderr, 8);
+        return Err(command_failure(
+            &format!("cargo {}", args.join(" ")),
+            &rust_root,
+            &output,
+            "Confirm crate name/features and Cargo registry access.",
+        ));
     }
 
     // Read the resolved version from Cargo.toml
@@ -319,9 +361,14 @@ pub fn remove_go_dependency(package: &str) -> Result<()> {
     .map_err(|e| miette::miette!("Failed to run go mod tidy: {}", e))?;
 
     if !output.status.success() {
-        let err_msg = terminal::first_error_line(&output.stderr);
-        terminal::finish_failure(&spinner, &format!("go mod tidy failed: {}", err_msg));
-        return Err(miette::miette!("go mod tidy failed"));
+        terminal::finish_failure(&spinner, "go mod tidy failed");
+        terminal::print_stderr_excerpt(&output.stderr, 8);
+        return Err(command_failure(
+            "go mod tidy",
+            &go_root,
+            &output,
+            "Check go.mod consistency and module import paths.",
+        ));
     }
 
     terminal::finish_success(&spinner, &format!("Removed {} from polybench.toml", package));
@@ -368,9 +415,14 @@ pub fn remove_ts_dependency(package: &str) -> Result<()> {
     .map_err(|e| miette::miette!("Failed to run npm uninstall: {}", e))?;
 
     if !output.status.success() {
-        let err_msg = terminal::first_error_line(&output.stderr);
-        terminal::finish_failure(&spinner, &format!("npm uninstall failed: {}", err_msg));
-        return Err(miette::miette!("npm uninstall failed"));
+        terminal::finish_failure(&spinner, "npm uninstall failed");
+        terminal::print_stderr_excerpt(&output.stderr, 8);
+        return Err(command_failure(
+            &format!("npm uninstall {}", package),
+            &ts_root,
+            &output,
+            "Verify npm project state and lockfile integrity.",
+        ));
     }
 
     terminal::finish_success(&spinner, &format!("Removed {} from polybench.toml", package));
@@ -417,9 +469,14 @@ pub fn remove_rust_dependency(crate_name: &str) -> Result<()> {
     .map_err(|e| miette::miette!("Failed to run cargo remove: {}", e))?;
 
     if !output.status.success() {
-        let err_msg = terminal::first_error_line(&output.stderr);
-        terminal::finish_failure(&spinner, &format!("cargo remove failed: {}", err_msg));
-        return Err(miette::miette!("cargo remove failed"));
+        terminal::finish_failure(&spinner, "cargo remove failed");
+        terminal::print_stderr_excerpt(&output.stderr, 8);
+        return Err(command_failure(
+            &format!("cargo remove {}", crate_name),
+            &rust_root,
+            &output,
+            "Ensure Cargo.toml is valid and dependency exists in the selected workspace.",
+        ));
     }
 
     terminal::finish_success(&spinner, &format!("Removed {} from polybench.toml", crate_name));
@@ -547,12 +604,14 @@ fn install_go_deps(project_root: &Path, go_config: &manifest::GoConfig) -> Resul
         .map_err(|e| miette::miette!("Failed to run go get: {}", e))?;
 
         if !output.status.success() {
-            let err_msg = terminal::first_error_line(&output.stderr);
-            terminal::finish_failure_indented(
-                &spinner,
-                &format!("Failed to install {}: {}", package, err_msg),
-            );
-            return Err(miette::miette!("go get {} failed: {}", go_get_arg, err_msg));
+            terminal::finish_failure_indented(&spinner, &format!("Failed to install {}", package));
+            terminal::print_stderr_excerpt(&output.stderr, 6);
+            return Err(command_failure(
+                &format!("go get {}", go_get_arg),
+                &go_root,
+                &output,
+                "Validate Go dependency declarations and module connectivity.",
+            ));
         }
         terminal::finish_success_indented(&spinner, package);
     }
@@ -599,8 +658,14 @@ fn install_ts_deps(
     if output.status.success() {
         terminal::finish_success_indented(&spinner, "TypeScript dependencies ready");
     } else {
-        let err_msg = terminal::first_error_line(&output.stderr);
-        terminal::finish_warning_indented(&spinner, &format!("npm install failed: {}", err_msg));
+        terminal::finish_failure_indented(&spinner, "npm install failed");
+        terminal::print_stderr_excerpt(&output.stderr, 6);
+        return Err(command_failure(
+            "npm install",
+            &ts_root,
+            &output,
+            "Resolve npm install errors before running TypeScript benchmarks.",
+        ));
     }
 
     Ok(())
@@ -681,8 +746,14 @@ fn install_rust_deps(
     if output.status.success() {
         terminal::finish_success_indented(&spinner, "Rust dependencies ready");
     } else {
-        let err_msg = terminal::first_error_line(&output.stderr);
-        terminal::finish_warning_indented(&spinner, &format!("cargo fetch failed: {}", err_msg));
+        terminal::finish_failure_indented(&spinner, "cargo fetch failed");
+        terminal::print_stderr_excerpt(&output.stderr, 6);
+        return Err(command_failure(
+            "cargo fetch",
+            &rust_root,
+            &output,
+            "Resolve Cargo registry/dependency issues before running Rust benchmarks.",
+        ));
     }
 
     Ok(())
