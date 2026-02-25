@@ -270,6 +270,7 @@ pub const DEFAULT_MARGIN_RIGHT: i32 = 20;
 pub const GO_COLOR: &str = "#00ADD8";
 pub const TS_COLOR: &str = "#3178C6";
 pub const RUST_COLOR: &str = "#DEA584"; // Rust's official logo color (orange-ish)
+pub const PYTHON_COLOR: &str = "#3776AB";
 pub const TIE_COLOR: &str = "#9CA3AF";
 pub const BG_COLOR: &str = "#FAFAFA";
 pub const BORDER_COLOR: &str = "#E5E7EB";
@@ -485,25 +486,38 @@ pub fn filter_benchmarks<'a>(
             // Note: Currently filter_winner is designed for 2-language comparisons
             // For multi-language scenarios, the comparison module would need to be updated
             if let Some(ref winner_filter) = directive.filter_winner {
-                if let Some(ref comparison) = bench.comparison {
-                    let wf = winner_filter.to_lowercase();
-                    match wf.as_str() {
-                        "go" => {
-                            if comparison.winner != ComparisonWinner::First {
-                                return false;
-                            }
+                let wf = winner_filter.to_lowercase();
+                if wf != "all" {
+                    // Determine per-benchmark winner from all measurements (lower is better)
+                    let primary_value = |m: &poly_bench_runtime::measurement::Measurement| -> f64 {
+                        m.bytes_per_op.map(|b| b as f64).unwrap_or(m.nanos_per_op)
+                    };
+                    let mut best: Option<(Lang, f64)> = None;
+                    for (lang, m) in &bench.measurements {
+                        let v = primary_value(m);
+                        if best.map(|(_, bv)| v < bv).unwrap_or(true) {
+                            best = Some((*lang, v));
                         }
-                        "ts" | "typescript" => {
-                            if comparison.winner != ComparisonWinner::Second {
-                                return false;
-                            }
+                    }
+                    if let Some((winner_lang, best_val)) = best {
+                        let second_best = bench
+                            .measurements
+                            .iter()
+                            .filter(|(l, _)| *l != &winner_lang)
+                            .map(|(_, m)| primary_value(m))
+                            .fold(f64::MAX, f64::min);
+                        let speedup = second_best / best_val.max(1e-9);
+                        let is_tie = speedup < 1.05;
+                        let winner_matches = match wf.as_str() {
+                            "go" => winner_lang == Lang::Go,
+                            "ts" | "typescript" => winner_lang == Lang::TypeScript,
+                            "rust" | "rs" => winner_lang == Lang::Rust,
+                            "python" | "py" => winner_lang == Lang::Python,
+                            _ => true,
+                        };
+                        if !is_tie && !winner_matches {
+                            return false;
                         }
-                        // Rust filtering would require multi-language comparison support
-                        "rust" => {
-                            // For now, Rust wins would need to be added to the comparison module
-                            // This is a placeholder for future multi-language support
-                        }
-                        "all" | _ => {} // No filter
                     }
                 }
             }
@@ -756,11 +770,12 @@ pub fn calculate_geo_mean(benchmarks: &[&BenchmarkResult]) -> f64 {
     }
 }
 
-/// Count wins by language (returns go_wins, ts_wins, rust_wins, ties)
-pub fn count_wins(benchmarks: &[&BenchmarkResult]) -> (usize, usize, usize, usize) {
+/// Count wins by language (returns go_wins, ts_wins, rust_wins, python_wins, ties)
+pub fn count_wins(benchmarks: &[&BenchmarkResult]) -> (usize, usize, usize, usize, usize) {
     let mut go_wins = 0;
     let mut ts_wins = 0;
     let mut rust_wins = 0;
+    let mut python_wins = 0;
     let mut ties = 0;
 
     for bench in benchmarks {
@@ -768,6 +783,7 @@ pub fn count_wins(benchmarks: &[&BenchmarkResult]) -> (usize, usize, usize, usiz
         let go_ns = bench.measurements.get(&Lang::Go).map(|m| m.nanos_per_op);
         let ts_ns = bench.measurements.get(&Lang::TypeScript).map(|m| m.nanos_per_op);
         let rust_ns = bench.measurements.get(&Lang::Rust).map(|m| m.nanos_per_op);
+        let python_ns = bench.measurements.get(&Lang::Python).map(|m| m.nanos_per_op);
 
         let mut times: Vec<(Lang, f64)> = vec![];
         if let Some(ns) = go_ns {
@@ -778,6 +794,9 @@ pub fn count_wins(benchmarks: &[&BenchmarkResult]) -> (usize, usize, usize, usiz
         }
         if let Some(ns) = rust_ns {
             times.push((Lang::Rust, ns));
+        }
+        if let Some(ns) = python_ns {
+            times.push((Lang::Python, ns));
         }
 
         if times.len() >= 2 {
@@ -793,13 +812,14 @@ pub fn count_wins(benchmarks: &[&BenchmarkResult]) -> (usize, usize, usize, usiz
                     Lang::Go => go_wins += 1,
                     Lang::TypeScript => ts_wins += 1,
                     Lang::Rust => rust_wins += 1,
+                    Lang::Python => python_wins += 1,
                     _ => {}
                 }
             }
         }
     }
 
-    (go_wins, ts_wins, rust_wins, ties)
+    (go_wins, ts_wins, rust_wins, python_wins, ties)
 }
 
 /// Symmetric logarithmic transformation

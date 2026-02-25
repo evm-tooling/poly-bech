@@ -1411,7 +1411,11 @@ fn get_charting_param_completions() -> Vec<CompletionItem> {
         ),
         param_completion("height", "number", "Chart height in pixels"),
         param_completion("minSpeedup", "number", "Only show benchmarks with speedup >= N"),
-        enum_param_completion("filterWinner", &["go", "ts", "all"], "Filter by winner language"),
+        enum_param_completion(
+            "filterWinner",
+            &["go", "ts", "rust", "python", "all"],
+            "Filter by winner language",
+        ),
         array_param_completion("includeBenchmarks", "Only include these benchmark names"),
         array_param_completion("excludeBenchmarks", "Exclude these benchmark names"),
         param_completion("limit", "number", "Max benchmarks to show"),

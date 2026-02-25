@@ -190,8 +190,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         std::fs::create_dir_all(&python_env)
             .map_err(|e| miette::miette!("Failed to create {}: {}", python_env.display(), e))?;
         // Include pyright[nodejs] for LSP (provides pyright-langserver)
-        let requirements_content =
-            templates::requirements_txt(&[("pyright[nodejs]".to_string(), "latest".to_string())]);
+        let requirements_content = templates::requirements_txt_for_runtime_env(&[]);
         std::fs::write(python_env.join("requirements.txt"), requirements_content)
             .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
         if !options.quiet {

@@ -20,6 +20,7 @@ poly-bench includes commands for validation, compilation, execution, project set
 | `poly-bench init [name]` | Initialize a new project |
 | `poly-bench new <name>` | Create a new benchmark template |
 | `poly-bench add` | Add language dependencies |
+| `poly-bench add-runtime <RUNTIME>` | Add a runtime (go, ts, rust, python) to the project |
 | `poly-bench remove` | Remove language dependencies |
 | `poly-bench install` | Install dependencies from `polybench.toml` |
 | `poly-bench build` | Build/regenerate runtime environment |
@@ -224,6 +225,23 @@ poly-bench add --rs <CRATE> [--features <F1,F2,...>]`
   ]}
 />
 
+#### `poly-bench add-runtime`
+
+Add a runtime (go, ts, rust, python) to an existing project. Creates the runtime config in `polybench.toml` and builds the `.polybench` runtime environment.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "terminal",
+      language: "bash",
+      code: `poly-bench add-runtime go
+poly-bench add-runtime ts
+poly-bench add-runtime rust
+poly-bench add-runtime python`
+    },
+  ]}
+/>
+
 #### `poly-bench remove`
 
 <CodeGroup
@@ -233,7 +251,8 @@ poly-bench add --rs <CRATE> [--features <F1,F2,...>]`
       language: "bash",
       code: `poly-bench remove --go <PKG>
 poly-bench remove --ts <PKG>
-poly-bench remove --rs <CRATE>`
+poly-bench remove --rs <CRATE>
+poly-bench remove --py <PKG>`
     },
   ]}
 />
