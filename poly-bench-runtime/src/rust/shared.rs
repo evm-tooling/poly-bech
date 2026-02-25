@@ -103,24 +103,46 @@ pub struct SinkMemoryDecls {
 
 impl SinkMemoryDecls {
     /// Create declarations based on benchmark spec
-    pub fn from_spec(_spec: &BenchmarkSpec) -> Self {
-        Self {
-            // No sink declaration needed - we use black_box directly on the result
-            sink_decl: "",
-            sink_keepalive: "",
-            // Rust doesn't have built-in memory profiling like Go's runtime.MemStats
-            // For now, we skip memory profiling in Rust
-            memory_decl: "",
-            memory_before: "",
-            memory_after: "",
+    pub fn from_spec(spec: &BenchmarkSpec) -> Self {
+        if spec.memory {
+            Self {
+                sink_decl: "",
+                sink_keepalive: "",
+                memory_decl: r#"    let mem_session = alloc_tracker::Session::new();
+    let mut mem_op = mem_session.operation("bench");
+    let mut mem_bytes_per_op: Option<u64> = None;
+    let mut mem_allocs_per_op: Option<u64> = None;
+"#,
+                memory_before: "    let _mem_span = mem_op.measure_process();\n",
+                memory_after: r#"    drop(_mem_span);
+    let mem_report = mem_session.to_report();
+    for (_, op) in mem_report.operations() {
+        let total_bytes = op.total_bytes_allocated();
+        let total_allocs = op.total_allocations_count();
+        if total_iterations > 0 {
+            mem_bytes_per_op = Some((total_bytes / total_iterations as u64));
+            mem_allocs_per_op = Some((total_allocs / total_iterations as u64));
+        }
+        break;
+    }
+"#,
+            }
+        } else {
+            Self {
+                sink_decl: "",
+                sink_keepalive: "",
+                memory_decl: "",
+                memory_before: "",
+                memory_after: "",
+            }
         }
     }
 
     /// Get memory result fields for BenchResult struct
     pub fn memory_result_fields(use_memory: bool) -> String {
         if use_memory {
-            // Rust doesn't have easy memory profiling - return None for now
-            "        bytes_per_op: None,\n        allocs_per_op: None,\n".to_string()
+            "        bytes_per_op: mem_bytes_per_op,\n        allocs_per_op: mem_allocs_per_op,\n"
+                .to_string()
         } else {
             "        bytes_per_op: None,\n        allocs_per_op: None,\n".to_string()
         }

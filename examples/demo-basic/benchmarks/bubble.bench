@@ -3,10 +3,10 @@ use std::charting
 declare suite bubbleN memory timeBased sameDataset: true {
     description: "O(n^2) bubble sort on int32 array"
     baseline: "go"
-    warmup: 10
-    targetTime: 10000ms
+    warmup: 100
+    targetTime: 1000ms
     cvThreshold: 5
-    count: 1
+    count: 4
 
     setup go {
         import (
@@ -46,7 +46,9 @@ declare suite bubbleN memory timeBased sameDataset: true {
                 }
                 for (let i = 0; i < n; i++) {
                     for (let j = 0; j < n - 1 - i; j++) {
-                        if (arr[j] > arr[j+1]) [arr[j], arr[j+1]] = [arr[j+1], arr[j]]
+                        if (arr[j] > arr[j+1]) {
+                            const tmp = arr[j]; arr[j] = arr[j+1]; arr[j+1] = tmp
+                        }
                     }
                 }
                 const out = new Uint8Array(data.length)
@@ -125,6 +127,15 @@ declare suite bubbleN memory timeBased sameDataset: true {
     }
 
     bench n100 {
+        each go: {
+            bubbleGo(s100)
+        }
+           each ts: {
+           bubbleTs(s100)
+        }
+        each rust: {
+            bubble_rust(&s100);
+        }
         go: bubbleGo(s100)
         ts: bubbleTs(s100)
         rust: bubble_rust(&s100)

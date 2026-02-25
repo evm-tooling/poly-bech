@@ -186,7 +186,8 @@ fn row_item_count(row: i32, columns: i32, total_items: i32) -> i32 {
     remaining.max(0).min(columns).max(1)
 }
 
-/// Generate a speedup chart showing relative performance vs baseline (or memory usage for memory suites)
+/// Generate a speedup chart showing relative performance vs baseline (or memory usage for memory
+/// suites)
 pub fn generate(
     benchmarks: Vec<&BenchmarkResult>,
     directive: &ChartDirectiveIR,

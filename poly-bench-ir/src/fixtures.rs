@@ -111,10 +111,7 @@ pub fn normalize_csv_to_bytes(input: &str, selector: Option<&str>) -> Result<Vec
 fn parse_csv_selector(selector: &str) -> Result<(usize, usize)> {
     let parts: Vec<&str> = selector.split(',').map(|s| s.trim()).collect();
     if parts.len() != 2 {
-        return Err(miette!(
-            "CSV selector must be in 'row,col' format, got '{}'",
-            selector
-        ));
+        return Err(miette!("CSV selector must be in 'row,col' format, got '{}'", selector));
     }
     let row = parts[0]
         .parse::<usize>()
@@ -157,9 +154,7 @@ fn select_json_value<'a>(root: &'a Value, selector: Option<&str>) -> Result<&'a 
             current = if key.is_empty() {
                 current
             } else {
-                current
-                    .get(key)
-                    .ok_or_else(|| miette!("JSON selector key '{}' not found", key))?
+                current.get(key).ok_or_else(|| miette!("JSON selector key '{}' not found", key))?
             };
             current = current
                 .get(idx)

@@ -126,9 +126,7 @@ fn async_success_error_counts(measurement: &Measurement) -> (u64, u64) {
 /// Format the primary metric for display (time or memory based on suite type)
 fn format_primary_metric(m: &Measurement, suite_type: SuiteType) -> String {
     if suite_type == SuiteType::Memory {
-        m.bytes_per_op
-            .map(Measurement::format_bytes)
-            .unwrap_or_else(|| Measurement::format_duration(m.nanos_per_op))
+        m.bytes_per_op.map(Measurement::format_bytes).unwrap_or_else(|| "-".to_string())
     } else {
         Measurement::format_duration(m.nanos_per_op)
     }
@@ -345,6 +343,10 @@ pub async fn run(
             }
         }
 
+        // Route to memory or performance path based on suite type.
+        // Memory path uses median aggregation for bytes_per_op; performance path uses mean.
+        let is_memory_suite = suite.suite_type == SuiteType::Memory;
+
         // Apply suite-level benchmark ordering
         let mut suite_benchmarks = suite.benchmarks.clone();
         match suite.order {
@@ -529,6 +531,8 @@ pub async fn run(
                     }
                     let aggregated = if runs.len() == 1 {
                         runs.into_iter().next().unwrap()
+                    } else if is_memory_suite {
+                        Measurement::aggregate_runs_memory(runs)
                     } else {
                         Measurement::aggregate_runs(runs)
                     };
@@ -579,7 +583,11 @@ pub async fn run(
                             stop_multi_run_timer(&timer);
 
                             if !run_measurements.is_empty() {
-                                let aggregated = Measurement::aggregate_runs(run_measurements);
+                                let aggregated = if is_memory_suite {
+                                    Measurement::aggregate_runs_memory(run_measurements)
+                                } else {
+                                    Measurement::aggregate_runs(run_measurements)
+                                };
                                 let elapsed = lang_start.elapsed();
                                 let ci_str = if let (Some(median), Some(ci_upper)) =
                                     (aggregated.median_across_runs, aggregated.ci_95_upper)
@@ -679,7 +687,11 @@ pub async fn run(
                             stop_multi_run_timer(&timer);
 
                             if !run_measurements.is_empty() {
-                                let aggregated = Measurement::aggregate_runs(run_measurements);
+                                let aggregated = if is_memory_suite {
+                                    Measurement::aggregate_runs_memory(run_measurements)
+                                } else {
+                                    Measurement::aggregate_runs(run_measurements)
+                                };
                                 let elapsed = lang_start.elapsed();
                                 let ci_str = if let (Some(median), Some(ci_upper)) =
                                     (aggregated.median_across_runs, aggregated.ci_95_upper)
@@ -780,7 +792,11 @@ pub async fn run(
                             stop_multi_run_timer(&timer);
 
                             if !run_measurements.is_empty() {
-                                let aggregated = Measurement::aggregate_runs(run_measurements);
+                                let aggregated = if is_memory_suite {
+                                    Measurement::aggregate_runs_memory(run_measurements)
+                                } else {
+                                    Measurement::aggregate_runs(run_measurements)
+                                };
                                 let elapsed = lang_start.elapsed();
                                 let ci_str = if let (Some(median), Some(ci_upper)) =
                                     (aggregated.median_across_runs, aggregated.ci_95_upper)

@@ -334,14 +334,13 @@ fn validate_suite(suite: &PartialSuite, doc: &Document, diagnostics: &mut Vec<Di
 
     // Line/bar charts are only valid for same-dataset suites.
     if let Some(Node::Valid(after_block)) = &suite.after_block {
-        let has_line_or_bar =
-            after_block.directives.iter().any(|d| {
-                if let Node::Valid(chart) = d {
-                    chart.function == "drawLineChart" || chart.function == "drawBarChart"
-                } else {
-                    false
-                }
-            });
+        let has_line_or_bar = after_block.directives.iter().any(|d| {
+            if let Node::Valid(chart) = d {
+                chart.function == "drawLineChart" || chart.function == "drawBarChart"
+            } else {
+                false
+            }
+        });
 
         if has_line_or_bar {
             if suite.same_dataset != Some(true) {
@@ -389,20 +388,12 @@ fn validate_suite(suite: &PartialSuite, doc: &Document, diagnostics: &mut Vec<Di
     }
 
     // sameDataset: true consistency - fixture refs should match across benchmarks
-    if suite.same_dataset == Some(true)
-        && suite.benchmarks.len() >= 2
-        && !suite.fixtures.is_empty()
+    if suite.same_dataset == Some(true) && suite.benchmarks.len() >= 2 && !suite.fixtures.is_empty()
     {
         let fixture_names: Vec<String> = suite
             .fixtures
             .iter()
-            .filter_map(|f| {
-                if let Node::Valid(fi) = f {
-                    Some(fi.name.clone())
-                } else {
-                    None
-                }
-            })
+            .filter_map(|f| if let Node::Valid(fi) = f { Some(fi.name.clone()) } else { None })
             .collect();
 
         let mut bench_refs: Vec<(String, HashSet<String>)> = Vec::new();

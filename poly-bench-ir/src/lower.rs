@@ -277,15 +277,13 @@ fn load_fixture_file(
     fixture_name: &str,
 ) -> Result<Vec<u8>> {
     if let Some(fmt) = format {
-        let text = std::fs::read_to_string(
-            if path.is_absolute() {
-                path.to_path_buf()
-            } else if let Some(base) = base_dir {
-                base.join(path)
-            } else {
-                path.to_path_buf()
-            },
-        )
+        let text = std::fs::read_to_string(if path.is_absolute() {
+            path.to_path_buf()
+        } else if let Some(base) = base_dir {
+            base.join(path)
+        } else {
+            path.to_path_buf()
+        })
         .map_err(|e| miette!("Failed to read fixture file {}: {}", path.display(), e))?;
         return decode_fixture_source(&text, encoding, Some(fmt), selector, fixture_name);
     }
