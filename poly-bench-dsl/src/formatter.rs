@@ -706,6 +706,21 @@ fn format_fixture(out: &mut String, fixture: &Fixture, indent_level: usize) {
     if let Some(ref desc) = fixture.description {
         write!(out, "{}description: \"{}\"\n", inner, escape_string(desc)).unwrap();
     }
+    if let Some(ref data) = fixture.data {
+        write!(out, "{}data: \"{}\"\n", inner, escape_string(data)).unwrap();
+    }
+    if let Some(ref path) = fixture.data_file {
+        write!(out, "{}data: @file(\"{}\")\n", inner, escape_string(path)).unwrap();
+    }
+    if let Some(ref encoding) = fixture.encoding {
+        write!(out, "{}encoding: {}\n", inner, encoding).unwrap();
+    }
+    if let Some(ref format) = fixture.format {
+        write!(out, "{}format: {}\n", inner, format).unwrap();
+    }
+    if let Some(ref selector) = fixture.selector {
+        write!(out, "{}selector: \"{}\"\n", inner, escape_string(selector)).unwrap();
+    }
     if let Some(ref hex) = fixture.hex_data {
         write!(out, "{}hex: \"{}\"\n", inner, escape_string(hex)).unwrap();
     }

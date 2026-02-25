@@ -965,6 +965,30 @@ impl Parser {
                         fixture.impl_order.push(lang);
                     }
                     fixture.implementations.insert(lang, code);
+                } else if s == "data" {
+                    self.advance();
+                    self.expect(TokenKind::Colon)?;
+                    if self.check(TokenKind::FileRef) {
+                        self.advance();
+                        self.expect(TokenKind::LParen)?;
+                        let path = self.expect_string()?;
+                        self.expect(TokenKind::RParen)?;
+                        fixture.data_file = Some(path);
+                    } else {
+                        fixture.data = Some(self.expect_string()?);
+                    }
+                } else if s == "encoding" {
+                    self.advance();
+                    self.expect(TokenKind::Colon)?;
+                    fixture.encoding = Some(self.expect_identifier_string()?);
+                } else if s == "format" {
+                    self.advance();
+                    self.expect(TokenKind::Colon)?;
+                    fixture.format = Some(self.expect_identifier_string()?);
+                } else if s == "selector" {
+                    self.advance();
+                    self.expect(TokenKind::Colon)?;
+                    fixture.selector = Some(self.expect_string()?);
                 } else {
                     return Err(self.make_error(ParseError::InvalidProperty {
                         name: s.clone(),
@@ -974,7 +998,9 @@ impl Parser {
             }
             _ => {
                 return Err(self.make_error(ParseError::ExpectedToken {
-                    expected: "fixture property (hex, description, shape) or language".to_string(),
+                    expected:
+                        "fixture property (hex, data, encoding, format, selector, description, shape) or language"
+                            .to_string(),
                     found: format!("{:?}", token.kind),
                     span: token.span.clone(),
                 }));
@@ -1511,6 +1537,24 @@ impl Parser {
         }
     }
 
+    fn expect_identifier_string(&mut self) -> Result<String> {
+        if matches!(self.peek().kind, TokenKind::String(_)) {
+            return self.expect_string();
+        }
+        let token = self.peek().clone();
+        match token.kind {
+            TokenKind::Identifier(s) => {
+                self.advance();
+                Ok(s)
+            }
+            TokenKind::Hex => {
+                self.advance();
+                Ok("hex".to_string())
+            }
+            _ => Err(self.make_error(ParseError::ExpectedIdentifier { span: token.span })),
+        }
+    }
+
     fn expect_string(&mut self) -> Result<String> {
         let token = self.peek().clone();
         if let TokenKind::String(s) = &token.kind {
@@ -1930,6 +1974,53 @@ suite test {
         assert_eq!(suite.fixtures.len(), 1);
         assert_eq!(suite.fixtures[0].name, "data");
         assert_eq!(suite.fixtures[0].hex_data, Some("deadbeef".to_string()));
+    }
+
+    #[test]
+    fn test_parse_fixture_data_with_encoding() {
+        let source = r#"
+suite test {
+    fixture payload {
+        data: @file("fixtures/payload.bin")
+        encoding: raw
+    }
+
+    bench foo {
+        go: process(payload)
+    }
+}
+"#;
+        let result = parse(source, "test.bench");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+
+        let file = result.unwrap();
+        let fixture = &file.suites[0].fixtures[0];
+        assert_eq!(fixture.data_file, Some("fixtures/payload.bin".to_string()));
+        assert_eq!(fixture.encoding, Some("raw".to_string()));
+    }
+
+    #[test]
+    fn test_parse_fixture_format_selector() {
+        let source = r#"
+suite test {
+    fixture request {
+        data: @file("fixtures/request.json")
+        format: json
+        selector: "$.items[0].id"
+    }
+
+    bench foo {
+        ts: process(request)
+    }
+}
+"#;
+        let result = parse(source, "test.bench");
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+
+        let file = result.unwrap();
+        let fixture = &file.suites[0].fixtures[0];
+        assert_eq!(fixture.format, Some("json".to_string()));
+        assert_eq!(fixture.selector, Some("$.items[0].id".to_string()));
     }
 
     #[test]

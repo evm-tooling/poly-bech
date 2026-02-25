@@ -1,0 +1,81 @@
+declare suite fixtureDataSourcesMini performance timeBased sameDataset: false {
+    description: "Mini suite demonstrating all fixture input modes"
+    warmup: 0
+    targetTime: 500ms
+    count: 1
+
+    setup ts {
+        helpers {
+            function bytesLen(data: Uint8Array): number {
+                return data.byteLength
+            }
+        }
+    }
+
+    # Legacy compatibility path
+    fixture legacyHexInline {
+        hex: "68656c6c6f"
+    }
+
+    # New data source + explicit encodings
+    fixture hexViaDataFile {
+        data: @file("fixtures/data_sources_hex_payload.hex")
+        encoding: hex
+    }
+
+    fixture rawFromFile {
+        data: @file("fixtures/data_sources_raw_packet.bin")
+        encoding: raw
+    }
+
+    fixture utf8Inline {
+        data: "hello utf8"
+        encoding: utf8
+    }
+
+    fixture base64Inline {
+        data: "aGVsbG8gYmFzZTY0"
+        encoding: base64
+    }
+
+    # Structured extraction paths
+    fixture jsonSelected {
+        data: @file("fixtures/data_sources_sample.json")
+        format: json
+        selector: "$.items[1].id"
+    }
+
+    fixture csvSelected {
+        data: @file("fixtures/data_sources_sample.csv")
+        format: csv
+        selector: "1,2"
+    }
+
+    bench legacy_hex_inline {
+        ts: bytesLen(legacyHexInline)
+    }
+
+    bench hex_via_data_file {
+        ts: bytesLen(hexViaDataFile)
+    }
+
+    bench raw_from_file {
+        ts: bytesLen(rawFromFile)
+    }
+
+    bench utf8_inline {
+        ts: bytesLen(utf8Inline)
+    }
+
+    bench base64_inline {
+        ts: bytesLen(base64Inline)
+    }
+
+    bench json_selected {
+        ts: bytesLen(jsonSelected)
+    }
+
+    bench csv_selected {
+        ts: bytesLen(csvSelected)
+    }
+}

@@ -223,6 +223,10 @@ module.exports = grammar({
     _fixture_item: $ => choice(
       $.property,
       $.hex_property,
+      $.data_property,
+      $.encoding_property,
+      $.format_property,
+      $.selector_property,
       $.shape_property,
       $.language_implementation,
     ),
@@ -234,6 +238,33 @@ module.exports = grammar({
         $.string,
         $.file_ref,
       ),
+    ),
+
+    data_property: $ => seq(
+      'data',
+      ':',
+      choice(
+        $.string,
+        $.file_ref,
+      ),
+    ),
+
+    encoding_property: $ => seq(
+      'encoding',
+      ':',
+      choice($.identifier, $.string),
+    ),
+
+    format_property: $ => seq(
+      'format',
+      ':',
+      choice($.identifier, $.string),
+    ),
+
+    selector_property: $ => seq(
+      'selector',
+      ':',
+      $.string,
     ),
 
     shape_property: $ => seq(

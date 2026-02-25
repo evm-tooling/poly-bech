@@ -396,6 +396,57 @@ fixture abiData {
 <span>Use inline <code>hex:</code> for small test vectors and <code>hex: @file(...)</code> for larger payloads. This keeps <code>.bench</code> files readable while supporting arbitrarily large fixtures.</span>
 </Aside>
 
+#### Generic `data` source with encoding
+
+Use `data` for non-hex external samples. `encoding` controls byte decoding.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "Raw/B64/UTF-8",
+      language: "bench",
+      code: `fixture packetRaw {
+    data: @file("fixtures/net/packet.bin")
+    encoding: raw
+}
+
+fixture payloadUtf8 {
+    data: "hello world"
+    encoding: utf8
+}
+
+fixture payloadB64 {
+    data: "aGVsbG8gd29ybGQ="
+    encoding: base64
+}`
+    },
+  ]}
+/>
+
+#### Structured extraction (`format` + `selector`)
+
+Structured inputs are normalized at compile time to deterministic bytes.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "JSON + CSV",
+      language: "bench",
+      code: `fixture requestId {
+    data: @file("fixtures/requests.json")
+    format: json
+    selector: "$.items[0].id"
+}
+
+fixture csvCell {
+    data: @file("fixtures/table.csv")
+    format: csv
+    selector: "1,2"    # row,col (0-indexed)
+}`
+    },
+  ]}
+/>
+
 #### Fixture with `shape` annotation
 
 The optional `shape` field provides a JSON-like descriptor for documentation and tooling purposes.

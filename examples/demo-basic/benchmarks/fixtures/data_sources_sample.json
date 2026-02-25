@@ -1,0 +1,9 @@
+{
+  "items": [
+    { "id": "alpha", "lang": "go" },
+    { "id": "beta", "lang": "ts" }
+  ],
+  "meta": {
+    "version": 1
+  }
+}

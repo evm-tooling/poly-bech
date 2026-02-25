@@ -11,5 +11,7 @@ description = "Intermediate representation for poly-bench benchmarks"
 poly-bench-dsl.workspace = true
 miette.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 hex.workspace = true
 regex.workspace = true
+base64 = "0.22"

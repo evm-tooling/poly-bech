@@ -196,6 +196,19 @@ fixture long_data {
     hex: @file("fixtures/1kb.hex")
 }
 
+# Generic external data source (raw bytes)
+fixture packet {
+    data: @file("fixtures/packet.bin")
+    encoding: raw
+}
+
+# Structured input extraction
+fixture request_id {
+    data: @file("fixtures/request.json")
+    format: json
+    selector: "$.items[0].id"
+}
+
 # Language-specific implementations
 fixture complex {
     go:   buildComplexStruct()
@@ -203,6 +216,12 @@ fixture complex {
     rust: build_complex_struct()
 }
 ```
+
+`hex:` remains supported for compatibility. The new fixture model supports:
+- `data:` inline string or `@file(...)`
+- `encoding:` `hex | raw | utf8 | base64`
+- `format:` `json | csv` (optional structured normalization)
+- `selector:` optional extraction path (`$.a[0].b` for JSON, `row,col` for CSV)
 
 ### Benchmarks
 

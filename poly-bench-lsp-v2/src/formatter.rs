@@ -396,6 +396,29 @@ fn format_fixture(fixture: &PartialFixture, config: &FormatterConfig, depth: usi
             }
         }
     }
+    if let Some(data) = &fixture.data {
+        formatted.push_str(&inner_indent);
+        match data {
+            poly_bench_syntax::FixtureData::Inline(value) => {
+                formatted.push_str(&format!("data: \"{}\"\n", value));
+            }
+            poly_bench_syntax::FixtureData::File(path) => {
+                formatted.push_str(&format!("data: @file(\"{}\")\n", path));
+            }
+        }
+    }
+    if let Some(encoding) = &fixture.encoding {
+        formatted.push_str(&inner_indent);
+        formatted.push_str(&format!("encoding: {}\n", encoding));
+    }
+    if let Some(format) = &fixture.format {
+        formatted.push_str(&inner_indent);
+        formatted.push_str(&format!("format: {}\n", format));
+    }
+    if let Some(selector) = &fixture.selector {
+        formatted.push_str(&inner_indent);
+        formatted.push_str(&format!("selector: \"{}\"\n", selector));
+    }
 
     // Implementations (preserve original order)
     for lang in &fixture.impl_order {
