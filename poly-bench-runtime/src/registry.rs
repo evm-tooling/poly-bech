@@ -1,104 +1,77 @@
 //! Runtime registry for pluggable language runtimes
 
-use crate::{config::RuntimeConfig, go, js, python, rust, traits::Runtime};
+use crate::config::RuntimeConfig;
 use miette::{miette, Result};
 use poly_bench_dsl::Lang;
+use poly_bench_lsp_traits::{
+    EmbeddedDiagnosticProvider, EmbeddedDiagnosticSetup, EmbeddedHoverProvider,
+    HelperFunctionExtractor, VirtualFileBuilder,
+};
+use poly_bench_runtime_traits::{ProjectRootDetector, Runtime, RuntimePlugin};
+use runtimes_go::GO_PLUGIN;
+use runtimes_python::PYTHON_PLUGIN;
+use runtimes_rust::RUST_PLUGIN;
+use runtimes_ts::TS_PLUGIN;
 use std::{collections::HashMap, sync::Arc};
 
-/// Factory for creating runtime instances
-pub trait RuntimeFactory: Send + Sync {
-    /// Get the language this factory creates runtimes for
-    fn lang(&self) -> Lang;
-
-    /// Get the display name of this runtime
-    fn name(&self) -> &'static str;
-
-    /// Create a new runtime instance with the given configuration
-    fn create(&self, config: &RuntimeConfig) -> Result<Box<dyn Runtime>>;
-}
-
-struct GoRuntimeFactory;
-impl RuntimeFactory for GoRuntimeFactory {
-    fn lang(&self) -> Lang {
-        Lang::Go
-    }
-    fn name(&self) -> &'static str {
-        "Go Plugin Runtime"
-    }
-    fn create(&self, config: &RuntimeConfig) -> Result<Box<dyn Runtime>> {
-        let mut rt = go::GoRuntime::new();
-        rt.set_module_root(config.go_root.clone());
-        Ok(Box::new(rt))
-    }
-}
-
-struct JsRuntimeFactory;
-impl RuntimeFactory for JsRuntimeFactory {
-    fn lang(&self) -> Lang {
-        Lang::TypeScript
-    }
-    fn name(&self) -> &'static str {
-        "JavaScript/TypeScript Runtime"
-    }
-    fn create(&self, config: &RuntimeConfig) -> Result<Box<dyn Runtime>> {
-        let mut rt = js::JsRuntime::new()?;
-        rt.set_project_root(config.node_root.clone());
-        Ok(Box::new(rt))
-    }
-}
-
-struct RustRuntimeFactory;
-impl RuntimeFactory for RustRuntimeFactory {
-    fn lang(&self) -> Lang {
-        Lang::Rust
-    }
-    fn name(&self) -> &'static str {
-        "Rust Runtime"
-    }
-    fn create(&self, config: &RuntimeConfig) -> Result<Box<dyn Runtime>> {
-        let mut rt = rust::RustRuntime::new();
-        rt.set_project_root(config.rust_root.clone());
-        Ok(Box::new(rt))
-    }
-}
-
-struct PythonRuntimeFactory;
-impl RuntimeFactory for PythonRuntimeFactory {
-    fn lang(&self) -> Lang {
-        Lang::Python
-    }
-    fn name(&self) -> &'static str {
-        "Python Runtime"
-    }
-    fn create(&self, config: &RuntimeConfig) -> Result<Box<dyn Runtime>> {
-        let mut rt = python::PythonRuntime::new()?;
-        rt.set_project_root(config.python_root.clone());
-        Ok(Box::new(rt))
-    }
-}
-
-/// All registered runtime factories
-static FACTORIES: &[&dyn RuntimeFactory] =
-    &[&GoRuntimeFactory, &JsRuntimeFactory, &RustRuntimeFactory, &PythonRuntimeFactory];
+static PLUGINS: &[&dyn RuntimePlugin] = &[&GO_PLUGIN, &TS_PLUGIN, &RUST_PLUGIN, &PYTHON_PLUGIN];
 
 /// Create a runtime for the given language
 pub fn create_runtime(lang: Lang, config: &RuntimeConfig) -> Result<Box<dyn Runtime>> {
-    for factory in FACTORIES {
-        if factory.lang() == lang {
-            return factory.create(config);
+    for plugin in PLUGINS {
+        if plugin.lang() == lang {
+            return plugin.runtime_factory().create(config);
         }
     }
     Err(miette!("No runtime registered for language: {}", lang))
 }
 
-/// Get all supported languages
+/// Get the project root detector for a language
+pub fn get_detector(lang: Lang) -> Option<&'static dyn ProjectRootDetector> {
+    PLUGINS.iter().find(|p| p.lang() == lang).and_then(|p| p.project_root_detector())
+}
+
+/// Get the virtual file builder for a language
+pub fn get_virtual_file_builder(lang: Lang) -> Option<&'static dyn VirtualFileBuilder> {
+    PLUGINS.iter().find(|p| p.lang() == lang).and_then(|p| p.virtual_file_builder())
+}
+
+/// Get the embedded diagnostic provider for a language
+pub fn get_embedded_diagnostic_provider(
+    lang: Lang,
+) -> Option<&'static dyn EmbeddedDiagnosticProvider> {
+    PLUGINS.iter().find(|p| p.lang() == lang).and_then(|p| p.embedded_diagnostic_provider())
+}
+
+/// Get the embedded diagnostic setup for a language
+pub fn get_embedded_diagnostic_setup(lang: Lang) -> Option<&'static dyn EmbeddedDiagnosticSetup> {
+    PLUGINS.iter().find(|p| p.lang() == lang).and_then(|p| p.embedded_diagnostic_setup())
+}
+
+/// Get the embedded hover provider for a language
+pub fn get_embedded_hover_provider(lang: Lang) -> Option<&'static dyn EmbeddedHoverProvider> {
+    PLUGINS.iter().find(|p| p.lang() == lang).and_then(|p| p.embedded_hover_provider())
+}
+
+/// Get the helper function extractor for a language
+pub fn get_helper_function_extractor(lang: Lang) -> Option<&'static dyn HelperFunctionExtractor> {
+    PLUGINS.iter().find(|p| p.lang() == lang).and_then(|p| p.helper_function_extractor())
+}
+
+/// Initialize import extractors for poly-bench-ir.
+/// Must be called at application startup before any ir::lower.
+pub fn init_import_extractors() {
+    let extractors: Vec<_> = PLUGINS.iter().filter_map(|p| p.import_extractor()).collect();
+    poly_bench_ir::set_import_extractors(extractors);
+}
+
+/// Get all supported languages (derived from registered plugins)
 pub fn supported_languages() -> &'static [Lang] {
     static LANGS: &[Lang] = &[Lang::Go, Lang::TypeScript, Lang::Rust, Lang::Python];
     LANGS
 }
 
 /// Build a map of runtimes for the requested languages (owned, for scheduler).
-/// Returns an error if any requested language fails to create (e.g. Node.js not found for TS).
 pub fn create_runtimes(
     langs: &[Lang],
     config: &RuntimeConfig,
@@ -111,8 +84,7 @@ pub fn create_runtimes(
     Ok(runtimes)
 }
 
-/// Build a map of Arc-wrapped runtimes for validation (shared across parallel tasks).
-/// Skips languages whose runtime fails to create (e.g. Node.js not found for TypeScript).
+/// Build a map of Arc-wrapped runtimes for validation.
 pub fn create_runtimes_arc(
     langs: &[Lang],
     config: &RuntimeConfig,
