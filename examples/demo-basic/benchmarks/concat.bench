@@ -158,7 +158,7 @@ declare suite concatN performance timeBased sameDataset: true {
         charting.drawTable(
             title: "String Concatenation Comparison",
             description: "Vertical grouped bars showing quadratic growth",
-            output: "concat-bar.svg"
+            output: "concat-bar.svg",
         )
     }
 }

@@ -1,36 +1,47 @@
-# Consolidated command runner for daily dev:
-# - fmt
-# - build
-# - pr
-# - release
+# poly-bench development commands
+# Run `just` to list all commands. Use `just <recipe>` to run.
 #
-# Run `just` to list available commands.
+# Quick reference:
+#   Build:  just b (dev) | just b-p (prod) | just b-d-f (force) | just b-d-d (CLI only)
+#   Release: just rel-p | just rel-m | just rel-M
+#   Scopes: just dev <cmd> | just prod <cmd>
 
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
+[doc("Show this help and list all commands")]
 default:
-  @just --list --unsorted
+  #!/usr/bin/env bash
+  echo "poly-bench development commands"
+  echo ""
+  echo "Usage: just <recipe> [args...]"
+  echo ""
+  echo "Common commands:"
+  echo "  just b         - dev build (grammar, CLI, extension, VSIX)"
+  echo "  just b-d-f     - dev build, force rebuild everything"
+  echo "  just b-p       - prod build (release binary + extension)"
+  echo "  just b-d-d     - CLI only (debug binary)"
+  echo "  just dev fmt   - format Rust code"
+  echo "  just dev lint  - clippy"
+  echo "  just dev test  - run tests"
+  echo "  just rel-p     - release patch (prod)"
+  echo ""
+  echo "All recipes:"
+  just --list --unsorted
 
 # Run any command in dev scope.
-# Usage:
-#   just dev fmt
-#   just dev build debug
+[doc("Run command in dev scope: just dev <recipe> [args]")]
 [group('scopes')]
 dev +args:
   PB_ENV=dev just {{args}}
 
 # Run any command in prod scope.
-# Usage:
-#   just prod build
-#   just prod release minor
+[doc("Run command in prod scope: just prod <recipe> [args]")]
 [group('scopes')]
 prod +args:
   PB_ENV=prod just {{args}}
 
 # Format Rust code.
-# Usage:
-#   just fmt                # format
-#   just fmt check          # check-only for CI
+[doc("Format Rust: just fmt [fix|check]")]
 [group('dev')]
 fmt mode="fix":
   #!/usr/bin/env bash
@@ -49,10 +60,7 @@ fmt mode="fix":
   esac
 
 # Test poly-bench.
-# Usage:
-#   just dev test             # cargo test --all
-#   just dev test check       # fmt-check + clippy + test
-#   just dev test cover       # coverage-friendly run
+[doc("Run tests: just dev test [unit|check|cover]")]
 [group('dev')]
 test mode="unit":
   #!/usr/bin/env bash
@@ -77,27 +85,38 @@ test mode="unit":
   esac
 
 # Lint poly-bench.
-# Usage:
-#   just dev lint
+[doc("Run clippy: just dev lint")]
 [group('dev')]
 lint:
   cargo clippy --all-targets --
 
-# Build poly-bench.
-# Usage:
-#   just build              # optimized release build
-#   just build debug        # fast debug build
-#   just build check        # compile check
-#   just build watch        # rebuild on changes
+# Build poly-bench (grammar, CLI, extension, VSIX).
+# Shortcuts: b, b-d, b-d-f, b-p, b-d-d
+[doc("Build: just dev build | just prod build | just build [debug|check|watch]. Shortcuts: b, b-d, b-d-f, b-p, b-d-d")]
 [group('dev')]
 build mode="release":
   #!/usr/bin/env bash
   set -euo pipefail
+  pb_env="${PB_ENV:-}"
   case "{{mode}}" in
     release)
-      printf "\033[36m[±]\033[0m Building poly-bench (release)...\r"
-      cargo build --release --bin poly-bench
-      printf "\033[32m[✓]\033[0m Built poly-bench (release)        \n"
+      if [[ "$pb_env" == "dev" ]]; then
+        ./scripts/dev-build.sh
+      elif [[ "$pb_env" == "prod" ]]; then
+        ./scripts/prod-build.sh
+      else
+        printf "\033[36m[±]\033[0m Building poly-bench (release)...\r"
+        cargo build --release --bin poly-bench
+        printf "\033[32m[✓]\033[0m Built poly-bench (release)        \n"
+      fi
+      ;;
+    force)
+      if [[ "$pb_env" == "dev" ]]; then
+        ./scripts/dev-build.sh --force
+      else
+        echo "Usage: just dev build force"
+        exit 1
+      fi
       ;;
     debug)
       cargo build --bin poly-bench
@@ -111,30 +130,29 @@ build mode="release":
       ;;
     *)
       echo "Usage: just build [release|debug|check|watch]"
+      echo "  just dev build       - full dev build (grammar, CLI, extension, VSIX)"
+      echo "  just dev build force - full dev build, rebuild everything"
+      echo "  just prod build      - full prod build"
+      echo "  just build debug     - CLI only"
+      echo "  just build release   - CLI only"
       exit 1
       ;;
   esac
 
 # Create a quick PR from staged changes.
-# Usage:
-#   just pr "my-pr-title"
+[doc("Create PR from staged files: just pr \"title\"")]
 [group('dev')]
 pr title:
   ./scripts/quick-pr.sh "{{title}}"
 
 # VSCode extension compile.
-# Usage:
-#   just dev vscode-compile
-#   just prod vscode-compile
+[doc("Compile VS Code extension: just dev vscode-compile")]
 [group('vscode')]
 vscode-compile:
   cd extensions/vscode && npm ci && npm run compile
 
 # VSCode extension checks.
-# Usage:
-#   just dev vscode-test           # compile + lint
-#   just dev vscode-test compile   # compile only
-#   just dev vscode-test lint      # lint only
+[doc("Extension test: just dev vscode-test [all|compile|lint]")]
 [group('vscode')]
 vscode-test mode="all":
   #!/usr/bin/env bash
@@ -159,11 +177,7 @@ vscode-test mode="all":
   esac
 
 # VSCode extension version bump.
-# Usage:
-#   just dev vscode-bump patch
-#   just dev vscode-bump minor
-#   just dev vscode-bump major
-#   just dev vscode-bump explicit 0.2.1
+[doc("Bump extension version: just dev vscode-bump [patch|minor|major|explicit] [ver]")]
 [group('vscode')]
 vscode-bump kind="patch" version="":
   #!/usr/bin/env bash
@@ -186,9 +200,7 @@ vscode-bump kind="patch" version="":
   echo "Bumped VSCode extension: $current -> $next"
 
 # VSCode extension build/package.
-# Usage:
-#   just dev vscode-build
-#   just prod vscode-build
+[doc("Package extension as .vsix: just dev vscode-build")]
 [group('vscode')]
 vscode-build:
   #!/usr/bin/env bash
@@ -200,9 +212,7 @@ vscode-build:
   npx @vscode/vsce package
 
 # VSCode extension publish.
-# Usage:
-#   just dev vscode-publish   # uses publish:dev
-#   just prod vscode-publish  # uses publish:ci
+[doc("Publish extension to marketplace: just dev/prod vscode-publish")]
 [group('vscode')]
 [confirm("Publish VSCode extension?")]
 vscode-publish:
@@ -219,15 +229,7 @@ vscode-publish:
   fi
 
 # Release automation.
-# Usage:
-#   just release                    # defaults to patch bump
-#   just release patch              # patch bump
-#   just release major              # major bump
-#   just release minor              # minor bump
-#   just release explicit v0.2.1    # manual version override
-#   just release docs               # docs-only production PR
-# Recommended:
-#   just prod release patch
+[doc("Release: just prod release [patch|minor|major|explicit|docs] [ver]. Shortcuts: rel-p, rel-m, rel-M")]
 [group('prod')]
 [confirm("Proceed with release workflow?")]
 release kind="patch" version="":
@@ -327,12 +329,8 @@ release kind="patch" version="":
 
   echo "Done. Review and merge the release PR to publish."
 
-# Release automation without VSCode extension bump/publish.
-# Usage:
-#   just prod release-no-vscode patch
-#   just prod release-no-vscode minor
-#   just prod release-no-vscode major
-#   just prod release-no-vscode explicit v0.2.1
+# Release automation without VSCode extension.
+[doc("Release without VSCode: just prod release-no-vscode [patch|minor|major|explicit|docs]")]
 [group('prod')]
 [confirm("Proceed with release workflow (no VSCode extension bump/publish)?")]
 release-no-vscode kind="patch" version="":
@@ -424,29 +422,54 @@ release-no-vscode kind="patch" version="":
 
   echo "Done. Review and merge the release PR to publish."
 
-# Release aliases (short forms)
-# Usage:
-#   just rel-p
-#   just rel-m
-#   just rel-M
-#   just rel-x v0.2.1
-#   just rel-d
+# Build shortcuts (see `build` for full docs)
+[doc("build: dev build (full) - grammar, CLI, extension, VSIX")]
+[group('dev')]
+b:
+  just dev build
+
+[doc("build: dev build (same as b)")]
+[group('dev')]
+b-d:
+  just dev build
+
+[doc("build: dev build force - rebuild everything")]
+[group('dev')]
+b-d-f:
+  just dev build force
+
+[doc("build: prod build - release binary + extension + VSIX")]
+[group('prod')]
+b-p:
+  just prod build
+
+[doc("build: dev build debug - CLI only")]
+[group('dev')]
+b-d-d:
+  just dev build debug
+
+# Release shortcuts (see `release` for full docs)
+[doc("release: patch bump")]
 [group('prod')]
 rel-p:
   just prod release patch
 
+[doc("release: minor bump")]
 [group('prod')]
 rel-m:
   just prod release minor
 
+[doc("release: major bump")]
 [group('prod')]
 rel-M:
   just prod release major
 
+[doc("release: explicit version")]
 [group('prod')]
 rel-x version:
   just prod release explicit {{version}}
 
+[doc("release: docs-only PR")]
 [group('prod')]
 rel-d:
   just prod release docs

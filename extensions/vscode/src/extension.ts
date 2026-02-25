@@ -36,12 +36,19 @@ import {
   TransportKind,
 } from 'vscode-languageclient/node';
 
+import { languages } from 'vscode';
+import {
+  createTreeSitterSemanticTokensProvider,
+  TREE_SITTER_LEGEND,
+} from './treeSitterHighlighting';
+
 let client: LanguageClient | undefined;
 /** Resolves when the LSP is ready (so format-on-save can run). */
 let clientReady: Promise<void> | null = null;
 
-/** Tree-sitter parser instance (if enabled) */
+/** Tree-sitter parser and language (if enabled) */
 let treeSitterParser: any = null;
+let treeSitterLanguage: any = null;
 
 /** Server launch: command and optional args (e.g. poly-bench with ['lsp']). */
 interface LspServerSpec {
@@ -53,7 +60,7 @@ interface LspServerSpec {
  * Check if Tree-sitter WASM highlighting should be used
  */
 function shouldUseTreeSitter(): boolean {
-  return workspace.getConfiguration('poly-bench').get<boolean>('useTreeSitterHighlighting', false);
+  return workspace.getConfiguration('poly-bench').get<boolean>('useTreeSitterHighlighting', true);
 }
 
 /**
@@ -73,10 +80,12 @@ async function initTreeSitter(context: ExtensionContext): Promise<void> {
     if (fs.existsSync(wasmPath)) {
       const lang = await Parser.Language.load(wasmPath);
       treeSitterParser.setLanguage(lang);
+      treeSitterLanguage = lang;
       console.log('[Poly-Bench] Tree-sitter WASM initialized');
     } else {
       console.log('[Poly-Bench] Tree-sitter WASM not found, using TextMate grammar');
       treeSitterParser = null;
+      treeSitterLanguage = null;
     }
   } catch (err) {
     console.error('[Poly-Bench] Failed to initialize Tree-sitter:', err);
@@ -171,6 +180,24 @@ export async function activate(context: ExtensionContext): Promise<void> {
     outputChannel.appendLine('[startup] Tree-sitter WASM highlighting enabled');
   }
 
+  // Register tree-sitter semantic token provider when enabled
+  if (treeSitterParser && treeSitterLanguage) {
+    const provider = createTreeSitterSemanticTokensProvider(
+      context.extensionPath,
+      treeSitterParser,
+      treeSitterLanguage
+    );
+    if (provider) {
+      context.subscriptions.push(
+        languages.registerDocumentSemanticTokensProvider(
+          { scheme: 'file', language: 'polybench' },
+          provider,
+          TREE_SITTER_LEGEND
+        )
+      );
+    }
+  }
+
   // Server options - run poly-bench lsp
   const serverOptions: ServerOptions = {
     run: {
@@ -185,9 +212,16 @@ export async function activate(context: ExtensionContext): Promise<void> {
     },
   };
 
-  // Client options - configure which documents to sync and error handling
+  // When tree-sitter highlighting is on, we provide semantic tokens client-side.
+  // Disable LSP semantic tokens to avoid double highlighting.
+  const useTreeSitter = treeSitterParser && treeSitterLanguage;
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: 'file', language: 'polybench' }],
+    middleware: useTreeSitter
+      ? {
+          provideDocumentSemanticTokens: () => undefined,
+        }
+      : undefined,
     synchronize: {
       // Watch for changes to .bench files and project configuration files
       // This helps the LSP detect when modules are installed/removed

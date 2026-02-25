@@ -57,7 +57,7 @@
         },
         "poly-bench.useTreeSitterHighlighting": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Use Tree-sitter WASM for client-side syntax highlighting (experimental). Provides faster initial highlighting."
         }
       }
