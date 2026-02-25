@@ -1,6 +1,6 @@
 //! Cross-language comparison types and logic
 
-use poly_bench_dsl::{BenchmarkKind, Lang};
+use poly_bench_dsl::{BenchmarkKind, Lang, SuiteType};
 use poly_bench_runtime::measurement::{Comparison, Measurement};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -28,6 +28,8 @@ pub struct SuiteResults {
     pub name: String,
     /// Suite description
     pub description: Option<String>,
+    /// Suite type (memory vs performance) - affects comparison and display
+    pub suite_type: SuiteType,
     /// Individual benchmark results
     pub benchmarks: Vec<BenchmarkResult>,
     /// Suite-level summary
@@ -38,10 +40,11 @@ impl SuiteResults {
     pub fn new(
         name: String,
         description: Option<String>,
+        suite_type: SuiteType,
         benchmarks: Vec<BenchmarkResult>,
     ) -> Self {
-        let summary = SuiteSummary::calculate(&benchmarks);
-        Self { name, description, benchmarks, summary }
+        let summary = SuiteSummary::calculate(&benchmarks, suite_type);
+        Self { name, description, suite_type, benchmarks, summary }
     }
 }
 
@@ -102,13 +105,14 @@ impl BenchmarkResult {
         kind: BenchmarkKind,
         description: Option<String>,
         measurements: HashMap<Lang, Measurement>,
+        suite_type: SuiteType,
         comparison_mode: String,
         fairness_seed: Option<u64>,
         async_warmup_cap: Option<u64>,
         async_sample_cap: Option<u64>,
         async_sampling_policy: Option<String>,
     ) -> Self {
-        let comparison = Self::calculate_comparison(&measurements);
+        let comparison = Self::calculate_comparison(&measurements, suite_type);
         let async_details = Self::build_async_details(
             kind,
             &measurements,
@@ -129,24 +133,43 @@ impl BenchmarkResult {
         }
     }
 
-    fn calculate_comparison(measurements: &HashMap<Lang, Measurement>) -> Option<Comparison> {
+    fn calculate_comparison(
+        measurements: &HashMap<Lang, Measurement>,
+        suite_type: SuiteType,
+    ) -> Option<Comparison> {
         // Compare Go vs TypeScript if both are present
         let go_measurement = measurements.get(&Lang::Go)?;
         let ts_measurement = measurements.get(&Lang::TypeScript)?;
-        let ratio_ci_95 = match (&go_measurement.run_nanos_per_op, &ts_measurement.run_nanos_per_op)
-        {
-            (Some(go_runs), Some(ts_runs)) => {
-                Measurement::paired_ratio_ci(go_runs, ts_runs).map(|(_, lo, hi)| (lo, hi))
+
+        let use_memory = suite_type == SuiteType::Memory;
+        let (go_val, ts_val) = if use_memory {
+            match (go_measurement.bytes_per_op, ts_measurement.bytes_per_op) {
+                (Some(go_b), Some(ts_b)) => (go_b as f64, ts_b as f64),
+                _ => (go_measurement.nanos_per_op, ts_measurement.nanos_per_op),
             }
-            _ => None,
+        } else {
+            (go_measurement.nanos_per_op, ts_measurement.nanos_per_op)
         };
 
-        Some(Comparison::new(
-            String::new(), // Will be set by caller
+        let ratio_ci_95 = if !use_memory {
+            match (&go_measurement.run_nanos_per_op, &ts_measurement.run_nanos_per_op) {
+                (Some(go_runs), Some(ts_runs)) => {
+                    Measurement::paired_ratio_ci(go_runs, ts_runs).map(|(_, lo, hi)| (lo, hi))
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        Some(Comparison::new_with_metric(
+            String::new(),
             go_measurement.clone(),
             "Go".to_string(),
             ts_measurement.clone(),
             "TypeScript".to_string(),
+            go_val,
+            ts_val,
             ratio_ci_95,
         ))
     }
@@ -238,7 +261,7 @@ pub struct SuiteSummary {
 }
 
 impl SuiteSummary {
-    fn calculate(benchmarks: &[BenchmarkResult]) -> Self {
+    fn calculate(benchmarks: &[BenchmarkResult], suite_type: SuiteType) -> Self {
         let mut go_wins = 0;
         let mut ts_wins = 0;
         let mut rust_wins = 0;
@@ -246,6 +269,7 @@ impl SuiteSummary {
         let mut log_speedups = Vec::new();
         let mut unstable_count = 0;
         let mut total_outliers_removed = 0u64;
+        let use_memory = suite_type == SuiteType::Memory;
 
         for bench in benchmarks {
             // Count stability issues across all measurements
@@ -258,35 +282,43 @@ impl SuiteSummary {
                 }
             }
 
-            // Determine winner across all available languages
-            let go_ns = bench.measurements.get(&Lang::Go).map(|m| m.nanos_per_op);
-            let ts_ns = bench.measurements.get(&Lang::TypeScript).map(|m| m.nanos_per_op);
-            let rust_ns = bench.measurements.get(&Lang::Rust).map(|m| m.nanos_per_op);
+            // Get primary metric: bytes_per_op for memory suite, nanos_per_op for performance
+            let metric = |m: &Measurement| -> Option<f64> {
+                if use_memory {
+                    m.bytes_per_op.map(|b| b as f64)
+                } else {
+                    Some(m.nanos_per_op)
+                }
+            };
 
-            // Find the fastest language among those present
-            let mut times: Vec<(Lang, f64)> = vec![];
-            if let Some(ns) = go_ns {
-                times.push((Lang::Go, ns));
+            let go_val = bench.measurements.get(&Lang::Go).and_then(metric);
+            let ts_val = bench.measurements.get(&Lang::TypeScript).and_then(metric);
+            let rust_val = bench.measurements.get(&Lang::Rust).and_then(metric);
+
+            // Find the best language (lowest value wins for both time and memory)
+            let mut values: Vec<(Lang, f64)> = vec![];
+            if let Some(v) = go_val {
+                values.push((Lang::Go, v));
             }
-            if let Some(ns) = ts_ns {
-                times.push((Lang::TypeScript, ns));
+            if let Some(v) = ts_val {
+                values.push((Lang::TypeScript, v));
             }
-            if let Some(ns) = rust_ns {
-                times.push((Lang::Rust, ns));
+            if let Some(v) = rust_val {
+                values.push((Lang::Rust, v));
             }
 
-            if times.len() >= 2 {
-                // Sort by time (fastest first)
-                times.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-                let (fastest_lang, fastest_time) = times[0];
-                let (_, second_time) = times[1];
+            if values.len() >= 2 {
+                // Sort by value (lowest first)
+                values.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+                let (best_lang, best_val) = values[0];
+                let (_, second_val) = values[1];
 
                 // Check for tie (within 5%)
-                let speedup = second_time / fastest_time;
+                let speedup = second_val / best_val;
                 if speedup < 1.05 {
                     ties += 1;
                 } else {
-                    match fastest_lang {
+                    match best_lang {
                         Lang::Go => go_wins += 1,
                         Lang::TypeScript => ts_wins += 1,
                         Lang::Rust => rust_wins += 1,
@@ -294,9 +326,8 @@ impl SuiteSummary {
                     }
                 }
 
-                // For geometric mean: use Go vs TS comparison if both present (for backwards
-                // compatibility)
-                if let (Some(go), Some(ts)) = (go_ns, ts_ns) {
+                // For geometric mean: use Go vs TS comparison if both present
+                if let (Some(go), Some(ts)) = (go_val, ts_val) {
                     if go > 0.0 && ts > 0.0 {
                         log_speedups.push((ts / go).ln());
                     }
@@ -441,6 +472,7 @@ impl OverallSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use poly_bench_dsl::SuiteType;
     use poly_bench_runtime::measurement::Measurement;
 
     #[test]
@@ -451,6 +483,7 @@ mod tests {
             BenchmarkKind::Sync,
             None,
             HashMap::new(),
+            SuiteType::Performance,
             "strict".to_string(),
             Some(123),
             None,
@@ -469,6 +502,7 @@ mod tests {
             BenchmarkKind::Sync,
             None,
             HashMap::<Lang, Measurement>::new(),
+            SuiteType::Performance,
             "legacy".to_string(),
             None,
             None,
@@ -490,11 +524,12 @@ mod tests {
         measurements.insert(Lang::Go, go);
 
         let result = BenchmarkResult::new(
-            "bench".to_string(),
-            "suite_bench".to_string(),
+            "rpc".to_string(),
+            "suite_rpc".to_string(),
             BenchmarkKind::Async,
             None,
             measurements,
+            SuiteType::Performance,
             "strict".to_string(),
             None,
             Some(5),
@@ -523,6 +558,7 @@ mod tests {
             BenchmarkKind::Async,
             None,
             measurements,
+            SuiteType::Performance,
             "strict".to_string(),
             None,
             None,

@@ -338,7 +338,7 @@ Control the statistical rigor of your benchmarks:
 
 ### Memory Profiling
 
-Track memory allocations alongside timing:
+Track memory allocations alongside timing (use `suiteType: memory` in the suite declaration):
 
 <CodeGroup 
   tabs={[
@@ -346,7 +346,7 @@ Track memory allocations alongside timing:
       title: ".bench",
       language: "bench",
       code: `suite withMemory {
-    memory: true    // Enable memory profiling
+    // Use declare suite ... memory ... for memory profiling
     
     // ... rest of suite
 }`

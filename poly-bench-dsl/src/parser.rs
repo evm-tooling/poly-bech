@@ -410,10 +410,10 @@ impl Parser {
                 suite.count = Some(value);
             }
             TokenKind::Memory => {
-                self.advance();
-                self.expect(TokenKind::Colon)?;
-                let value = self.expect_bool()?;
-                suite.memory = value;
+                return Err(self.make_error(ParseError::InvalidProperty {
+                    name: "memory: use suiteType: memory in the suite declaration instead".to_string(),
+                    span: token.span.clone(),
+                }));
             }
             TokenKind::AsyncSamplingPolicy => {
                 self.advance();
@@ -1126,10 +1126,10 @@ impl Parser {
                 benchmark.count = Some(value);
             }
             TokenKind::Memory => {
-                self.advance();
-                self.expect(TokenKind::Colon)?;
-                let value = self.expect_bool()?;
-                benchmark.memory = Some(value);
+                return Err(self.make_error(ParseError::InvalidProperty {
+                    name: "memory: use suiteType: memory in the suite declaration instead".to_string(),
+                    span: token.span.clone(),
+                }));
             }
             // Phase 3: Lifecycle hooks - support both grouped and flat syntax
             TokenKind::Before => {

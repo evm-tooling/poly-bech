@@ -74,15 +74,14 @@ Sort by speedup descending and only show benchmarks where the fastest language i
 
 #### With memory overlay
 
-Show memory allocation data alongside timing. Requires `memory: true` on the suite or individual benchmarks.
+Show memory allocation data alongside timing. Use `suiteType: memory` in the suite declaration.
 
 <CodeGroup
   tabs={[
     {
       title: "bench",
       language: "bench",
-      code: `suite allocBench {
-    memory: true
+      code: `declare suite allocBench memory timeBased sameDataset: true {
 
     # ... benchmarks ...
 
@@ -505,15 +504,13 @@ You can call any number of chart directives in a single `after` block. Each prod
       language: "bench",
       code: `use std::charting
 
-suite sortN {
+declare suite sortN memory timeBased sameDataset: true {
     description: "O(n log n) sort — stdlib sort on int32 array"
     warmup: 50
     compare: true
     baseline: "go"
-    mode: "auto"
     targetTime: 500ms
     count: 3
-    memory: true
 
     # ... setup, fixtures, benchmarks ...
 

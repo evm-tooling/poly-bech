@@ -162,6 +162,7 @@ fn create_single_benchmark_results(
             let single_suite = SuiteResults::new(
                 suite.name.clone(),
                 suite.description.clone(),
+                suite.suite_type,
                 vec![single_bench],
             );
             return BenchmarkResults::new(vec![single_suite]);
@@ -170,7 +171,12 @@ fn create_single_benchmark_results(
 
     // Fallback: create a generic suite
     let single_bench = bench.clone();
-    let single_suite = SuiteResults::new("benchmark".to_string(), None, vec![single_bench]);
+    let single_suite = SuiteResults::new(
+        "benchmark".to_string(),
+        None,
+        poly_bench_dsl::SuiteType::Performance,
+        vec![single_bench],
+    );
     BenchmarkResults::new(vec![single_suite])
 }
 
@@ -189,31 +195,44 @@ fn filter_results_by_suite(results: &BenchmarkResults, suite_name: &str) -> Benc
     BenchmarkResults::new(filtered_suites)
 }
 
+/// Get suite type from results (for memory vs performance chart mode)
+fn suite_type_from_results(results: &BenchmarkResults) -> poly_bench_dsl::SuiteType {
+    results
+        .suites
+        .first()
+        .map(|s| s.suite_type)
+        .unwrap_or(poly_bench_dsl::SuiteType::Performance)
+}
+
 /// Generate a speedup chart SVG
 fn generate_speedup_chart(
     directive: &ChartDirectiveIR,
     results: &BenchmarkResults,
 ) -> Result<String> {
     let benchmarks: Vec<_> = results.suites.iter().flat_map(|s| s.benchmarks.iter()).collect();
-    Ok(speedup_chart::generate(benchmarks, directive))
+    let suite_type = suite_type_from_results(results);
+    Ok(speedup_chart::generate(benchmarks, directive, suite_type))
 }
 
 /// Generate a data table SVG
 fn generate_table(directive: &ChartDirectiveIR, results: &BenchmarkResults) -> Result<String> {
     let benchmarks: Vec<_> = results.suites.iter().flat_map(|s| s.benchmarks.iter()).collect();
-    Ok(table::generate(benchmarks, directive))
+    let suite_type = suite_type_from_results(results);
+    Ok(table::generate(benchmarks, directive, suite_type))
 }
 
 /// Generate a line chart SVG
 fn generate_line_chart(directive: &ChartDirectiveIR, results: &BenchmarkResults) -> Result<String> {
     let benchmarks: Vec<_> = results.suites.iter().flat_map(|s| s.benchmarks.iter()).collect();
-    Ok(line_chart::generate(benchmarks, directive))
+    let suite_type = suite_type_from_results(results);
+    Ok(line_chart::generate(benchmarks, directive, suite_type))
 }
 
 /// Generate a bar chart SVG
 fn generate_bar_chart(directive: &ChartDirectiveIR, results: &BenchmarkResults) -> Result<String> {
     let benchmarks: Vec<_> = results.suites.iter().flat_map(|s| s.benchmarks.iter()).collect();
-    Ok(bar_chart::generate(benchmarks, directive))
+    let suite_type = suite_type_from_results(results);
+    Ok(bar_chart::generate(benchmarks, directive, suite_type))
 }
 
 #[cfg(test)]
@@ -310,13 +329,19 @@ mod tests {
             BenchmarkKind::Sync,
             None,
             measurements,
+            poly_bench_dsl::SuiteType::Performance,
             "legacy".to_string(),
             None,
             None,
             None,
             None,
         )];
-        let suite = SuiteResults::new("suite".to_string(), None, benchmarks);
+        let suite = SuiteResults::new(
+            "suite".to_string(),
+            None,
+            poly_bench_dsl::SuiteType::Performance,
+            benchmarks,
+        );
         BenchmarkResults::new(vec![suite])
     }
 

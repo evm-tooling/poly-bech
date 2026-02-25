@@ -266,6 +266,17 @@ impl Measurement {
         }
     }
 
+    /// Format bytes for display (B, KB, MB)
+    pub fn format_bytes(bytes: u64) -> String {
+        if bytes < 1024 {
+            format!("{} B/op", bytes)
+        } else if bytes < 1024 * 1024 {
+            format!("{:.2} KB/op", bytes as f64 / 1024.0)
+        } else {
+            format!("{:.2} MB/op", bytes as f64 / (1024.0 * 1024.0))
+        }
+    }
+
     /// Format ops/sec for display
     pub fn format_ops_per_sec(ops: f64) -> String {
         if ops >= 1_000_000_000.0 {
@@ -651,7 +662,33 @@ impl Comparison {
         second_lang: String,
         ratio_ci_95: Option<(f64, f64)>,
     ) -> Self {
-        let ratio = first.nanos_per_op / second.nanos_per_op;
+        let first_val = first.nanos_per_op;
+        let second_val = second.nanos_per_op;
+        Self::new_with_metric(
+            name,
+            first,
+            first_lang,
+            second,
+            second_lang,
+            first_val,
+            second_val,
+            ratio_ci_95,
+        )
+    }
+
+    /// Create a comparison using explicit metric values (for memory: bytes_per_op; for time: nanos_per_op).
+    /// Lower value is better; ratio = first/second, so ratio > 1 means second wins.
+    pub fn new_with_metric(
+        name: String,
+        first: Measurement,
+        first_lang: String,
+        second: Measurement,
+        second_lang: String,
+        first_val: f64,
+        second_val: f64,
+        ratio_ci_95: Option<(f64, f64)>,
+    ) -> Self {
+        let ratio = if second_val > 0.0 { first_val / second_val } else { 1.0 };
 
         let (winner, speedup) = if (ratio - 1.0).abs() < 0.05 {
             (ComparisonWinner::Tie, 1.0)

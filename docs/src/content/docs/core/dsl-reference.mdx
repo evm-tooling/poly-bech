@@ -144,7 +144,6 @@ A suite groups related benchmarks with shared configuration, setup code, fixture
     baseline: "go"            # Language for speedup ratios ("go", "ts", "rust")
 
     # ── Observability ─────────────────────────────────
-    memory: false             # Enable memory allocation tracking
     concurrency: 1            # Parallel workers per benchmark
     sink: true                # Black-box sink to prevent dead-code elimination
 
@@ -173,7 +172,7 @@ A suite groups related benchmarks with shared configuration, setup code, fixture
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `description` | string | — | Human-readable description of the suite |
-| `suiteType` | header token | — | Required in suite declaration: `memory` or `performance` |
+| `suiteType` | header token | — | Required in suite declaration: `memory` (enables memory tracking) or `performance` |
 | `runMode` | header token | — | Required in suite declaration: `timeBased` or `iterationBased` |
 | `sameDataset` | header boolean | — | Required in suite declaration: `sameDataset: true|false` |
 | `iterations` | number | — | Fixed iteration count; used when runMode is `iterationBased` |
@@ -186,7 +185,6 @@ A suite groups related benchmarks with shared configuration, setup code, fixture
 | `outlierDetection` | boolean | `true` | IQR-based outlier removal |
 | `compare` | boolean | `false` | Show cross-language comparison table |
 | `baseline` | string | — | Language for speedup ratios (`"go"`, `"ts"`, `"rust"`) |
-| `memory` | boolean | `false` | Enable memory allocation tracking |
 | `concurrency` | number | `1` | Parallel workers per benchmark |
 | `sink` | boolean | `true` | Prevent dead-code elimination via black-box sink |
 | `order` | identifier | `sequential` | `sequential`, `parallel`, or `random` |
@@ -510,7 +508,6 @@ The optional `shape` field provides a JSON-like descriptor for documentation and
     outlierDetection: true
 
     # ── Observability overrides (inherit from suite) ──
-    memory: true
     concurrency: 1
     sink: true
 
@@ -566,7 +563,6 @@ benchAsync <name> {
 | `count` | number | suite value | Number of timed runs |
 | `cvThreshold` | number | suite value | Target coefficient of variation (%) |
 | `outlierDetection` | boolean | suite value | IQR-based outlier removal |
-| `memory` | boolean | suite value | Memory allocation tracking |
 | `concurrency` | number | suite value | Parallel workers |
 | `sink` | boolean | suite value | Black-box sink |
 | `skip` | per-lang bool | — | Skip this benchmark for specific languages |
@@ -769,7 +765,7 @@ See [std::charting](/docs/core/standard-library#stdcharting) for the full parame
 | Integer | `5000`, `1000000` | `iterations`, `warmup`, `count`, `width`, `height` |
 | Float | `5.0`, `2.5` | `cvThreshold`, `minSpeedup`, `gridOpacity` |
 | Duration | `500ms`, `3s`, `2m` | `targetTime`, `timeout` |
-| Boolean | `true` / `false` | `compare`, `memory`, `sink`, `outlierDetection` |
+| Boolean | `true` / `false` | `compare`, `sink`, `outlierDetection` |
 | String array | `["go", "ts"]` | `requires`, `tags`, `includeBenchmarks` |
 | Identifier | `sequential` | `order` |
 | File reference | `@file("path/to/file.hex")` | `hex` field in fixtures |
@@ -789,19 +785,17 @@ A complete `.bench` file demonstrating all major features:
       language: "bench",
       code: `use std::charting
 
-suite keccakBenchmarks {
+declare suite keccakBenchmarks performance timeBased sameDataset: false {
     description: "Keccak256 hashing across Go, TypeScript, and Rust"
     warmup: 1000
     compare: true
     baseline: "go"
-    mode: "auto"
     targetTime: 3000ms
     minIterations: 10
     maxIterations: 1000000
     count: 3
     cvThreshold: 5.0
     outlierDetection: true
-    memory: true
     sink: true
 
     setup go {
@@ -931,6 +925,96 @@ suite keccakBenchmarks {
             xlabel: "Input Size"
         )
     }
+}`
+    },
+  ]}
+/>
+
+---
+
+### Validation & Lint Rules
+
+The DSL validator and LSP emit diagnostics for semantic issues that affect fairness and comparison quality. The following rules are enforced at parse/check time and in the editor.
+
+#### `same-dataset-inconsistent-fixtures` (Warning)
+
+When `sameDataset: true`, all benchmarks should operate on the same dataset. If fixture references differ across benchmarks (e.g., one uses `data1`, another uses `data2`), a warning is emitted. This heuristic helps catch accidental unfair comparisons.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Valid — same fixtures",
+      language: "bench",
+      code: `declare suite sort performance timeBased sameDataset: true {
+    fixture s100 { hex: @file("sort_100.hex") }
+    fixture s200 { hex: @file("sort_200.hex") }
+    bench n100 { go: sort(s100)  ts: sort(s100) }
+    bench n200 { go: sort(s200)  ts: sort(s200) }
+}`
+    },
+    {
+      title: "Invalid — different fixtures per bench",
+      language: "bench",
+      code: `declare suite bad performance timeBased sameDataset: true {
+    fixture a { hex: "01020304" }
+    fixture b { hex: "05060708" }
+    bench foo { go: process(a) }   # uses a
+    bench bar { go: process(b) }   # uses b — warning: inconsistent fixtures
+}`
+    },
+  ]}
+/>
+
+#### `chart-requires-multiple-benchmarks` (Error)
+
+`drawLineChart` and `drawBarChart` compare benchmarks across the suite. A single benchmark provides no meaningful trend or comparison. At least 2 benchmarks are required.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Valid — 2+ benchmarks",
+      language: "bench",
+      code: `use std::charting
+declare suite trend performance timeBased sameDataset: true {
+    bench n100 { go: work(s100)  ts: work(s100) }
+    bench n200 { go: work(s200)  ts: work(s200) }
+    after { charting.drawLineChart(title: "Scaling") }
+}`
+    },
+    {
+      title: "Invalid — only 1 benchmark",
+      language: "bench",
+      code: `use std::charting
+declare suite bad performance timeBased sameDataset: true {
+    bench only { go: work()  ts: work() }
+    after { charting.drawLineChart(title: "Trend") }  # error: needs 2+ benchmarks
+}`
+    },
+  ]}
+/>
+
+#### `baseline-missing-in-benchmark` (Error)
+
+When `baseline: "go"` (or another language) is set, every benchmark must implement that language. Missing baseline implementations break comparative outputs and speedup ratios.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Valid — all benchmarks have baseline",
+      language: "bench",
+      code: `declare suite compare performance timeBased sameDataset: true {
+    baseline: "go"
+    bench foo { go: work()  ts: work() }
+    bench bar { go: work()  ts: work() }
+}`
+    },
+    {
+      title: "Invalid — benchmark missing baseline",
+      language: "bench",
+      code: `declare suite bad performance timeBased sameDataset: true {
+    baseline: "go"
+    bench foo { go: work()  ts: work() }
+    bench bar { ts: work() }   # error: missing go implementation
 }`
     },
   ]}

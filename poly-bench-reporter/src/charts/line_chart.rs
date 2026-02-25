@@ -1,4 +1,4 @@
-use poly_bench_dsl::Lang;
+use poly_bench_dsl::{Lang, SuiteType};
 use poly_bench_executor::comparison::BenchmarkResult;
 use poly_bench_ir::ChartDirectiveIR;
 use poly_bench_runtime::measurement::Measurement;
@@ -74,7 +74,11 @@ struct LangStats {
     regression: Option<SelectedModel>,
 }
 
-pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR) -> String {
+pub fn generate(
+    benchmarks: Vec<&BenchmarkResult>,
+    directive: &ChartDirectiveIR,
+    suite_type: SuiteType,
+) -> String {
     let mut filtered = filter_benchmarks(benchmarks, directive);
     sort_benchmarks(&mut filtered, directive);
     if filtered.is_empty() {
@@ -107,25 +111,38 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
     let x_max = *x_values.last().unwrap_or(&x_min);
     let x_span = if (x_max - x_min).abs() < f64::EPSILON { 1.0 } else { x_max - x_min };
 
+    let is_memory = suite_type == SuiteType::Memory;
+    let primary_value = |m: &Measurement| -> Option<f64> {
+        if is_memory {
+            m.bytes_per_op.map(|b| b as f64)
+        } else {
+            Some(m.nanos_per_op)
+        }
+    };
+
     let mut y_max = 0.0_f64;
     for bench in &filtered {
         for lang in &langs {
             if let Some(m) = bench.measurements.get(lang) {
-                y_max = y_max.max(m.nanos_per_op);
-                if directive.show_std_dev {
-                    if let Some(sd) = m.std_dev_nanos {
-                        y_max = y_max.max(m.nanos_per_op + sd);
-                    }
-                }
-                if directive.show_error_bars {
-                    if let (_, Some(upper)) = compute_ci_bounds(
-                        m.nanos_per_op,
-                        m.raw_samples.as_ref(),
-                        95,
-                        m.ci_95_lower,
-                        m.ci_95_upper,
-                    ) {
-                        y_max = y_max.max(upper);
+                if let Some(v) = primary_value(m) {
+                    if v.is_finite() && v < f64::MAX {
+                        y_max = y_max.max(v);
+                        if !is_memory && directive.show_std_dev {
+                            if let Some(sd) = m.std_dev_nanos {
+                                y_max = y_max.max(m.nanos_per_op + sd);
+                            }
+                        }
+                        if !is_memory && directive.show_error_bars {
+                            if let (_, Some(upper)) = compute_ci_bounds(
+                                m.nanos_per_op,
+                                m.raw_samples.as_ref(),
+                                95,
+                                m.ci_95_lower,
+                                m.ci_95_upper,
+                            ) {
+                                y_max = y_max.max(upper);
+                            }
+                        }
                     }
                 }
             }
@@ -137,13 +154,12 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
     let x_to_px = |x: f64| MARGIN_LEFT + ((x - x_min) / x_span) * plot_w;
     let scale = YAxisScale::from_str(Some(directive.y_scale.as_str()));
     let y_upper = y_upper_with_headroom(y_max, scale);
-    let scale_params = derive_y_scale_params(
-        &filtered
-            .iter()
-            .flat_map(|b| b.measurements.values().map(|m| m.nanos_per_op))
-            .collect::<Vec<_>>(),
-        scale,
-    );
+    let all_values: Vec<f64> = filtered
+        .iter()
+        .flat_map(|b| b.measurements.values().filter_map(|m| primary_value(m)))
+        .filter(|v| v.is_finite() && *v < f64::MAX)
+        .collect();
+    let scale_params = derive_y_scale_params(&all_values, scale);
     let y_to_px = make_y_to_px(scale, 0.0, y_upper, MARGIN_TOP, plot_h, scale_params);
 
     let mut svg = String::new();
@@ -280,19 +296,25 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         let split_gap = split_gap_bounds(scale, scale_params);
         for (idx, bench) in filtered.iter().enumerate() {
             if let Some(m) = bench.measurements.get(lang) {
+                let Some(v) = primary_value(m) else { continue };
+                if !v.is_finite() || v >= f64::MAX {
+                    continue;
+                }
                 let x = x_to_px(x_values[idx]);
-                let y = y_to_px(m.nanos_per_op);
-                points.push((x_values[idx], m.nanos_per_op));
+                let y = y_to_px(v);
+                points.push((x_values[idx], v));
                 let in_split_gap = split_gap
-                    .map(|(low, high)| m.nanos_per_op > low && m.nanos_per_op < high)
+                    .map(|(low, high)| v > low && v < high)
                     .unwrap_or(false);
                 if in_split_gap {
                     if !current_path.is_empty() {
                         path_segments.push(std::mem::take(&mut current_path));
                     }
                 } else {
-                    if let Some(sd) = m.std_dev_nanos {
-                        band_points.push((x, m.nanos_per_op, sd));
+                    if !is_memory {
+                        if let Some(sd) = m.std_dev_nanos {
+                            band_points.push((x, v, sd));
+                        }
                     }
                     if current_path.is_empty() {
                         current_path.push_str(&format!("M {:.2} {:.2}", x, y));
@@ -301,7 +323,7 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
                     }
                 }
 
-                if directive.show_error_bars {
+                if !is_memory && directive.show_error_bars {
                     draw_error_bar(&mut svg, x, m, &y_to_px, lang_color(*lang));
                 }
                 svg.push_str(&format!(
@@ -448,7 +470,10 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         axis_title_x,
         MARGIN_TOP + plot_h / 2.0 + 4.0,
         theme.text_muted,
-        escape_xml(&axis_label_for_scale("nanos/op", scale))
+        escape_xml(&axis_label_for_scale(
+            if is_memory { "bytes/op" } else { "nanos/op" },
+            scale,
+        ))
     ));
     if matches!(scale, YAxisScale::Split) {
         let split_t = 0.5;
@@ -479,6 +504,7 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         MARGIN_TOP + plot_h + X_AXIS_LABEL_OFFSET + STATS_TOP_GAP,
         plot_w,
         STATS_BOX_HEIGHT,
+        is_memory,
         theme,
     ));
     svg.push_str("</svg>\n");
@@ -612,6 +638,7 @@ fn stats_panel(
     y: f64,
     width: f64,
     height: f64,
+    is_memory: bool,
     theme: Theme,
 ) -> String {
     let mut svg = String::new();
@@ -663,9 +690,24 @@ fn stats_panel(
             .as_ref()
             .map(|m| truncate_text(&m.format_equation(), 24))
             .unwrap_or_else(|| "n/a".to_string());
+        let (mean_fmt, range_fmt) = if is_memory {
+            (
+                format!("\nmean: {}", Measurement::format_bytes(stat.mean as u64)),
+                format!(
+                    "min / max: {} / {}",
+                    Measurement::format_bytes(stat.min as u64),
+                    Measurement::format_bytes(stat.max as u64)
+                ),
+            )
+        } else {
+            (
+                format!("\nmean: {:.0} ns/op", stat.mean),
+                format!("min / max: {:.0} / {:.0} (ns/op)", stat.min, stat.max),
+            )
+        };
         let lines = vec![
-            format!("\nmean: {:.0} ns/op", stat.mean),
-            format!("min / max: {:.0} / {:.0} (ns/op)", stat.min, stat.max),
+            mean_fmt,
+            range_fmt,
             format!("samples: {},\tR²: {}", stat.samples, r2),
             format!("equation: {}", eq),
         ];
@@ -892,6 +934,7 @@ mod tests {
             BenchmarkKind::Sync,
             None,
             measurements,
+            poly_bench_dsl::SuiteType::Performance,
             "legacy".to_string(),
             None,
             None,

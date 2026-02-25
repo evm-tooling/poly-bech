@@ -680,8 +680,6 @@ pub struct Suite {
     pub fairness_seed: Option<u64>,
 
     // Observability settings (Phase 2B)
-    /// Enable memory allocation profiling (default: false)
-    pub memory: bool,
     /// Async sampling policy (default: timeBudgeted)
     pub async_sampling_policy: Option<AsyncSamplingPolicy>,
     /// Async warmup cap override
@@ -725,7 +723,6 @@ impl Suite {
             count: None,             // Uses default (1) when None - single run
             fairness_mode: None,     // Uses default (strict) when None
             fairness_seed: None,
-            memory: false,               // Memory profiling disabled by default
             async_sampling_policy: None, // Uses default (timeBudgeted) when None
             async_warmup_cap: None,
             async_sample_cap: None,
@@ -840,10 +837,6 @@ pub struct Benchmark {
     /// Override count setting (None = inherit from suite)
     pub count: Option<u64>,
 
-    // Observability settings (Phase 2B)
-    /// Override memory profiling setting (None = inherit from suite)
-    pub memory: Option<bool>,
-
     // Phase 3: Lifecycle hooks
     /// Pre-benchmark hook (runs once before iterations)
     pub before: HashMap<Lang, CodeBlock>,
@@ -879,7 +872,6 @@ impl Benchmark {
             outlier_detection: None,
             cv_threshold: None,
             count: None,
-            memory: None,
             before: HashMap::new(),
             after: HashMap::new(),
             each: HashMap::new(),

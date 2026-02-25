@@ -1,4 +1,4 @@
-use poly_bench_dsl::Lang;
+use poly_bench_dsl::{Lang, SuiteType};
 use poly_bench_executor::comparison::BenchmarkResult;
 use poly_bench_ir::ChartDirectiveIR;
 use poly_bench_runtime::measurement::Measurement;
@@ -77,7 +77,11 @@ struct LangStats {
     regression: Option<SelectedModel>,
 }
 
-pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR) -> String {
+pub fn generate(
+    benchmarks: Vec<&BenchmarkResult>,
+    directive: &ChartDirectiveIR,
+    suite_type: SuiteType,
+) -> String {
     let mut filtered = filter_benchmarks(benchmarks, directive);
     sort_benchmarks(&mut filtered, directive);
     if filtered.is_empty() {
@@ -101,25 +105,38 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         return empty_chart("No language measurements available");
     }
 
+    let is_memory = suite_type == SuiteType::Memory;
+    let primary_value = |m: &Measurement| -> Option<f64> {
+        if is_memory {
+            m.bytes_per_op.map(|b| b as f64)
+        } else {
+            Some(m.nanos_per_op)
+        }
+    };
+
     let mut y_max = 0.0_f64;
     for bench in &filtered {
         for lang in &langs {
             if let Some(m) = bench.measurements.get(lang) {
-                y_max = y_max.max(m.nanos_per_op);
-                if directive.show_std_dev {
-                    if let Some(sd) = m.std_dev_nanos {
-                        y_max = y_max.max(m.nanos_per_op + sd);
-                    }
-                }
-                if directive.show_error_bars {
-                    if let (_, Some(upper)) = compute_ci_bounds(
-                        m.nanos_per_op,
-                        m.raw_samples.as_ref(),
-                        95,
-                        m.ci_95_lower,
-                        m.ci_95_upper,
-                    ) {
-                        y_max = y_max.max(upper);
+                if let Some(v) = primary_value(m) {
+                    if v.is_finite() && v < f64::MAX {
+                        y_max = y_max.max(v);
+                        if !is_memory && directive.show_std_dev {
+                            if let Some(sd) = m.std_dev_nanos {
+                                y_max = y_max.max(m.nanos_per_op + sd);
+                            }
+                        }
+                        if !is_memory && directive.show_error_bars {
+                            if let (_, Some(upper)) = compute_ci_bounds(
+                                m.nanos_per_op,
+                                m.raw_samples.as_ref(),
+                                95,
+                                m.ci_95_lower,
+                                m.ci_95_upper,
+                            ) {
+                                y_max = y_max.max(upper);
+                            }
+                        }
                     }
                 }
             }
@@ -130,13 +147,12 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         y_max = 1.0;
     }
     let y_upper = y_upper_with_headroom(y_max, scale);
-    let scale_params = derive_y_scale_params(
-        &filtered
-            .iter()
-            .flat_map(|b| b.measurements.values().map(|m| m.nanos_per_op))
-            .collect::<Vec<_>>(),
-        scale,
-    );
+    let all_values: Vec<f64> = filtered
+        .iter()
+        .flat_map(|b| b.measurements.values().filter_map(|m| primary_value(m)))
+        .filter(|v| v.is_finite() && *v < f64::MAX)
+        .collect();
+    let scale_params = derive_y_scale_params(&all_values, scale);
     let y_to_px = make_y_to_px(scale, 0.0, y_upper, MARGIN_TOP, plot_h, scale_params);
 
     let mut svg = String::new();
@@ -244,8 +260,12 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         let group_x = MARGIN_LEFT + i as f64 * group_w;
         for (j, lang) in langs.iter().enumerate() {
             if let Some(m) = bench.measurements.get(lang) {
+                let Some(v) = primary_value(m) else { continue };
+                if !v.is_finite() || v >= f64::MAX {
+                    continue;
+                }
                 let x = group_x + (j as f64 + 0.5) * bar_w;
-                let y = y_to_px(m.nanos_per_op);
+                let y = y_to_px(v);
                 let h = (MARGIN_TOP + plot_h - y).max(1.0);
                 let gradient = match *lang {
                     Lang::Go => "goGrad",
@@ -272,10 +292,10 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
                 ));
 
                 let cx = x + (bar_w * 0.45);
-                if directive.show_error_bars {
+                if !is_memory && directive.show_error_bars {
                     draw_error_bar(&mut svg, cx, m, &y_to_px, lang_color(*lang));
                 }
-                if directive.show_std_dev {
+                if !is_memory && directive.show_std_dev {
                     draw_std_dev(&mut svg, cx, m, &y_to_px, lang_color(*lang));
                 }
             }
@@ -310,7 +330,10 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
                 .iter()
                 .enumerate()
                 .filter_map(|(idx, bench)| {
-                    bench.measurements.get(lang).map(|m| (x_values[idx], m.nanos_per_op))
+                    bench.measurements.get(lang).and_then(|m| {
+                        primary_value(m).filter(|v| v.is_finite() && *v < f64::MAX)
+                            .map(|v| (x_values[idx], v))
+                    })
                 })
                 .collect();
             if points.len() < 2 {
@@ -419,7 +442,11 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         for lang in &langs {
             let ys: Vec<f64> = filtered
                 .iter()
-                .filter_map(|bench| bench.measurements.get(lang).map(|m| m.nanos_per_op))
+                .filter_map(|bench| {
+                    bench.measurements.get(lang).and_then(|m| {
+                        primary_value(m).filter(|v| v.is_finite() && *v < f64::MAX)
+                    })
+                })
                 .collect();
             if ys.is_empty() {
                 continue;
@@ -472,7 +499,10 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         axis_title_x,
         MARGIN_TOP + plot_h / 2.0 + 4.0,
         theme.text_muted,
-        escape_xml(&axis_label_for_scale("nanos/op", scale))
+        escape_xml(&axis_label_for_scale(
+            if is_memory { "bytes/op" } else { "nanos/op" },
+            scale,
+        ))
     ));
     if matches!(scale, YAxisScale::Split) {
         let split_t = 0.5;
@@ -503,6 +533,7 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         MARGIN_TOP + plot_h + X_AXIS_LABEL_OFFSET + STATS_TOP_GAP,
         plot_w,
         STATS_BOX_HEIGHT,
+        is_memory,
         theme,
     ));
     svg.push_str("</svg>\n");
@@ -626,6 +657,7 @@ fn stats_panel(
     y: f64,
     width: f64,
     height: f64,
+    is_memory: bool,
     theme: Theme,
 ) -> String {
     let mut svg = String::new();
@@ -677,9 +709,24 @@ fn stats_panel(
             .as_ref()
             .map(|m| truncate_text(&m.format_equation(), 24))
             .unwrap_or_else(|| "n/a".to_string());
+        let (mean_fmt, range_fmt) = if is_memory {
+            (
+                format!("\nmean: {}", Measurement::format_bytes(stat.mean as u64)),
+                format!(
+                    "min / max: {} / {}",
+                    Measurement::format_bytes(stat.min as u64),
+                    Measurement::format_bytes(stat.max as u64)
+                ),
+            )
+        } else {
+            (
+                format!("\nmean: {:.0} ns/op", stat.mean),
+                format!("min / max: {:.0} / {:.0} (ns/op)", stat.min, stat.max),
+            )
+        };
         let lines = vec![
-            format!("\nmean: {:.0} ns/op", stat.mean),
-            format!("min / max: {:.0} / {:.0} (ns/op)", stat.min, stat.max),
+            mean_fmt,
+            range_fmt,
             format!("samples: {},\tR²: {}", stat.samples, r2),
             format!("equation: {}", eq),
         ];
@@ -906,6 +953,7 @@ mod tests {
             BenchmarkKind::Sync,
             None,
             measurements,
+            poly_bench_dsl::SuiteType::Performance,
             "legacy".to_string(),
             None,
             None,

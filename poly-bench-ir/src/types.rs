@@ -166,8 +166,6 @@ pub struct SuiteIR {
     pub fairness_seed: Option<u64>,
 
     // Observability settings (Phase 2B)
-    /// Enable memory allocation profiling
-    pub memory: bool,
     /// Async sampling policy
     pub async_sampling_policy: AsyncSamplingPolicy,
     /// Async warmup cap
@@ -234,7 +232,6 @@ impl SuiteIR {
             fairness_mode: FairnessMode::Strict,
             fairness_seed: None,
             // Observability defaults
-            memory: false, // Memory profiling disabled by default
             async_sampling_policy: AsyncSamplingPolicy::TimeBudgeted,
             async_warmup_cap: 5,
             async_sample_cap: 50,

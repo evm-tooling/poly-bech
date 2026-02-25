@@ -1,8 +1,9 @@
 //! SVG data table generator with conditional formatting
 
-use poly_bench_dsl::{BenchmarkKind, Lang};
+use poly_bench_dsl::{BenchmarkKind, Lang, SuiteType};
 use poly_bench_executor::comparison::BenchmarkResult;
 use poly_bench_ir::ChartDirectiveIR;
+use poly_bench_runtime::measurement::Measurement;
 
 use super::{
     escape_xml, filter_benchmarks, format_duration, sort_benchmarks, BG_COLOR, BORDER_COLOR,
@@ -15,7 +16,11 @@ const CELL_PADDING: i32 = 12;
 const MIN_COL_WIDTH: i32 = 100;
 
 /// Generate an SVG data table with conditional formatting
-pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR) -> String {
+pub fn generate(
+    benchmarks: Vec<&BenchmarkResult>,
+    directive: &ChartDirectiveIR,
+    suite_type: SuiteType,
+) -> String {
     let mut filtered = filter_benchmarks(benchmarks, directive);
     sort_benchmarks(&mut filtered, directive);
 
@@ -113,31 +118,39 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
             table_x, row_y + ROW_HEIGHT, table_x + total_width, row_y + ROW_HEIGHT, BORDER_COLOR
         ));
 
-        // Determine winner for this row
-        let go_ns = bench.measurements.get(&Lang::Go).map(|m| m.nanos_per_op);
-        let ts_ns = bench.measurements.get(&Lang::TypeScript).map(|m| m.nanos_per_op);
-        let rust_ns = bench.measurements.get(&Lang::Rust).map(|m| m.nanos_per_op);
+        // Determine winner for this row (lower is better)
+        let primary_value = |m: &Measurement| -> Option<f64> {
+            if suite_type == SuiteType::Memory {
+                m.bytes_per_op.map(|b| b as f64)
+            } else {
+                Some(m.nanos_per_op)
+            }
+        };
 
-        let mut times: Vec<(Lang, f64)> = vec![];
-        if let Some(ns) = go_ns {
-            times.push((Lang::Go, ns));
+        let go_val = bench.measurements.get(&Lang::Go).and_then(primary_value);
+        let ts_val = bench.measurements.get(&Lang::TypeScript).and_then(primary_value);
+        let rust_val = bench.measurements.get(&Lang::Rust).and_then(primary_value);
+
+        let mut values: Vec<(Lang, f64)> = vec![];
+        if let Some(v) = go_val {
+            values.push((Lang::Go, v));
         }
-        if let Some(ns) = ts_ns {
-            times.push((Lang::TypeScript, ns));
+        if let Some(v) = ts_val {
+            values.push((Lang::TypeScript, v));
         }
-        if let Some(ns) = rust_ns {
-            times.push((Lang::Rust, ns));
+        if let Some(v) = rust_val {
+            values.push((Lang::Rust, v));
         }
 
-        let winner = if times.len() >= 2 {
-            times.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-            let (fastest_lang, fastest_time) = times[0];
-            let (_, second_time) = times[1];
-            let speedup = second_time / fastest_time;
-            if speedup < 1.05 {
+        let winner = if values.len() >= 2 {
+            values.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            let (best_lang, best_val) = values[0];
+            let (_, second_val) = values[1];
+            let ratio = second_val / best_val.max(1e-9);
+            if ratio < 1.05 {
                 None // Tie
             } else {
-                Some(fastest_lang)
+                Some(best_lang)
             }
         } else {
             None
@@ -168,9 +181,16 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
                             ));
                         }
 
+                        let cell_text = if suite_type == SuiteType::Memory {
+                            m.bytes_per_op
+                                .map(|b| Measurement::format_bytes(b))
+                                .unwrap_or_else(|| "—".to_string())
+                        } else {
+                            format_duration(m.nanos_per_op)
+                        };
                         svg.push_str(&format!(
                             "<text x=\"{}\" y=\"{}\" font-family=\"monospace\" font-size=\"11\" fill=\"{}\">{}</text>\n",
-                            x + CELL_PADDING, text_y, text_color, format_duration(m.nanos_per_op)
+                            x + CELL_PADDING, text_y, text_color, cell_text
                         ));
                     }
                 }
@@ -187,9 +207,16 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
                             ));
                         }
 
+                        let cell_text = if suite_type == SuiteType::Memory {
+                            m.bytes_per_op
+                                .map(|b| Measurement::format_bytes(b))
+                                .unwrap_or_else(|| "—".to_string())
+                        } else {
+                            format_duration(m.nanos_per_op)
+                        };
                         svg.push_str(&format!(
                             "<text x=\"{}\" y=\"{}\" font-family=\"monospace\" font-size=\"11\" fill=\"{}\">{}</text>\n",
-                            x + CELL_PADDING, text_y, text_color, format_duration(m.nanos_per_op)
+                            x + CELL_PADDING, text_y, text_color, cell_text
                         ));
                     }
                 }
@@ -206,9 +233,16 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
                             ));
                         }
 
+                        let cell_text = if suite_type == SuiteType::Memory {
+                            m.bytes_per_op
+                                .map(|b| Measurement::format_bytes(b))
+                                .unwrap_or_else(|| "—".to_string())
+                        } else {
+                            format_duration(m.nanos_per_op)
+                        };
                         svg.push_str(&format!(
                             "<text x=\"{}\" y=\"{}\" font-family=\"monospace\" font-size=\"11\" fill=\"{}\">{}</text>\n",
-                            x + CELL_PADDING, text_y, text_color, format_duration(m.nanos_per_op)
+                            x + CELL_PADDING, text_y, text_color, cell_text
                         ));
                     }
                 }

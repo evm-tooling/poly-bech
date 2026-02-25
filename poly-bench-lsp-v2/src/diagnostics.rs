@@ -190,28 +190,26 @@ fn validate_suite(suite: &PartialSuite, doc: &Document, diagnostics: &mut Vec<Di
                             ..Default::default()
                         });
                     } else {
-                        // Check if any benchmark implements this language
+                        // Require every benchmark to implement baseline
                         let lang_enum = lang_enum.unwrap();
-                        let has_impl = suite.benchmarks.iter().any(|b| {
-                            if let Node::Valid(bench) = b {
-                                bench.implementations.contains_key(&lang_enum)
-                            } else {
-                                false
+                        for bench in &suite.benchmarks {
+                            if let Node::Valid(bench_node) = bench {
+                                if !bench_node.implementations.contains_key(&lang_enum) {
+                                    diagnostics.push(Diagnostic {
+                                        range: doc.span_to_range(&bench_node.span),
+                                        severity: Some(DiagnosticSeverity::ERROR),
+                                        code: Some(NumberOrString::String(
+                                            "baseline-missing-in-benchmark".to_string(),
+                                        )),
+                                        source: Some("poly-bench".to_string()),
+                                        message: format!(
+                                            "Benchmark '{}' missing baseline language '{}'; baseline comparisons require every benchmark to implement the baseline",
+                                            bench_node.name, lang
+                                        ),
+                                        ..Default::default()
+                                    });
+                                }
                             }
-                        });
-
-                        if !has_impl {
-                            diagnostics.push(Diagnostic {
-                                range: doc.span_to_range(&p.span),
-                                severity: Some(DiagnosticSeverity::WARNING),
-                                code: Some(NumberOrString::String("unused-baseline".to_string())),
-                                source: Some("poly-bench".to_string()),
-                                message: format!(
-                                    "Baseline language '{}' is not implemented by any benchmark",
-                                    lang
-                                ),
-                                ..Default::default()
-                            });
                         }
                     }
                 }
@@ -335,21 +333,116 @@ fn validate_suite(suite: &PartialSuite, doc: &Document, diagnostics: &mut Vec<Di
     }
 
     // Line/bar charts are only valid for same-dataset suites.
-    if suite.same_dataset != Some(true) {
-        if let Some(Node::Valid(after_block)) = &suite.after_block {
-            for directive in &after_block.directives {
-                if let Node::Valid(chart) = directive {
-                    if chart.function == "drawLineChart" || chart.function == "drawBarChart" {
+    if let Some(Node::Valid(after_block)) = &suite.after_block {
+        let has_line_or_bar =
+            after_block.directives.iter().any(|d| {
+                if let Node::Valid(chart) = d {
+                    chart.function == "drawLineChart" || chart.function == "drawBarChart"
+                } else {
+                    false
+                }
+            });
+
+        if has_line_or_bar {
+            if suite.same_dataset != Some(true) {
+                for directive in &after_block.directives {
+                    if let Node::Valid(chart) = directive {
+                        if chart.function == "drawLineChart" || chart.function == "drawBarChart" {
+                            diagnostics.push(Diagnostic {
+                                range: doc.span_to_range(&chart.span),
+                                severity: Some(DiagnosticSeverity::ERROR),
+                                code: Some(NumberOrString::String(
+                                    "chart-requires-same-dataset".to_string(),
+                                )),
+                                source: Some("poly-bench".to_string()),
+                                message:
+                                    "drawLineChart/drawBarChart require suite declaration sameDataset: true"
+                                        .to_string(),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+            if suite.benchmarks.len() < 2 {
+                for directive in &after_block.directives {
+                    if let Node::Valid(chart) = directive {
+                        if chart.function == "drawLineChart" || chart.function == "drawBarChart" {
+                            diagnostics.push(Diagnostic {
+                                range: doc.span_to_range(&chart.span),
+                                severity: Some(DiagnosticSeverity::ERROR),
+                                code: Some(NumberOrString::String(
+                                    "chart-requires-multiple-benchmarks".to_string(),
+                                )),
+                                source: Some("poly-bench".to_string()),
+                                message: format!(
+                                    "drawLineChart/drawBarChart require at least 2 benchmarks for meaningful comparison; suite has {}",
+                                    suite.benchmarks.len()
+                                ),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // sameDataset: true consistency - fixture refs should match across benchmarks
+    if suite.same_dataset == Some(true)
+        && suite.benchmarks.len() >= 2
+        && !suite.fixtures.is_empty()
+    {
+        let fixture_names: Vec<String> = suite
+            .fixtures
+            .iter()
+            .filter_map(|f| {
+                if let Node::Valid(fi) = f {
+                    Some(fi.name.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut bench_refs: Vec<(String, HashSet<String>)> = Vec::new();
+        for bench in &suite.benchmarks {
+            if let Node::Valid(b) = bench {
+                let mut refs = HashSet::new();
+                for impl_node in b.implementations.values() {
+                    if let Node::Valid(code) = impl_node {
+                        for name in &fixture_names {
+                            if code.code.contains(name.as_str()) {
+                                refs.insert(name.clone());
+                            }
+                        }
+                    }
+                }
+                bench_refs.push((b.name.clone(), refs));
+            }
+        }
+
+        if let Some((_, first_set)) = bench_refs.first() {
+            for (bench_name, refs) in bench_refs.iter().skip(1) {
+                if refs != first_set {
+                    if let Some(Node::Valid(bench)) = suite.benchmarks.iter().find(|b| {
+                        if let Node::Valid(b) = b {
+                            b.name == *bench_name
+                        } else {
+                            false
+                        }
+                    }) {
                         diagnostics.push(Diagnostic {
-                            range: doc.span_to_range(&chart.span),
-                            severity: Some(DiagnosticSeverity::ERROR),
+                            range: doc.span_to_range(&bench.span),
+                            severity: Some(DiagnosticSeverity::WARNING),
                             code: Some(NumberOrString::String(
-                                "chart-requires-same-dataset".to_string(),
+                                "same-dataset-inconsistent-fixtures".to_string(),
                             )),
                             source: Some("poly-bench".to_string()),
-                            message:
-                                "drawLineChart/drawBarChart require suite declaration sameDataset: true"
-                                    .to_string(),
+                            message: format!(
+                                "Benchmark '{}' may use different fixtures than other benchmarks; sameDataset: true expects all benchmarks to operate on the same dataset",
+                                bench_name
+                            ),
                             ..Default::default()
                         });
                     }
@@ -1100,5 +1193,78 @@ mod tests {
 
         // Should have no errors (may have hints)
         assert!(!diagnostics.iter().any(|d| d.severity == Some(DiagnosticSeverity::ERROR)));
+    }
+
+    fn has_code(diagnostics: &[Diagnostic], code: &str) -> bool {
+        diagnostics.iter().any(|d| {
+            d.code.as_ref().map_or(false, |c| match c {
+                NumberOrString::String(s) => s == code,
+                NumberOrString::Number(_) => false,
+            })
+        })
+    }
+
+    #[test]
+    fn test_chart_requires_multiple_benchmarks() {
+        let source = r#"
+use std::charting
+
+declare suite test performance timeBased sameDataset: true {
+    targetTime: 2s
+    bench foo {
+        go: work()
+        ts: work()
+    }
+    after {
+        charting.drawLineChart(title: "Trend")
+    }
+}
+"#;
+        let doc = make_doc(source);
+        let diagnostics = compute_diagnostics(&doc);
+        assert!(has_code(&diagnostics, "chart-requires-multiple-benchmarks"));
+    }
+
+    #[test]
+    fn test_baseline_missing_in_benchmark() {
+        let source = r#"
+declare suite test performance timeBased sameDataset: true {
+    baseline: "go"
+    targetTime: 2s
+    bench foo {
+        go: work()
+    }
+    bench bar {
+        ts: work()
+    }
+}
+"#;
+        let doc = make_doc(source);
+        let diagnostics = compute_diagnostics(&doc);
+        assert!(has_code(&diagnostics, "baseline-missing-in-benchmark"));
+    }
+
+    #[test]
+    fn test_same_dataset_inconsistent_fixtures() {
+        let source = r#"
+declare suite test performance timeBased sameDataset: true {
+    targetTime: 2s
+    fixture data1 {
+        hex: "01020304"
+    }
+    fixture data2 {
+        hex: "05060708"
+    }
+    bench foo {
+        go: process(data1)
+    }
+    bench bar {
+        go: process(data2)
+    }
+}
+"#;
+        let doc = make_doc(source);
+        let diagnostics = compute_diagnostics(&doc);
+        assert!(has_code(&diagnostics, "same-dataset-inconsistent-fixtures"));
     }
 }
