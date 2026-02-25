@@ -6,6 +6,7 @@ description = "Rewritten LSP server for poly-bench with error-tolerant parsing"
 license = "MIT"
 
 [dependencies]
+poly-bench-lsp-traits = { path = "../poly-bench-lsp-traits" }
 poly-bench-syntax = { path = "../poly-bench-syntax" }
 poly-bench-stdlib = { path = "../poly-bench-stdlib" }
 poly-bench-project = { path = "../poly-bench-project" }

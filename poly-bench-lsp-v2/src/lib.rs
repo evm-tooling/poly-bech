@@ -15,12 +15,13 @@
 pub mod diagnostics;
 pub mod document;
 pub mod embedded;
+pub mod embedded_diagnostic_context;
 pub mod embedded_diagnostics;
+pub mod embedded_hover_context;
 pub mod formatter;
 pub mod gopls_client;
 pub mod hover;
 pub mod hover_cache;
-pub mod hover_providers;
 pub mod lsp_client;
 pub mod pyright_client;
 pub mod rust_analyzer_client;

@@ -7,6 +7,8 @@
 //! 4. Embedded language errors (on save)
 
 use crate::document::Document;
+use poly_bench_lsp_traits::syntax_lang_to_dsl;
+use poly_bench_runtime::get_helper_function_extractor;
 use poly_bench_syntax::{
     Lang, Node, PartialBenchmark, PartialFixture, PartialSuite, PropertyValue, StructuredSetup,
 };
@@ -717,180 +719,13 @@ fn validate_benchmark(
 
 /// Extract function names defined in a helpers block for a given language
 fn extract_helper_functions(setup: &StructuredSetup, lang: &Lang) -> HashSet<String> {
-    let mut functions = HashSet::new();
-
     if let Some(helpers) = &setup.helpers {
-        let code = &helpers.code;
-        match lang {
-            Lang::Go => extract_go_functions(code, &mut functions),
-            Lang::TypeScript => extract_ts_functions(code, &mut functions),
-            Lang::Rust => extract_rust_functions(code, &mut functions),
-            Lang::Python => extract_python_functions(code, &mut functions),
+        let dsl_lang = syntax_lang_to_dsl(*lang);
+        if let Some(extractor) = get_helper_function_extractor(dsl_lang) {
+            return extractor.extract_functions(&helpers.code);
         }
     }
-
-    functions
-}
-
-/// Extract Go function names: `func funcName(`
-fn extract_go_functions(code: &str, functions: &mut HashSet<String>) {
-    for line in code.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("func ") {
-            // Extract function name after "func "
-            let rest = &trimmed[5..];
-            // Skip receiver if present: func (r *Receiver) Name(
-            let name_start = if rest.starts_with('(') {
-                // Find closing paren of receiver
-                if let Some(close_paren) = rest.find(')') {
-                    close_paren + 1
-                } else {
-                    continue;
-                }
-            } else {
-                0
-            };
-
-            let rest = rest[name_start..].trim_start();
-            // Extract identifier until '('
-            if let Some(paren_pos) = rest.find('(') {
-                let name = rest[..paren_pos].trim();
-                if !name.is_empty() && is_valid_identifier(name) {
-                    functions.insert(name.to_string());
-                }
-            }
-        }
-    }
-}
-
-/// Extract TypeScript/JavaScript function names:
-/// - `function funcName(`
-/// - `const funcName =` (arrow functions)
-/// - `let funcName =` (arrow functions)
-/// - `var funcName =` (arrow functions)
-fn extract_ts_functions(code: &str, functions: &mut HashSet<String>) {
-    for line in code.lines() {
-        let trimmed = line.trim();
-
-        // function funcName(
-        if trimmed.starts_with("function ") {
-            let rest = &trimmed[9..];
-            if let Some(paren_pos) = rest.find('(') {
-                let name = rest[..paren_pos].trim();
-                if !name.is_empty() && is_valid_identifier(name) {
-                    functions.insert(name.to_string());
-                }
-            }
-        }
-        // const/let/var funcName = ... (likely arrow function or function expression)
-        else if trimmed.starts_with("const ") ||
-            trimmed.starts_with("let ") ||
-            trimmed.starts_with("var ")
-        {
-            let keyword_len = if trimmed.starts_with("const ") {
-                6
-            } else if trimmed.starts_with("let ") {
-                4
-            } else {
-                4
-            };
-            let rest = &trimmed[keyword_len..];
-
-            // Look for pattern: name = ... where ... contains => or function
-            if let Some(eq_pos) = rest.find('=') {
-                let name = rest[..eq_pos].trim();
-                let after_eq = rest[eq_pos + 1..].trim();
-
-                // Check if it's a function (arrow or function expression)
-                if (after_eq.contains("=>") || after_eq.starts_with("function")) &&
-                    is_valid_identifier(name)
-                {
-                    functions.insert(name.to_string());
-                }
-            }
-        }
-        // async function funcName(
-        else if trimmed.starts_with("async function ") {
-            let rest = &trimmed[15..];
-            if let Some(paren_pos) = rest.find('(') {
-                let name = rest[..paren_pos].trim();
-                if !name.is_empty() && is_valid_identifier(name) {
-                    functions.insert(name.to_string());
-                }
-            }
-        }
-    }
-}
-
-/// Extract Rust function names: `fn func_name(`
-fn extract_rust_functions(code: &str, functions: &mut HashSet<String>) {
-    for line in code.lines() {
-        let trimmed = line.trim();
-
-        // Handle pub fn, async fn, pub async fn, etc.
-        let fn_keyword_pos = trimmed.find("fn ");
-        if let Some(pos) = fn_keyword_pos {
-            // Make sure "fn" is at start or after pub/async/unsafe
-            let before_fn = &trimmed[..pos];
-            let valid_prefix = before_fn.is_empty() ||
-                before_fn
-                    .trim()
-                    .split_whitespace()
-                    .all(|word| matches!(word, "pub" | "async" | "unsafe" | "const" | "extern"));
-
-            if valid_prefix {
-                let rest = &trimmed[pos + 3..];
-                // Extract until '(' or '<' (generics)
-                let end_pos = rest.find(|c| c == '(' || c == '<').unwrap_or(rest.len());
-                let name = rest[..end_pos].trim();
-                if !name.is_empty() && is_valid_rust_identifier(name) {
-                    functions.insert(name.to_string());
-                }
-            }
-        }
-    }
-}
-
-/// Extract Python function names: `def func_name(`
-fn extract_python_functions(code: &str, functions: &mut HashSet<String>) {
-    for line in code.lines() {
-        let trimmed = line.trim();
-
-        // def func_name( or async def func_name(
-        let def_pos = if trimmed.starts_with("def ") {
-            Some(4)
-        } else if trimmed.starts_with("async def ") {
-            Some(10)
-        } else {
-            None
-        };
-
-        if let Some(start) = def_pos {
-            let rest = &trimmed[start..];
-            if let Some(paren_pos) = rest.find('(') {
-                let name = rest[..paren_pos].trim();
-                if !name.is_empty() && is_valid_identifier(name) {
-                    functions.insert(name.to_string());
-                }
-            }
-        }
-    }
-}
-
-/// Check if a string is a valid identifier (letters, digits, underscores, starting with
-/// letter/underscore)
-fn is_valid_identifier(s: &str) -> bool {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(c) if c.is_alphabetic() || c == '_' => {}
-        _ => return false,
-    }
-    chars.all(|c| c.is_alphanumeric() || c == '_')
-}
-
-/// Check if a string is a valid Rust identifier (allows snake_case)
-fn is_valid_rust_identifier(s: &str) -> bool {
-    is_valid_identifier(s)
+    HashSet::new()
 }
 
 /// A function call found in code, with its position
@@ -908,137 +743,10 @@ struct FunctionCall {
 fn extract_function_calls(code: &str, lang: &Lang) -> Vec<FunctionCall> {
     let mut calls = Vec::new();
 
-    // Language-specific builtins to ignore
-    let builtins: HashSet<&str> = match lang {
-        Lang::Go => [
-            "len", "make", "append", "copy", "delete", "panic", "recover", "print", "println",
-            "close", "cap", "new", "real", "imag", "complex", "error", "string", "int", "int8",
-            "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "float32",
-            "float64", "bool", "byte", "rune",
-        ]
-        .iter()
-        .copied()
-        .collect(),
-        Lang::TypeScript => [
-            "console",
-            "Math",
-            "JSON",
-            "Array",
-            "Object",
-            "String",
-            "Number",
-            "Boolean",
-            "parseInt",
-            "parseFloat",
-            "isNaN",
-            "isFinite",
-            "Date",
-            "RegExp",
-            "Error",
-            "Map",
-            "Set",
-            "Promise",
-            "Uint8Array",
-            "Int32Array",
-            "Float64Array",
-            "ArrayBuffer",
-            "DataView",
-            "setTimeout",
-            "setInterval",
-            "clearTimeout",
-            "clearInterval",
-            "fetch",
-            "require",
-            "import",
-        ]
-        .iter()
-        .copied()
-        .collect(),
-        Lang::Rust => [
-            "vec",
-            "println",
-            "print",
-            "format",
-            "panic",
-            "assert",
-            "assert_eq",
-            "assert_ne",
-            "debug_assert",
-            "todo",
-            "unimplemented",
-            "unreachable",
-            "Some",
-            "None",
-            "Ok",
-            "Err",
-            "Box",
-            "Rc",
-            "Arc",
-            "Vec",
-            "String",
-            "HashMap",
-            "HashSet",
-            "BTreeMap",
-            "BTreeSet",
-        ]
-        .iter()
-        .copied()
-        .collect(),
-        Lang::Python => [
-            "print",
-            "len",
-            "range",
-            "str",
-            "int",
-            "float",
-            "bool",
-            "list",
-            "dict",
-            "set",
-            "tuple",
-            "type",
-            "isinstance",
-            "issubclass",
-            "hasattr",
-            "getattr",
-            "setattr",
-            "delattr",
-            "open",
-            "input",
-            "sorted",
-            "reversed",
-            "enumerate",
-            "zip",
-            "map",
-            "filter",
-            "sum",
-            "min",
-            "max",
-            "abs",
-            "round",
-            "pow",
-            "divmod",
-            "hex",
-            "oct",
-            "bin",
-            "ord",
-            "chr",
-            "repr",
-            "format",
-            "id",
-            "hash",
-            "callable",
-            "iter",
-            "next",
-            "slice",
-            "super",
-            "staticmethod",
-            "classmethod",
-            "property",
-        ]
-        .iter()
-        .copied()
-        .collect(),
+    let dsl_lang = syntax_lang_to_dsl(*lang);
+    let builtins: HashSet<&str> = match get_helper_function_extractor(dsl_lang) {
+        Some(extractor) => extractor.builtins().iter().copied().collect(),
+        None => return calls,
     };
 
     // Find function call patterns: identifier followed by (

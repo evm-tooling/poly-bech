@@ -5,6 +5,7 @@
 
 use std::path::Path;
 
+use poly_bench_dsl::Lang as DslLang;
 use poly_bench_project::get_detector;
 use poly_bench_runtime::supported_languages;
 use poly_bench_syntax::Lang as SyntaxLang;
@@ -237,19 +238,19 @@ impl LanguageServer for PolyBenchLanguageServer {
             match filename {
                 "package.json" | "package-lock.json" | ".package-lock.json" => {
                     info!("Detected {} change, clearing TypeScript caches", filename);
-                    self.virtual_file_managers.ts.clear_caches();
+                    self.virtual_file_managers.clear_caches_for_lang(DslLang::TypeScript);
                 }
                 "Cargo.toml" | "Cargo.lock" => {
                     info!("Detected {} change, clearing Rust caches", filename);
-                    self.virtual_file_managers.rust.clear_caches();
+                    self.virtual_file_managers.clear_caches_for_lang(DslLang::Rust);
                 }
                 "go.mod" | "go.sum" => {
                     info!("Detected {} change, clearing Go caches", filename);
-                    self.virtual_file_managers.go.clear_caches();
+                    self.virtual_file_managers.clear_caches_for_lang(DslLang::Go);
                 }
                 "requirements.txt" => {
                     info!("Detected {} change, clearing Python caches", filename);
-                    self.virtual_file_managers.python.clear_caches();
+                    self.virtual_file_managers.clear_caches_for_lang(DslLang::Python);
                 }
                 _ => {}
             }

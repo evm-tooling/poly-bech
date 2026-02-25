@@ -1,0 +1,13 @@
+[package]
+name = "poly-bench-lsp-traits"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Traits and types for poly-bench LSP integration (VirtualFileBuilder, EmbeddedDiagnosticProvider, etc.)"
+
+[dependencies]
+poly-bench-dsl.workspace = true
+poly-bench-syntax.workspace = true
+tower-lsp = "0.20"
