@@ -1,7 +1,10 @@
 //! Cross-language comparison types and logic
 
 use poly_bench_dsl::{BenchmarkKind, Lang, SuiteType};
-use poly_bench_runtime::measurement::{Comparison, Measurement};
+use poly_bench_runtime::{
+    measurement::{Comparison, Measurement},
+    supported_languages,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -242,14 +245,8 @@ impl BenchmarkResult {
 pub struct SuiteSummary {
     /// Total benchmarks
     pub total_benchmarks: usize,
-    /// Go wins
-    pub go_wins: usize,
-    /// TypeScript wins
-    pub ts_wins: usize,
-    /// Rust wins
-    pub rust_wins: usize,
-    /// Python wins
-    pub python_wins: usize,
+    /// Wins per language
+    pub lang_wins: HashMap<Lang, u32>,
     /// Ties
     pub ties: usize,
     /// Geometric mean speedup (>1 means Go is faster)
@@ -264,10 +261,8 @@ pub struct SuiteSummary {
 
 impl SuiteSummary {
     fn calculate(benchmarks: &[BenchmarkResult], suite_type: SuiteType) -> Self {
-        let mut go_wins = 0;
-        let mut ts_wins = 0;
-        let mut rust_wins = 0;
-        let mut python_wins = 0;
+        let mut lang_wins: HashMap<Lang, u32> =
+            supported_languages().iter().map(|&l| (l, 0)).collect();
         let mut ties = 0;
         let mut log_speedups = Vec::new();
         let mut unstable_count = 0;
@@ -325,13 +320,7 @@ impl SuiteSummary {
                 if speedup < 1.05 {
                     ties += 1;
                 } else {
-                    match best_lang {
-                        Lang::Go => go_wins += 1,
-                        Lang::TypeScript => ts_wins += 1,
-                        Lang::Rust => rust_wins += 1,
-                        Lang::Python => python_wins += 1,
-                        _ => {}
-                    }
+                    lang_wins.entry(best_lang).and_modify(|c| *c += 1).or_insert(1);
                 }
 
                 // For geometric mean: use Go vs TS comparison if both present
@@ -351,24 +340,20 @@ impl SuiteSummary {
         };
 
         // Determine overall winner by most wins
-        let winner = if go_wins == ts_wins && go_wins == rust_wins && go_wins == python_wins {
-            None
-        } else if go_wins >= ts_wins && go_wins >= rust_wins && go_wins >= python_wins {
-            Some(Lang::Go)
-        } else if ts_wins >= go_wins && ts_wins >= rust_wins && ts_wins >= python_wins {
-            Some(Lang::TypeScript)
-        } else if rust_wins >= go_wins && rust_wins >= ts_wins && rust_wins >= python_wins {
-            Some(Lang::Rust)
-        } else {
-            Some(Lang::Python)
+        let winner = {
+            let max_wins = lang_wins.values().max().copied().unwrap_or(0);
+            let winners: Vec<Lang> =
+                lang_wins.iter().filter(|(_, &w)| w == max_wins).map(|(&l, _)| l).collect();
+            if winners.len() == 1 && max_wins > 0 {
+                Some(winners[0])
+            } else {
+                None
+            }
         };
 
         Self {
             total_benchmarks: benchmarks.len(),
-            go_wins,
-            ts_wins,
-            rust_wins,
-            python_wins,
+            lang_wins,
             ties,
             geo_mean_speedup,
             winner,
@@ -385,14 +370,8 @@ pub struct OverallSummary {
     pub total_suites: usize,
     /// Total benchmarks
     pub total_benchmarks: usize,
-    /// Go wins
-    pub go_wins: usize,
-    /// TypeScript wins
-    pub ts_wins: usize,
-    /// Rust wins
-    pub rust_wins: usize,
-    /// Python wins
-    pub python_wins: usize,
+    /// Wins per language
+    pub lang_wins: HashMap<Lang, u32>,
     /// Ties
     pub ties: usize,
     /// Geometric mean speedup across all benchmarks
@@ -411,10 +390,8 @@ impl OverallSummary {
     fn calculate(suites: &[SuiteResults]) -> Self {
         let total_suites = suites.len();
         let mut total_benchmarks = 0;
-        let mut go_wins = 0;
-        let mut ts_wins = 0;
-        let mut rust_wins = 0;
-        let mut python_wins = 0;
+        let mut lang_wins: HashMap<Lang, u32> =
+            supported_languages().iter().map(|&l| (l, 0)).collect();
         let mut ties = 0;
         let mut unstable_count = 0;
         let mut total_outliers_removed = 0u64;
@@ -422,10 +399,9 @@ impl OverallSummary {
 
         for suite in suites {
             total_benchmarks += suite.benchmarks.len();
-            go_wins += suite.summary.go_wins;
-            ts_wins += suite.summary.ts_wins;
-            rust_wins += suite.summary.rust_wins;
-            python_wins += suite.summary.python_wins;
+            for (lang, wins) in &suite.summary.lang_wins {
+                lang_wins.entry(*lang).and_modify(|c| *c += *wins).or_insert(*wins);
+            }
             ties += suite.summary.ties;
             unstable_count += suite.summary.unstable_count;
             total_outliers_removed += suite.summary.total_outliers_removed;
@@ -450,32 +426,36 @@ impl OverallSummary {
         };
 
         // Determine winner by most wins
-        let (winner, winner_description) = if total_benchmarks == 0 {
-            (None, "No benchmark results".to_string())
-        } else if go_wins == ts_wins && go_wins == rust_wins && go_wins == python_wins {
-            (None, "Similar performance".to_string())
-        } else if go_wins >= ts_wins && go_wins >= rust_wins && go_wins >= python_wins {
-            (Some(Lang::Go), format!("Go is {:.2}x faster overall", geo_mean_speedup))
-        } else if ts_wins >= go_wins && ts_wins >= rust_wins && ts_wins >= python_wins {
-            (
-                Some(Lang::TypeScript),
-                format!("TypeScript is {:.2}x faster overall", 1.0 / geo_mean_speedup),
-            )
-        } else if rust_wins >= go_wins && rust_wins >= ts_wins && rust_wins >= python_wins {
-            let rust_desc = format!("Rust wins {} benchmarks", rust_wins);
-            (Some(Lang::Rust), rust_desc)
-        } else {
-            let python_desc = format!("Python wins {} benchmarks", python_wins);
-            (Some(Lang::Python), python_desc)
+        let (winner, winner_description) = {
+            let max_wins = lang_wins.values().max().copied().unwrap_or(0);
+            let winners: Vec<Lang> =
+                lang_wins.iter().filter(|(_, &w)| w == max_wins).map(|(&l, _)| l).collect();
+            if total_benchmarks == 0 {
+                (None, "No benchmark results".to_string())
+            } else if winners.len() > 1 || max_wins == 0 {
+                (None, "Similar performance".to_string())
+            } else {
+                let win_lang = winners[0];
+                let wins = lang_wins.get(&win_lang).copied().unwrap_or(0);
+                let desc = match win_lang {
+                    Lang::Go => format!("Go is {:.2}x faster overall", geo_mean_speedup),
+                    Lang::TypeScript => {
+                        format!("TypeScript is {:.2}x faster overall", 1.0 / geo_mean_speedup)
+                    }
+                    _ => format!(
+                        "{} wins {} benchmarks",
+                        poly_bench_runtime::lang_full_name(win_lang),
+                        wins
+                    ),
+                };
+                (Some(win_lang), desc)
+            }
         };
 
         Self {
             total_suites,
             total_benchmarks,
-            go_wins,
-            ts_wins,
-            rust_wins,
-            python_wins,
+            lang_wins,
             ties,
             geo_mean_speedup,
             winner,
