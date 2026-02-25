@@ -6,7 +6,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
     warmup: 0
     targetTime: 1000ms
     cvThreshold: 5
-    count: 4
+    count: 1
 
     setup go {
         import (
