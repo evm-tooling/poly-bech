@@ -13,5 +13,6 @@ pub use error_mapping::{
     build_go_mappings, build_rust_mappings, build_typescript_mappings, remap_go_error,
     remap_rust_error, remap_typescript_error, LineMappings,
 };
+pub use js::{extract_generated_snippet, extract_runtime_error_reason};
 pub use measurement::Measurement;
 pub use traits::Runtime;

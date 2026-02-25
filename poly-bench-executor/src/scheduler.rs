@@ -3,11 +3,13 @@
 use super::{AnvilConfig, AnvilService, ProjectRoots};
 use crate::comparison::{BenchmarkResult, BenchmarkResults, SuiteResults};
 use colored::Colorize;
+use indicatif::{ProgressBar, ProgressStyle};
 use miette::{miette, Result};
-use poly_bench_dsl::{BenchMode, BenchmarkKind, ExecutionOrder, FairnessMode, Lang, SuiteType};
+use poly_bench_dsl::{BenchmarkKind, ExecutionOrder, FairnessMode, Lang, SuiteType};
 use poly_bench_ir::{BenchmarkIR, BenchmarkSpec, SuiteIR};
 use poly_bench_runtime::{
-    go::GoRuntime, js::JsRuntime, measurement::Measurement, rust::RustRuntime, traits::Runtime,
+    extract_generated_snippet, extract_runtime_error_reason, go::GoRuntime, js::JsRuntime,
+    measurement::Measurement, rust::RustRuntime, traits::Runtime,
 };
 use std::{
     collections::HashMap,
@@ -28,6 +30,11 @@ use std::sync::atomic::AtomicU64;
 struct TimerState {
     stop_flag: AtomicBool,
     current_run: AtomicU64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RunOptions {
+    pub verbose: bool,
 }
 
 /// Simple deterministic RNG (xorshift64*) for reproducible shuffles without extra deps.
@@ -141,33 +148,6 @@ fn primary_metric(m: &Measurement, suite_type: SuiteType) -> f64 {
     }
 }
 
-fn bench_config_summary(spec: &BenchmarkSpec) -> String {
-    let mut parts = Vec::new();
-
-    match spec.mode {
-        BenchMode::Auto => parts.push(format!("auto {}ms", spec.target_time_ms)),
-        BenchMode::Fixed => parts.push(format!("fixed {} iters", spec.iterations)),
-    }
-
-    if spec.count > 1 {
-        parts.push(format!("x{} runs", spec.count));
-    }
-    if let Some(timeout) = spec.timeout {
-        parts.push(format!("timeout {}ms", timeout));
-    }
-    if spec.memory {
-        parts.push("memory".to_string());
-    }
-    if spec.fairness_mode == FairnessMode::Legacy {
-        parts.push("legacy fairness".to_string());
-    }
-    if spec.kind == BenchmarkKind::Async {
-        parts.push("async".to_string());
-    }
-
-    parts.join("  •  ")
-}
-
 fn async_outcome_suffix(kind: BenchmarkKind, measurement: &Measurement) -> String {
     if kind != BenchmarkKind::Async {
         return String::new();
@@ -195,13 +175,139 @@ fn async_error_measurement(err: &str) -> Measurement {
     m
 }
 
+fn lang_label(lang: Lang) -> &'static str {
+    match lang {
+        Lang::Go => "Go",
+        Lang::TypeScript => "TS",
+        Lang::Rust => "Rust",
+        _ => "Unknown",
+    }
+}
+
+fn parse_generated_line(raw: &str) -> Option<usize> {
+    // Handles patterns like:
+    // - ".../bench.mjs:280"
+    // - ".../main.rs:123:45"
+    for token in raw.split_whitespace() {
+        if !token.contains(':') {
+            continue;
+        }
+        let cleaned = token.trim_matches(|c: char| c == '(' || c == ')' || c == ',' || c == ';');
+        let parts: Vec<&str> = cleaned.split(':').collect();
+        if parts.len() < 2 {
+            continue;
+        }
+        // Try second-to-last first for file:line:col, then last for file:line.
+        if parts.len() >= 3 {
+            if let Ok(line) = parts[parts.len() - 2].parse::<usize>() {
+                return Some(line);
+            }
+        }
+        if let Ok(line) = parts[parts.len() - 1].parse::<usize>() {
+            return Some(line);
+        }
+    }
+    None
+}
+
+fn format_runtime_error(
+    lang: Lang,
+    run_idx: u64,
+    spec: &BenchmarkSpec,
+    suite_name: &str,
+    raw_error: &str,
+    verbose: bool,
+) -> miette::Report {
+    if verbose {
+        return miette!(
+            "{} run {} failed for {}: {}",
+            lang_label(lang),
+            run_idx,
+            spec.full_name,
+            raw_error
+        );
+    }
+
+    let reason = extract_runtime_error_reason(raw_error);
+    let mut lines = Vec::new();
+    lines.push(format!("{} run {} failed for {}", lang_label(lang), run_idx, spec.full_name));
+    lines.push(format!("suite: {}", suite_name));
+    lines.push(format!("reason: {}", reason));
+
+    if let (Some(src), Some(gen_line)) =
+        (spec.implementation_sources.get(&lang), parse_generated_line(raw_error))
+    {
+        // In generated scripts, user impl usually starts after wrapper lines. Approximate with
+        // relative offset to provide a useful .bench pointer.
+        let bench_line = src.bench_file_line.saturating_add(gen_line.saturating_sub(1));
+        lines.push(format!(
+            "location: .bench line {} ({} implementation)",
+            bench_line,
+            lang_label(lang)
+        ));
+    } else if let Some(src) = spec.implementation_sources.get(&lang) {
+        lines.push(format!(
+            "location: .bench line {} ({} implementation)",
+            src.bench_file_line,
+            lang_label(lang)
+        ));
+    }
+
+    if let Some(snippet) = extract_generated_snippet(raw_error, 1) {
+        lines.push("snippet:".to_string());
+        for l in snippet.into_iter().take(4) {
+            lines.push(format!("  {}", l));
+        }
+    }
+
+    lines.push("hint: re-run with -v to see raw external runtime trace".to_string());
+    miette!("{}", lines.join("\n"))
+}
+
+fn colorize_lang_label(label: &str, lang: Lang) -> String {
+    match lang {
+        Lang::Go => label.green().to_string(),
+        Lang::TypeScript => label.cyan().to_string(),
+        Lang::Rust => label.yellow().to_string(),
+        _ => label.to_string(),
+    }
+}
+
+fn lang_versus_counterpart(
+    measurements: &HashMap<Lang, Measurement>,
+    lang: Lang,
+    suite_type: SuiteType,
+) -> Option<(Lang, f64)> {
+    let current = measurements.get(&lang)?;
+    let current_val = primary_metric(current, suite_type);
+    if current_val <= 0.0 {
+        return None;
+    }
+
+    let mut best: Option<(Lang, f64)> = None;
+    for (peer_lang, peer_m) in measurements {
+        if *peer_lang == lang {
+            continue;
+        }
+        let peer_val = primary_metric(peer_m, suite_type);
+        if peer_val <= 0.0 {
+            continue;
+        }
+        let ratio =
+            if current_val <= peer_val { peer_val / current_val } else { current_val / peer_val };
+        if best.as_ref().map(|(_, r)| ratio > *r).unwrap_or(true) {
+            best = Some((*peer_lang, ratio));
+        }
+    }
+    best
+}
+
 /// Start a background timer that displays elapsed seconds with a spinner
 /// Returns a handle to stop the timer
-fn start_timer(label: &str, label_color: &str) -> Arc<AtomicBool> {
+fn start_timer(label: &str) -> Arc<AtomicBool> {
     let stop_flag = Arc::new(AtomicBool::new(false));
     let stop_flag_clone = Arc::clone(&stop_flag);
     let label = label.to_string();
-    let label_color = label_color.to_string();
 
     tokio::spawn(async move {
         let start = Instant::now();
@@ -210,12 +316,7 @@ fn start_timer(label: &str, label_color: &str) -> Arc<AtomicBool> {
         while !stop_flag_clone.load(Ordering::Relaxed) {
             let elapsed = start.elapsed().as_secs_f64();
             let spinner = SPINNER_FRAMES[frame_idx % SPINNER_FRAMES.len()];
-            let colored_label = match label_color.as_str() {
-                "green" => label.green().to_string(),
-                "cyan" => label.cyan().to_string(),
-                _ => label.clone(),
-            };
-            print!("\r    {} {} {:.1}s   ", colored_label, spinner.cyan(), elapsed);
+            print!("\r    {} {} {:.1}s   ", label.dimmed(), spinner.cyan(), elapsed);
             std::io::stdout().flush().ok();
             frame_idx += 1;
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -289,12 +390,21 @@ pub async fn run(
     langs: &[Lang],
     iterations_override: Option<u64>,
     project_roots: &ProjectRoots,
+    options: &RunOptions,
 ) -> Result<BenchmarkResults> {
     let mut suite_results = Vec::new();
 
     // Check if globalSetup has spawnAnvil() and spawn Anvil if needed
     let anvil_service = if let Some(ref anvil_ir) = ir.anvil_config {
-        println!("{} Starting Anvil node...", "⚡".yellow());
+        let anvil_spinner = ProgressBar::new_spinner();
+        anvil_spinner.set_style(
+            ProgressStyle::default_spinner()
+                .template("{spinner:.cyan} {msg}")
+                .unwrap()
+                .tick_strings(SPINNER_FRAMES),
+        );
+        anvil_spinner.set_message("Setting up Anvil...");
+        anvil_spinner.enable_steady_tick(tokio::time::Duration::from_millis(100));
 
         // Build config from IR
         let config = AnvilConfig {
@@ -305,14 +415,12 @@ pub async fn run(
 
         match AnvilService::spawn(&config) {
             Ok(service) => {
-                if anvil_ir.fork_url.is_some() {
-                    println!("  {} Anvil ready at {} (forking)", "✓".green(), service.rpc_url);
-                } else {
-                    println!("  {} Anvil ready at {}", "✓".green(), service.rpc_url);
-                }
+                anvil_spinner.finish_and_clear();
+                println!("{} Anvil is ready", "✓".green().bold());
                 Some(service)
             }
             Err(e) => {
+                anvil_spinner.finish_and_clear();
                 return Err(miette!(
                     "Failed to start Anvil: {}. Ensure Anvil is installed: curl -L https://foundry.paradigm.xyz | bash",
                     e
@@ -327,10 +435,11 @@ pub async fn run(
     let anvil_rpc_url = anvil_service.as_ref().map(|s| s.rpc_url.clone());
 
     for suite in &ir.suites {
-        println!("\n{} Suite: {}", "▶".blue().bold(), suite.name.bold());
+        print!("\n{} Suite: {}", "▶".blue().bold(), suite.name.bold());
         if let Some(ref desc) = suite.description {
-            println!("  {}", desc.dimmed());
+            print!("  {}", desc.dimmed());
         }
+        println!();
         let suite_start = Instant::now();
 
         let mut benchmark_results = Vec::new();
@@ -409,9 +518,6 @@ pub async fn run(
                 spec_clone.iterations = override_iters;
             }
 
-            println!("  {} {}", "▸".dimmed(), spec.name.bold());
-            println!("    {}", bench_config_summary(&spec_clone).dimmed());
-
             let mut measurements: HashMap<Lang, Measurement> = HashMap::new();
             let bench_start = Instant::now();
             let strict_fairness = spec_clone.fairness_mode == FairnessMode::Strict;
@@ -443,7 +549,8 @@ pub async fn run(
 
                 let run_count = spec_clone.count.max(1);
                 let mut run_measurements: HashMap<Lang, Vec<Measurement>> = HashMap::new();
-                let strict_timer = start_multi_run_timer("strict:", "cyan", run_count);
+                let strict_label = format!("{}:", suite.name);
+                let strict_timer = start_multi_run_timer(&strict_label, "cyan", run_count);
 
                 // Run-block interleaving: execute run k across all runtimes before run k+1.
                 for run_idx in 0..run_count {
@@ -483,11 +590,13 @@ pub async fn run(
                                                     .or_default()
                                                     .push(async_error_measurement(&err));
                                             } else {
-                                                return Err(miette!(
-                                                    "Go run {} failed for {}: {}",
+                                                return Err(format_runtime_error(
+                                                    Lang::Go,
                                                     run_idx + 1,
-                                                    spec_clone.full_name,
-                                                    e
+                                                    &spec_clone,
+                                                    &suite.name,
+                                                    &e.to_string(),
+                                                    options.verbose,
                                                 ));
                                             }
                                         }
@@ -515,11 +624,13 @@ pub async fn run(
                                                     .or_default()
                                                     .push(async_error_measurement(&err));
                                             } else {
-                                                return Err(miette!(
-                                                    "TS run {} failed for {}: {}",
+                                                return Err(format_runtime_error(
+                                                    Lang::TypeScript,
                                                     run_idx + 1,
-                                                    spec_clone.full_name,
-                                                    e
+                                                    &spec_clone,
+                                                    &suite.name,
+                                                    &e.to_string(),
+                                                    options.verbose,
                                                 ));
                                             }
                                         }
@@ -546,11 +657,13 @@ pub async fn run(
                                                     .or_default()
                                                     .push(async_error_measurement(&err));
                                             } else {
-                                                return Err(miette!(
-                                                    "Rust run {} failed for {}: {}",
+                                                return Err(format_runtime_error(
+                                                    Lang::Rust,
                                                     run_idx + 1,
-                                                    spec_clone.full_name,
-                                                    e
+                                                    &spec_clone,
+                                                    &suite.name,
+                                                    &e.to_string(),
+                                                    options.verbose,
                                                 ));
                                             }
                                         }
@@ -586,20 +699,14 @@ pub async fn run(
                         rt.precompile(&spec_clone, suite).await.map_err(|e| {
                             miette!("Go pre-compilation failed ({}): {}", spec_clone.full_name, e)
                         })?;
-                        let precompile_elapsed = precompile_start.elapsed();
-                        if precompile_elapsed.as_millis() > 100 {
-                            print!(
-                                "    {} compiled in {:.2}s\n",
-                                "Go:".green().dimmed(),
-                                precompile_elapsed.as_secs_f64()
-                            );
-                        }
+                        let _precompile_elapsed = precompile_start.elapsed();
 
                         let lang_start = Instant::now();
 
                         if spec_clone.count > 1 {
                             // Multiple runs for statistical consistency with live timer
-                            let timer = start_multi_run_timer("Go:", "green", spec_clone.count);
+                            let go_label = format!("{} Go:", suite.name);
+                            let timer = start_multi_run_timer(&go_label, "green", spec_clone.count);
                             let mut run_measurements = Vec::new();
 
                             for run_idx in 0..spec_clone.count {
@@ -612,11 +719,13 @@ pub async fn run(
                                         if spec_clone.kind == BenchmarkKind::Async {
                                             run_measurements.push(async_error_measurement(&err));
                                         } else {
-                                            return Err(miette!(
-                                                "Go run {} failed for {}: {}",
+                                            return Err(format_runtime_error(
+                                                Lang::Go,
                                                 run_idx + 1,
-                                                spec_clone.full_name,
-                                                e
+                                                &spec_clone,
+                                                &suite.name,
+                                                &e.to_string(),
+                                                options.verbose,
                                             ));
                                         }
                                     }
@@ -652,7 +761,8 @@ pub async fn run(
                             }
                         } else {
                             // Single run with live timer
-                            let timer = start_timer("Go:", "green");
+                            let go_label = format!("{} Go:", suite.name);
+                            let timer = start_timer(&go_label);
                             let result = run_with_optional_timeout(rt, &spec_clone, suite).await;
                             stop_timer(&timer);
 
@@ -675,10 +785,13 @@ pub async fn run(
                                             async_error_measurement(&format!("{}", e)),
                                         );
                                     } else {
-                                        return Err(miette!(
-                                            "Go benchmark failed for {}: {}",
-                                            spec_clone.full_name,
-                                            e
+                                        return Err(format_runtime_error(
+                                            Lang::Go,
+                                            1,
+                                            &spec_clone,
+                                            &suite.name,
+                                            &e.to_string(),
+                                            options.verbose,
                                         ));
                                     }
                                 }
@@ -698,20 +811,14 @@ pub async fn run(
                         rt.precompile(&spec_clone, suite).await.map_err(|e| {
                             miette!("TS pre-compilation failed ({}): {}", spec_clone.full_name, e)
                         })?;
-                        let precompile_elapsed = precompile_start.elapsed();
-                        if precompile_elapsed.as_millis() > 100 {
-                            print!(
-                                "    {} prepared in {:.2}s\n",
-                                "TS:".cyan().dimmed(),
-                                precompile_elapsed.as_secs_f64()
-                            );
-                        }
+                        let _precompile_elapsed = precompile_start.elapsed();
 
                         let lang_start = Instant::now();
 
                         if spec_clone.count > 1 {
                             // Multiple runs for statistical consistency with live timer
-                            let timer = start_multi_run_timer("TS:", "cyan", spec_clone.count);
+                            let ts_label = format!("{} TS:", suite.name);
+                            let timer = start_multi_run_timer(&ts_label, "cyan", spec_clone.count);
                             let mut run_measurements = Vec::new();
 
                             for run_idx in 0..spec_clone.count {
@@ -724,11 +831,13 @@ pub async fn run(
                                         if spec_clone.kind == BenchmarkKind::Async {
                                             run_measurements.push(async_error_measurement(&err));
                                         } else {
-                                            return Err(miette!(
-                                                "TS run {} failed for {}: {}",
+                                            return Err(format_runtime_error(
+                                                Lang::TypeScript,
                                                 run_idx + 1,
-                                                spec_clone.full_name,
-                                                e
+                                                &spec_clone,
+                                                &suite.name,
+                                                &e.to_string(),
+                                                options.verbose,
                                             ));
                                         }
                                     }
@@ -764,7 +873,8 @@ pub async fn run(
                             }
                         } else {
                             // Single run with live timer
-                            let timer = start_timer("TS:", "cyan");
+                            let ts_label = format!("{} TS:", suite.name);
+                            let timer = start_timer(&ts_label);
                             let result = run_with_optional_timeout(rt, &spec_clone, suite).await;
                             stop_timer(&timer);
 
@@ -787,10 +897,13 @@ pub async fn run(
                                             async_error_measurement(&format!("{}", e)),
                                         );
                                     } else {
-                                        return Err(miette!(
-                                            "TS benchmark failed for {}: {}",
-                                            spec_clone.full_name,
-                                            e
+                                        return Err(format_runtime_error(
+                                            Lang::TypeScript,
+                                            1,
+                                            &spec_clone,
+                                            &suite.name,
+                                            &e.to_string(),
+                                            options.verbose,
                                         ));
                                     }
                                 }
@@ -809,20 +922,15 @@ pub async fn run(
                         rt.precompile(&spec_clone, suite).await.map_err(|e| {
                             miette!("Rust pre-compilation failed ({}): {}", spec_clone.full_name, e)
                         })?;
-                        let precompile_elapsed = precompile_start.elapsed();
-                        if precompile_elapsed.as_millis() > 100 {
-                            print!(
-                                "    {} compiled in {:.2}s\n",
-                                "Rust:".yellow().dimmed(),
-                                precompile_elapsed.as_secs_f64()
-                            );
-                        }
+                        let _precompile_elapsed = precompile_start.elapsed();
 
                         let lang_start = Instant::now();
 
                         if spec_clone.count > 1 {
                             // Multiple runs for statistical consistency with live timer
-                            let timer = start_multi_run_timer("Rust:", "yellow", spec_clone.count);
+                            let rust_label = format!("{} Rust:", suite.name);
+                            let timer =
+                                start_multi_run_timer(&rust_label, "yellow", spec_clone.count);
                             let mut run_measurements = Vec::new();
 
                             for run_idx in 0..spec_clone.count {
@@ -835,11 +943,13 @@ pub async fn run(
                                         if spec_clone.kind == BenchmarkKind::Async {
                                             run_measurements.push(async_error_measurement(&err));
                                         } else {
-                                            return Err(miette!(
-                                                "Rust run {} failed for {}: {}",
+                                            return Err(format_runtime_error(
+                                                Lang::Rust,
                                                 run_idx + 1,
-                                                spec_clone.full_name,
-                                                e
+                                                &spec_clone,
+                                                &suite.name,
+                                                &e.to_string(),
+                                                options.verbose,
                                             ));
                                         }
                                     }
@@ -875,7 +985,8 @@ pub async fn run(
                             }
                         } else {
                             // Single run with live timer
-                            let timer = start_timer("Rust:", "yellow");
+                            let rust_label = format!("{} Rust:", suite.name);
+                            let timer = start_timer(&rust_label);
                             let result = run_with_optional_timeout(rt, &spec_clone, suite).await;
                             stop_timer(&timer);
 
@@ -898,10 +1009,13 @@ pub async fn run(
                                             async_error_measurement(&format!("{}", e)),
                                         );
                                     } else {
-                                        return Err(miette!(
-                                            "Rust benchmark failed for {}: {}",
-                                            spec_clone.full_name,
-                                            e
+                                        return Err(format_runtime_error(
+                                            Lang::Rust,
+                                            1,
+                                            &spec_clone,
+                                            &suite.name,
+                                            &e.to_string(),
+                                            options.verbose,
                                         ));
                                     }
                                 }
@@ -912,99 +1026,20 @@ pub async fn run(
                 }
             }
 
-            if strict_fairness {
-                if let Some(go_m) = measurements.get(&Lang::Go) {
-                    println!(
-                        "    {} {}{}",
-                        "Go:".green(),
-                        format_primary_metric(go_m, suite.suite_type),
-                        async_outcome_suffix(spec.kind, go_m)
-                    );
-                }
-                if let Some(ts_m) = measurements.get(&Lang::TypeScript) {
-                    println!(
-                        "    {} {}{}",
-                        "TS:".cyan(),
-                        format_primary_metric(ts_m, suite.suite_type),
-                        async_outcome_suffix(spec.kind, ts_m)
-                    );
-                }
-                if let Some(rust_m) = measurements.get(&Lang::Rust) {
-                    println!(
-                        "    {} {}{}",
-                        "Rust:".yellow(),
-                        format_primary_metric(rust_m, suite.suite_type),
-                        async_outcome_suffix(spec.kind, rust_m)
-                    );
-                }
-            }
-
             let bench_elapsed = bench_start.elapsed();
 
-            // Show comparison summary (uses memory ratio for memory suites)
-            let mut comparison_parts = Vec::new();
-            let metric = |m: &Measurement| primary_metric(m, suite.suite_type);
-            if let (Some(go_m), Some(ts_m)) =
-                (measurements.get(&Lang::Go), measurements.get(&Lang::TypeScript))
-            {
-                let ratio = metric(go_m) / metric(ts_m);
-                if (ratio - 1.0).abs() < 0.05 {
-                    comparison_parts.push("Go≈TS".dimmed().to_string());
-                } else if ratio > 1.0 {
-                    comparison_parts
-                        .push(format!("TS {}x vs Go", format!("{:.2}", ratio)).cyan().to_string());
-                } else {
-                    comparison_parts.push(
-                        format!("Go {}x vs TS", format!("{:.2}", 1.0 / ratio)).green().to_string(),
-                    );
+            println!("  ▸ {} {:.2}s", spec.name.bold(), bench_elapsed.as_secs_f64());
+            for lang in [Lang::Go, Lang::TypeScript, Lang::Rust] {
+                if let Some(m) = measurements.get(&lang) {
+                    let metric = format_primary_metric(m, suite.suite_type);
+                    let rel = lang_versus_counterpart(&measurements, lang, suite.suite_type)
+                        .map(|(peer, ratio)| format!("{:.2}x vs {}", ratio, lang_label(peer)))
+                        .unwrap_or_default();
+                    let padded_label = format!("{:<6}", format!("{}:", lang_label(lang)));
+                    let colored_label = colorize_lang_label(&padded_label, lang);
+                    println!("    {} {:<16} {}", colored_label, metric, rel);
                 }
             }
-            if let (Some(go_m), Some(rust_m)) =
-                (measurements.get(&Lang::Go), measurements.get(&Lang::Rust))
-            {
-                let ratio = metric(go_m) / metric(rust_m);
-                if (ratio - 1.0).abs() < 0.05 {
-                    comparison_parts.push("Go≈Rust".dimmed().to_string());
-                } else if ratio > 1.0 {
-                    comparison_parts.push(
-                        format!("Rust {}x vs Go", format!("{:.2}", ratio)).yellow().to_string(),
-                    );
-                } else {
-                    comparison_parts.push(
-                        format!("Go {}x vs Rust", format!("{:.2}", 1.0 / ratio))
-                            .green()
-                            .to_string(),
-                    );
-                }
-            }
-            if let (Some(ts_m), Some(rust_m)) =
-                (measurements.get(&Lang::TypeScript), measurements.get(&Lang::Rust))
-            {
-                let ratio = metric(ts_m) / metric(rust_m);
-                if (ratio - 1.0).abs() < 0.05 {
-                    comparison_parts.push("TS≈Rust".dimmed().to_string());
-                } else if ratio > 1.0 {
-                    comparison_parts.push(
-                        format!("Rust {}x vs TS", format!("{:.2}", ratio)).yellow().to_string(),
-                    );
-                } else {
-                    comparison_parts.push(
-                        format!("TS {}x vs Rust", format!("{:.2}", 1.0 / ratio)).cyan().to_string(),
-                    );
-                }
-            }
-
-            if !comparison_parts.is_empty() {
-                println!(
-                    "    {} [{}]",
-                    format!("total: {:.2}s", bench_elapsed.as_secs_f64()).dimmed(),
-                    comparison_parts.join(", ")
-                );
-            } else {
-                println!("    {}", format!("total: {:.2}s", bench_elapsed.as_secs_f64()).dimmed());
-            }
-
-            // Add visual separation between benchmarks
             println!();
 
             benchmark_results.push(BenchmarkResult::new(

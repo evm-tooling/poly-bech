@@ -142,66 +142,12 @@ pub fn report(results: &BenchmarkResults) -> Result<()> {
 /// Generate console report with options
 pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) -> Result<()> {
     println!();
-    println!(
-        "{}",
-        "===============================================================================".dimmed()
-    );
-    println!("{}", "  BENCHMARK RESULTS".bold());
-    println!(
-        "{}",
-        "===============================================================================".dimmed()
-    );
-    println!();
-
-    // Overall summary
-    println!("  {}", "SUMMARY".bold());
-    println!("  {}", "───────".dimmed());
+    println!("{}", "─".repeat(78));
+    println!("  BENCHMARK RESULTS");
+    println!("{}", "─".repeat(78));
     println!();
 
     let summary = &results.summary;
-
-    // Winner banner
-    match summary.winner {
-        Some(Lang::Go) => {
-            println!("  {} {}", "▸".green(), summary.winner_description.green().bold());
-        }
-        Some(Lang::TypeScript) => {
-            println!("  {} {}", "▸".cyan(), summary.winner_description.cyan().bold());
-        }
-        Some(Lang::Rust) => {
-            println!("  {} {}", "▸".yellow(), summary.winner_description.yellow().bold());
-        }
-        _ => {
-            println!("  {} {}", "▸", summary.winner_description.dimmed());
-        }
-    }
-    println!();
-
-    // Stats - compact single line for wins
-    println!(
-        "  Wins: {} {}  {} {}  {} {}  Ties: {}  │  Geo mean: {:.2}x",
-        "Go".green(),
-        summary.go_wins,
-        "TS".cyan(),
-        summary.ts_wins,
-        "Rust".yellow(),
-        summary.rust_wins,
-        summary.ties,
-        summary.geo_mean_speedup
-    );
-
-    // Quality indicators (only when relevant)
-    let mut quality_parts = Vec::new();
-    if summary.total_outliers_removed > 0 {
-        quality_parts.push(format!("{} outliers removed", summary.total_outliers_removed));
-    }
-    if summary.unstable_count > 0 {
-        quality_parts.push(format!("{} unstable (CV > threshold)", summary.unstable_count));
-    }
-    if !quality_parts.is_empty() {
-        println!("  {}", quality_parts.join("  │  ").dimmed());
-    }
-    println!();
 
     // Config section (if enabled and config provided)
     if options.show_config {
@@ -233,6 +179,16 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
         }
     }
 
+    println!("  Legend");
+    println!("  {}  {}  {}", "go".green(), "ts".cyan(), "rust".yellow());
+    println!("  hz = operations per second (higher is better)");
+    println!("  b = bytes/op,  │  lower is better");
+    println!("  a = allocs/op  │  lower is better");
+    println!("  cv = coefficient of variation ({} = unstable)", "yellow".yellow());
+    println!();
+    println!("{}", "─".repeat(70));
+    println!();
+
     // Suite details
     println!("  {}", "SUITE RESULTS".bold());
     println!("  {}", "─────────────".dimmed());
@@ -242,22 +198,10 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
         print_suite_with_options(suite, options);
     }
 
-    // Legend - compact
-    let has_memory_suite =
-        results.suites.iter().any(|s| s.suite_type == poly_bench_dsl::SuiteType::Memory);
-    println!("  {}", "─".repeat(70));
-    println!("  {}", "Legend".dimmed());
     println!(
-        "  {}  {}  {}  │  hz=ops/sec  │  cv=coefficient of variation (stability)",
-        "go".green(),
-        "ts".cyan(),
-        "rust".yellow()
+        "   Summary: Go: {} wins | TS: {} wins | Rust: {} wins | Ties: {} | Geo mean: {:.2}x",
+        summary.go_wins, summary.ts_wins, summary.rust_wins, summary.ties, summary.geo_mean_speedup
     );
-    println!("  {} = operations per second (higher is better)", "hz".dimmed());
-    if has_memory_suite {
-        println!("  bytes/op, allocs/op  │  lower is better");
-    }
-    println!("  cv = coefficient of variation (stability)  │  {} = unstable", "yellow".yellow());
     println!();
 
     Ok(())
@@ -271,10 +215,10 @@ fn print_suite_with_options(suite: &SuiteResults, options: &ReportOptions) {
     };
 
     // Suite header
-    println!(" {} {}", icon.green(), suite.name.bold());
-
     if let Some(ref desc) = suite.description {
-        println!("   {}", desc.dimmed());
+        println!(" {} {} {}", icon.green(), suite.name.bold(), desc.dimmed());
+    } else {
+        println!(" {} {}", icon.green(), suite.name.bold());
     }
 
     // Distribution stats table (vitest/tinybench style)
@@ -284,23 +228,6 @@ fn print_suite_with_options(suite: &SuiteResults, options: &ReportOptions) {
         // Legacy compact table
         print_compact_table(&suite.benchmarks, suite.suite_type, options);
     }
-
-    // Suite summary footer
-    let go_wins = suite.summary.go_wins;
-    let ts_wins = suite.summary.ts_wins;
-    let rust_wins = suite.summary.rust_wins;
-    let ties = suite.summary.ties;
-
-    println!();
-    println!(
-        "   {} Go: {} wins | TS: {} wins | Rust: {} wins | Ties: {} | Geo mean: {:.2}x",
-        "Summary:".dimmed(),
-        format!("{}", go_wins).green(),
-        format!("{}", ts_wins).cyan(),
-        format!("{}", rust_wins).yellow(),
-        format!("{}", ties).dimmed(),
-        suite.summary.geo_mean_speedup
-    );
 
     println!();
 
