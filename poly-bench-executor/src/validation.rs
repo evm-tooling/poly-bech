@@ -687,9 +687,7 @@ pub async fn validate_benchmarks_with_cache(
     }
 
     // Save cache to disk
-    if let Err(e) = cache.save().await {
-        eprintln!("Warning: Failed to save compile cache: {}", e);
-    }
+    cache.save().await.map_err(|e| miette::miette!("Failed to save compile cache: {}", e))?;
 
     // Collect errors
     let map = error_map.lock().await;

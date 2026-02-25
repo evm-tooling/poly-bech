@@ -141,12 +141,21 @@ pub fn report(results: &BenchmarkResults) -> Result<()> {
 
 /// Generate console report with options
 pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) -> Result<()> {
-    println!("\n{}", "═".repeat(80));
+    println!();
+    println!(
+        "{}",
+        "===============================================================================".dimmed()
+    );
     println!("{}", "  BENCHMARK RESULTS".bold());
-    println!("{}\n", "═".repeat(80));
+    println!(
+        "{}",
+        "===============================================================================".dimmed()
+    );
+    println!();
 
     // Overall summary
-    println!("{}", "OVERALL SUMMARY".bold().underline());
+    println!("  {}", "SUMMARY".bold());
+    println!("  {}", "───────".dimmed());
     println!();
 
     let summary = &results.summary;
@@ -154,60 +163,43 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
     // Winner banner
     match summary.winner {
         Some(Lang::Go) => {
-            println!("  {} {}", "🏆".green(), summary.winner_description.green().bold());
+            println!("  {} {}", "▸".green(), summary.winner_description.green().bold());
         }
         Some(Lang::TypeScript) => {
-            println!("  {} {}", "🏆".cyan(), summary.winner_description.cyan().bold());
+            println!("  {} {}", "▸".cyan(), summary.winner_description.cyan().bold());
         }
         Some(Lang::Rust) => {
-            println!("  {} {}", "🏆".yellow(), summary.winner_description.yellow().bold());
+            println!("  {} {}", "▸".yellow(), summary.winner_description.yellow().bold());
         }
         _ => {
-            println!("  {} {}", "🤝", summary.winner_description.dimmed());
+            println!("  {} {}", "▸", summary.winner_description.dimmed());
         }
     }
     println!();
 
-    // Stats table
-    println!("  {:<20} {}", "Total Suites:", summary.total_suites);
-    println!("  {:<20} {}", "Total Benchmarks:", summary.total_benchmarks);
+    // Stats - compact single line for wins
     println!(
-        "  {:<20} {} ({}%)",
-        "Go Wins:",
+        "  Wins: {} {}  {} {}  {} {}  Ties: {}  │  Geo mean: {:.2}x",
+        "Go".green(),
         summary.go_wins,
-        (summary.go_wins * 100) / summary.total_benchmarks.max(1)
-    );
-    println!(
-        "  {:<20} {} ({}%)",
-        "TypeScript Wins:",
+        "TS".cyan(),
         summary.ts_wins,
-        (summary.ts_wins * 100) / summary.total_benchmarks.max(1)
-    );
-    println!(
-        "  {:<20} {} ({}%)",
-        "Rust Wins:",
+        "Rust".yellow(),
         summary.rust_wins,
-        (summary.rust_wins * 100) / summary.total_benchmarks.max(1)
-    );
-    println!(
-        "  {:<20} {} ({}%)",
-        "Ties:",
         summary.ties,
-        (summary.ties * 100) / summary.total_benchmarks.max(1)
+        summary.geo_mean_speedup
     );
-    println!("  {:<20} {:.2}x", "Geometric Mean:", summary.geo_mean_speedup);
 
-    // Statistical quality indicators
+    // Quality indicators (only when relevant)
+    let mut quality_parts = Vec::new();
     if summary.total_outliers_removed > 0 {
-        println!("  {:<20} {}", "Outliers Removed:", summary.total_outliers_removed);
+        quality_parts.push(format!("{} outliers removed", summary.total_outliers_removed));
     }
     if summary.unstable_count > 0 {
-        println!(
-            "  {:<20} {} {}",
-            "Unstable Results:",
-            format!("{}", summary.unstable_count).yellow(),
-            "(CV > threshold)".dimmed()
-        );
+        quality_parts.push(format!("{} unstable (CV > threshold)", summary.unstable_count));
+    }
+    if !quality_parts.is_empty() {
+        println!("  {}", quality_parts.join("  │  ").dimmed());
     }
     println!();
 
@@ -242,50 +234,30 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
     }
 
     // Suite details
-    println!("{}", "SUITE RESULTS".bold().underline());
+    println!("  {}", "SUITE RESULTS".bold());
+    println!("  {}", "─────────────".dimmed());
     println!();
 
     for suite in &results.suites {
         print_suite_with_options(suite, options);
     }
 
-    // Legend
+    // Legend - compact
     let has_memory_suite =
         results.suites.iter().any(|s| s.suite_type == poly_bench_dsl::SuiteType::Memory);
-    println!("{}", "─".repeat(110));
-    println!("{}", "LEGEND".dimmed());
+    println!("  {}", "─".repeat(70));
+    println!("  {}", "Legend".dimmed());
     println!(
-        "  {} = Go result  |  {} = TypeScript result  |  {} = Rust result",
+        "  {}  {}  {}  │  hz=ops/sec  │  cv=coefficient of variation (stability)",
         "go".green(),
         "ts".cyan(),
         "rust".yellow()
     );
     println!("  {} = operations per second (higher is better)", "hz".dimmed());
     if has_memory_suite {
-        println!(
-            "  {} = bytes per operation (lower is better)  |  {} = allocations per operation",
-            "bytes/op".dimmed(),
-            "allocs/op".dimmed()
-        );
+        println!("  bytes/op, allocs/op  │  lower is better");
     }
-    println!(
-        "  {} = minimum latency  |  {} = maximum latency  |  {} = mean latency (all in ms)",
-        "min".dimmed(),
-        "max".dimmed(),
-        "mean".dimmed()
-    );
-    println!(
-        "  {} = 75th percentile  |  {} = 99th percentile  |  {} = 99.5th percentile",
-        "p75".dimmed(),
-        "p99".dimmed(),
-        "p995".dimmed()
-    );
-    println!("  {} = relative margin of error  |  {} = coefficient of variation (stability)  |  {} = number of samples",
-        "rme".dimmed(),
-        "cv".dimmed(),
-        "samples".dimmed()
-    );
-    println!("  {} = CV above threshold (results may be unstable)", "yellow cv".yellow());
+    println!("  cv = coefficient of variation (stability)  │  {} = unstable", "yellow".yellow());
     println!();
 
     Ok(())
@@ -892,7 +864,38 @@ fn print_distribution_table(
         }
 
         for warning in async_reliability_warnings(bench) {
-            println!("   {}", format!("  ! async reliability: {}", warning).yellow());
+            println!("   {} {}", "⚠".yellow(), format!("async reliability: {}", warning).yellow());
+            println!(
+                "     {} {}",
+                "→".dimmed(),
+                "Consider increasing count/warmup or checking network/RPC stability".dimmed()
+            );
+        }
+
+        // Show error samples when async benchmarks have failures
+        for (lang, m) in &bench.measurements {
+            if let Some(samples) = &m.async_error_samples {
+                if !samples.is_empty() {
+                    let lang_name = lang_short_name(*lang);
+                    println!(
+                        "   {} {} ({} errors):",
+                        "✗".red(),
+                        format!("{} error samples", lang_name).red(),
+                        m.async_error_count.unwrap_or(0)
+                    );
+                    for (i, sample) in samples.iter().take(3).enumerate() {
+                        let preview = if sample.len() > 120 {
+                            format!("{}…", &sample[..117])
+                        } else {
+                            sample.clone()
+                        };
+                        println!("     {}. {}", i + 1, preview.dimmed());
+                    }
+                    if samples.len() > 3 {
+                        println!("     {} ({} more)", "...".dimmed(), samples.len() - 3);
+                    }
+                }
+            }
         }
 
         // Add visual separation between benchmarks

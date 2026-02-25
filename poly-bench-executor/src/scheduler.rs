@@ -20,7 +20,7 @@ use std::{
 };
 
 /// Spinner frames for the timer
-const SPINNER_FRAMES: &[&str] = &["[±]", "[∓]"];
+const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 /// Shared state for the multi-run timer
 use std::sync::atomic::AtomicU64;
@@ -141,6 +141,33 @@ fn primary_metric(m: &Measurement, suite_type: SuiteType) -> f64 {
     }
 }
 
+fn bench_config_summary(spec: &BenchmarkSpec) -> String {
+    let mut parts = Vec::new();
+
+    match spec.mode {
+        BenchMode::Auto => parts.push(format!("auto {}ms", spec.target_time_ms)),
+        BenchMode::Fixed => parts.push(format!("fixed {} iters", spec.iterations)),
+    }
+
+    if spec.count > 1 {
+        parts.push(format!("x{} runs", spec.count));
+    }
+    if let Some(timeout) = spec.timeout {
+        parts.push(format!("timeout {}ms", timeout));
+    }
+    if spec.memory {
+        parts.push("memory".to_string());
+    }
+    if spec.fairness_mode == FairnessMode::Legacy {
+        parts.push("legacy fairness".to_string());
+    }
+    if spec.kind == BenchmarkKind::Async {
+        parts.push("async".to_string());
+    }
+
+    parts.join("  •  ")
+}
+
 fn async_outcome_suffix(kind: BenchmarkKind, measurement: &Measurement) -> String {
     if kind != BenchmarkKind::Async {
         return String::new();
@@ -151,7 +178,21 @@ fn async_outcome_suffix(kind: BenchmarkKind, measurement: &Measurement) -> Strin
         return String::new();
     }
     let ok_pct = (success as f64 / total as f64) * 100.0;
-    format!(" [ok/err: {}/{} ({:.0}% ok)]", success, error, ok_pct)
+    if error > 0 {
+        format!("  {} {}/{} ({:.0}% ok)", "⚠".yellow(), success, error, ok_pct)
+    } else {
+        format!("  {} {}/{}", "✓".green(), success, error)
+    }
+}
+
+fn async_error_measurement(err: &str) -> Measurement {
+    let mut m = Measurement::timeout_marker();
+    m.async_success_count = Some(0);
+    m.async_error_count = Some(1);
+    m.async_error_samples = Some(vec![err.chars().take(240).collect()]);
+    m.estimator_source = Some("async-error".to_string());
+    m.timed_out = Some(err.contains("timed out"));
+    m
 }
 
 /// Start a background timer that displays elapsed seconds with a spinner
@@ -272,9 +313,10 @@ pub async fn run(
                 Some(service)
             }
             Err(e) => {
-                eprintln!("  {} Failed to start Anvil: {}", "✗".red(), e);
-                eprintln!("  {} Make sure Anvil is installed: curl -L https://foundry.paradigm.xyz | bash", "ℹ".blue());
-                None
+                return Err(miette!(
+                    "Failed to start Anvil: {}. Ensure Anvil is installed: curl -L https://foundry.paradigm.xyz | bash",
+                    e
+                ));
             }
         }
     } else {
@@ -304,11 +346,10 @@ pub async fn run(
             if let Some(ref url) = anvil_rpc_url {
                 rt.set_anvil_rpc_url(url.clone());
             }
-            if let Err(e) = rt.initialize(suite).await {
-                eprintln!("  {} Go runtime initialization failed: {}", "⚠".yellow(), e);
-            } else {
-                go_runtime = Some(rt);
-            }
+            rt.initialize(suite)
+                .await
+                .map_err(|e| miette!("Go runtime initialization failed: {}", e))?;
+            go_runtime = Some(rt);
         }
 
         if langs.contains(&Lang::TypeScript) {
@@ -318,14 +359,13 @@ pub async fn run(
                     if let Some(ref url) = anvil_rpc_url {
                         rt.set_anvil_rpc_url(url.clone());
                     }
-                    if let Err(e) = rt.initialize(suite).await {
-                        eprintln!("  {} JS runtime initialization failed: {}", "⚠".yellow(), e);
-                    } else {
-                        js_runtime = Some(rt);
-                    }
+                    rt.initialize(suite)
+                        .await
+                        .map_err(|e| miette!("JS runtime initialization failed: {}", e))?;
+                    js_runtime = Some(rt);
                 }
                 Err(e) => {
-                    eprintln!("  {} JS runtime not available: {}", "⚠".yellow(), e);
+                    return Err(miette!("JS runtime not available: {}", e));
                 }
             }
         }
@@ -336,11 +376,10 @@ pub async fn run(
             if let Some(ref url) = anvil_rpc_url {
                 rt.set_anvil_rpc_url(url.clone());
             }
-            if let Err(e) = rt.initialize(suite).await {
-                eprintln!("  {} Rust runtime initialization failed: {}", "⚠".yellow(), e);
-            } else {
-                rust_runtime = Some(rt);
-            }
+            rt.initialize(suite)
+                .await
+                .map_err(|e| miette!("Rust runtime initialization failed: {}", e))?;
+            rust_runtime = Some(rt);
         }
 
         // Route to memory or performance path based on suite type.
@@ -370,57 +409,8 @@ pub async fn run(
                 spec_clone.iterations = override_iters;
             }
 
-            // Print benchmark args - show all relevant settings
-            let mut args = Vec::new();
-
-            // Mode (auto vs fixed)
-            match spec.mode {
-                BenchMode::Auto => {
-                    args.push(format!("auto"));
-                    args.push(format!("targetTime={}ms", spec.target_time_ms));
-                }
-                BenchMode::Fixed => {
-                    args.push(format!("fixed"));
-                    args.push(format!("iterations={}", spec.iterations));
-                }
-            };
-
-            // Count (statistical runs)
-            if spec.count > 1 {
-                args.push(format!("count={}", spec.count));
-            }
-
-            // Warmup (if non-default)
-            if spec.warmup > 0 {
-                args.push(format!("warmup={}", spec.warmup));
-            }
-
-            // Timeout (if set)
-            if let Some(timeout) = spec.timeout {
-                args.push(format!("timeout={}ms", timeout));
-            }
-
-            // Outlier detection
-            if spec.outlier_detection {
-                args.push(format!("outliers=iqr"));
-            }
-
-            // CV threshold (if non-default, default is typically 5.0)
-            if spec.cv_threshold != 5.0 && spec.cv_threshold > 0.0 {
-                args.push(format!("cvThreshold={}%", spec.cv_threshold));
-            }
-
-            // Memory profiling
-            if spec.memory {
-                args.push(format!("memory=true"));
-            }
-
-            // Use sink
-            if spec.use_sink {
-                args.push(format!("sink=true"));
-            }
-
-            println!("  {} {} [{}]", "→".dimmed(), spec.name.bold(), args.join(", ").dimmed());
+            println!("  {} {}", "▸".dimmed(), spec.name.bold());
+            println!("    {}", bench_config_summary(&spec_clone).dimmed());
 
             let mut measurements: HashMap<Lang, Measurement> = HashMap::new();
             let bench_start = Instant::now();
@@ -431,23 +421,23 @@ pub async fn run(
                 // include compile overhead in any runtime's measured path.
                 if spec.has_lang(Lang::Go) {
                     if let Some(ref mut rt) = go_runtime {
-                        if let Err(e) = rt.precompile(&spec_clone, suite).await {
-                            eprintln!("    {} Pre-compilation failed: {}", "Go:".red(), e);
-                        }
+                        rt.precompile(&spec_clone, suite).await.map_err(|e| {
+                            miette!("Go pre-compilation failed ({}): {}", spec_clone.full_name, e)
+                        })?;
                     }
                 }
                 if spec.has_lang(Lang::TypeScript) {
                     if let Some(ref mut rt) = js_runtime {
-                        if let Err(e) = rt.precompile(&spec_clone, suite).await {
-                            eprintln!("    {} Pre-compilation failed: {}", "TS:".red(), e);
-                        }
+                        rt.precompile(&spec_clone, suite).await.map_err(|e| {
+                            miette!("TS pre-compilation failed ({}): {}", spec_clone.full_name, e)
+                        })?;
                     }
                 }
                 if spec.has_lang(Lang::Rust) {
                     if let Some(ref mut rt) = rust_runtime {
-                        if let Err(e) = rt.precompile(&spec_clone, suite).await {
-                            eprintln!("    {} Pre-compilation failed: {}", "Rust:".red(), e);
-                        }
+                        rt.precompile(&spec_clone, suite).await.map_err(|e| {
+                            miette!("Rust pre-compilation failed ({}): {}", spec_clone.full_name, e)
+                        })?;
                     }
                 }
 
@@ -479,12 +469,28 @@ pub async fn run(
                                         Ok(m) => {
                                             run_measurements.entry(Lang::Go).or_default().push(m)
                                         }
-                                        Err(e) => eprintln!(
-                                            "\n    {} run {} failed: {}",
-                                            "Go:".red(),
-                                            run_idx + 1,
-                                            e
-                                        ),
+                                        Err(e) => {
+                                            let err = format!("{}", e);
+                                            if spec_clone.kind == BenchmarkKind::Async {
+                                                eprintln!(
+                                                    "\n    {} run {} failed for {} (recorded as async error)",
+                                                    "Go:".yellow(),
+                                                    run_idx + 1,
+                                                    spec_clone.full_name
+                                                );
+                                                run_measurements
+                                                    .entry(Lang::Go)
+                                                    .or_default()
+                                                    .push(async_error_measurement(&err));
+                                            } else {
+                                                return Err(miette!(
+                                                    "Go run {} failed for {}: {}",
+                                                    run_idx + 1,
+                                                    spec_clone.full_name,
+                                                    e
+                                                ));
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -495,12 +501,28 @@ pub async fn run(
                                             .entry(Lang::TypeScript)
                                             .or_default()
                                             .push(m),
-                                        Err(e) => eprintln!(
-                                            "\n    {} run {} failed: {}",
-                                            "TS:".red(),
-                                            run_idx + 1,
-                                            e
-                                        ),
+                                        Err(e) => {
+                                            let err = format!("{}", e);
+                                            if spec_clone.kind == BenchmarkKind::Async {
+                                                eprintln!(
+                                                    "\n    {} run {} failed for {} (recorded as async error)",
+                                                    "TS:".yellow(),
+                                                    run_idx + 1,
+                                                    spec_clone.full_name
+                                                );
+                                                run_measurements
+                                                    .entry(Lang::TypeScript)
+                                                    .or_default()
+                                                    .push(async_error_measurement(&err));
+                                            } else {
+                                                return Err(miette!(
+                                                    "TS run {} failed for {}: {}",
+                                                    run_idx + 1,
+                                                    spec_clone.full_name,
+                                                    e
+                                                ));
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -510,12 +532,28 @@ pub async fn run(
                                         Ok(m) => {
                                             run_measurements.entry(Lang::Rust).or_default().push(m)
                                         }
-                                        Err(e) => eprintln!(
-                                            "\n    {} run {} failed: {}",
-                                            "Rust:".red(),
-                                            run_idx + 1,
-                                            e
-                                        ),
+                                        Err(e) => {
+                                            let err = format!("{}", e);
+                                            if spec_clone.kind == BenchmarkKind::Async {
+                                                eprintln!(
+                                                    "\n    {} run {} failed for {} (recorded as async error)",
+                                                    "Rust:".yellow(),
+                                                    run_idx + 1,
+                                                    spec_clone.full_name
+                                                );
+                                                run_measurements
+                                                    .entry(Lang::Rust)
+                                                    .or_default()
+                                                    .push(async_error_measurement(&err));
+                                            } else {
+                                                return Err(miette!(
+                                                    "Rust run {} failed for {}: {}",
+                                                    run_idx + 1,
+                                                    spec_clone.full_name,
+                                                    e
+                                                ));
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -545,9 +583,9 @@ pub async fn run(
                         // Pre-compile the benchmark binary before timing starts
                         // This ensures compilation overhead is not included in the wall-clock time
                         let precompile_start = Instant::now();
-                        if let Err(e) = rt.precompile(&spec_clone, suite).await {
-                            eprintln!("    {} Pre-compilation failed: {}", "Go:".red(), e);
-                        }
+                        rt.precompile(&spec_clone, suite).await.map_err(|e| {
+                            miette!("Go pre-compilation failed ({}): {}", spec_clone.full_name, e)
+                        })?;
                         let precompile_elapsed = precompile_start.elapsed();
                         if precompile_elapsed.as_millis() > 100 {
                             print!(
@@ -570,12 +608,17 @@ pub async fn run(
                                 match run_with_optional_timeout(rt, &spec_clone, suite).await {
                                     Ok(m) => run_measurements.push(m),
                                     Err(e) => {
-                                        eprintln!(
-                                            "\n    {} run {} failed: {}",
-                                            "Go:".red(),
-                                            run_idx + 1,
-                                            e
-                                        );
+                                        let err = format!("{}", e);
+                                        if spec_clone.kind == BenchmarkKind::Async {
+                                            run_measurements.push(async_error_measurement(&err));
+                                        } else {
+                                            return Err(miette!(
+                                                "Go run {} failed for {}: {}",
+                                                run_idx + 1,
+                                                spec_clone.full_name,
+                                                e
+                                            ));
+                                        }
                                     }
                                 }
                             }
@@ -626,15 +669,18 @@ pub async fn run(
                                     measurements.insert(Lang::Go, m);
                                 }
                                 Err(e) => {
-                                    if format!("{}", e).contains("timed out") {
-                                        measurements
-                                            .insert(Lang::Go, Measurement::timeout_marker());
+                                    if spec_clone.kind == BenchmarkKind::Async {
+                                        measurements.insert(
+                                            Lang::Go,
+                                            async_error_measurement(&format!("{}", e)),
+                                        );
+                                    } else {
+                                        return Err(miette!(
+                                            "Go benchmark failed for {}: {}",
+                                            spec_clone.full_name,
+                                            e
+                                        ));
                                     }
-                                    print!(
-                                        "\r    {} {}                    ",
-                                        "Go:".red(),
-                                        format!("{}", e).red()
-                                    );
                                 }
                             }
                         }
@@ -649,9 +695,9 @@ pub async fn run(
                         // This ensures script writing and syntax checking is not included in the
                         // wall-clock time
                         let precompile_start = Instant::now();
-                        if let Err(e) = rt.precompile(&spec_clone, suite).await {
-                            eprintln!("    {} Pre-compilation failed: {}", "TS:".red(), e);
-                        }
+                        rt.precompile(&spec_clone, suite).await.map_err(|e| {
+                            miette!("TS pre-compilation failed ({}): {}", spec_clone.full_name, e)
+                        })?;
                         let precompile_elapsed = precompile_start.elapsed();
                         if precompile_elapsed.as_millis() > 100 {
                             print!(
@@ -674,12 +720,17 @@ pub async fn run(
                                 match run_with_optional_timeout(rt, &spec_clone, suite).await {
                                     Ok(m) => run_measurements.push(m),
                                     Err(e) => {
-                                        eprintln!(
-                                            "\n    {} run {} failed: {}",
-                                            "TS:".red(),
-                                            run_idx + 1,
-                                            e
-                                        );
+                                        let err = format!("{}", e);
+                                        if spec_clone.kind == BenchmarkKind::Async {
+                                            run_measurements.push(async_error_measurement(&err));
+                                        } else {
+                                            return Err(miette!(
+                                                "TS run {} failed for {}: {}",
+                                                run_idx + 1,
+                                                spec_clone.full_name,
+                                                e
+                                            ));
+                                        }
                                     }
                                 }
                             }
@@ -730,17 +781,18 @@ pub async fn run(
                                     measurements.insert(Lang::TypeScript, m);
                                 }
                                 Err(e) => {
-                                    if format!("{}", e).contains("timed out") {
+                                    if spec_clone.kind == BenchmarkKind::Async {
                                         measurements.insert(
                                             Lang::TypeScript,
-                                            Measurement::timeout_marker(),
+                                            async_error_measurement(&format!("{}", e)),
                                         );
+                                    } else {
+                                        return Err(miette!(
+                                            "TS benchmark failed for {}: {}",
+                                            spec_clone.full_name,
+                                            e
+                                        ));
                                     }
-                                    print!(
-                                        "\r    {} {}                    ",
-                                        "TS:".red(),
-                                        format!("{}", e).red()
-                                    );
                                 }
                             }
                         }
@@ -754,9 +806,9 @@ pub async fn run(
                         // Pre-compile the benchmark binary before timing starts
                         // This ensures compilation overhead is not included in the wall-clock time
                         let precompile_start = Instant::now();
-                        if let Err(e) = rt.precompile(&spec_clone, suite).await {
-                            eprintln!("    {} Pre-compilation failed: {}", "Rust:".red(), e);
-                        }
+                        rt.precompile(&spec_clone, suite).await.map_err(|e| {
+                            miette!("Rust pre-compilation failed ({}): {}", spec_clone.full_name, e)
+                        })?;
                         let precompile_elapsed = precompile_start.elapsed();
                         if precompile_elapsed.as_millis() > 100 {
                             print!(
@@ -779,12 +831,17 @@ pub async fn run(
                                 match run_with_optional_timeout(rt, &spec_clone, suite).await {
                                     Ok(m) => run_measurements.push(m),
                                     Err(e) => {
-                                        eprintln!(
-                                            "\n    {} run {} failed: {}",
-                                            "Rust:".red(),
-                                            run_idx + 1,
-                                            e
-                                        );
+                                        let err = format!("{}", e);
+                                        if spec_clone.kind == BenchmarkKind::Async {
+                                            run_measurements.push(async_error_measurement(&err));
+                                        } else {
+                                            return Err(miette!(
+                                                "Rust run {} failed for {}: {}",
+                                                run_idx + 1,
+                                                spec_clone.full_name,
+                                                e
+                                            ));
+                                        }
                                     }
                                 }
                             }
@@ -835,15 +892,18 @@ pub async fn run(
                                     measurements.insert(Lang::Rust, m);
                                 }
                                 Err(e) => {
-                                    if format!("{}", e).contains("timed out") {
-                                        measurements
-                                            .insert(Lang::Rust, Measurement::timeout_marker());
+                                    if spec_clone.kind == BenchmarkKind::Async {
+                                        measurements.insert(
+                                            Lang::Rust,
+                                            async_error_measurement(&format!("{}", e)),
+                                        );
+                                    } else {
+                                        return Err(miette!(
+                                            "Rust benchmark failed for {}: {}",
+                                            spec_clone.full_name,
+                                            e
+                                        ));
                                     }
-                                    print!(
-                                        "\r    {} {}                    ",
-                                        "Rust:".red(),
-                                        format!("{}", e).red()
-                                    );
                                 }
                             }
                         }

@@ -127,7 +127,18 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
 
         // Run npm install to install dev dependencies (@types/node, typescript)
         if options.quiet {
-            let _ = Command::new("npm").arg("install").current_dir(&ts_env).output();
+            let output = Command::new("npm")
+                .arg("install")
+                .current_dir(&ts_env)
+                .output()
+                .map_err(|e| miette::miette!("Could not run npm install: {}", e))?;
+            if !output.status.success() {
+                return Err(miette::miette!(
+                    "npm install failed in {}:\n{}",
+                    ts_env.display(),
+                    terminal::stderr_excerpt(&output.stderr, 10)
+                ));
+            }
         } else {
             let spinner = terminal::step_spinner("Installing TypeScript dependencies...");
             let npm_result = terminal::run_command_with_spinner(
@@ -139,13 +150,13 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
                     terminal::finish_success(&spinner, "TypeScript dependencies installed");
                 }
                 Ok(output) => {
-                    let err_msg = terminal::first_error_line(&output.stderr);
-                    terminal::finish_failure(&spinner, &format!("npm install failed: {}", err_msg));
-                    eprintln!("  Run 'npm install' manually in .polybench/runtime-env/ts/");
+                    terminal::finish_failure(&spinner, "npm install failed");
+                    terminal::print_stderr_excerpt(&output.stderr, 8);
+                    return Err(miette::miette!("npm install failed in {}", ts_env.display()));
                 }
                 Err(e) => {
                     terminal::finish_failure(&spinner, &format!("Could not run npm: {}", e));
-                    eprintln!("  Run 'npm install' manually in .polybench/runtime-env/ts/");
+                    return Err(miette::miette!("Could not run npm install: {}", e));
                 }
             }
         }

@@ -7,9 +7,15 @@
 //! Use this when the .polybench directory is deleted, corrupted, or after cloning
 //! a repo where it was gitignored.
 
-use crate::{manifest, runtime_env_go, runtime_env_rust, runtime_env_ts, templates, terminal};
+use crate::{
+    error::ProjectError, manifest, runtime_env_go, runtime_env_rust, runtime_env_ts, templates,
+    terminal,
+};
 use miette::Result;
-use std::{path::Path, process::Command};
+use std::{
+    path::Path,
+    process::{Command, Output},
+};
 
 /// Options for the build command
 pub struct BuildOptions {
@@ -23,6 +29,27 @@ impl Default for BuildOptions {
     fn default() -> Self {
         Self { force: false, skip_install: false }
     }
+}
+
+fn command_status_string(output: &Output) -> String {
+    output
+        .status
+        .code()
+        .map(|c| format!("exit code {}", c))
+        .unwrap_or_else(|| "terminated by signal".to_string())
+}
+
+fn command_failure(command: &str, cwd: &Path, output: &Output, hint: &str) -> miette::Report {
+    miette::miette!(
+        "{}",
+        ProjectError::command_failed(
+            command,
+            cwd.display().to_string(),
+            command_status_string(output),
+            terminal::stderr_excerpt(&output.stderr, 12),
+            hint
+        )
+    )
 }
 
 /// Build/regenerate the .polybench runtime environment
@@ -114,11 +141,17 @@ fn build_go_env(
             .map_err(|e| miette::miette!("Failed to run go get: {}", e))?;
 
             if !output.status.success() {
-                let err_msg = terminal::first_error_line(&output.stderr);
-                terminal::finish_warning_indented(
+                terminal::finish_failure_indented(
                     &spinner,
-                    &format!("Failed to install {}: {}", package, err_msg),
+                    &format!("Failed to install {}", package),
                 );
+                terminal::print_stderr_excerpt(&output.stderr, 6);
+                return Err(command_failure(
+                    &format!("go get {}", go_get_arg),
+                    &go_env,
+                    &output,
+                    "Fix Go dependency resolution issues before continuing.",
+                ));
             } else {
                 terminal::finish_success_indented(&spinner, package);
             }
@@ -206,16 +239,22 @@ fn build_ts_env(
                 terminal::finish_success_indented(&spinner, "npm dependencies installed");
             }
             Ok(out) => {
-                let err_msg = terminal::first_error_line(&out.stderr);
-                terminal::finish_warning_indented(
-                    &spinner,
-                    &format!("npm install failed: {}", err_msg),
-                );
-                eprintln!("    Run 'npm install' manually in {}", ts_env.display());
+                terminal::finish_failure_indented(&spinner, "npm install failed");
+                terminal::print_stderr_excerpt(&out.stderr, 6);
+                return Err(command_failure(
+                    "npm install",
+                    &ts_env,
+                    &out,
+                    "Fix npm install errors and rerun build.",
+                ));
             }
             Err(e) => {
                 terminal::finish_warning_indented(&spinner, &format!("Could not run npm: {}", e));
-                eprintln!("    Run 'npm install' manually in {}", ts_env.display());
+                return Err(miette::miette!(
+                    "Could not run npm install in {}: {}",
+                    ts_env.display(),
+                    e
+                ));
             }
         }
     } else {
@@ -290,16 +329,22 @@ fn build_rust_env(
                 terminal::finish_success_indented(&spinner, "Cargo dependencies fetched");
             }
             Ok(out) => {
-                let err_msg = terminal::first_error_line(&out.stderr);
-                terminal::finish_warning_indented(
-                    &spinner,
-                    &format!("cargo fetch failed: {}", err_msg),
-                );
-                eprintln!("    Run 'cargo fetch' manually in {}", rust_env.display());
+                terminal::finish_failure_indented(&spinner, "cargo fetch failed");
+                terminal::print_stderr_excerpt(&out.stderr, 6);
+                return Err(command_failure(
+                    "cargo fetch",
+                    &rust_env,
+                    &out,
+                    "Fix Cargo fetch issues and rerun build.",
+                ));
             }
             Err(e) => {
                 terminal::finish_warning_indented(&spinner, &format!("Could not run cargo: {}", e));
-                eprintln!("    Run 'cargo fetch' manually in {}", rust_env.display());
+                return Err(miette::miette!(
+                    "Could not run cargo fetch in {}: {}",
+                    rust_env.display(),
+                    e
+                ));
             }
         }
     } else if options.skip_install {

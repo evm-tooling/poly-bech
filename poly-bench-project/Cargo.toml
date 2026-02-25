@@ -16,3 +16,4 @@ toml_edit.workspace = true
 colored.workspace = true
 indicatif.workspace = true
 tempfile.workspace = true
+thiserror.workspace = true

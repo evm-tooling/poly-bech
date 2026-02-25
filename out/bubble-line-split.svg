@@ -27,12 +27,6 @@
 <line x1="90.0" y1="84.0" x2="940.0" y2="84.0" stroke="rgba(255,255,255,0.10)"/>
 <line x1="84.0" y1="84.0" x2="90.0" y2="84.0" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
 <text x="82.0" y="88.0" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">1e3</text>
-<line x1="90.0" y1="96.8" x2="940.0" y2="96.8" stroke="rgba(255,255,255,0.10)"/>
-<line x1="84.0" y1="96.8" x2="90.0" y2="96.8" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
-<text x="82.0" y="100.8" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">1e2</text>
-<line x1="90.0" y1="253.7" x2="940.0" y2="253.7" stroke="rgba(255,255,255,0.10)"/>
-<line x1="84.0" y1="253.7" x2="90.0" y2="253.7" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
-<text x="82.0" y="257.7" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">1e1</text>
 <line x1="90.0" y1="318.3" x2="940.0" y2="318.3" stroke="rgba(255,255,255,0.10)"/>
 <line x1="84.0" y1="318.3" x2="90.0" y2="318.3" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
 <text x="82.0" y="322.3" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">1</text>
@@ -87,56 +81,27 @@
 <circle cx="940.00" cy="84.00" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
 <path d="M 90.00 84.00 L 184.44 84.00 L 278.89 84.00 L 373.33 84.00 L 467.78 84.00 L 562.22 84.00 L 656.67 84.00 L 751.11 84.00 L 845.56 84.00 L 940.00 84.00" fill="none" stroke="#00ADD8" stroke-width="2"/>
 <path d="M 90.00 84.00 L 100.62 84.00 L 111.25 84.00 L 121.88 84.00 L 132.50 84.00 L 143.12 84.00 L 153.75 84.00 L 164.38 84.00 L 175.00 84.00 L 185.62 84.00 L 196.25 84.00 L 206.88 84.00 L 217.50 84.00 L 228.12 84.00 L 238.75 84.00 L 249.38 84.00 L 260.00 84.00 L 270.62 84.00 L 281.25 84.00 L 291.88 84.00 L 302.50 84.00 L 313.12 84.00 L 323.75 84.00 L 334.38 84.00 L 345.00 84.00 L 355.62 84.00 L 366.25 84.00 L 376.88 84.00 L 387.50 84.00 L 398.12 84.00 L 408.75 84.00 L 419.38 84.00 L 430.00 84.00 L 440.62 84.00 L 451.25 84.00 L 461.88 84.00 L 472.50 84.00 L 483.12 84.00 L 493.75 84.00 L 504.38 84.00 L 515.00 84.00 L 525.62 84.00 L 536.25 84.00 L 546.88 84.00 L 557.50 84.00 L 568.12 84.00 L 578.75 84.00 L 589.38 84.00 L 600.00 84.00 L 610.62 84.00 L 621.25 84.00 L 631.88 84.00 L 642.50 84.00 L 653.12 84.00 L 663.75 84.00 L 674.38 84.00 L 685.00 84.00 L 695.62 84.00 L 706.25 84.00 L 716.88 84.00 L 727.50 84.00 L 738.12 84.00 L 748.75 84.00 L 759.38 84.00 L 770.00 84.00 L 780.62 84.00 L 791.25 84.00 L 801.88 84.00 L 812.50 84.00 L 823.12 84.00 L 833.75 84.00 L 844.38 84.00 L 855.00 84.00 L 865.62 84.00 L 876.25 84.00 L 886.88 84.00 L 897.50 84.00 L 908.12 84.00 L 918.75 84.00 L 929.38 84.00 L 940.00 84.00" fill="none" stroke="#00ADD8" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.9"/>
-<text x="930.0" y="100.0" text-anchor="end" font-family="sans-serif" font-size="13" font-weight="700" fill="#00ADD8" paint-order="stroke" stroke="#1E1E20" stroke-width="3">O(n^2)</text>
-<circle cx="90.00" cy="286.00" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="184.44" cy="84.00" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="278.89" cy="84.00" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="373.33" cy="84.00" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="467.78" cy="84.00" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="562.22" cy="84.00" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="656.67" cy="84.00" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="751.11" cy="187.57" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="845.56" cy="84.00" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="940.00" cy="84.00" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<path d="M 184.44 84.00 L 278.89 84.00 L 373.33 84.00 L 467.78 84.00 L 562.22 84.00 L 656.67 84.00 L 751.11 187.57 L 845.56 84.00 L 940.00 84.00" fill="none" stroke="#3178C6" stroke-width="2"/>
-<path d="M 90.00 84.00 L 100.62 84.00 L 111.25 84.00 L 121.88 84.00 L 132.50 84.00 L 143.12 84.00 L 153.75 84.00 L 164.38 84.00 L 175.00 84.00 L 185.62 84.00 L 196.25 84.00 L 206.88 84.00 L 217.50 84.00 L 228.12 84.00 L 238.75 84.00 L 249.38 84.00 L 260.00 84.00 L 270.62 84.00 L 281.25 84.00 L 291.88 84.00 L 302.50 84.00 L 313.12 84.00 L 323.75 84.00 L 334.38 84.00 L 345.00 84.00 L 355.62 84.00 L 366.25 84.00 L 376.88 84.00 L 387.50 84.00 L 398.12 84.00 L 408.75 84.00 L 419.38 84.00 L 430.00 84.00 L 440.62 84.00 L 451.25 84.00 L 461.88 84.00 L 472.50 84.00 L 483.12 84.00 L 493.75 84.00 L 504.38 84.00 L 515.00 84.00 L 525.62 84.00 L 536.25 84.00 L 546.88 84.00 L 557.50 84.00 L 568.12 84.00 L 578.75 84.00 L 589.38 84.00 L 600.00 84.00 L 610.62 84.00 L 621.25 84.00 L 631.88 84.00 L 642.50 84.00 L 653.12 84.00 L 663.75 84.00 L 674.38 84.00 L 685.00 84.00 L 695.62 84.00 L 706.25 84.00 L 716.88 84.00 L 727.50 84.00 L 738.12 84.00 L 748.75 84.00 L 759.38 84.00 L 770.00 84.00 L 780.62 84.00 L 791.25 84.00 L 801.88 84.00 L 812.50 84.00 L 823.12 84.00 L 833.75 84.00 L 844.38 84.00 L 855.00 84.00 L 865.62 84.00 L 876.25 84.00 L 886.88 84.00 L 897.50 84.00 L 908.12 84.00 L 918.75 84.00 L 929.38 84.00 L 940.00 84.00" fill="none" stroke="#3178C6" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.9"/>
-<text x="930.0" y="140.0" text-anchor="end" font-family="sans-serif" font-size="13" font-weight="700" fill="#3178C6" paint-order="stroke" stroke="#1E1E20" stroke-width="3">mixed</text>
+<text x="930.0" y="100.0" text-anchor="end" font-family="sans-serif" font-size="13" font-weight="700" fill="#00ADD8" paint-order="stroke" stroke="#1E1E20" stroke-width="3">mixed</text>
 <text x="490.0" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="700" fill="#FFFFFF">Bubble Sort - O(n²)</text>
 <text x="490.0" y="50" text-anchor="middle" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">Classic bubble sort - quadratic trend with regression + error overlays</text>
 <text x="515.0" y="534.0" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="700" fill="rgba(255,255,255,0.45)">Benchmark (natural order)</text>
 <text x="14.0" y="290.0" transform="rotate(-90 14.0 290.0)" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="700" fill="rgba(255,255,255,0.45)">bytes/op (split scale)</text>
 <line x1="90.0" y1="253.7" x2="940.0" y2="253.7" stroke="rgba(255,255,255,0.7)" stroke-dasharray="3 3" stroke-width="1.2"/>
-<rect x="100.0" y="94.0" width="118" height="98.0" rx="8" fill="#1E1E20" stroke="rgba(255,255,255,0.14)" stroke-width="1"/>
-<rect x="100.0" y="94.0" width="118" height="98.0" rx="8" fill="rgba(255,255,255,0.015)" fill-opacity="0.15"/>
+<rect x="100.0" y="94.0" width="118" height="54.0" rx="8" fill="#1E1E20" stroke="rgba(255,255,255,0.14)" stroke-width="1"/>
+<rect x="100.0" y="94.0" width="118" height="54.0" rx="8" fill="rgba(255,255,255,0.015)" fill-opacity="0.15"/>
 <text x="110.0" y="110.0" font-family="sans-serif" font-size="11" font-weight="600" fill="rgba(255,255,255,0.45)">Legend</text>
 <circle cx="112.0" cy="129.0" r="4.5" fill="#00ADD8"/>
 <text x="122.0" y="132.0" font-family="sans-serif" font-size="11" fill="#FFFFFF">Go</text>
-<circle cx="112.0" cy="151.0" r="4.5" fill="#3178C6"/>
-<text x="122.0" y="154.0" font-family="sans-serif" font-size="11" fill="#FFFFFF">TypeScript</text>
-<circle cx="112.0" cy="173.0" r="4.5" fill="#DEA584"/>
-<text x="122.0" y="176.0" font-family="sans-serif" font-size="11" fill="#FFFFFF">Rust</text>
 <rect x="90.0" y="552.0" width="850.0" height="104.0" rx="8" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.14)" stroke-width="1"/>
 <circle cx="110.0" cy="572.0" r="5" fill="#00ADD8"/>
 <text x="120.0" y="576.0" font-family="sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">Go</text>
 <circle cx="109.0" cy="586.0" r="2.8" fill="#FFBA07"/>
 <text x="116.0" y="590.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">
-mean: 4.89 KB/op</text>
+mean: 5.75 KB/op</text>
 <circle cx="109.0" cy="602.0" r="2.8" fill="#FFBA07"/>
-<text x="116.0" y="606.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">min / max: 858 B/op / 11.09 KB/op</text>
+<text x="116.0" y="606.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">min / max: 1.66 KB/op / 11.39 KB/op</text>
 <circle cx="109.0" cy="618.0" r="2.8" fill="#FFBA07"/>
-<text x="116.0" y="622.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">samples: 2,	R²: 0.609</text>
+<text x="116.0" y="622.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">samples: 4,	R²: 0.990</text>
 <circle cx="109.0" cy="634.0" r="2.8" fill="#FFBA07"/>
-<text x="116.0" y="638.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">equation: y = 1651.16 + 0.01·x²</text>
-<line x1="515.0" y1="564.0" x2="515.0" y2="646.0" stroke="rgba(255,255,255,0.14)" stroke-width="1" stroke-opacity="0.5"/>
-<circle cx="531.0" cy="572.0" r="5" fill="#3178C6"/>
-<text x="541.0" y="576.0" font-family="sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">TypeScript</text>
-<circle cx="530.0" cy="586.0" r="2.8" fill="#FFBA07"/>
-<text x="537.0" y="590.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">
-mean: 2.40 KB/op</text>
-<circle cx="530.0" cy="602.0" r="2.8" fill="#FFBA07"/>
-<text x="537.0" y="606.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">min / max: 7 B/op / 8.62 KB/op</text>
-<circle cx="530.0" cy="618.0" r="2.8" fill="#FFBA07"/>
-<text x="537.0" y="622.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">samples: 2,	R²: 0.695</text>
-<circle cx="530.0" cy="634.0" r="2.8" fill="#FFBA07"/>
-<text x="537.0" y="638.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">equation: y = 1176.68 + -7.67·x +…</text>
+<text x="116.0" y="638.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">equation: y = 974.00 + 4.13·x + 0…</text>
 </svg>

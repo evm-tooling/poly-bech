@@ -1,13 +1,14 @@
 //! poly-bench CLI entrypoint
 
 mod init_t3;
+mod ui;
 mod version_check;
 mod welcome;
 
 use clap::{Parser, Subcommand};
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::ProgressBar;
 use miette::Result;
-use std::{io::Read, path::PathBuf, time::Duration};
+use std::{io::Read, path::PathBuf};
 
 use poly_bench_dsl as dsl;
 use poly_bench_executor as executor;
@@ -318,6 +319,9 @@ async fn cmd_lsp() -> Result<()> {
 async fn cmd_check(file: &PathBuf, show_ast: bool) -> Result<()> {
     use colored::Colorize;
 
+    ui::section("Check benchmark file");
+    ui::kv("file", file.display().to_string());
+
     let source = std::fs::read_to_string(file)
         .map_err(|e| miette::miette!("Failed to read file {}: {}", file.display(), e))?;
 
@@ -325,17 +329,16 @@ async fn cmd_check(file: &PathBuf, show_ast: bool) -> Result<()> {
 
     match dsl::parse(&source, filename) {
         Ok(ast) => {
-            println!("{} {}", "✓".green().bold(), file.display());
-            println!("  {} suite(s) parsed successfully", ast.suites.len());
+            ui::success(format!("Parsed {}", file.display()));
+            ui::kv("suites", ast.suites.len().to_string());
 
             for suite in &ast.suites {
-                println!(
-                    "  {} suite '{}': {} benchmarks, {} fixtures",
-                    "→".blue(),
-                    suite.name,
+                ui::indented_line(format!(
+                    "{}: {} benchmark(s), {} fixture(s)",
+                    suite.name.bold(),
                     suite.benchmarks.len(),
                     suite.fixtures.len()
-                );
+                ));
             }
 
             if show_ast {
@@ -453,7 +456,13 @@ async fn compile_files_parallel_cached(
     use futures::future::join_all;
 
     let cache_status = if cache.is_enabled() { " (with caching)" } else { "" };
-    println!("{} Compiling {} file(s) in parallel{}...\n", "⚡".cyan(), files.len(), cache_status);
+    ui::section("Compile");
+    ui::kv("mode", "parallel");
+    ui::kv("files", files.len().to_string());
+    ui::kv("cache", if cache.is_enabled() { "enabled" } else { "disabled" });
+    if !cache_status.is_empty() {
+        ui::info("Using compile cache");
+    }
 
     let spinner = create_compiling_spinner();
 
@@ -497,53 +506,16 @@ async fn compile_files_parallel_cached(
         } else {
             String::new()
         };
-        println!(
-            "{} {} - {} benchmark(s) compiled successfully{}",
-            "✓".green().bold(),
+        ui::success(format!(
+            "{} - {} benchmark(s) compiled successfully{}",
             result.file.display(),
             result.bench_count,
             cache_info.dimmed()
-        );
+        ));
     }
 
     for result in &failed_results {
-        eprintln!(
-            "{} {} - {} error(s):",
-            "✗".red().bold(),
-            result.file.display(),
-            result.errors.len()
-        );
-
-        for err in &result.errors {
-            let header = if err.benchmarks.len() == 1 {
-                format!("[{}] {}", err.lang, err.benchmarks[0])
-            } else {
-                format!(
-                    "[{}] {} error (affects {} benchmarks)",
-                    err.lang,
-                    err.source,
-                    err.benchmarks.len()
-                )
-            };
-            eprintln!("  {} {}", "•".red(), header);
-
-            let mut shown_lines = 0;
-            for line in err.message.lines() {
-                if line.contains(".bench file line") {
-                    eprintln!("    {}", line.yellow());
-                } else if line.starts_with("error") || line.contains("error TS") {
-                    eprintln!("    {}", line.red());
-                } else if shown_lines < 8 {
-                    eprintln!("    {}", line.dimmed());
-                }
-                shown_lines += 1;
-                if shown_lines >= 12 {
-                    eprintln!("    {}", "... (truncated)".dimmed());
-                    break;
-                }
-            }
-            eprintln!();
-        }
+        print_compile_errors_for_file(&result.file, &result.errors);
     }
 
     if total_errors > 0 {
@@ -609,43 +581,7 @@ async fn compile_files_sequential_cached(
 
         if !compile_errors.is_empty() {
             total_errors += compile_errors.len();
-            eprintln!(
-                "{} {} - {} error(s):",
-                "✗".red().bold(),
-                bench_file.display(),
-                compile_errors.len()
-            );
-
-            for err in &compile_errors {
-                let header = if err.benchmarks.len() == 1 {
-                    format!("[{}] {}", err.lang, err.benchmarks[0])
-                } else {
-                    format!(
-                        "[{}] {} error (affects {} benchmarks)",
-                        err.lang,
-                        err.source,
-                        err.benchmarks.len()
-                    )
-                };
-                eprintln!("  {} {}", "•".red(), header);
-
-                let mut shown_lines = 0;
-                for line in err.message.lines() {
-                    if line.contains(".bench file line") {
-                        eprintln!("    {}", line.yellow());
-                    } else if line.starts_with("error") || line.contains("error TS") {
-                        eprintln!("    {}", line.red());
-                    } else if shown_lines < 8 {
-                        eprintln!("    {}", line.dimmed());
-                    }
-                    shown_lines += 1;
-                    if shown_lines >= 12 {
-                        eprintln!("    {}", "... (truncated)".dimmed());
-                        break;
-                    }
-                }
-                eprintln!();
-            }
+            print_compile_errors_for_file(bench_file, &compile_errors);
         } else {
             let cache_info = if stats.cache_hits > 0 {
                 format!(" ({} cached)", stats.cache_hits)
@@ -741,6 +677,15 @@ async fn cmd_run(
 ) -> Result<()> {
     use colored::Colorize;
 
+    ui::section("Run benchmarks");
+    ui::kv("report", report_format.to_string());
+    if let Some(ref l) = lang {
+        ui::kv("language-filter", l);
+    }
+    if let Some(i) = iterations {
+        ui::kv("iterations-override", i.to_string());
+    }
+
     // Get benchmark files to run
     let files = match file {
         Some(f) => vec![f],
@@ -808,50 +753,7 @@ async fn cmd_run(
         spinner.finish_and_clear();
 
         if !compile_errors.is_empty() {
-            eprintln!("\n{} Compilation errors in {}:\n", "✗".red().bold(), bench_file.display());
-
-            for err in &compile_errors {
-                // Show error header with language and source type
-                let header = if err.benchmarks.len() == 1 {
-                    format!("[{}] {}", err.lang, err.benchmarks[0])
-                } else {
-                    format!(
-                        "[{}] {} error (affects {} benchmarks: {})",
-                        err.lang,
-                        err.source,
-                        err.benchmarks.len(),
-                        if err.benchmarks.len() <= 3 {
-                            err.benchmarks.join(", ")
-                        } else {
-                            format!(
-                                "{}, {} more...",
-                                err.benchmarks[..2].join(", "),
-                                err.benchmarks.len() - 2
-                            )
-                        }
-                    )
-                };
-                eprintln!("  {} {}", "•".red(), header);
-
-                // Show error message with better formatting
-                let mut shown_lines = 0;
-                for line in err.message.lines() {
-                    // Highlight lines that show .bench file locations
-                    if line.contains(".bench file line") {
-                        eprintln!("    {}", line.yellow());
-                    } else if line.starts_with("error") || line.contains("error TS") {
-                        eprintln!("    {}", line.red());
-                    } else if shown_lines < 8 {
-                        eprintln!("    {}", line.dimmed());
-                    }
-                    shown_lines += 1;
-                    if shown_lines >= 12 {
-                        eprintln!("    {}", "... (truncated)".dimmed());
-                        break;
-                    }
-                }
-                eprintln!();
-            }
+            print_compile_errors_for_file(bench_file, &compile_errors);
 
             // Count total affected benchmarks for the summary
             let total_affected: usize = compile_errors.iter().map(|e| e.benchmarks.len()).sum();
@@ -861,9 +763,8 @@ async fn cmd_run(
                 total_affected
             ));
         }
-        println!("  {} All benchmarks compile successfully\n", "✓".green());
-
-        println!("{} Running benchmarks from {}", "▶".green().bold(), bench_file.display());
+        ui::success("Pre-run compile validation passed");
+        ui::subsection(&format!("Executing {}", bench_file.display()));
 
         // Execute benchmarks
         let results = executor::run(&ir, &langs, iterations, &project_roots).await?;
@@ -1388,14 +1289,38 @@ async fn cmd_fmt(files: Vec<PathBuf>, write: bool) -> Result<()> {
 
 /// Create a spinner for the "Compiling..." phase
 fn create_compiling_spinner() -> ProgressBar {
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.cyan} {msg}")
-            .unwrap()
-            .tick_strings(&["[±]", "[∓]", "[±]", "[∓]"]),
-    );
-    pb.set_message("Compiling...");
-    pb.enable_steady_tick(Duration::from_millis(120));
-    pb
+    ui::spinner("Compiling...")
+}
+
+fn print_compile_errors_for_file(file: &std::path::Path, errors: &[executor::CompileError]) {
+    ui::failure(format!("{} - {} compile error(s)", file.display(), errors.len()));
+    for err in errors {
+        print_compile_error(err);
+    }
+}
+
+fn print_compile_error(err: &executor::CompileError) {
+    use colored::Colorize;
+
+    let header = if err.benchmarks.len() == 1 {
+        format!("[{}] {}", err.lang, err.benchmarks[0])
+    } else {
+        format!("[{}] {} error (affects {} benchmarks)", err.lang, err.source, err.benchmarks.len())
+    };
+    eprintln!("    {} {}", "•".red(), header.bold());
+
+    let lines: Vec<&str> = err.message.lines().collect();
+    for line in lines.iter().take(40) {
+        if line.contains(".bench file line") {
+            eprintln!("      {}", line.yellow());
+        } else if line.starts_with("error") || line.contains("error TS") {
+            eprintln!("      {}", line.red());
+        } else {
+            eprintln!("      {}", line.dimmed());
+        }
+    }
+    if lines.len() > 40 {
+        eprintln!("      {}", "... (truncated)".dimmed());
+    }
+    eprintln!();
 }

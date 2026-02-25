@@ -171,27 +171,13 @@ declare suite example performance timeBased sameDataset: false {
         }
     }
 
-    bench memory_profiling_example {
-        description: "Benchmark with memory profiling enabled"
-        targetTime: 2000ms
-        memory: true
-        go: allocateMemory(1024)
-        ts: allocateMemory(1024)
-    }
 
     bench concurrent_execution_example {
         description: "Fixed execution example"
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
     }
-
-    bench concurrent_with_memory {
-        description: "Fixed execution with memory profiling"
-        memory: true
-        go: allocateMemory(512)
-        ts: allocateMemory(512)
-    }
-
+    
     bench outlier_detection_example {
         description: "Benchmark with outlier detection enabled"
         targetTime: 2000ms

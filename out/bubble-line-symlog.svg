@@ -21,21 +21,12 @@
 <rect x="90.0" y="84.0" width="850.0" height="404.0" rx="8" fill="rgba(255,255,255,0.02)"/>
 <line x1="90.0" y1="488.0" x2="940.0" y2="488.0" stroke="rgba(255,255,255,0.45)" stroke-width="1.2"/>
 <line x1="90.0" y1="84.0" x2="90.0" y2="488.0" stroke="rgba(255,255,255,0.45)" stroke-width="1.2"/>
-<line x1="90.0" y1="103.7" x2="940.0" y2="103.7" stroke="rgba(255,255,255,0.10)"/>
-<line x1="84.0" y1="103.7" x2="90.0" y2="103.7" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
-<text x="82.0" y="107.7" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">7000</text>
-<line x1="90.0" y1="190.4" x2="940.0" y2="190.4" stroke="rgba(255,255,255,0.10)"/>
-<line x1="84.0" y1="190.4" x2="90.0" y2="190.4" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
-<text x="82.0" y="194.4" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">700</text>
-<line x1="90.0" y1="277.0" x2="940.0" y2="277.0" stroke="rgba(255,255,255,0.10)"/>
-<line x1="84.0" y1="277.0" x2="90.0" y2="277.0" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
-<text x="82.0" y="281.0" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">70</text>
-<line x1="90.0" y1="363.7" x2="940.0" y2="363.7" stroke="rgba(255,255,255,0.10)"/>
-<line x1="84.0" y1="363.7" x2="90.0" y2="363.7" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
-<text x="82.0" y="367.7" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">7</text>
-<line x1="90.0" y1="450.4" x2="940.0" y2="450.4" stroke="rgba(255,255,255,0.10)"/>
-<line x1="84.0" y1="450.4" x2="90.0" y2="450.4" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
-<text x="82.0" y="454.4" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">1</text>
+<line x1="90.0" y1="234.7" x2="940.0" y2="234.7" stroke="rgba(255,255,255,0.10)"/>
+<line x1="84.0" y1="234.7" x2="90.0" y2="234.7" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="82.0" y="238.7" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">1699</text>
+<line x1="90.0" y1="411.3" x2="940.0" y2="411.3" stroke="rgba(255,255,255,0.10)"/>
+<line x1="84.0" y1="411.3" x2="90.0" y2="411.3" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="82.0" y="415.3" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">170</text>
 <line x1="90.0" y1="488.0" x2="940.0" y2="488.0" stroke="rgba(255,255,255,0.10)"/>
 <line x1="84.0" y1="488.0" x2="90.0" y2="488.0" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
 <text x="82.0" y="492.0" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">0</text>
@@ -69,67 +60,38 @@
 <line x1="940.0" y1="84.0" x2="940.0" y2="488.0" stroke="rgba(255,255,255,0.10)"/>
 <line x1="940.0" y1="488.0" x2="940.0" y2="494.0" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
 <text x="940.0" y="508.0" text-anchor="middle" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">n1000</text>
-<circle cx="90.00" cy="182.71" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="184.44" cy="153.97" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="278.89" cy="140.03" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="373.33" cy="126.39" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="467.78" cy="120.23" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="562.22" cy="108.86" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="656.67" cy="102.00" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="751.11" cy="182.71" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="845.56" cy="87.68" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="940.00" cy="85.48" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<path d="M 90.00 182.71 L 184.44 153.97 L 278.89 140.03 L 373.33 126.39 L 467.78 120.23 L 562.22 108.86 L 656.67 102.00 L 751.11 182.71 L 845.56 87.68 L 940.00 85.48" fill="none" stroke="#00ADD8" stroke-width="2"/>
-<path d="M 90.00 156.13 L 100.62 155.68 L 111.25 155.20 L 121.88 154.67 L 132.50 154.11 L 143.12 153.50 L 153.75 152.87 L 164.38 152.20 L 175.00 151.50 L 185.62 150.77 L 196.25 150.02 L 206.88 149.24 L 217.50 148.44 L 228.12 147.61 L 238.75 146.77 L 249.38 145.91 L 260.00 145.03 L 270.62 144.14 L 281.25 143.23 L 291.88 142.32 L 302.50 141.39 L 313.12 140.45 L 323.75 139.51 L 334.38 138.55 L 345.00 137.60 L 355.62 136.63 L 366.25 135.67 L 376.88 134.70 L 387.50 133.73 L 398.12 132.76 L 408.75 131.78 L 419.38 130.81 L 430.00 129.84 L 440.62 128.87 L 451.25 127.90 L 461.88 126.93 L 472.50 125.97 L 483.12 125.01 L 493.75 124.05 L 504.38 123.10 L 515.00 122.15 L 525.62 121.20 L 536.25 120.27 L 546.88 119.33 L 557.50 118.40 L 568.12 117.48 L 578.75 116.56 L 589.38 115.64 L 600.00 114.74 L 610.62 113.83 L 621.25 112.94 L 631.88 112.05 L 642.50 111.16 L 653.12 110.29 L 663.75 109.42 L 674.38 108.55 L 685.00 107.69 L 695.62 106.84 L 706.25 105.99 L 716.88 105.15 L 727.50 104.32 L 738.12 103.49 L 748.75 102.67 L 759.38 101.85 L 770.00 101.05 L 780.62 100.24 L 791.25 99.45 L 801.88 98.66 L 812.50 97.87 L 823.12 97.09 L 833.75 96.32 L 844.38 95.55 L 855.00 94.79 L 865.62 94.04 L 876.25 93.29 L 886.88 92.55 L 897.50 91.81 L 908.12 91.08 L 918.75 90.35 L 929.38 89.63 L 940.00 88.92" fill="none" stroke="#00ADD8" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.9"/>
-<text x="930.0" y="100.0" text-anchor="end" font-family="sans-serif" font-size="13" font-weight="700" fill="#00ADD8" paint-order="stroke" stroke="#1E1E20" stroke-width="3">O(n^2)</text>
-<circle cx="90.00" cy="363.70" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="184.44" cy="242.12" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="278.89" cy="215.60" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="373.33" cy="171.00" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="467.78" cy="159.04" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="562.22" cy="146.59" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="656.67" cy="143.60" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="751.11" cy="312.89" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="845.56" cy="94.97" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<circle cx="940.00" cy="100.11" r="3.5" fill="#3178C6" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
-<path d="M 90.00 363.70 L 184.44 242.12 L 278.89 215.60 L 373.33 171.00 L 467.78 159.04 L 562.22 146.59 L 656.67 143.60 L 751.11 312.89 L 845.56 94.97 L 940.00 100.11" fill="none" stroke="#3178C6" stroke-width="2"/>
-<path d="M 90.00 199.27 L 100.62 203.01 L 111.25 206.87 L 121.88 210.84 L 132.50 214.89 L 143.12 219.02 L 153.75 223.19 L 164.38 227.36 L 175.00 231.46 L 185.62 235.42 L 196.25 239.13 L 206.88 242.46 L 217.50 245.26 L 228.12 247.40 L 238.75 248.75 L 249.38 249.20 L 260.00 248.73 L 270.62 247.37 L 281.25 245.21 L 291.88 242.39 L 302.50 239.06 L 313.12 235.34 L 323.75 231.38 L 334.38 227.28 L 345.00 223.11 L 355.62 218.94 L 366.25 214.81 L 376.88 210.76 L 387.50 206.80 L 398.12 202.94 L 408.75 199.19 L 419.38 195.57 L 430.00 192.05 L 440.62 188.65 L 451.25 185.37 L 461.88 182.19 L 472.50 179.11 L 483.12 176.13 L 493.75 173.25 L 504.38 170.46 L 515.00 167.75 L 525.62 165.13 L 536.25 162.58 L 546.88 160.11 L 557.50 157.71 L 568.12 155.38 L 578.75 153.11 L 589.38 150.90 L 600.00 148.75 L 610.62 146.65 L 621.25 144.61 L 631.88 142.62 L 642.50 140.67 L 653.12 138.78 L 663.75 136.92 L 674.38 135.11 L 685.00 133.34 L 695.62 131.61 L 706.25 129.92 L 716.88 128.26 L 727.50 126.63 L 738.12 125.04 L 748.75 123.48 L 759.38 121.95 L 770.00 120.45 L 780.62 118.98 L 791.25 117.53 L 801.88 116.12 L 812.50 114.72 L 823.12 113.36 L 833.75 112.01 L 844.38 110.69 L 855.00 109.39 L 865.62 108.11 L 876.25 106.86 L 886.88 105.62 L 897.50 104.40 L 908.12 103.20 L 918.75 102.02 L 929.38 100.86 L 940.00 99.72" fill="none" stroke="#3178C6" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.9"/>
-<text x="930.0" y="155.7" text-anchor="end" font-family="sans-serif" font-size="13" font-weight="700" fill="#3178C6" paint-order="stroke" stroke="#1E1E20" stroke-width="3">mixed</text>
+<circle cx="90.00" cy="234.72" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
+<circle cx="184.44" cy="228.52" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
+<circle cx="278.89" cy="199.99" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
+<circle cx="373.33" cy="171.96" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
+<circle cx="467.78" cy="159.44" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
+<circle cx="562.22" cy="135.74" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
+<circle cx="656.67" cy="121.51" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
+<circle cx="751.11" cy="114.47" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
+<circle cx="845.56" cy="92.06" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
+<circle cx="940.00" cy="87.01" r="3.5" fill="#00ADD8" stroke="rgba(255,255,255,0.15)" stroke-width="1.2" filter="url(#barShadow)"/>
+<path d="M 90.00 234.72 L 184.44 228.52 L 278.89 199.99 L 373.33 171.96 L 467.78 159.44 L 562.22 135.74 L 656.67 121.51 L 751.11 114.47 L 845.56 92.06 L 940.00 87.01" fill="none" stroke="#00ADD8" stroke-width="2"/>
+<path d="M 90.00 246.55 L 100.62 243.31 L 111.25 240.12 L 121.88 236.97 L 132.50 233.87 L 143.12 230.82 L 153.75 227.81 L 164.38 224.85 L 175.00 221.92 L 185.62 219.05 L 196.25 216.21 L 206.88 213.42 L 217.50 210.67 L 228.12 207.95 L 238.75 205.28 L 249.38 202.64 L 260.00 200.05 L 270.62 197.49 L 281.25 194.96 L 291.88 192.47 L 302.50 190.02 L 313.12 187.59 L 323.75 185.20 L 334.38 182.85 L 345.00 180.52 L 355.62 178.23 L 366.25 175.97 L 376.88 173.73 L 387.50 171.53 L 398.12 169.35 L 408.75 167.20 L 419.38 165.07 L 430.00 162.98 L 440.62 160.91 L 451.25 158.86 L 461.88 156.84 L 472.50 154.84 L 483.12 152.87 L 493.75 150.92 L 504.38 148.99 L 515.00 147.09 L 525.62 145.21 L 536.25 143.34 L 546.88 141.50 L 557.50 139.68 L 568.12 137.88 L 578.75 136.10 L 589.38 134.34 L 600.00 132.59 L 610.62 130.87 L 621.25 129.16 L 631.88 127.47 L 642.50 125.80 L 653.12 124.15 L 663.75 122.51 L 674.38 120.89 L 685.00 119.28 L 695.62 117.70 L 706.25 116.12 L 716.88 114.56 L 727.50 113.02 L 738.12 111.49 L 748.75 109.98 L 759.38 108.48 L 770.00 106.99 L 780.62 105.52 L 791.25 104.06 L 801.88 102.61 L 812.50 101.18 L 823.12 99.76 L 833.75 98.35 L 844.38 96.96 L 855.00 95.57 L 865.62 94.20 L 876.25 92.84 L 886.88 91.50 L 897.50 90.16 L 908.12 88.83 L 918.75 87.52 L 929.38 86.22 L 940.00 84.92" fill="none" stroke="#00ADD8" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.9"/>
+<text x="930.0" y="100.0" text-anchor="end" font-family="sans-serif" font-size="13" font-weight="700" fill="#00ADD8" paint-order="stroke" stroke="#1E1E20" stroke-width="3">mixed</text>
 <text x="490.0" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="700" fill="#FFFFFF">Bubble Sort - O(n²)</text>
 <text x="490.0" y="50" text-anchor="middle" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">Classic bubble sort - quadratic trend with regression + error overlays</text>
 <text x="515.0" y="534.0" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="700" fill="rgba(255,255,255,0.45)">Benchmark (natural order)</text>
 <text x="14.0" y="290.0" transform="rotate(-90 14.0 290.0)" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="700" fill="rgba(255,255,255,0.45)">bytes/op (symlog scale)</text>
-<rect x="100.0" y="94.0" width="118" height="98.0" rx="8" fill="#1E1E20" stroke="rgba(255,255,255,0.14)" stroke-width="1"/>
-<rect x="100.0" y="94.0" width="118" height="98.0" rx="8" fill="rgba(255,255,255,0.015)" fill-opacity="0.15"/>
+<rect x="100.0" y="94.0" width="118" height="54.0" rx="8" fill="#1E1E20" stroke="rgba(255,255,255,0.14)" stroke-width="1"/>
+<rect x="100.0" y="94.0" width="118" height="54.0" rx="8" fill="rgba(255,255,255,0.015)" fill-opacity="0.15"/>
 <text x="110.0" y="110.0" font-family="sans-serif" font-size="11" font-weight="600" fill="rgba(255,255,255,0.45)">Legend</text>
 <circle cx="112.0" cy="129.0" r="4.5" fill="#00ADD8"/>
 <text x="122.0" y="132.0" font-family="sans-serif" font-size="11" fill="#FFFFFF">Go</text>
-<circle cx="112.0" cy="151.0" r="4.5" fill="#3178C6"/>
-<text x="122.0" y="154.0" font-family="sans-serif" font-size="11" fill="#FFFFFF">TypeScript</text>
-<circle cx="112.0" cy="173.0" r="4.5" fill="#DEA584"/>
-<text x="122.0" y="176.0" font-family="sans-serif" font-size="11" fill="#FFFFFF">Rust</text>
 <rect x="90.0" y="552.0" width="850.0" height="104.0" rx="8" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.14)" stroke-width="1"/>
 <circle cx="110.0" cy="572.0" r="5" fill="#00ADD8"/>
 <text x="120.0" y="576.0" font-family="sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">Go</text>
 <circle cx="109.0" cy="586.0" r="2.8" fill="#FFBA07"/>
 <text x="116.0" y="590.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">
-mean: 4.89 KB/op</text>
+mean: 5.75 KB/op</text>
 <circle cx="109.0" cy="602.0" r="2.8" fill="#FFBA07"/>
-<text x="116.0" y="606.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">min / max: 858 B/op / 11.09 KB/op</text>
+<text x="116.0" y="606.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">min / max: 1.66 KB/op / 11.39 KB/op</text>
 <circle cx="109.0" cy="618.0" r="2.8" fill="#FFBA07"/>
-<text x="116.0" y="622.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">samples: 2,	R²: 0.609</text>
+<text x="116.0" y="622.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">samples: 4,	R²: 0.990</text>
 <circle cx="109.0" cy="634.0" r="2.8" fill="#FFBA07"/>
-<text x="116.0" y="638.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">equation: y = 1651.16 + 0.01·x²</text>
-<line x1="515.0" y1="564.0" x2="515.0" y2="646.0" stroke="rgba(255,255,255,0.14)" stroke-width="1" stroke-opacity="0.5"/>
-<circle cx="531.0" cy="572.0" r="5" fill="#3178C6"/>
-<text x="541.0" y="576.0" font-family="sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">TypeScript</text>
-<circle cx="530.0" cy="586.0" r="2.8" fill="#FFBA07"/>
-<text x="537.0" y="590.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">
-mean: 2.40 KB/op</text>
-<circle cx="530.0" cy="602.0" r="2.8" fill="#FFBA07"/>
-<text x="537.0" y="606.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">min / max: 7 B/op / 8.62 KB/op</text>
-<circle cx="530.0" cy="618.0" r="2.8" fill="#FFBA07"/>
-<text x="537.0" y="622.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">samples: 2,	R²: 0.695</text>
-<circle cx="530.0" cy="634.0" r="2.8" fill="#FFBA07"/>
-<text x="537.0" y="638.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">equation: y = 1176.68 + -7.67·x +…</text>
+<text x="116.0" y="638.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">equation: y = 974.00 + 4.13·x + 0…</text>
 </svg>
