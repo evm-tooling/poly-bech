@@ -81,6 +81,10 @@ impl EmbeddedDiagnosticSetup for RustEmbeddedDiagnosticSetup {
     fn prepare(&self, module_root: &str, ctx: &dyn EmbeddedDiagnosticContext) {
         ctx.ensure_ready(Lang::Rust, module_root);
     }
+    fn prepare_environment(&self, module_root: &str) {
+        let src_dir = Path::new(module_root).join("src");
+        let _ = std::fs::create_dir_all(&src_dir);
+    }
 }
 
 pub(crate) static RUST_EMBEDDED_DIAGNOSTIC_SETUP: RustEmbeddedDiagnosticSetup =

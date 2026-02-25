@@ -39,36 +39,15 @@ impl EmbeddedHoverContext for LspEmbeddedHoverContext<'_> {
         )
     }
 
-    fn get_go_client(&self, module_root: &str) -> Option<Arc<dyn EmbeddedLspClient>> {
+    fn get_lsp_client(
+        &self,
+        lang: poly_bench_dsl::Lang,
+        module_root: &str,
+    ) -> Option<Arc<dyn EmbeddedLspClient>> {
         if module_root != self.module_root {
             return None;
         }
-        init_embedded_lsp_client(poly_bench_dsl::Lang::Go, module_root)
-            .or_else(|| get_embedded_lsp_client(poly_bench_dsl::Lang::Go))
-    }
-
-    fn get_ts_client(&self, module_root: &str) -> Option<Arc<dyn EmbeddedLspClient>> {
-        if module_root != self.module_root {
-            return None;
-        }
-        init_embedded_lsp_client(poly_bench_dsl::Lang::TypeScript, module_root)
-            .or_else(|| get_embedded_lsp_client(poly_bench_dsl::Lang::TypeScript))
-    }
-
-    fn get_rust_client(&self, module_root: &str) -> Option<Arc<dyn EmbeddedLspClient>> {
-        if module_root != self.module_root {
-            return None;
-        }
-        init_embedded_lsp_client(poly_bench_dsl::Lang::Rust, module_root)
-            .or_else(|| get_embedded_lsp_client(poly_bench_dsl::Lang::Rust))
-    }
-
-    fn get_pyright_client(&self, module_root: &str) -> Option<Arc<dyn EmbeddedLspClient>> {
-        if module_root != self.module_root {
-            return None;
-        }
-        init_embedded_lsp_client(poly_bench_dsl::Lang::Python, module_root)
-            .or_else(|| get_embedded_lsp_client(poly_bench_dsl::Lang::Python))
+        init_embedded_lsp_client(lang, module_root).or_else(|| get_embedded_lsp_client(lang))
     }
 
     fn byte_to_position(&self, offset: usize) -> (u32, u32) {

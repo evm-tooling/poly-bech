@@ -45,7 +45,13 @@ pub struct LspDiagnostic {
 
 /// Context injected by LSP for diagnostic providers that need LSP clients
 pub trait EmbeddedDiagnosticContext: Send + Sync {
-    fn get_go_client(&self, module_root: &str) -> Option<Arc<dyn EmbeddedLspClient>>;
+    /// Get the LSP client for a language (init if needed). Uses registry; works for any registered
+    /// runtime.
+    fn get_lsp_client(
+        &self,
+        lang: poly_bench_dsl::Lang,
+        module_root: &str,
+    ) -> Option<Arc<dyn EmbeddedLspClient>>;
     fn ensure_tsconfig(&self, module_root: &str);
     /// Called before checking; e.g. init gopls, ensure tsconfig, etc.
     fn ensure_ready(&self, lang: poly_bench_syntax::Lang, module_root: &str);
@@ -65,4 +71,6 @@ pub trait EmbeddedDiagnosticProvider: Send + Sync {
 pub trait EmbeddedDiagnosticSetup: Send + Sync {
     fn lang(&self) -> poly_bench_syntax::Lang;
     fn prepare(&self, module_root: &str, ctx: &dyn EmbeddedDiagnosticContext);
+    /// Language-specific environment setup (tsconfig, src dir, etc.). Default: no-op.
+    fn prepare_environment(&self, _module_root: &str) {}
 }

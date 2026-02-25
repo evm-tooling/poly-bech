@@ -16,7 +16,7 @@ impl EmbeddedHoverProvider for PythonEmbeddedHoverProvider {
         let module_root = ctx.module_root();
 
         let virtual_file = ctx.get_virtual_file(Lang::Python)?;
-        let client = ctx.get_pyright_client(module_root)?;
+        let client = ctx.get_lsp_client(poly_bench_dsl::Lang::Python, module_root)?;
 
         let bench_offset = ctx.bench_offset();
         let python_position = virtual_file.bench_to_virtual(bench_offset)?;

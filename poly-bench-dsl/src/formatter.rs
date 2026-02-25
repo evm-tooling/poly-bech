@@ -18,6 +18,12 @@ use std::fmt::Write;
 
 const INDENT: &str = "    ";
 
+/// Default language order when caller does not specify one.
+/// Callers that have access to poly-bench-runtime should pass `supported_languages()` instead.
+fn default_lang_order() -> &'static [Lang] {
+    &[Lang::Go, Lang::TypeScript, Lang::Rust, Lang::Python]
+}
+
 /// Reformat embedded code with proper indentation based on brace counting.
 /// This handles Go, TypeScript, and Rust code by tracking `{` and `}` to determine indent level.
 fn reformat_embedded_code(code: &str, base_indent: &str) -> Vec<String> {
@@ -121,7 +127,17 @@ fn preserve_embedded_code(code: &str, base_indent: &str) -> Vec<String> {
 
 /// Format an AST into a string with consistent indentation and style.
 pub fn format_file(file: &File) -> String {
+    format_file_with_options(file, None)
+}
+
+/// Format an AST with optional language order for setup/benchmark sections.
+/// Pass `Some(supported_languages())` from poly-bench-runtime when available.
+pub fn format_file_with_options(file: &File, lang_order: Option<&[Lang]>) -> String {
     let mut out = String::new();
+    let lang_order: &[Lang] = match lang_order {
+        Some(lo) => lo,
+        None => default_lang_order(),
+    };
 
     // Format use statements first
     for use_std in &file.use_stds {
@@ -158,7 +174,7 @@ pub fn format_file(file: &File) -> String {
         if i > 0 {
             out.push('\n');
         }
-        format_suite(&mut out, suite, 0);
+        format_suite(&mut out, suite, 0, lang_order);
     }
     if !out.is_empty() && !out.ends_with('\n') {
         out.push('\n');
@@ -171,6 +187,16 @@ pub fn format_file(file: &File) -> String {
 /// This function extracts comments from the original source and places them
 /// appropriately in the formatted output.
 pub fn format_file_with_source(file: &File, original_source: &str) -> String {
+    format_file_with_source_and_options(file, original_source, None)
+}
+
+/// Format with comment preservation and optional language order.
+/// Pass `Some(supported_languages())` from poly-bench-runtime when available.
+pub fn format_file_with_source_and_options(
+    file: &File,
+    original_source: &str,
+    lang_order: Option<&[Lang]>,
+) -> String {
     let mut out = String::new();
 
     // Extract leading comments (before first use statement or suite)
@@ -209,12 +235,17 @@ pub fn format_file_with_source(file: &File, original_source: &str) -> String {
         }
     }
 
+    let lang_order: &[Lang] = match lang_order {
+        Some(lo) => lo,
+        None => default_lang_order(),
+    };
+
     // Format suites with comment preservation
     for (i, suite) in file.suites.iter().enumerate() {
         if i > 0 {
             out.push('\n');
         }
-        format_suite_with_source(&mut out, suite, 0, original_source);
+        format_suite_with_source(&mut out, suite, 0, original_source, lang_order);
     }
 
     if !out.is_empty() && !out.ends_with('\n') {
@@ -229,6 +260,7 @@ fn format_suite_with_source(
     suite: &Suite,
     indent_level: usize,
     original_source: &str,
+    lang_order: &[Lang],
 ) {
     let pad = INDENT.repeat(indent_level);
     let inner = INDENT.repeat(indent_level + 1);
@@ -329,8 +361,7 @@ fn format_suite_with_source(
     }
 
     // Setups in canonical order
-    let lang_order = [Lang::Go, Lang::TypeScript, Lang::Rust, Lang::Python];
-    for lang in &lang_order {
+    for lang in lang_order {
         if let Some(setup) = suite.setups.get(lang) {
             format_setup(out, lang, setup, indent_level + 1);
         }
@@ -358,7 +389,7 @@ fn format_suite_with_source(
             }
         }
 
-        format_benchmark(out, bench, indent_level + 1);
+        format_benchmark(out, bench, indent_level + 1, lang_order);
         last_bench_end = bench.span.end;
     }
 
@@ -450,7 +481,7 @@ fn format_global_setup(out: &mut String, global_setup: &GlobalSetup, indent_leve
     writeln!(out, "{}}}", pad).unwrap();
 }
 
-fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
+fn format_suite(out: &mut String, suite: &Suite, indent_level: usize, lang_order: &[Lang]) {
     let pad = INDENT.repeat(indent_level);
     let inner = INDENT.repeat(indent_level + 1);
 
@@ -555,9 +586,8 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
         out.push('\n');
     }
 
-    // Setups in canonical order: go, ts, rust, python
-    let lang_order = [Lang::Go, Lang::TypeScript, Lang::Rust, Lang::Python];
-    for lang in &lang_order {
+    // Setups in canonical order
+    for lang in lang_order {
         if let Some(setup) = suite.setups.get(lang) {
             format_setup(out, lang, setup, indent_level + 1);
         }
@@ -570,7 +600,7 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
 
     // Benchmarks
     for bench in &suite.benchmarks {
-        format_benchmark(out, bench, indent_level + 1);
+        format_benchmark(out, bench, indent_level + 1, lang_order);
     }
 
     // Chart directives (in after { } block)
@@ -745,10 +775,9 @@ fn format_fixture(out: &mut String, fixture: &Fixture, indent_level: usize) {
     write!(out, "{}}}\n\n", pad).unwrap();
 }
 
-fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
+fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize, lang_order: &[Lang]) {
     let pad = INDENT.repeat(indent_level);
     let inner = INDENT.repeat(indent_level + 1);
-    let lang_order = [Lang::Go, Lang::TypeScript, Lang::Rust, Lang::Python];
 
     write!(out, "{}{} {} {{\n", pad, bench.kind.as_keyword(), bench.name).unwrap();
 
@@ -798,14 +827,14 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
     }
 
     // Skip and validate hooks (always flat syntax)
-    for lang in &lang_order {
+    for lang in lang_order {
         if let Some(code) = bench.skip.get(lang) {
             write!(out, "{}skip {}: ", inner, lang.as_str()).unwrap();
             format_code_block_inline_with_indent(out, code, &inner);
             out.push('\n');
         }
     }
-    for lang in &lang_order {
+    for lang in lang_order {
         if let Some(code) = bench.validate.get(lang) {
             write!(out, "{}validate {}: ", inner, lang.as_str()).unwrap();
             format_code_block_inline_with_indent(out, code, &inner);
@@ -822,14 +851,14 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
         }
         HookStyle::Flat => {
             // Flat syntax: before go: ... \n before ts: ...
-            for lang in &lang_order {
+            for lang in lang_order {
                 if let Some(code) = bench.before.get(lang) {
                     write!(out, "{}before {}: ", inner, lang.as_str()).unwrap();
                     format_code_block_inline_with_indent(out, code, &inner);
                     out.push('\n');
                 }
             }
-            for lang in &lang_order {
+            for lang in lang_order {
                 if let Some(code) = bench.each.get(lang) {
                     write!(out, "{}each {}: ", inner, lang.as_str()).unwrap();
                     format_code_block_inline_with_indent(out, code, &inner);
@@ -854,7 +883,7 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
             format_grouped_hooks(out, "after", &bench.after, &lang_order, &inner);
         }
         HookStyle::Flat => {
-            for lang in &lang_order {
+            for lang in lang_order {
                 if let Some(code) = bench.after.get(lang) {
                     write!(out, "{}after {}: ", inner, lang.as_str()).unwrap();
                     format_code_block_inline_with_indent(out, code, &inner);

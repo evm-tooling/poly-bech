@@ -16,7 +16,7 @@ impl EmbeddedHoverProvider for RustEmbeddedHoverProvider {
         let module_root = ctx.module_root();
 
         let virtual_file = ctx.get_virtual_file(Lang::Rust)?;
-        let client = ctx.get_rust_client(module_root)?;
+        let client = ctx.get_lsp_client(poly_bench_dsl::Lang::Rust, module_root)?;
 
         let bench_offset = ctx.bench_offset();
         let rust_position = virtual_file.bench_to_virtual(bench_offset)?;

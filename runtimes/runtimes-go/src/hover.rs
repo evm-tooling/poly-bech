@@ -16,7 +16,7 @@ impl EmbeddedHoverProvider for GoEmbeddedHoverProvider {
         let module_root = ctx.module_root();
 
         let virtual_file = ctx.get_virtual_file(Lang::Go)?;
-        let client = ctx.get_go_client(module_root)?;
+        let client = ctx.get_lsp_client(poly_bench_dsl::Lang::Go, module_root)?;
 
         let bench_offset = ctx.bench_offset();
         let go_position = virtual_file.bench_to_virtual(bench_offset)?;

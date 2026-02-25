@@ -34,7 +34,7 @@ impl EmbeddedDiagnosticProvider for GoEmbeddedDiagnosticProvider {
             }
         };
 
-        let client = match ctx.get_go_client(&module_root) {
+        let client = match ctx.get_lsp_client(poly_bench_dsl::Lang::Go, &module_root) {
             Some(c) => c,
             None => {
                 tracing::debug!("[go-diagnostics] gopls client not available");

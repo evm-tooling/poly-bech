@@ -11,10 +11,13 @@ use crate::{diagnostics::EmbeddedLspClient, virtual_file::VirtualFile};
 pub trait EmbeddedHoverContext: Send + Sync {
     /// Get or create virtual file for the given language
     fn get_virtual_file(&self, lang: Lang) -> Option<Arc<dyn VirtualFile>>;
-    fn get_go_client(&self, module_root: &str) -> Option<Arc<dyn EmbeddedLspClient>>;
-    fn get_ts_client(&self, module_root: &str) -> Option<Arc<dyn EmbeddedLspClient>>;
-    fn get_rust_client(&self, module_root: &str) -> Option<Arc<dyn EmbeddedLspClient>>;
-    fn get_pyright_client(&self, module_root: &str) -> Option<Arc<dyn EmbeddedLspClient>>;
+    /// Get the LSP client for a language (init if needed). Uses registry; works for any registered
+    /// runtime.
+    fn get_lsp_client(
+        &self,
+        lang: poly_bench_dsl::Lang,
+        module_root: &str,
+    ) -> Option<Arc<dyn EmbeddedLspClient>>;
     fn byte_to_position(&self, offset: usize) -> (u32, u32);
     fn bench_offset(&self) -> usize;
     fn module_root(&self) -> &str;

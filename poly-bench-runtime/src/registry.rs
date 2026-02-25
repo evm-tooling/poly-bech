@@ -83,8 +83,9 @@ pub fn init_import_extractors() {
 
 /// Get all supported languages (derived from registered plugins)
 pub fn supported_languages() -> &'static [Lang] {
-    static LANGS: &[Lang] = &[Lang::Go, Lang::TypeScript, Lang::Rust, Lang::Python];
-    LANGS
+    use once_cell::sync::Lazy;
+    static LANGS: Lazy<Vec<Lang>> = Lazy::new(|| PLUGINS.iter().map(|p| p.lang()).collect());
+    LANGS.as_slice()
 }
 
 /// Build a map of runtimes for the requested languages (owned, for scheduler).

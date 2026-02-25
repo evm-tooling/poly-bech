@@ -22,6 +22,8 @@ The following components form the end-to-end interface for a runtime. All orches
 | `EmbeddedDiagnosticProvider` | runtimes/runtimes-*/ | Lint/errors for embedded code; register via `RuntimePlugin::embedded_diagnostic_provider()` |
 | `EmbeddedDiagnosticSetup` | runtimes/runtimes-*/ | Init LSP clients, ensure config; register via `RuntimePlugin::embedded_diagnostic_setup()` |
 | `EmbeddedHoverProvider` | runtimes/runtimes-*/ | Hover, type info; register via `RuntimePlugin::embedded_hover_provider()` |
+| `EmbeddedLspClient` | runtimes/runtimes-*/ | LSP client for diagnostics/hover; register via `RuntimePlugin::embedded_lsp_client_init/get()` |
+| `HelperFunctionExtractor` | runtimes/runtimes-*/ | Optional: for LSP undefined-function diagnostics |
 | Fixture serialization | poly-bench-ir | `as_*_bytes()` for fixture data in generated code |
 | Manifest config | poly-bench-project | `[lang]` section in polybench.toml |
 | CompileWorkspace | poly-bench-executor | `init_*_workspace()`, `clean()` for .polybench/ |
@@ -80,22 +82,21 @@ Add the new language to `Lang` in `poly-bench-syntax` (used by LSP):
 - Implement `Runtime` trait (from poly-bench-runtime-traits): `compile_check`, `run_benchmark`, `lang`, etc.
 - Implement `RuntimeFactory`: `create(&self, config) -> Box<dyn Runtime>`
 - Add to `RuntimeConfig` (in poly-bench-runtime-traits): e.g. `python_root: Option<PathBuf>`
-- Register in `poly-bench-runtime/src/registry.rs`: add `runtimes_<lang>::<Lang>RuntimeFactory` to `FACTORIES` and `supported_languages()`
+- Register in `poly-bench-runtime/src/registry.rs`: add `runtimes_<lang>::<LANG>_PLUGIN` to the `PLUGINS` array (e.g. `&GO_PLUGIN, &TS_PLUGIN, ...`). `supported_languages()` is derived from PLUGINS automatically.
 - Add `poly-bench-runtime` dependency on `runtimes-<lang>`
 - Add display metadata: export `fn <lang>_lang_display() -> LangDisplayInfo` (poly-bench-runtime `lang_display()` dispatches to it)
 - **Quick start**: Copy `runtimes/runtimes-rust` as a template—it has the full structure (codegen, executor, error_mapping, lang_display)
 
 ### 4. poly-bench-ir: Implement ImportExtractor
 
-- In `poly-bench-ir/src/imports.rs`: Implement `ImportExtractor` trait
-- Add `extract_<lang>_imports(setup: &str) -> ParsedSetup`
-- Add to `extract_imports()` match
+- In your runtime crate: Implement `ImportExtractor` trait (from poly-bench-ir-traits)
+- Register via `RuntimePlugin::import_extractor()`. `init_import_extractors()` (called at startup) collects from all plugins.
 
 ### 5. poly-bench-project: Implement ProjectRootDetector
 
-- In `poly-bench-project/src/detectors.rs`: Implement `ProjectRootDetector`
+- In your runtime crate: Add `src/project.rs` and implement `ProjectRootDetector` (from poly-bench-runtime-traits)
 - Define `marker_files()` (e.g. `["requirements.txt", "pyproject.toml"]`)
-- Add to `get_detector()` match
+- Register via `RuntimePlugin::project_root_detector()`
 - Add `runtime_env_<lang>` in `poly-bench-project` if using poly-bench layout
 
 ### 6. runtimes/runtimes-<lang>: Implement ErrorMapper
@@ -103,7 +104,7 @@ Add the new language to `Lang` in `poly-bench-syntax` (used by LSP):
 - In your runtime crate: Implement `ErrorMapper` (from poly-bench-runtime-traits)
 - `build_mappings(suite, generated) -> LineMappings`
 - `remap_error(error, mappings) -> String`
-- Export a static `ERROR_MAPPER` and add to `poly-bench-runtime`'s `get_error_mapper()` match
+- Implement `error_mapper()` in your `RuntimePlugin` to return the builder. No separate match in poly-bench-runtime.
 
 ### 7. runtimes/runtimes-<lang>: Implement VirtualFileBuilder
 
@@ -127,9 +128,18 @@ Add the new language to `Lang` in `poly-bench-syntax` (used by LSP):
 ### 10. runtimes/runtimes-<lang>: Implement EmbeddedHoverProvider (required for LSP parity)
 
 - In your runtime crate: Add `src/hover.rs`
-- Implement `EmbeddedHoverProvider` trait (use `EmbeddedHoverContext` for virtual file and LSP client)
+- Implement `EmbeddedHoverProvider` trait (use `EmbeddedHoverContext` for virtual file and LSP client via `ctx.get_lsp_client(lang, module_root)`)
 - Implement `embedded_hover_provider()` in your `RuntimePlugin`
 - Required for full embedded-language support (hover, type info). Without it, embedded code blocks will have diagnostics but no hover.
+
+### 10b. runtimes/runtimes-<lang>: Implement Embedded LSP client (if using LSP for diagnostics/hover)
+
+- In your runtime crate: Add `src/<server>_client.rs` (e.g. `gopls_client.rs`, `pyright_client.rs`)
+- Implement `LspConfig` trait (from poly-bench-lsp-traits) for your language server
+- Use `LspClient<YourConfig>` type alias
+- Implement `embedded_lsp_client_init(workspace_root)` and `embedded_lsp_client_get()` in your `RuntimePlugin`
+- Required for full LSP parity when diagnostics/hover use an LSP server (Go, TypeScript, Rust, Python)
+- Optional: Add `HelperFunctionExtractor` for undefined-function diagnostics
 
 ### 11. CLI: Add support
 
@@ -149,13 +159,14 @@ Add the new language to `Lang` in `poly-bench-syntax` (used by LSP):
 | DSL | - | `poly-bench-dsl/src/ast.rs` |
 | Syntax | - | `poly-bench-syntax/src/partial_ast.rs` |
 | Runtime | `runtimes/runtimes-<lang>/` | `poly-bench-runtime/registry.rs`, root `Cargo.toml` |
-| IR | - | `poly-bench-ir/src/imports.rs` |
-| Project | - | `poly-bench-project/src/detectors.rs` |
-| Error mapping | `runtimes-<lang>/error_mapping.rs` | `poly-bench-runtime/src/error_mapping.rs` (get_error_mapper) |
+| IR | `runtimes-<lang>/import_extractor.rs` | `RuntimePlugin::import_extractor()` |
+| Project | `runtimes-<lang>/project.rs` | `RuntimePlugin::project_root_detector()` |
+| Error mapping | `runtimes-<lang>/error_mapping.rs` | `RuntimePlugin::error_mapper()` |
 | LSP virtual files | `runtimes-<lang>/virtual_file.rs` | `RuntimePlugin::virtual_file_builder()` |
 | LSP diagnostics | `runtimes-<lang>/embedded_diagnostics.rs` | `RuntimePlugin::embedded_diagnostic_provider()` |
 | LSP setup | `runtimes-<lang>/embedded_diagnostics.rs` | `RuntimePlugin::embedded_diagnostic_setup()` |
 | LSP hover | `runtimes-<lang>/hover.rs` | `RuntimePlugin::embedded_hover_provider()` |
+| LSP client | `runtimes-<lang>/<server>_client.rs` | `RuntimePlugin::embedded_lsp_client_init/get()` |
 | CLI | - | `cli/main.rs` |
 
 ## LSP Support Requirements
