@@ -11,7 +11,6 @@ pub mod table;
 use poly_bench_dsl::{BenchmarkKind, Lang};
 use poly_bench_executor::comparison::BenchmarkResult;
 use poly_bench_ir::ChartDirectiveIR;
-use poly_bench_runtime::measurement::ComparisonWinner;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum YAxisScale {
@@ -768,58 +767,6 @@ pub fn calculate_geo_mean(benchmarks: &[&BenchmarkResult]) -> f64 {
         let avg_log = log_speedups.iter().sum::<f64>() / log_speedups.len() as f64;
         avg_log.exp()
     }
-}
-
-/// Count wins by language (returns go_wins, ts_wins, rust_wins, python_wins, ties)
-pub fn count_wins(benchmarks: &[&BenchmarkResult]) -> (usize, usize, usize, usize, usize) {
-    let mut go_wins = 0;
-    let mut ts_wins = 0;
-    let mut rust_wins = 0;
-    let mut python_wins = 0;
-    let mut ties = 0;
-
-    for bench in benchmarks {
-        // Determine winner across all available languages
-        let go_ns = bench.measurements.get(&Lang::Go).map(|m| m.nanos_per_op);
-        let ts_ns = bench.measurements.get(&Lang::TypeScript).map(|m| m.nanos_per_op);
-        let rust_ns = bench.measurements.get(&Lang::Rust).map(|m| m.nanos_per_op);
-        let python_ns = bench.measurements.get(&Lang::Python).map(|m| m.nanos_per_op);
-
-        let mut times: Vec<(Lang, f64)> = vec![];
-        if let Some(ns) = go_ns {
-            times.push((Lang::Go, ns));
-        }
-        if let Some(ns) = ts_ns {
-            times.push((Lang::TypeScript, ns));
-        }
-        if let Some(ns) = rust_ns {
-            times.push((Lang::Rust, ns));
-        }
-        if let Some(ns) = python_ns {
-            times.push((Lang::Python, ns));
-        }
-
-        if times.len() >= 2 {
-            times.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-            let (fastest_lang, fastest_time) = times[0];
-            let (_, second_time) = times[1];
-
-            let speedup = second_time / fastest_time;
-            if speedup < 1.05 {
-                ties += 1;
-            } else {
-                match fastest_lang {
-                    Lang::Go => go_wins += 1,
-                    Lang::TypeScript => ts_wins += 1,
-                    Lang::Rust => rust_wins += 1,
-                    Lang::Python => python_wins += 1,
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    (go_wins, ts_wins, rust_wins, python_wins, ties)
 }
 
 /// Symmetric logarithmic transformation

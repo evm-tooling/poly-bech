@@ -3,7 +3,9 @@
 use miette::Result;
 use poly_bench_dsl::Lang;
 use poly_bench_executor::BenchmarkResults;
-use poly_bench_runtime::{lang_full_name, measurement::Measurement};
+use poly_bench_runtime::{
+    lang_full_name, lang_icon, measurement::Measurement, supported_languages,
+};
 
 /// Generate markdown report
 pub fn report(results: &BenchmarkResults) -> Result<String> {
@@ -40,26 +42,15 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
     md.push_str("|--------|-------|\n");
     md.push_str(&format!("| Total Suites | {} |\n", summary.total_suites));
     md.push_str(&format!("| Total Benchmarks | {} |\n", summary.total_benchmarks));
-    md.push_str(&format!(
-        "| Go Wins | {} ({}%) |\n",
-        summary.go_wins,
-        (summary.go_wins * 100) / summary.total_benchmarks.max(1)
-    ));
-    md.push_str(&format!(
-        "| TypeScript Wins | {} ({}%) |\n",
-        summary.ts_wins,
-        (summary.ts_wins * 100) / summary.total_benchmarks.max(1)
-    ));
-    md.push_str(&format!(
-        "| Rust Wins | {} ({}%) |\n",
-        summary.rust_wins,
-        (summary.rust_wins * 100) / summary.total_benchmarks.max(1)
-    ));
-    md.push_str(&format!(
-        "| Python Wins | {} ({}%) |\n",
-        summary.python_wins,
-        (summary.python_wins * 100) / summary.total_benchmarks.max(1)
-    ));
+    for lang in supported_languages() {
+        let wins = summary.lang_wins.get(lang).copied().unwrap_or(0) as usize;
+        md.push_str(&format!(
+            "| {} Wins | {} ({}%) |\n",
+            lang_full_name(*lang),
+            wins,
+            (wins * 100) / summary.total_benchmarks.max(1)
+        ));
+    }
     md.push_str(&format!(
         "| Ties | {} ({}%) |\n",
         summary.ties,
@@ -71,13 +62,7 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
     md.push_str("## Suite Results\n\n");
 
     for suite in &results.suites {
-        let icon = match suite.summary.winner {
-            Some(Lang::Go) => "🟢",
-            Some(Lang::TypeScript) => "🔵",
-            Some(Lang::Rust) => "🟠",
-            Some(Lang::Python) => "🐍",
-            _ => "⚪",
-        };
+        let icon = suite.summary.winner.map(lang_icon).unwrap_or("⚪");
 
         md.push_str(&format!(
             "### {} {} ({:.2}x avg)\n\n",
@@ -150,13 +135,7 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
                 let (best_lang, best_time) = times[0];
                 let (_, second_time) = times[1];
                 let speedup = second_time / best_time.max(1e-9);
-                let icon = match best_lang {
-                    Lang::Go => "🟢",
-                    Lang::TypeScript => "🔵",
-                    Lang::Rust => "🟠",
-                    Lang::Python => "🐍",
-                    _ => "⚪",
-                };
+                let icon = lang_icon(best_lang);
                 if speedup < 1.05 {
                     "⚪ Similar".to_string()
                 } else {

@@ -406,13 +406,7 @@ pub fn generate(
 
     // Title
     let title = directive.title.as_deref().unwrap_or("Speedup vs Baseline");
-    let baseline_name = match baseline_lang {
-        Lang::Go => "Go",
-        Lang::TypeScript => "TypeScript",
-        Lang::Rust => "Rust",
-        Lang::Python => "Python",
-        _ => "Baseline",
-    };
+    let baseline_name = lang_full_name(baseline_lang);
     svg.push_str(&svg_title(chart_width, title, baseline_name, overall_mode, &theme));
 
     // Plot area background

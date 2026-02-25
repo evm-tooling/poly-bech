@@ -4,7 +4,7 @@ use colored::Colorize;
 use miette::Result;
 use poly_bench_dsl::{BenchmarkKind, Lang};
 use poly_bench_executor::{comparison::BenchmarkResult, BenchmarkResults, SuiteResults};
-use poly_bench_runtime::measurement::Measurement;
+use poly_bench_runtime::{lang_label, measurement::Measurement, supported_languages};
 
 /// Benchmark configuration for display
 #[derive(Debug, Clone, Default)]
@@ -88,13 +88,7 @@ const ASYNC_WARN_MIN_SUCCESS_RATIO: f64 = 0.95;
 const ASYNC_WARN_MAX_RATIO_SPREAD: f64 = 0.05;
 
 fn lang_short_name(lang: Lang) -> &'static str {
-    match lang {
-        Lang::Go => "Go",
-        Lang::TypeScript => "TS",
-        Lang::Rust => "Rust",
-        Lang::Python => "Python",
-        _ => "Unknown",
-    }
+    lang_label(lang)
 }
 
 fn async_reliability_warnings(bench: &BenchmarkResult) -> Vec<String> {
@@ -205,9 +199,21 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
         print_suite_with_options(suite, options);
     }
 
+    let wins_parts: Vec<String> = supported_languages()
+        .iter()
+        .map(|lang| {
+            format!(
+                "{}: {} wins",
+                lang_label(*lang),
+                summary.lang_wins.get(lang).copied().unwrap_or(0)
+            )
+        })
+        .collect();
     println!(
-        "   Summary: Go: {} wins | TS: {} wins | Rust: {} wins | Python: {} wins | Ties: {} | Geo mean: {:.2}x",
-        summary.go_wins, summary.ts_wins, summary.rust_wins, summary.python_wins, summary.ties, summary.geo_mean_speedup
+        "   Summary: {} | Ties: {} | Geo mean: {:.2}x",
+        wins_parts.join(" | "),
+        summary.ties,
+        summary.geo_mean_speedup
     );
     println!();
 
