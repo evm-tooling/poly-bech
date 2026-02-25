@@ -1,5 +1,7 @@
 //! Go runtime plugin
 
+use std::sync::Arc;
+
 use poly_bench_runtime_traits::{
     ErrorMapper, LangDisplayInfo, ProjectRootDetector, RuntimeFactory, RuntimePlugin,
 };
@@ -8,7 +10,7 @@ use crate::{
     embedded_diagnostics::{GO_EMBEDDED_DIAGNOSTIC_PROVIDER, GO_EMBEDDED_DIAGNOSTIC_SETUP},
     error_mapping::GO_ERROR_MAPPER,
     executor::GO_RUNTIME_FACTORY,
-    go_lang_display,
+    go_lang_display, gopls_client,
     helper_extractor::GO_HELPER_EXTRACTOR,
     hover::GO_EMBEDDED_HOVER_PROVIDER,
     import_extractor::GO_IMPORT_EXTRACTOR,
@@ -71,6 +73,19 @@ impl RuntimePlugin for GoPlugin {
         &self,
     ) -> Option<&'static dyn poly_bench_lsp_traits::HelperFunctionExtractor> {
         Some(&GO_HELPER_EXTRACTOR)
+    }
+
+    fn embedded_lsp_client_init(
+        &self,
+        workspace_root: &str,
+    ) -> Option<Arc<dyn poly_bench_lsp_traits::EmbeddedLspClient>> {
+        gopls_client::init_gopls_client(workspace_root)
+            .map(|c| c as Arc<dyn poly_bench_lsp_traits::EmbeddedLspClient>)
+    }
+
+    fn embedded_lsp_client_get(&self) -> Option<Arc<dyn poly_bench_lsp_traits::EmbeddedLspClient>> {
+        gopls_client::get_gopls_client()
+            .map(|c| c as Arc<dyn poly_bench_lsp_traits::EmbeddedLspClient>)
     }
 }
 

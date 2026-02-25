@@ -4,7 +4,7 @@ use crate::config::RuntimeConfig;
 use miette::{miette, Result};
 use poly_bench_dsl::Lang;
 use poly_bench_lsp_traits::{
-    EmbeddedDiagnosticProvider, EmbeddedDiagnosticSetup, EmbeddedHoverProvider,
+    EmbeddedDiagnosticProvider, EmbeddedDiagnosticSetup, EmbeddedHoverProvider, EmbeddedLspClient,
     HelperFunctionExtractor, VirtualFileBuilder,
 };
 use poly_bench_runtime_traits::{ProjectRootDetector, Runtime, RuntimePlugin};
@@ -56,6 +56,22 @@ pub fn get_embedded_hover_provider(lang: Lang) -> Option<&'static dyn EmbeddedHo
 /// Get the helper function extractor for a language
 pub fn get_helper_function_extractor(lang: Lang) -> Option<&'static dyn HelperFunctionExtractor> {
     PLUGINS.iter().find(|p| p.lang() == lang).and_then(|p| p.helper_function_extractor())
+}
+
+/// Initialize the embedded LSP client for a language and return it if available
+pub fn init_embedded_lsp_client(
+    lang: Lang,
+    workspace_root: &str,
+) -> Option<Arc<dyn EmbeddedLspClient>> {
+    PLUGINS
+        .iter()
+        .find(|p| p.lang() == lang)
+        .and_then(|p| p.embedded_lsp_client_init(workspace_root))
+}
+
+/// Get the embedded LSP client for a language if already initialized
+pub fn get_embedded_lsp_client(lang: Lang) -> Option<Arc<dyn EmbeddedLspClient>> {
+    PLUGINS.iter().find(|p| p.lang() == lang).and_then(|p| p.embedded_lsp_client_get())
 }
 
 /// Initialize import extractors for poly-bench-ir.

@@ -8,6 +8,7 @@ pub mod diagnostics;
 pub mod embedded;
 pub mod helper_extractor;
 pub mod hover;
+pub mod lsp_client;
 pub mod position;
 pub mod virtual_file;
 pub mod virtual_file_core;
@@ -20,6 +21,7 @@ pub use diagnostics::{
 pub use embedded::{BlockType, EmbeddedBlock};
 pub use helper_extractor::HelperFunctionExtractor;
 pub use hover::EmbeddedHoverProvider;
+pub use lsp_client::{LspClient, LspConfig};
 pub use position::LspPosition;
 pub use virtual_file::{SectionMapping, VirtualFile, VirtualFileBuilder, VirtualFileParams};
 pub use virtual_file_core::{VirtualFileBuilderCore, VirtualFileData};

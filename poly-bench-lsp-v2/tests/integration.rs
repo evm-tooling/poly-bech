@@ -33,7 +33,7 @@ fn pyright_client_request() {
 
     eprintln!("Using python_root: {}", python_root_str);
 
-    let client = match poly_bench_lsp_v2::pyright_client::PyrightClient::new(&python_root_str) {
+    let client = match runtimes_python::pyright_client::PyrightClient::new(&python_root_str) {
         Ok(c) => {
             eprintln!("PyrightClient::new OK");
             c

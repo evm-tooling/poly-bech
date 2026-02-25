@@ -31,4 +31,5 @@ regex = "1"
 tempfile = "3"
 
 [dev-dependencies]
+runtimes-python = { path = "../runtimes/runtimes-python" }
 tokio-test = "0.4"

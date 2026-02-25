@@ -11,3 +11,6 @@ description = "Traits and types for poly-bench LSP integration (VirtualFileBuild
 poly-bench-dsl.workspace = true
 poly-bench-syntax.workspace = true
 tower-lsp = "0.20"
+dashmap = "5"
+serde_json = "1"
+tracing = "0.1"

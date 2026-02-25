@@ -41,7 +41,7 @@ pub use poly_bench_runtime_traits::{
 pub use registry::{
     create_runtime, create_runtimes, create_runtimes_arc, get_detector,
     get_embedded_diagnostic_provider, get_embedded_diagnostic_setup, get_embedded_hover_provider,
-    get_helper_function_extractor, get_virtual_file_builder, init_import_extractors,
-    supported_languages,
+    get_embedded_lsp_client, get_helper_function_extractor, get_virtual_file_builder,
+    init_embedded_lsp_client, init_import_extractors, supported_languages,
 };
 pub use traits::Runtime;

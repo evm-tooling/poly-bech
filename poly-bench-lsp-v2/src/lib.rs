@@ -19,15 +19,10 @@ pub mod embedded_diagnostic_context;
 pub mod embedded_diagnostics;
 pub mod embedded_hover_context;
 pub mod formatter;
-pub mod gopls_client;
 pub mod hover;
 pub mod hover_cache;
-pub mod lsp_client;
-pub mod pyright_client;
-pub mod rust_analyzer_client;
 pub mod semantic_tokens;
 pub mod server;
-pub mod tsserver_client;
 pub mod virtual_files;
 
 pub use server::PolyBenchLanguageServer;

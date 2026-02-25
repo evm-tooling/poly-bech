@@ -6,9 +6,8 @@
 use std::sync::Arc;
 
 use once_cell::sync::OnceCell;
+use poly_bench_lsp_traits::{LspClient, LspConfig};
 use serde_json::{json, Value};
-
-use crate::lsp_client::{LspClient, LspConfig};
 
 /// Global rust-analyzer client instance (lazy initialized)
 static RUST_ANALYZER_CLIENT: OnceCell<Arc<RustAnalyzerClient>> = OnceCell::new();
@@ -55,12 +54,10 @@ pub type RustAnalyzerClient = LspClient<RustAnalyzerConfig>;
 
 /// Find rust-analyzer in PATH or common locations
 fn find_rust_analyzer() -> Option<String> {
-    // Try which first
     if let Ok(path) = which::which("rust-analyzer") {
         return Some(path.to_string_lossy().to_string());
     }
 
-    // Check common rustup locations
     let home = std::env::var("HOME").ok()?;
     let candidates = [
         format!("{}/.cargo/bin/rust-analyzer", home),
@@ -86,7 +83,6 @@ mod tests {
 
     #[test]
     fn test_find_rust_analyzer() {
-        // This test just checks that find_rust_analyzer doesn't panic
         let _ = find_rust_analyzer();
     }
 }

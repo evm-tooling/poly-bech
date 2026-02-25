@@ -1,5 +1,7 @@
 //! Rust runtime plugin
 
+use std::sync::Arc;
+
 use poly_bench_runtime_traits::{
     ErrorMapper, LangDisplayInfo, ProjectRootDetector, RuntimeFactory, RuntimePlugin,
 };
@@ -12,7 +14,7 @@ use crate::{
     hover::RUST_EMBEDDED_HOVER_PROVIDER,
     import_extractor::RUST_IMPORT_EXTRACTOR,
     project::RUST_DETECTOR,
-    rust_lang_display,
+    rust_analyzer_client, rust_lang_display,
     virtual_file::RUST_VIRTUAL_FILE_BUILDER,
 };
 
@@ -71,6 +73,19 @@ impl RuntimePlugin for RustPlugin {
         &self,
     ) -> Option<&'static dyn poly_bench_lsp_traits::HelperFunctionExtractor> {
         Some(&RUST_HELPER_EXTRACTOR)
+    }
+
+    fn embedded_lsp_client_init(
+        &self,
+        workspace_root: &str,
+    ) -> Option<Arc<dyn poly_bench_lsp_traits::EmbeddedLspClient>> {
+        rust_analyzer_client::init_rust_analyzer_client(workspace_root)
+            .map(|c| c as Arc<dyn poly_bench_lsp_traits::EmbeddedLspClient>)
+    }
+
+    fn embedded_lsp_client_get(&self) -> Option<Arc<dyn poly_bench_lsp_traits::EmbeddedLspClient>> {
+        rust_analyzer_client::get_rust_analyzer_client()
+            .map(|c| c as Arc<dyn poly_bench_lsp_traits::EmbeddedLspClient>)
     }
 }
 
