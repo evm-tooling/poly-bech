@@ -1,0 +1,76 @@
+declare suite address performance timeBased sameDataset: false {
+    description: "Address utilities — isAddress, checksum, getCreateAddress, getCreate2Address"
+    baseline: "go"
+    warmup: 100
+    targetTime: 2000ms
+    count: 3
+
+    setup go {
+        import (
+            "github.com/ChefBingbong/viem-go/utils/address"
+        )
+
+        helpers {
+            func isAddressGo() bool { return address.IsAddress("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48") }
+            func isAddressLowerGo() bool { return address.IsAddress("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48") }
+            func checksumGo() any {
+                addr, err := address.GetAddress("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")
+                if err != nil { panic(err) }
+                return addr
+            }
+            func createGo() any {
+                addr, err := address.GetCreateAddress(address.GetCreateAddressOptions{From: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", Nonce: 1})
+                if err != nil { panic(err) }
+                return addr
+            }
+            func create2Go() any {
+                salt := make([]byte, 32)
+                salt[31] = 1
+                bytecode := []byte{0x60, 0x80, 0x60, 0x40, 0x52, 0x34, 0x80, 0x15}
+                addr, err := address.GetCreate2Address(address.GetCreate2AddressOptions{From: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", Salt: salt, Bytecode: bytecode})
+                if err != nil { panic(err) }
+                return addr
+            }
+        }
+    }
+
+    setup ts {
+        import {
+            import { isAddress, getAddress, getContractAddress } from 'viem'
+        }
+
+        helpers {
+            function isAddressTs() { return isAddress('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48') }
+            function isAddressLowerTs() { return isAddress('0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48') }
+            function checksumTs() { return getAddress('0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48') }
+            function createTs() { return getContractAddress({ from: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266', nonce: 1n, opcode: 'CREATE' }) }
+            function create2Ts() { return getContractAddress({ from: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266', salt: '0x0000000000000000000000000000000000000000000000000000000000000001', bytecode: '0x6080604052348015', opcode: 'CREATE2' }) }
+        }
+    }
+
+    bench isAddress {
+        go: isAddressGo()
+        ts: isAddressTs()
+    }
+
+    bench isAddressLower {
+        go: isAddressLowerGo()
+        ts: isAddressLowerTs()
+    }
+
+    bench checksum {
+        go: checksumGo()
+        ts: checksumTs()
+    }
+
+    bench create {
+        go: createGo()
+        ts: createTs()
+    }
+
+    bench create2 {
+        go: create2Go()
+        ts: create2Ts()
+    }
+
+}

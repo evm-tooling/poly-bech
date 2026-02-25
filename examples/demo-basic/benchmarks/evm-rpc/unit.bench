@@ -1,0 +1,93 @@
+# Unit parsing/formatting benchmarks — viem-go vs viem
+# Pure CPU, no network. Mirrors debug/bench/go/unit_bench_test.go and typescript/unit.bench.ts
+
+declare suite unit performance timeBased sameDataset: false {
+    description: "Unit parsing/formatting — parseEther, formatEther, parseUnits, etc."
+    baseline: "go"
+    warmup: 100
+    targetTime: 2000ms
+    count: 3
+
+    setup go {
+        import (
+            "math/big"
+            "github.com/ChefBingbong/viem-go/utils/unit"
+        )
+
+        helpers {
+            func parseEtherGo() any {
+                v, err := unit.ParseEther("1.5")
+                if err != nil { panic(err) }
+                return v
+            }
+            func parseEtherLargeGo() any {
+                v, err := unit.ParseEther("123456789.123456789012345678")
+                if err != nil { panic(err) }
+                return v
+            }
+            func formatEtherGo() string {
+                wei := new(big.Int)
+                wei.SetString("1500000000000000000", 10)
+                return unit.FormatEther(wei)
+            }
+            func parseUnits6Go() any {
+                v, err := unit.ParseUnits("100.50", 6)
+                if err != nil { panic(err) }
+                return v
+            }
+            func parseGweiGo() any {
+                v, err := unit.ParseGwei("20.5")
+                if err != nil { panic(err) }
+                return v
+            }
+            func formatUnitsGo() string {
+                return unit.FormatUnits(big.NewInt(100500000), 6)
+            }
+        }
+    }
+
+    setup ts {
+        import {
+            import { parseEther, formatEther, parseUnits, parseGwei, formatUnits } from 'viem'
+        }
+
+        helpers {
+            function parseEtherTs() { return parseEther('1.5') }
+            function parseEtherLargeTs() { return parseEther('123456789.123456789012345678') }
+            function formatEtherTs() { return formatEther(1500000000000000000n) }
+            function parseUnits6Ts() { return parseUnits('100.50', 6) }
+            function parseGweiTs() { return parseGwei('20.5') }
+            function formatUnitsTs() { return formatUnits(100500000n, 6) }
+        }
+    }
+
+    bench parseEther {
+        go: parseEtherGo()
+        ts: parseEtherTs()
+    }
+
+    bench parseEtherLarge {
+        go: parseEtherLargeGo()
+        ts: parseEtherLargeTs()
+    }
+
+    bench formatEther {
+        go: formatEtherGo()
+        ts: formatEtherTs()
+    }
+
+    bench parseUnits6 {
+        go: parseUnits6Go()
+        ts: parseUnits6Ts()
+    }
+
+    bench parseGwei {
+        go: parseGweiGo()
+        ts: parseGweiTs()
+    }
+
+    bench formatUnits {
+        go: formatUnitsGo()
+        ts: formatUnitsTs()
+    }
+}
