@@ -90,6 +90,10 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Build Tree-sitter WASM for extension
+        if: ${{ steps.changes.outputs.code_changed == 'true' && steps.changes.outputs.skip_vscode != 'true' }}
+        run: make grammar-wasm
+
       - name: Publish VSCode extension
         if: ${{ steps.changes.outputs.code_changed == 'true' && steps.changes.outputs.skip_vscode != 'true' }}
         working-directory: extensions/vscode

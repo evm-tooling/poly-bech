@@ -70,8 +70,10 @@ make run ARGS='run examples/simple'
 ```
 
 ```bash
-just dev build debug
-just prod build
+just dev build          # full dev build (grammar, CLI, extension, VSIX) - use after changes
+just dev build force    # full rebuild, no change detection
+just prod build         # full prod build (release binary + extension + VSIX)
+just dev build debug    # CLI only (debug binary)
 ```
 
 ### Hooks (recommended)

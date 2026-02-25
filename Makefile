@@ -335,9 +335,10 @@ grammar:
 grammar-wasm: grammar
 	@echo "🔨 Building Tree-sitter WASM..."
 	@cd poly-bench-grammar && npm run build-wasm
-	@mkdir -p extensions/vscode/tree-sitter
+	@mkdir -p extensions/vscode/tree-sitter extensions/vscode/tree-sitter/queries
 	@cp poly-bench-grammar/tree-sitter-polybench.wasm extensions/vscode/tree-sitter/
-	@echo "✅ WASM built and copied to extensions/vscode/tree-sitter/"
+	@cp poly-bench-grammar/queries/highlights.scm extensions/vscode/tree-sitter/queries/
+	@echo "✅ WASM and queries built and copied to extensions/vscode/tree-sitter/"
 
 # Test Tree-sitter grammar
 grammar-test: grammar
