@@ -9,9 +9,7 @@ mod lower;
 mod types;
 
 pub use fixtures::*;
-pub use imports::{
-    extract_go_imports, extract_imports, extract_python_imports, extract_rust_imports,
-    extract_ts_imports, ImportExtractor, ParsedSetup,
-};
+pub use imports::{extract_imports, set_import_extractors};
 pub use lower::lower;
+pub use poly_bench_ir_traits::{ImportExtractor, ParsedSetup};
 pub use types::*;
