@@ -953,7 +953,7 @@ mod tests {
         directive.show_std_dev = true;
         directive.show_error_bars = true;
         directive.regression_model = "auto".to_string();
-        let svg = generate(vec![&b1, &b2, &b3], &directive);
+        let svg = generate(vec![&b1, &b2, &b3], &directive, poly_bench_dsl::SuiteType::Performance);
         assert!(svg.contains("<svg"));
         assert!(svg.contains("stroke-dasharray"));
     }
@@ -968,7 +968,8 @@ mod tests {
                 ChartDirectiveIR::new(poly_bench_dsl::ChartType::LineChart, "line.svg".to_string());
             directive.description = Some("desc".to_string());
             directive.y_scale = scale.to_string();
-            let svg = generate(vec![&b1, &b2, &b3], &directive);
+            let svg =
+                generate(vec![&b1, &b2, &b3], &directive, poly_bench_dsl::SuiteType::Performance);
             assert!(svg.contains("<svg"));
             assert!(svg.contains("nanos/op"));
         }
