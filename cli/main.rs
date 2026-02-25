@@ -556,11 +556,7 @@ async fn compile_files_parallel_cached(
     }
 
     if total_errors > 0 {
-        return Err(miette::miette!(
-            "Compilation failed with {} error(s) across {} file(s)",
-            total_errors,
-            files.len()
-        ));
+        std::process::exit(1);
     }
 
     if files.len() > 1 {
@@ -637,11 +633,7 @@ async fn compile_files_sequential_cached(
     }
 
     if total_errors > 0 {
-        return Err(miette::miette!(
-            "Compilation failed with {} error(s) across {} file(s)",
-            total_errors,
-            files.len()
-        ));
+        std::process::exit(1);
     }
 
     if files.len() > 1 {
@@ -785,14 +777,7 @@ async fn cmd_run(
 
         if !compile_errors.is_empty() {
             print_compile_errors_for_file(bench_file, &compile_errors, verbose);
-
-            // Count total affected benchmarks for the summary
-            let total_affected: usize = compile_errors.iter().map(|e| e.benchmarks.len()).sum();
-            return Err(miette::miette!(
-                "Found {} unique error(s) affecting {} benchmark(s). Fix the errors above before running benchmarks.",
-                compile_errors.len(),
-                total_affected
-            ));
+            std::process::exit(1);
         }
         println!("  ✓ Compile validation passed");
         println!();
