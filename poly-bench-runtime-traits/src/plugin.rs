@@ -3,10 +3,12 @@
 //! Bundles all runtime interfaces (RuntimeFactory, ErrorMapper, LangDisplayInfo,
 //! ProjectRootDetector, ImportExtractor) for registration-based discovery.
 
+use std::sync::Arc;
+
 use poly_bench_dsl::Lang;
 use poly_bench_ir_traits::ImportExtractor;
 use poly_bench_lsp_traits::{
-    EmbeddedDiagnosticProvider, EmbeddedDiagnosticSetup, EmbeddedHoverProvider,
+    EmbeddedDiagnosticProvider, EmbeddedDiagnosticSetup, EmbeddedHoverProvider, EmbeddedLspClient,
     HelperFunctionExtractor, VirtualFileBuilder,
 };
 
@@ -59,6 +61,19 @@ pub trait RuntimePlugin: Send + Sync {
 
     /// Optional helper function extractor for LSP undefined-function diagnostics
     fn helper_function_extractor(&self) -> Option<&'static dyn HelperFunctionExtractor> {
+        None
+    }
+
+    /// Initialize the embedded LSP client for this language. Returns the client if available.
+    fn embedded_lsp_client_init(
+        &self,
+        _workspace_root: &str,
+    ) -> Option<Arc<dyn EmbeddedLspClient>> {
+        None
+    }
+
+    /// Get the embedded LSP client if already initialized.
+    fn embedded_lsp_client_get(&self) -> Option<Arc<dyn EmbeddedLspClient>> {
         None
     }
 }

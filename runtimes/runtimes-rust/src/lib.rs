@@ -9,6 +9,7 @@ pub mod hover;
 pub mod import_extractor;
 pub mod plugin;
 pub mod project;
+pub mod rust_analyzer_client;
 pub mod shared;
 pub mod virtual_file;
 

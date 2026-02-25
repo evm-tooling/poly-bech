@@ -9,9 +9,8 @@
 use std::sync::Arc;
 
 use once_cell::sync::OnceCell;
+use poly_bench_lsp_traits::{LspClient, LspConfig};
 use serde_json::{json, Value};
-
-use crate::lsp_client::{LspClient, LspConfig};
 
 /// Cache for (executable path, server args) - pyright uses --langserver, pylsp uses []
 static PYTHON_LSP_CACHE: OnceCell<(String, Vec<String>)> = OnceCell::new();
@@ -44,14 +43,11 @@ impl LspConfig for PyrightConfig {
     }
 
     fn find_executable_in_workspace(workspace_root: &str) -> Option<String> {
-        // Prefer pyright-langserver from the poly-bench venv (pip pyright package).
-        // The pip "pyright" package provides pyright-langserver for LSP; "pyright" is CLI-only.
         let venv_bin = std::path::Path::new(workspace_root).join(".venv").join("bin");
         let langserver = venv_bin.join("pyright-langserver");
         if langserver.exists() {
             return Some(langserver.to_string_lossy().to_string());
         }
-        // Fallback to pyright (npm version uses --langserver)
         let pyright = venv_bin.join("pyright");
         if pyright.exists() {
             return Some(pyright.to_string_lossy().to_string());
@@ -64,7 +60,6 @@ impl LspConfig for PyrightConfig {
     }
 
     fn server_args_for_path(path: &str) -> Option<Vec<String>> {
-        // pip pyright package: pyright-langserver uses --stdio (not --langserver)
         if path.contains("pyright-langserver") {
             return Some(vec!["--stdio".to_string()]);
         }
@@ -72,13 +67,10 @@ impl LspConfig for PyrightConfig {
     }
 
     fn request_timeout_ms() -> u64 {
-        // Pyright can take 10–15s to initialize on first run (indexing, venv resolution).
         15_000
     }
 
     fn current_dir(workspace_root: &str) -> Option<std::path::PathBuf> {
-        // Pyright must run from the python module root (e.g. .polybench/runtime-env/python)
-        // so it finds the venv, pyrightconfig.json, and resolves imports correctly.
         let p = std::path::Path::new(workspace_root);
         if p.exists() && p.is_dir() {
             Some(p.to_path_buf())
@@ -96,21 +88,17 @@ impl LspConfig for PyrightConfig {
 pub type PyrightClient = LspClient<PyrightConfig>;
 
 /// Find pyright or pylsp in PATH or common locations.
-/// Returns (path, args) - pyright needs ["--langserver"], pylsp uses [].
 fn find_python_lsp() -> Option<&'static (String, Vec<String>)> {
     PYTHON_LSP_CACHE
         .get_or_try_init(|| {
-            // Try pyright first (pip install pyright or npm install pyright)
             if let Ok(path) = which::which("pyright") {
                 return Ok((path.to_string_lossy().to_string(), vec!["--langserver".to_string()]));
             }
 
-            // Fallback to pylsp (pip install python-lsp-server)
             if let Ok(path) = which::which("pylsp") {
                 return Ok((path.to_string_lossy().to_string(), vec![]));
             }
 
-            // Check common locations
             let home = std::env::var("HOME").map_err(|_| ())?;
             let candidates: [(String, Vec<String>); 4] = [
                 (format!("{}/.local/bin/pyright", home), vec!["--langserver".to_string()]),
@@ -136,7 +124,6 @@ mod tests {
 
     #[test]
     fn test_find_python_lsp() {
-        // This test just checks that find_python_lsp doesn't panic
         let _ = find_python_lsp();
     }
 }

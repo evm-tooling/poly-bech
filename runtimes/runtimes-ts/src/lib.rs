@@ -10,6 +10,7 @@ pub mod import_extractor;
 pub mod plugin;
 pub mod project;
 pub mod transpiler;
+pub mod tsserver_client;
 pub mod v8_runtime;
 pub mod virtual_file;
 

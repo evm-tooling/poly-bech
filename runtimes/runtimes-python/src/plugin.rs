@@ -1,5 +1,7 @@
 //! Python runtime plugin
 
+use std::sync::Arc;
+
 use poly_bench_runtime_traits::{
     ErrorMapper, LangDisplayInfo, ProjectRootDetector, RuntimeFactory, RuntimePlugin,
 };
@@ -12,7 +14,7 @@ use crate::{
     hover::PYTHON_EMBEDDED_HOVER_PROVIDER,
     import_extractor::PYTHON_IMPORT_EXTRACTOR,
     project::PYTHON_DETECTOR,
-    python_lang_display,
+    pyright_client, python_lang_display,
     virtual_file::PYTHON_VIRTUAL_FILE_BUILDER,
 };
 
@@ -71,6 +73,19 @@ impl RuntimePlugin for PythonPlugin {
         &self,
     ) -> Option<&'static dyn poly_bench_lsp_traits::HelperFunctionExtractor> {
         Some(&PYTHON_HELPER_EXTRACTOR)
+    }
+
+    fn embedded_lsp_client_init(
+        &self,
+        workspace_root: &str,
+    ) -> Option<Arc<dyn poly_bench_lsp_traits::EmbeddedLspClient>> {
+        pyright_client::init_pyright_client(workspace_root)
+            .map(|c| c as Arc<dyn poly_bench_lsp_traits::EmbeddedLspClient>)
+    }
+
+    fn embedded_lsp_client_get(&self) -> Option<Arc<dyn poly_bench_lsp_traits::EmbeddedLspClient>> {
+        pyright_client::get_pyright_client()
+            .map(|c| c as Arc<dyn poly_bench_lsp_traits::EmbeddedLspClient>)
     }
 }
 

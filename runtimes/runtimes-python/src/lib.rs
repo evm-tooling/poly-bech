@@ -8,6 +8,7 @@ pub mod hover;
 pub mod import_extractor;
 pub mod plugin;
 pub mod project;
+pub mod pyright_client;
 pub mod virtual_file;
 
 pub use error_mapping::{PythonErrorMapper, PYTHON_ERROR_MAPPER};

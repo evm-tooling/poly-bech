@@ -6,9 +6,8 @@
 use std::sync::Arc;
 
 use once_cell::sync::OnceCell;
+use poly_bench_lsp_traits::{LspClient, LspConfig};
 use serde_json::{json, Value};
-
-use crate::lsp_client::{LspClient, LspConfig};
 
 /// Global tsserver client instance (lazy initialized)
 static TSSERVER_CLIENT: OnceCell<Arc<TsServerClient>> = OnceCell::new();
@@ -51,12 +50,10 @@ pub type TsServerClient = LspClient<TsServerConfig>;
 
 /// Find typescript-language-server in PATH or common locations
 fn find_tsserver() -> Option<String> {
-    // Try which first
     if let Ok(path) = which::which("typescript-language-server") {
         return Some(path.to_string_lossy().to_string());
     }
 
-    // Check common npm global locations
     let home = std::env::var("HOME").ok()?;
     let candidates = [
         format!("{}/.npm-global/bin/typescript-language-server", home),
@@ -80,7 +77,6 @@ mod tests {
 
     #[test]
     fn test_find_tsserver() {
-        // This test just checks that find_tsserver doesn't panic
         let _ = find_tsserver();
     }
 }

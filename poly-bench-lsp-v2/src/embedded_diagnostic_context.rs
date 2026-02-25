@@ -1,152 +1,13 @@
 //! LSP implementation of EmbeddedDiagnosticContext
 //!
 //! Provides LSP clients and setup to diagnostic providers from runtimes.
+//! Clients are obtained via the poly-bench runtime registry.
 
 use std::{path::Path, sync::Arc};
 
-use poly_bench_lsp_traits::{EmbeddedDiagnosticContext, EmbeddedLspClient, LspDiagnostic};
-
-use crate::{gopls_client, pyright_client, rust_analyzer_client, tsserver_client};
-
-/// Adapter to make GoplsClient implement EmbeddedLspClient
-pub struct GoplsClientAdapter(pub Arc<gopls_client::GoplsClient>);
-
-impl EmbeddedLspClient for GoplsClientAdapter {
-    fn did_change(&self, uri: &str, content: &str, version: i32) -> Result<(), String> {
-        self.0.did_change(uri, content, version)
-    }
-
-    fn request_diagnostics(&self, uri: &str) -> Result<Vec<LspDiagnostic>, String> {
-        self.0.request_diagnostics(uri).map(|diags| {
-            diags
-                .into_iter()
-                .map(|d| LspDiagnostic {
-                    message: d.message,
-                    severity: d.severity,
-                    start_line: d.start_line,
-                    start_character: d.start_character,
-                    end_line: d.end_line,
-                    end_character: d.end_character,
-                    code: d.code,
-                })
-                .collect()
-        })
-    }
-
-    fn hover(
-        &self,
-        uri: &str,
-        line: u32,
-        character: u32,
-    ) -> Result<Option<tower_lsp::lsp_types::Hover>, String> {
-        self.0.hover(uri, line, character)
-    }
-}
-
-/// Adapter to make TsServerClient implement EmbeddedLspClient
-pub struct TsserverClientAdapter(pub Arc<tsserver_client::TsServerClient>);
-
-impl EmbeddedLspClient for TsserverClientAdapter {
-    fn did_change(&self, uri: &str, content: &str, version: i32) -> Result<(), String> {
-        self.0.did_change(uri, content, version)
-    }
-
-    fn request_diagnostics(&self, uri: &str) -> Result<Vec<LspDiagnostic>, String> {
-        self.0.request_diagnostics(uri).map(|diags| {
-            diags
-                .into_iter()
-                .map(|d| LspDiagnostic {
-                    message: d.message,
-                    severity: d.severity,
-                    start_line: d.start_line,
-                    start_character: d.start_character,
-                    end_line: d.end_line,
-                    end_character: d.end_character,
-                    code: d.code,
-                })
-                .collect()
-        })
-    }
-
-    fn hover(
-        &self,
-        uri: &str,
-        line: u32,
-        character: u32,
-    ) -> Result<Option<tower_lsp::lsp_types::Hover>, String> {
-        self.0.hover(uri, line, character)
-    }
-}
-
-/// Adapter to make RustAnalyzerClient implement EmbeddedLspClient
-pub struct RustAnalyzerClientAdapter(pub Arc<rust_analyzer_client::RustAnalyzerClient>);
-
-impl EmbeddedLspClient for RustAnalyzerClientAdapter {
-    fn did_change(&self, uri: &str, content: &str, version: i32) -> Result<(), String> {
-        self.0.did_change(uri, content, version)
-    }
-
-    fn request_diagnostics(&self, uri: &str) -> Result<Vec<LspDiagnostic>, String> {
-        self.0.request_diagnostics(uri).map(|diags| {
-            diags
-                .into_iter()
-                .map(|d| LspDiagnostic {
-                    message: d.message,
-                    severity: d.severity,
-                    start_line: d.start_line,
-                    start_character: d.start_character,
-                    end_line: d.end_line,
-                    end_character: d.end_character,
-                    code: d.code,
-                })
-                .collect()
-        })
-    }
-
-    fn hover(
-        &self,
-        uri: &str,
-        line: u32,
-        character: u32,
-    ) -> Result<Option<tower_lsp::lsp_types::Hover>, String> {
-        self.0.hover(uri, line, character)
-    }
-}
-
-/// Adapter to make PyrightClient implement EmbeddedLspClient
-pub struct PyrightClientAdapter(pub Arc<pyright_client::PyrightClient>);
-
-impl EmbeddedLspClient for PyrightClientAdapter {
-    fn did_change(&self, uri: &str, content: &str, version: i32) -> Result<(), String> {
-        self.0.did_change(uri, content, version)
-    }
-
-    fn request_diagnostics(&self, uri: &str) -> Result<Vec<LspDiagnostic>, String> {
-        self.0.request_diagnostics(uri).map(|diags| {
-            diags
-                .into_iter()
-                .map(|d| LspDiagnostic {
-                    message: d.message,
-                    severity: d.severity,
-                    start_line: d.start_line,
-                    start_character: d.start_character,
-                    end_line: d.end_line,
-                    end_character: d.end_character,
-                    code: d.code,
-                })
-                .collect()
-        })
-    }
-
-    fn hover(
-        &self,
-        uri: &str,
-        line: u32,
-        character: u32,
-    ) -> Result<Option<tower_lsp::lsp_types::Hover>, String> {
-        self.0.hover(uri, line, character)
-    }
-}
+use poly_bench_lsp_traits::{EmbeddedDiagnosticContext, EmbeddedLspClient};
+use poly_bench_runtime::{get_embedded_lsp_client, init_embedded_lsp_client};
+use poly_bench_syntax::Lang;
 
 /// LSP implementation of EmbeddedDiagnosticContext
 pub struct LspEmbeddedDiagnosticContext {
@@ -164,9 +25,8 @@ impl EmbeddedDiagnosticContext for LspEmbeddedDiagnosticContext {
         if module_root != self.module_root {
             return None;
         }
-        let _ = gopls_client::init_gopls_client(module_root);
-        gopls_client::get_gopls_client()
-            .map(|c| Arc::new(GoplsClientAdapter(c)) as Arc<dyn EmbeddedLspClient>)
+        init_embedded_lsp_client(poly_bench_dsl::Lang::Go, module_root)
+            .or_else(|| get_embedded_lsp_client(poly_bench_dsl::Lang::Go))
     }
 
     fn ensure_tsconfig(&self, module_root: &str) {
@@ -189,23 +49,24 @@ impl EmbeddedDiagnosticContext for LspEmbeddedDiagnosticContext {
         }
     }
 
-    fn ensure_ready(&self, lang: poly_bench_syntax::Lang, module_root: &str) {
+    fn ensure_ready(&self, lang: Lang, module_root: &str) {
         if module_root != self.module_root {
             return;
         }
+        let dsl_lang = poly_bench_lsp_traits::syntax_lang_to_dsl(lang);
         match lang {
-            poly_bench_syntax::Lang::Go => {
-                let _ = gopls_client::init_gopls_client(module_root);
+            Lang::Go => {
+                let _ = init_embedded_lsp_client(dsl_lang, module_root);
             }
-            poly_bench_syntax::Lang::TypeScript => {
+            Lang::TypeScript => {
                 self.ensure_tsconfig(module_root);
             }
-            poly_bench_syntax::Lang::Rust => {
+            Lang::Rust => {
                 let src_dir = Path::new(module_root).join("src");
                 let _ = std::fs::create_dir_all(&src_dir);
             }
-            poly_bench_syntax::Lang::Python => {
-                let _ = pyright_client::init_pyright_client(module_root);
+            Lang::Python => {
+                let _ = init_embedded_lsp_client(dsl_lang, module_root);
             }
             _ => {}
         }

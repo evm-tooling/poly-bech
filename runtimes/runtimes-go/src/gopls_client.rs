@@ -6,9 +6,8 @@
 use std::sync::Arc;
 
 use once_cell::sync::OnceCell;
+use poly_bench_lsp_traits::{LspClient, LspConfig};
 use serde_json::{json, Value};
-
-use crate::lsp_client::{LspClient, LspConfig};
 
 /// Global gopls client instance (lazy initialized)
 static GOPLS_CLIENT: OnceCell<Arc<GoplsClient>> = OnceCell::new();
@@ -48,12 +47,10 @@ pub type GoplsClient = LspClient<GoplsConfig>;
 
 /// Find gopls in PATH or common locations
 fn find_gopls() -> Option<String> {
-    // Try which first
     if let Ok(path) = which::which("gopls") {
         return Some(path.to_string_lossy().to_string());
     }
 
-    // Check common Go bin locations
     let home = std::env::var("HOME").ok()?;
     let candidates = [
         format!("{}/go/bin/gopls", home),
@@ -77,7 +74,6 @@ mod tests {
 
     #[test]
     fn test_find_gopls() {
-        // This test just checks that find_gopls doesn't panic
         let _ = find_gopls();
     }
 }

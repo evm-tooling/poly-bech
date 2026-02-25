@@ -1,5 +1,7 @@
 //! TypeScript runtime plugin
 
+use std::sync::Arc;
+
 use poly_bench_runtime_traits::{
     ErrorMapper, LangDisplayInfo, ProjectRootDetector, RuntimeFactory, RuntimePlugin,
 };
@@ -11,7 +13,7 @@ use crate::{
     hover::TS_EMBEDDED_HOVER_PROVIDER,
     import_extractor::TS_IMPORT_EXTRACTOR,
     project::TS_DETECTOR,
-    ts_lang_display,
+    ts_lang_display, tsserver_client,
     v8_runtime::JS_RUNTIME_FACTORY,
     virtual_file::TS_VIRTUAL_FILE_BUILDER,
 };
@@ -71,6 +73,19 @@ impl RuntimePlugin for TsPlugin {
         &self,
     ) -> Option<&'static dyn poly_bench_lsp_traits::HelperFunctionExtractor> {
         Some(&TS_HELPER_EXTRACTOR)
+    }
+
+    fn embedded_lsp_client_init(
+        &self,
+        workspace_root: &str,
+    ) -> Option<Arc<dyn poly_bench_lsp_traits::EmbeddedLspClient>> {
+        tsserver_client::init_tsserver_client(workspace_root)
+            .map(|c| c as Arc<dyn poly_bench_lsp_traits::EmbeddedLspClient>)
+    }
+
+    fn embedded_lsp_client_get(&self) -> Option<Arc<dyn poly_bench_lsp_traits::EmbeddedLspClient>> {
+        tsserver_client::get_tsserver_client()
+            .map(|c| c as Arc<dyn poly_bench_lsp_traits::EmbeddedLspClient>)
     }
 }
 

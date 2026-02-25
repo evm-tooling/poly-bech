@@ -5,6 +5,7 @@ pub mod compiler;
 pub mod embedded_diagnostics;
 pub mod error_mapping;
 pub mod executor;
+pub mod gopls_client;
 pub mod helper_extractor;
 pub mod hover;
 pub mod import_extractor;

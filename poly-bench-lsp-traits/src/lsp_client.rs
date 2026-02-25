@@ -15,8 +15,9 @@ use std::{
 
 use dashmap::DashMap;
 use serde_json::{json, Value};
-use std::sync::Arc;
 use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
+
+use crate::diagnostics::{EmbeddedLspClient, LspDiagnostic};
 
 /// Timeout for LSP requests in milliseconds
 pub const REQUEST_TIMEOUT_MS: u64 = 5000;
@@ -70,7 +71,7 @@ pub struct LspClient<C: LspConfig> {
     /// Stdin for sending requests
     stdin: Mutex<Option<ChildStdin>>,
     /// Pending request senders indexed by request ID
-    pending: Arc<DashMap<i64, std::sync::mpsc::Sender<Value>>>,
+    pending: std::sync::Arc<DashMap<i64, std::sync::mpsc::Sender<Value>>>,
     /// Next request ID
     next_id: AtomicI64,
     /// Whether server has been initialized
@@ -84,7 +85,7 @@ pub struct LspClient<C: LspConfig> {
     /// Virtual files that have been opened
     open_files: DashMap<String, i32>,
     /// Stored diagnostics from publishDiagnostics notifications, keyed by URI
-    stored_diagnostics: Arc<DashMap<String, Vec<LspDiagnostic>>>,
+    stored_diagnostics: std::sync::Arc<DashMap<String, Vec<LspDiagnostic>>>,
     /// Phantom data for config type
     _config: std::marker::PhantomData<C>,
 }
@@ -101,14 +102,14 @@ impl<C: LspConfig> LspClient<C> {
         Ok(Self {
             process: Mutex::new(None),
             stdin: Mutex::new(None),
-            pending: Arc::new(DashMap::new()),
+            pending: std::sync::Arc::new(DashMap::new()),
             next_id: AtomicI64::new(1),
             initialized: AtomicBool::new(false),
             available: AtomicBool::new(true),
             workspace_root: workspace_root.to_string(),
             server_path: Some(server_path),
             open_files: DashMap::new(),
-            stored_diagnostics: Arc::new(DashMap::new()),
+            stored_diagnostics: std::sync::Arc::new(DashMap::new()),
             _config: std::marker::PhantomData,
         })
     }
@@ -256,7 +257,6 @@ impl<C: LspConfig> LspClient<C> {
                 } else if let Some(method) = response.get("method").and_then(|m| m.as_str()) {
                     tracing::trace!("[{}-reader] Received notification: {}", server_name, method);
 
-                    // Handle publishDiagnostics notification
                     if method == "textDocument/publishDiagnostics" {
                         if let Some(params) = response.get("params") {
                             if let Some(uri) = params.get("uri").and_then(|u| u.as_str()) {
@@ -550,16 +550,13 @@ impl<C: LspConfig> LspClient<C> {
     }
 
     /// Request diagnostics for a document
-    /// Uses textDocument/diagnostic (LSP 3.17+) with fallback to stored publishDiagnostics
     pub fn request_diagnostics(&self, uri: &str) -> Result<Vec<LspDiagnostic>, String> {
         if !self.initialized.load(Ordering::SeqCst) {
             self.initialize()?;
         }
 
-        // Clear any previously stored diagnostics for this URI
         self.clear_stored_diagnostics(uri);
 
-        // Try textDocument/diagnostic first (LSP 3.17+)
         let result = self.send_request_with_timeout(
             "textDocument/diagnostic",
             json!({
@@ -567,7 +564,7 @@ impl<C: LspConfig> LspClient<C> {
                     "uri": uri
                 }
             }),
-            10000, // Longer timeout for diagnostics
+            10000,
         );
 
         match result {
@@ -578,18 +575,12 @@ impl<C: LspConfig> LspClient<C> {
                     C::SERVER_NAME,
                     e
                 );
-
-                // Server doesn't support textDocument/diagnostic
-                // Wait for publishDiagnostics notification to arrive
                 self.wait_for_diagnostics(uri)
             }
         }
     }
 
-    /// Wait for diagnostics to arrive via publishDiagnostics notification
     fn wait_for_diagnostics(&self, uri: &str) -> Result<Vec<LspDiagnostic>, String> {
-        // Poll for diagnostics with exponential backoff
-        // Start with 50ms, max 500ms, total wait up to ~2 seconds
         let wait_intervals = [50, 100, 200, 300, 400, 500, 500];
 
         for wait_ms in wait_intervals {
@@ -597,36 +588,25 @@ impl<C: LspConfig> LspClient<C> {
 
             let diagnostics = self.get_stored_diagnostics(uri);
             if !diagnostics.is_empty() {
-                tracing::debug!(
-                    "[{}] Got {} diagnostics from publishDiagnostics for {}",
-                    C::SERVER_NAME,
-                    diagnostics.len(),
-                    uri
-                );
                 return Ok(diagnostics);
             }
         }
 
-        // Return whatever we have (might be empty if no errors)
         Ok(self.get_stored_diagnostics(uri))
     }
 
-    /// Check if server is available
     pub fn is_available(&self) -> bool {
         self.available.load(Ordering::SeqCst)
     }
 
-    /// Get stored diagnostics for a URI (from publishDiagnostics notifications)
     pub fn get_stored_diagnostics(&self, uri: &str) -> Vec<LspDiagnostic> {
         self.stored_diagnostics.get(uri).map(|d| d.clone()).unwrap_or_default()
     }
 
-    /// Clear stored diagnostics for a URI
     pub fn clear_stored_diagnostics(&self, uri: &str) {
         self.stored_diagnostics.remove(uri);
     }
 
-    /// Shutdown the server
     pub fn shutdown(&self) {
         if let Ok(mut process_guard) = self.process.lock() {
             if let Some(ref mut process) = *process_guard {
@@ -650,6 +630,20 @@ impl<C: LspConfig> LspClient<C> {
 impl<C: LspConfig> Drop for LspClient<C> {
     fn drop(&mut self) {
         self.shutdown();
+    }
+}
+
+impl<C: LspConfig> EmbeddedLspClient for LspClient<C> {
+    fn did_change(&self, uri: &str, content: &str, version: i32) -> Result<(), String> {
+        LspClient::<C>::did_change(self, uri, content, version)
+    }
+
+    fn request_diagnostics(&self, uri: &str) -> Result<Vec<LspDiagnostic>, String> {
+        LspClient::<C>::request_diagnostics(self, uri)
+    }
+
+    fn hover(&self, uri: &str, line: u32, character: u32) -> Result<Option<Hover>, String> {
+        LspClient::<C>::hover(self, uri, line, character)
     }
 }
 
@@ -714,34 +708,13 @@ pub fn parse_hover_response(value: &Value) -> Result<Option<Hover>, String> {
     Ok(Some(Hover { contents: hover_contents, range }))
 }
 
-/// A diagnostic from an LSP server
-#[derive(Debug, Clone)]
-pub struct LspDiagnostic {
-    /// Start line (0-indexed)
-    pub start_line: u32,
-    /// Start character (0-indexed)
-    pub start_character: u32,
-    /// End line (0-indexed)
-    pub end_line: u32,
-    /// End character (0-indexed)
-    pub end_character: u32,
-    /// Diagnostic message
-    pub message: String,
-    /// Severity (1=Error, 2=Warning, 3=Info, 4=Hint)
-    pub severity: u32,
-    /// Diagnostic code (optional)
-    pub code: Option<String>,
-}
-
 /// Parse a diagnostic response from an LSP server
 pub fn parse_diagnostic_response(value: &Value) -> Result<Vec<LspDiagnostic>, String> {
     let mut diagnostics = Vec::new();
 
-    // Handle DocumentDiagnosticReport format
     let items = if let Some(items) = value.get("items").and_then(|i| i.as_array()) {
         items.clone()
     } else if let Some(items) = value.get("relatedDocuments") {
-        // Full document diagnostic report
         if let Some(obj) = items.as_object() {
             let mut all_items = Vec::new();
             for (_uri, doc_report) in obj {
@@ -754,7 +727,6 @@ pub fn parse_diagnostic_response(value: &Value) -> Result<Vec<LspDiagnostic>, St
             return Ok(diagnostics);
         }
     } else if let Some(arr) = value.as_array() {
-        // Direct array of diagnostics
         arr.clone()
     } else {
         return Ok(diagnostics);
@@ -769,7 +741,6 @@ pub fn parse_diagnostic_response(value: &Value) -> Result<Vec<LspDiagnostic>, St
     Ok(diagnostics)
 }
 
-/// Parse a single diagnostic object
 fn parse_single_diagnostic(value: &Value) -> Option<LspDiagnostic> {
     let range = value.get("range")?;
     let start = range.get("start")?;
