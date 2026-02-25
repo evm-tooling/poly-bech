@@ -1,6 +1,6 @@
 use std::charting
 
-declare suite sortN performance timeBased sameDataset: true {
+declare suite sortN memory timeBased sameDataset: true {
     description: "O(n log n) sort - stdlib sort on int32 array"
     warmup: 50
     baseline: "go"
@@ -177,7 +177,7 @@ declare suite sortN performance timeBased sameDataset: true {
             title: "Sort Performance - O(n log n)",
             description: "Stdlib sort comparison across Go, TypeScript, and Rust",
             output: "sort-line1.svg",
-            rowCount: 3
+            rowCount: 3,
         )
         charting.drawTable(
             title: "Sort Performance Comparison",

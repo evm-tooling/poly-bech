@@ -1891,15 +1891,6 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
             detail: Some("Maximum stored async samples per benchmark run".to_string()),
             ..Default::default()
         },
-        // Observability settings
-        CompletionItem {
-            label: "memory".to_string(),
-            kind: Some(CompletionItemKind::PROPERTY),
-            insert_text: Some("memory: false".to_string()),
-            insert_text_format: Some(InsertTextFormat::SNIPPET),
-            detail: Some("Enable memory allocation profiling".to_string()),
-            ..Default::default()
-        },
     ]
 }
 

@@ -4,7 +4,7 @@ use super::{AnvilConfig, AnvilService, ProjectRoots};
 use crate::comparison::{BenchmarkResult, BenchmarkResults, SuiteResults};
 use colored::Colorize;
 use miette::{miette, Result};
-use poly_bench_dsl::{BenchMode, BenchmarkKind, ExecutionOrder, FairnessMode, Lang};
+use poly_bench_dsl::{BenchMode, BenchmarkKind, ExecutionOrder, FairnessMode, Lang, SuiteType};
 use poly_bench_ir::{BenchmarkIR, BenchmarkSpec, SuiteIR};
 use poly_bench_runtime::{
     go::GoRuntime, js::JsRuntime, measurement::Measurement, rust::RustRuntime, traits::Runtime,
@@ -121,6 +121,26 @@ fn async_success_error_counts(measurement: &Measurement) -> (u64, u64) {
         success = measurement.iterations;
     }
     (success, error)
+}
+
+/// Format the primary metric for display (time or memory based on suite type)
+fn format_primary_metric(m: &Measurement, suite_type: SuiteType) -> String {
+    if suite_type == SuiteType::Memory {
+        m.bytes_per_op
+            .map(Measurement::format_bytes)
+            .unwrap_or_else(|| Measurement::format_duration(m.nanos_per_op))
+    } else {
+        Measurement::format_duration(m.nanos_per_op)
+    }
+}
+
+/// Get the primary comparison value (lower is better)
+fn primary_metric(m: &Measurement, suite_type: SuiteType) -> f64 {
+    if suite_type == SuiteType::Memory {
+        m.bytes_per_op.map(|b| b as f64).unwrap_or(m.nanos_per_op)
+    } else {
+        m.nanos_per_op
+    }
 }
 
 fn async_outcome_suffix(kind: BenchmarkKind, measurement: &Measurement) -> String {
@@ -571,7 +591,7 @@ pub async fn run(
                                 print!(
                                     "\r    {} {}{}{} ({}x runs, {:.2}s)                    ",
                                     "Go:".green(),
-                                    Measurement::format_duration(aggregated.nanos_per_op),
+                                    format_primary_metric(&aggregated, suite.suite_type),
                                     ci_str,
                                     async_outcome_suffix(spec.kind, &aggregated),
                                     spec_clone.count,
@@ -591,7 +611,7 @@ pub async fn run(
                                     print!(
                                         "\r    {} {}{} ({})                    ",
                                         "Go:".green(),
-                                        Measurement::format_duration(m.nanos_per_op),
+                                        format_primary_metric(&m, suite.suite_type),
                                         async_outcome_suffix(spec.kind, &m),
                                         format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
                                     );
@@ -671,7 +691,7 @@ pub async fn run(
                                 print!(
                                     "\r    {} {}{}{} ({}x runs, {:.2}s)                    ",
                                     "TS:".cyan(),
-                                    Measurement::format_duration(aggregated.nanos_per_op),
+                                    format_primary_metric(&aggregated, suite.suite_type),
                                     ci_str,
                                     async_outcome_suffix(spec.kind, &aggregated),
                                     spec_clone.count,
@@ -691,7 +711,7 @@ pub async fn run(
                                     print!(
                                         "\r    {} {}{} ({})                    ",
                                         "TS:".cyan(),
-                                        Measurement::format_duration(m.nanos_per_op),
+                                        format_primary_metric(&m, suite.suite_type),
                                         async_outcome_suffix(spec.kind, &m),
                                         format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
                                     );
@@ -772,7 +792,7 @@ pub async fn run(
                                 print!(
                                     "\r    {} {}{}{} ({}x runs, {:.2}s)                    ",
                                     "Rust:".yellow(),
-                                    Measurement::format_duration(aggregated.nanos_per_op),
+                                    format_primary_metric(&aggregated, suite.suite_type),
                                     ci_str,
                                     async_outcome_suffix(spec.kind, &aggregated),
                                     spec_clone.count,
@@ -792,7 +812,7 @@ pub async fn run(
                                     print!(
                                         "\r    {} {}{} ({})                    ",
                                         "Rust:".yellow(),
-                                        Measurement::format_duration(m.nanos_per_op),
+                                        format_primary_metric(&m, suite.suite_type),
                                         async_outcome_suffix(spec.kind, &m),
                                         format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
                                     );
@@ -821,7 +841,7 @@ pub async fn run(
                     println!(
                         "    {} {}{}",
                         "Go:".green(),
-                        Measurement::format_duration(go_m.nanos_per_op),
+                        format_primary_metric(go_m, suite.suite_type),
                         async_outcome_suffix(spec.kind, go_m)
                     );
                 }
@@ -829,7 +849,7 @@ pub async fn run(
                     println!(
                         "    {} {}{}",
                         "TS:".cyan(),
-                        Measurement::format_duration(ts_m.nanos_per_op),
+                        format_primary_metric(ts_m, suite.suite_type),
                         async_outcome_suffix(spec.kind, ts_m)
                     );
                 }
@@ -837,7 +857,7 @@ pub async fn run(
                     println!(
                         "    {} {}{}",
                         "Rust:".yellow(),
-                        Measurement::format_duration(rust_m.nanos_per_op),
+                        format_primary_metric(rust_m, suite.suite_type),
                         async_outcome_suffix(spec.kind, rust_m)
                     );
                 }
@@ -845,12 +865,13 @@ pub async fn run(
 
             let bench_elapsed = bench_start.elapsed();
 
-            // Show comparison summary
+            // Show comparison summary (uses memory ratio for memory suites)
             let mut comparison_parts = Vec::new();
+            let metric = |m: &Measurement| primary_metric(m, suite.suite_type);
             if let (Some(go_m), Some(ts_m)) =
                 (measurements.get(&Lang::Go), measurements.get(&Lang::TypeScript))
             {
-                let ratio = go_m.nanos_per_op / ts_m.nanos_per_op;
+                let ratio = metric(go_m) / metric(ts_m);
                 if (ratio - 1.0).abs() < 0.05 {
                     comparison_parts.push("Go≈TS".dimmed().to_string());
                 } else if ratio > 1.0 {
@@ -865,7 +886,7 @@ pub async fn run(
             if let (Some(go_m), Some(rust_m)) =
                 (measurements.get(&Lang::Go), measurements.get(&Lang::Rust))
             {
-                let ratio = go_m.nanos_per_op / rust_m.nanos_per_op;
+                let ratio = metric(go_m) / metric(rust_m);
                 if (ratio - 1.0).abs() < 0.05 {
                     comparison_parts.push("Go≈Rust".dimmed().to_string());
                 } else if ratio > 1.0 {
@@ -883,7 +904,7 @@ pub async fn run(
             if let (Some(ts_m), Some(rust_m)) =
                 (measurements.get(&Lang::TypeScript), measurements.get(&Lang::Rust))
             {
-                let ratio = ts_m.nanos_per_op / rust_m.nanos_per_op;
+                let ratio = metric(ts_m) / metric(rust_m);
                 if (ratio - 1.0).abs() < 0.05 {
                     comparison_parts.push("TS≈Rust".dimmed().to_string());
                 } else if ratio > 1.0 {
@@ -916,6 +937,7 @@ pub async fn run(
                 spec.kind,
                 spec.description.clone(),
                 measurements,
+                suite.suite_type,
                 if strict_fairness { "strict".to_string() } else { "legacy".to_string() },
                 spec_clone.fairness_seed,
                 Some(spec_clone.async_warmup_cap),
@@ -941,6 +963,7 @@ pub async fn run(
         suite_results.push(SuiteResults::new(
             suite.name.clone(),
             suite.description.clone(),
+            suite.suite_type,
             benchmark_results,
         ));
         println!(
@@ -993,12 +1016,15 @@ mod tests {
 
     #[test]
     fn test_benchmark_result_comparison_mode_for_strict_and_legacy() {
+        use poly_bench_dsl::SuiteType;
+
         let strict = BenchmarkResult::new(
             "a".to_string(),
             "suite_a".to_string(),
             BenchmarkKind::Sync,
             None,
             HashMap::<Lang, Measurement>::new(),
+            SuiteType::Performance,
             "strict".to_string(),
             Some(7),
             None,
@@ -1011,6 +1037,7 @@ mod tests {
             BenchmarkKind::Sync,
             None,
             HashMap::<Lang, Measurement>::new(),
+            SuiteType::Performance,
             "legacy".to_string(),
             None,
             None,

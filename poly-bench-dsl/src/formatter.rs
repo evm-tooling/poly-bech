@@ -299,9 +299,6 @@ fn format_suite_with_source(
     if let Some(count) = suite.count {
         write!(out, "{}count: {}\n", inner, count).unwrap();
     }
-    if suite.memory {
-        write!(out, "{}memory: true\n", inner).unwrap();
-    }
     if let Some(policy) = suite.async_sampling_policy {
         let policy_name = match policy {
             AsyncSamplingPolicy::FixedCap => "fixedCap",
@@ -529,10 +526,6 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize) {
     }
 
     // Observability settings (Phase 2B) - only output non-default values
-    if suite.memory {
-        // Only output memory: true since false is the default
-        write!(out, "{}memory: true\n", inner).unwrap();
-    }
     if let Some(policy) = suite.async_sampling_policy {
         let policy_name = match policy {
             AsyncSamplingPolicy::FixedCap => "fixedCap",
@@ -802,11 +795,6 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize) {
     }
     if let Some(count) = bench.count {
         write!(out, "{}count: {}\n", inner, count).unwrap();
-    }
-
-    // Observability settings (Phase 2B) - only output if explicitly set
-    if let Some(memory) = bench.memory {
-        write!(out, "{}memory: {}\n", inner, if memory { "true" } else { "false" }).unwrap();
     }
 
     // Skip and validate hooks (always flat syntax)

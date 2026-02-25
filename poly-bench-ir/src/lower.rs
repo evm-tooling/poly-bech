@@ -110,7 +110,6 @@ fn lower_suite(
     ir.fairness_seed = suite.fairness_seed;
 
     // Observability settings (Phase 2B)
-    ir.memory = suite.memory; // Already defaults to false in AST
     ir.async_sampling_policy = suite.async_sampling_policy.unwrap_or_default();
     ir.async_warmup_cap = suite.async_warmup_cap.unwrap_or(5);
     ir.async_sample_cap = suite.async_sample_cap.unwrap_or(50);
@@ -349,7 +348,8 @@ fn lower_benchmark(
     spec.fairness_seed = suite_ir.fairness_seed;
 
     // Observability settings (Phase 2B)
-    spec.memory = benchmark.memory.unwrap_or(suite_ir.memory);
+    // Memory tracking: derived from suiteType (memory = enabled, performance = disabled)
+    spec.memory = suite_ir.suite_type == poly_bench_dsl::SuiteType::Memory;
     spec.async_sampling_policy = suite_ir.async_sampling_policy;
     spec.async_warmup_cap = suite_ir.async_warmup_cap;
     spec.async_sample_cap = suite_ir.async_sample_cap;

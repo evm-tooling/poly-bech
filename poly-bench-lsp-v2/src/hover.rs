@@ -568,7 +568,8 @@ fn get_property_documentation(name: &str) -> String {
                 .to_string()
         }
         "memory" => {
-            "**memory**: `boolean`\n\nEnable memory allocation profiling.".to_string()
+            "**memory** (removed)\n\nUse `suiteType: memory` in the suite declaration instead."
+                .to_string()
         }
         "outlierDetection" => {
             "**outlierDetection**: `boolean`\n\nEnable IQR-based outlier detection and removal."
@@ -759,12 +760,9 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
             Default: `5` (5%)",
         ),
         "memory" => Some(
-            "**memory:** `true | false`\n\n\
-            Enable memory allocation profiling.\n\n\
-            When enabled, tracks memory allocations during benchmark execution:\n\
-            - **Go:** Uses `runtime.ReadMemStats` to measure bytes/allocs per op\n\
-            - **TypeScript:** Uses `process.memoryUsage()` to track heap usage\n\n\
-            Default: `false`",
+            "**memory** (removed)\n\n\
+            Use `suiteType: memory` in the suite declaration instead.\n\n\
+            Example: `declare suite mySuite memory timeBased sameDataset: true`",
         ),
         "fairness" => Some(
             "**fairness:** `\"legacy\" | \"strict\"`\n\n\

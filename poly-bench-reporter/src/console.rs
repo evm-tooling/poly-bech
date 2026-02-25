@@ -250,6 +250,7 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
     }
 
     // Legend
+    let has_memory_suite = results.suites.iter().any(|s| s.suite_type == poly_bench_dsl::SuiteType::Memory);
     println!("{}", "─".repeat(110));
     println!("{}", "LEGEND".dimmed());
     println!(
@@ -259,6 +260,9 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
         "rust".yellow()
     );
     println!("  {} = operations per second (higher is better)", "hz".dimmed());
+    if has_memory_suite {
+        println!("  {} = bytes per operation (lower is better)  |  {} = allocations per operation", "bytes/op".dimmed(), "allocs/op".dimmed());
+    }
     println!(
         "  {} = minimum latency  |  {} = maximum latency  |  {} = mean latency (all in ms)",
         "min".dimmed(),
@@ -298,10 +302,10 @@ fn print_suite_with_options(suite: &SuiteResults, options: &ReportOptions) {
 
     // Distribution stats table (vitest/tinybench style)
     if options.show_distribution {
-        print_distribution_table(&suite.benchmarks, options);
+        print_distribution_table(&suite.benchmarks, suite.suite_type, options);
     } else {
         // Legacy compact table
-        print_compact_table(&suite.benchmarks, options);
+        print_compact_table(&suite.benchmarks, suite.suite_type, options);
     }
 
     // Suite summary footer
@@ -350,15 +354,31 @@ fn print_suite_with_options(suite: &SuiteResults, options: &ReportOptions) {
 }
 
 /// Print the vitest/tinybench style distribution table
-fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOptions) {
+fn print_distribution_table(
+    benchmarks: &[BenchmarkResult],
+    suite_type: poly_bench_dsl::SuiteType,
+    _options: &ReportOptions,
+) {
+    let is_memory = suite_type == poly_bench_dsl::SuiteType::Memory;
+
     // Check if any measurement has multiple runs
     let has_multi_run = benchmarks
         .iter()
         .flat_map(|b| b.measurements.values())
         .any(|m| m.run_count.unwrap_or(1) > 1);
 
-    // Table header - show median and 95% CI columns when multi-run
-    if has_multi_run {
+    // Table header - memory suite shows bytes/op, allocs/op; performance shows latency
+    if is_memory {
+        println!(
+            "   {:<40} {:>12} {:>10} {:>12} {:>8} {:>8}",
+            "name".dimmed(),
+            "bytes/op".dimmed(),
+            "allocs/op".dimmed(),
+            "hz".dimmed(),
+            "mean".dimmed(),
+            "samples".dimmed()
+        );
+    } else if has_multi_run {
         println!(
             "   {:<40} {:>12} {:>10} {:>12} {:>8} {:>8} {:>8} {:>8} {:>9} {:>7} {:>6}",
             "name".dimmed(),
@@ -390,61 +410,165 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
         );
     }
 
-    // Determine fastest/slowest for each language
-    let go_fastest: Option<&str> = benchmarks
-        .iter()
-        .filter_map(|b| b.measurements.get(&Lang::Go).map(|m| (b.name.as_str(), m.ops_per_sec)))
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|(name, _)| name);
+    // Determine fastest/slowest (or lowest/highest memory) for each language
+    let metric_val = |m: &Measurement| -> f64 {
+        if is_memory {
+            m.bytes_per_op.map(|b| b as f64).unwrap_or(0.0)
+        } else {
+            m.ops_per_sec
+        }
+    };
+    let better = |a: f64, b: f64| {
+        if is_memory {
+            a < b // lower bytes is better
+        } else {
+            a > b // higher ops/sec is better
+        }
+    };
 
-    let go_slowest: Option<&str> = benchmarks
-        .iter()
-        .filter_map(|b| b.measurements.get(&Lang::Go).map(|m| (b.name.as_str(), m.ops_per_sec)))
-        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|(name, _)| name);
-
-    let ts_fastest: Option<&str> = benchmarks
+    let go_best: Option<&str> = benchmarks
         .iter()
         .filter_map(|b| {
-            b.measurements.get(&Lang::TypeScript).map(|m| (b.name.as_str(), m.ops_per_sec))
+            b.measurements
+                .get(&Lang::Go)
+                .map(|m| (b.name.as_str(), metric_val(m)))
         })
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .max_by(|a, b| {
+            if better(a.1, b.1) {
+                std::cmp::Ordering::Greater
+            } else if better(b.1, a.1) {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
         .map(|(name, _)| name);
 
-    let ts_slowest: Option<&str> = benchmarks
+    let go_worst: Option<&str> = benchmarks
         .iter()
         .filter_map(|b| {
-            b.measurements.get(&Lang::TypeScript).map(|m| (b.name.as_str(), m.ops_per_sec))
+            b.measurements
+                .get(&Lang::Go)
+                .map(|m| (b.name.as_str(), metric_val(m)))
         })
-        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .min_by(|a, b| {
+            if better(a.1, b.1) {
+                std::cmp::Ordering::Greater
+            } else if better(b.1, a.1) {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
         .map(|(name, _)| name);
 
-    let rust_fastest: Option<&str> = benchmarks
+    let ts_best: Option<&str> = benchmarks
         .iter()
-        .filter_map(|b| b.measurements.get(&Lang::Rust).map(|m| (b.name.as_str(), m.ops_per_sec)))
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .filter_map(|b| {
+            b.measurements
+                .get(&Lang::TypeScript)
+                .map(|m| (b.name.as_str(), metric_val(m)))
+        })
+        .max_by(|a, b| {
+            if better(a.1, b.1) {
+                std::cmp::Ordering::Greater
+            } else if better(b.1, a.1) {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
         .map(|(name, _)| name);
 
-    let rust_slowest: Option<&str> = benchmarks
+    let ts_worst: Option<&str> = benchmarks
         .iter()
-        .filter_map(|b| b.measurements.get(&Lang::Rust).map(|m| (b.name.as_str(), m.ops_per_sec)))
-        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .filter_map(|b| {
+            b.measurements
+                .get(&Lang::TypeScript)
+                .map(|m| (b.name.as_str(), metric_val(m)))
+        })
+        .min_by(|a, b| {
+            if better(a.1, b.1) {
+                std::cmp::Ordering::Greater
+            } else if better(b.1, a.1) {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
         .map(|(name, _)| name);
+
+    let rust_best: Option<&str> = benchmarks
+        .iter()
+        .filter_map(|b| {
+            b.measurements
+                .get(&Lang::Rust)
+                .map(|m| (b.name.as_str(), metric_val(m)))
+        })
+        .max_by(|a, b| {
+            if better(a.1, b.1) {
+                std::cmp::Ordering::Greater
+            } else if better(b.1, a.1) {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
+        .map(|(name, _)| name);
+
+    let rust_worst: Option<&str> = benchmarks
+        .iter()
+        .filter_map(|b| {
+            b.measurements
+                .get(&Lang::Rust)
+                .map(|m| (b.name.as_str(), metric_val(m)))
+        })
+        .min_by(|a, b| {
+            if better(a.1, b.1) {
+                std::cmp::Ordering::Greater
+            } else if better(b.1, a.1) {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
+        .map(|(name, _)| name);
+
+    let (best_label, worst_label) = if is_memory {
+        (" lowest", " highest")
+    } else {
+        (" fastest", " slowest")
+    };
 
     for bench in benchmarks {
         // Go row
         if let Some(m) = bench.measurements.get(&Lang::Go) {
-            let badge = if Some(bench.name.as_str()) == go_fastest && benchmarks.len() > 1 {
-                " fastest".green().to_string()
-            } else if Some(bench.name.as_str()) == go_slowest && benchmarks.len() > 1 {
-                " slowest".yellow().to_string()
+            let badge = if Some(bench.name.as_str()) == go_best && benchmarks.len() > 1 {
+                best_label.green().to_string()
+            } else if Some(bench.name.as_str()) == go_worst && benchmarks.len() > 1 {
+                worst_label.yellow().to_string()
             } else {
                 String::new()
             };
 
             let name = format!("· go: {}", bench.name);
 
-            if has_multi_run && m.run_count.unwrap_or(1) > 1 {
+            if is_memory {
+                let bytes = m.bytes_per_op.map(Measurement::format_bytes).unwrap_or_else(|| "-".to_string());
+                let allocs = m.allocs_per_op.map(|a| a.to_string()).unwrap_or_else(|| "-".to_string());
+                let mean_ns = m.nanos_per_op;
+                let samples = m.samples.unwrap_or(1000);
+                println!(
+                    "   {:<40} {:>12} {:>10} {:>12} {:>8} {:>8}{}",
+                    name.green(),
+                    bytes,
+                    allocs,
+                    format_hz(m.ops_per_sec),
+                    format_ms(mean_ns),
+                    samples,
+                    badge
+                );
+            } else if has_multi_run && m.run_count.unwrap_or(1) > 1 {
                 // Multi-run format: show median and 95% CI
                 let median_ns = m.median_across_runs.unwrap_or(m.nanos_per_op);
                 let ci_str = if let (Some(lower), Some(upper)) = (m.ci_95_lower, m.ci_95_upper) {
@@ -520,17 +644,32 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
 
         // TypeScript row
         if let Some(m) = bench.measurements.get(&Lang::TypeScript) {
-            let badge = if Some(bench.name.as_str()) == ts_fastest && benchmarks.len() > 1 {
-                " fastest".green().to_string()
-            } else if Some(bench.name.as_str()) == ts_slowest && benchmarks.len() > 1 {
-                " slowest".yellow().to_string()
+            let badge = if Some(bench.name.as_str()) == ts_best && benchmarks.len() > 1 {
+                best_label.green().to_string()
+            } else if Some(bench.name.as_str()) == ts_worst && benchmarks.len() > 1 {
+                worst_label.yellow().to_string()
             } else {
                 String::new()
             };
 
             let name = format!("· ts: {}", bench.name);
 
-            if has_multi_run && m.run_count.unwrap_or(1) > 1 {
+            if is_memory {
+                let bytes = m.bytes_per_op.map(Measurement::format_bytes).unwrap_or_else(|| "-".to_string());
+                let allocs = m.allocs_per_op.map(|a| a.to_string()).unwrap_or_else(|| "-".to_string());
+                let mean_ns = m.nanos_per_op;
+                let samples = m.samples.unwrap_or(1000);
+                println!(
+                    "   {:<40} {:>12} {:>10} {:>12} {:>8} {:>8}{}",
+                    name.cyan(),
+                    bytes,
+                    allocs,
+                    format_hz(m.ops_per_sec),
+                    format_ms(mean_ns),
+                    samples,
+                    badge
+                );
+            } else if has_multi_run && m.run_count.unwrap_or(1) > 1 {
                 // Multi-run format: show median and 95% CI
                 let median_ns = m.median_across_runs.unwrap_or(m.nanos_per_op);
                 let ci_str = if let (Some(lower), Some(upper)) = (m.ci_95_lower, m.ci_95_upper) {
@@ -606,17 +745,32 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
 
         // Rust row
         if let Some(m) = bench.measurements.get(&Lang::Rust) {
-            let badge = if Some(bench.name.as_str()) == rust_fastest && benchmarks.len() > 1 {
-                " fastest".green().to_string()
-            } else if Some(bench.name.as_str()) == rust_slowest && benchmarks.len() > 1 {
-                " slowest".yellow().to_string()
+            let badge = if Some(bench.name.as_str()) == rust_best && benchmarks.len() > 1 {
+                best_label.green().to_string()
+            } else if Some(bench.name.as_str()) == rust_worst && benchmarks.len() > 1 {
+                worst_label.yellow().to_string()
             } else {
                 String::new()
             };
 
             let name = format!("· rust: {}", bench.name);
 
-            if has_multi_run && m.run_count.unwrap_or(1) > 1 {
+            if is_memory {
+                let bytes = m.bytes_per_op.map(Measurement::format_bytes).unwrap_or_else(|| "-".to_string());
+                let allocs = m.allocs_per_op.map(|a| a.to_string()).unwrap_or_else(|| "-".to_string());
+                let mean_ns = m.nanos_per_op;
+                let samples = m.samples.unwrap_or(1000);
+                println!(
+                    "   {:<40} {:>12} {:>10} {:>12} {:>8} {:>8}{}",
+                    name.yellow(),
+                    bytes,
+                    allocs,
+                    format_hz(m.ops_per_sec),
+                    format_ms(mean_ns),
+                    samples,
+                    badge
+                );
+            } else if has_multi_run && m.run_count.unwrap_or(1) > 1 {
                 // Multi-run format: show median and 95% CI
                 let median_ns = m.median_across_runs.unwrap_or(m.nanos_per_op);
                 let ci_str = if let (Some(lower), Some(upper)) = (m.ci_95_lower, m.ci_95_upper) {
@@ -695,20 +849,27 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
             println!("   {}", "  mode: async-sequential".dimmed());
         }
 
-        let go_ns = bench.measurements.get(&Lang::Go).map(|m| m.nanos_per_op);
-        let ts_ns = bench.measurements.get(&Lang::TypeScript).map(|m| m.nanos_per_op);
-        let rust_ns = bench.measurements.get(&Lang::Rust).map(|m| m.nanos_per_op);
+        let primary = |m: &Measurement| -> f64 {
+            if is_memory {
+                m.bytes_per_op.map(|b| b as f64).unwrap_or(f64::MAX)
+            } else {
+                m.nanos_per_op
+            }
+        };
+        let go_val = bench.measurements.get(&Lang::Go).map(primary);
+        let ts_val = bench.measurements.get(&Lang::TypeScript).map(primary);
+        let rust_val = bench.measurements.get(&Lang::Rust).map(primary);
 
-        // Find winner across all languages present
+        // Find winner across all languages present (lower is better for both time and memory)
         let mut times: Vec<(&str, f64)> = vec![];
-        if let Some(ns) = go_ns {
-            times.push(("Go", ns));
+        if let Some(v) = go_val {
+            times.push(("Go", v));
         }
-        if let Some(ns) = ts_ns {
-            times.push(("TS", ns));
+        if let Some(v) = ts_val {
+            times.push(("TS", v));
         }
-        if let Some(ns) = rust_ns {
-            times.push(("Rust", ns));
+        if let Some(v) = rust_val {
+            times.push(("Rust", v));
         }
 
         if times.len() >= 2 {
@@ -726,7 +887,12 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
                     "Rust" => |s: String| s.yellow().to_string(),
                     _ => |s: String| s,
                 };
-                color_fn(format!("  → {} is {:.2}x faster", fastest_name, speedup))
+                let msg = if is_memory {
+                    format!("  → {} uses {:.2}x less memory", fastest_name, speedup)
+                } else {
+                    format!("  → {} is {:.2}x faster", fastest_name, speedup)
+                };
+                color_fn(msg)
             };
             println!("{}", winner_str);
         }
@@ -741,7 +907,11 @@ fn print_distribution_table(benchmarks: &[BenchmarkResult], _options: &ReportOpt
 }
 
 /// Print compact table (legacy format)
-fn print_compact_table(benchmarks: &[BenchmarkResult], options: &ReportOptions) {
+fn print_compact_table(
+    benchmarks: &[BenchmarkResult],
+    _suite_type: poly_bench_dsl::SuiteType,
+    options: &ReportOptions,
+) {
     // Table header
     if options.show_ops_per_sec {
         println!(
@@ -860,6 +1030,7 @@ mod tests {
             BenchmarkKind::Async,
             None,
             measurements,
+            poly_bench_dsl::SuiteType::Performance,
             "strict".to_string(),
             None,
             Some(5),
@@ -880,6 +1051,7 @@ mod tests {
             BenchmarkKind::Sync,
             None,
             HashMap::new(),
+            poly_bench_dsl::SuiteType::Performance,
             "strict".to_string(),
             None,
             None,

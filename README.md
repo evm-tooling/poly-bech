@@ -154,6 +154,18 @@ declare suite example performance timeBased sameDataset: true {
 
 `mode` is deprecated and rejected. Configure execution semantics in the `declare suite` header.
 
+### Validation & Lint Rules
+
+The DSL validator and LSP enforce semantic rules for fair comparisons:
+
+| Rule | Severity | Description |
+|------|----------|-------------|
+| `same-dataset-inconsistent-fixtures` | Warning | When `sameDataset: true`, benchmarks should use the same fixture set; differing fixture references may indicate unfair comparison |
+| `chart-requires-multiple-benchmarks` | Error | `drawLineChart` / `drawBarChart` require at least 2 benchmarks for meaningful trend/comparison |
+| `baseline-missing-in-benchmark` | Error | When `baseline` is configured, every benchmark must implement the baseline language |
+
+See the [DSL Reference](https://polybench.evm-tooling.tools/docs/core/dsl-reference#validation--lint-rules) for valid and invalid examples.
+
 ### Setup Blocks
 
 Setup blocks contain language-specific initialization with four sections:

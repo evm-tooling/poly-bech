@@ -66,6 +66,7 @@ fn test_legacy_mode_metadata_is_legacy() {
         poly_bench_dsl::BenchmarkKind::Sync,
         None,
         HashMap::<Lang, Measurement>::new(),
+        poly_bench_dsl::SuiteType::Performance,
         "legacy".to_string(),
         None,
         None,

@@ -98,6 +98,8 @@ impl ThemeColors {
 struct LangSpeedup {
     lang: Lang,
     total_nanos: f64,
+    /// Primary value for ratio (nanos for performance, bytes for memory - lower is better)
+    primary_value: f64,
     iterations: u64,
     #[allow(dead_code)]
     run_count: Option<u64>,
@@ -115,12 +117,14 @@ struct LangSummary {
 enum BenchMetricMode {
     Fixed,
     Auto,
+    Memory,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum OverallMetricMode {
     Fixed,
     Auto,
+    Memory,
     Mixed,
 }
 
@@ -182,8 +186,12 @@ fn row_item_count(row: i32, columns: i32, total_items: i32) -> i32 {
     remaining.max(0).min(columns).max(1)
 }
 
-/// Generate a speedup chart showing relative performance vs baseline
-pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR) -> String {
+/// Generate a speedup chart showing relative performance vs baseline (or memory usage for memory suites)
+pub fn generate(
+    benchmarks: Vec<&BenchmarkResult>,
+    directive: &ChartDirectiveIR,
+    suite_type: poly_bench_dsl::SuiteType,
+) -> String {
     let mut filtered = filter_benchmarks(benchmarks, directive);
     sort_benchmarks(&mut filtered, directive);
 
@@ -233,6 +241,7 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
     let mut fixed_mode_count = 0usize;
     let mut auto_mode_count = 0usize;
 
+    let is_memory = suite_type == poly_bench_dsl::SuiteType::Memory;
     for bench in &filtered {
         if bench.measurements.contains_key(&baseline_lang) {
             let mut bench_speedups = Vec::new();
@@ -243,19 +252,27 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
                         max_run_count = Some(max_run_count.map_or(rc, |c| c.max(rc)));
                     }
 
+                    let primary_value = if is_memory {
+                        m.bytes_per_op.map(|b| b as f64).unwrap_or(f64::MAX)
+                    } else {
+                        m.nanos_per_op
+                    };
+
                     bench_speedups.push(LangSpeedup {
                         lang,
                         total_nanos: m.nanos_per_op * m.iterations as f64,
+                        primary_value,
                         iterations: m.iterations,
                         run_count: m.run_count,
                     });
                 }
             }
             if !bench_speedups.is_empty() {
-                let bench_mode = infer_benchmark_mode(&bench_speedups);
+                let bench_mode = infer_benchmark_mode(&bench_speedups, is_memory);
                 match bench_mode {
                     BenchMetricMode::Fixed => fixed_mode_count += 1,
                     BenchMetricMode::Auto => auto_mode_count += 1,
+                    BenchMetricMode::Memory => {}
                 }
                 speedups.push((bench.name.clone(), bench_mode, bench_speedups));
             }
@@ -265,6 +282,14 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
     if speedups.is_empty() {
         return empty_chart("No valid speedup data", &theme);
     }
+
+    let primary_from_m = |m: &poly_bench_runtime::measurement::Measurement| -> f64 {
+        if is_memory {
+            m.bytes_per_op.map(|b| b as f64).unwrap_or(f64::MAX)
+        } else {
+            m.nanos_per_op
+        }
+    };
 
     let mut language_summaries = Vec::new();
     for &lang in &all_langs {
@@ -280,8 +305,12 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
             if let (Some(base), Some(cur)) = (baseline, current) {
                 lang_total_nanos += cur.nanos_per_op * cur.iterations as f64;
                 total_iterations += cur.iterations;
-                speedup_log_sum += (base.nanos_per_op / cur.nanos_per_op).ln();
-                speedup_samples += 1;
+                let base_val = primary_from_m(base);
+                let cur_val = primary_from_m(cur);
+                if cur_val > 0.0 && cur_val < f64::MAX {
+                    speedup_log_sum += (base_val / cur_val).ln();
+                    speedup_samples += 1;
+                }
             }
         }
 
@@ -296,10 +325,14 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
         }
     }
 
-    let overall_mode = match (fixed_mode_count > 0, auto_mode_count > 0) {
-        (true, true) => OverallMetricMode::Mixed,
-        (false, true) => OverallMetricMode::Auto,
-        _ => OverallMetricMode::Fixed,
+    let overall_mode = if is_memory {
+        OverallMetricMode::Memory
+    } else {
+        match (fixed_mode_count > 0, auto_mode_count > 0) {
+            (true, true) => OverallMetricMode::Mixed,
+            (false, true) => OverallMetricMode::Auto,
+            _ => OverallMetricMode::Fixed,
+        }
     };
 
     let num_benchmarks = speedups.len() as i32;
@@ -500,8 +533,7 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
                 ));
 
                 let lang_name = short_lang_name(ls.lang);
-                let metric_label =
-                    format_primary_metric(*bench_mode, ls.total_nanos, ls.iterations);
+                let metric_label = format_primary_metric(*bench_mode, ls);
                 let speedup_label = format!("{} · {}", lang_name, metric_label);
                 let bar_end = inner_x + bar_width.max(6);
                 let label_inside = bar_width > (row_width / 2);
@@ -573,8 +605,7 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
                 ));
 
                 let lang_name = short_lang_name(ls.lang);
-                let metric_label =
-                    format_primary_metric(*bench_mode, ls.total_nanos, ls.iterations);
+                let metric_label = format_primary_metric(*bench_mode, ls);
                 let speedup_label = format!("{} · {}", lang_name, metric_label);
                 let bar_end = inner_x + bar_width.max(6);
                 let label_inside = bar_width > 220;
@@ -618,6 +649,7 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
             combined_summary_height,
             &language_summaries,
             baseline_lang,
+            overall_mode,
             &theme,
         ));
     }
@@ -626,6 +658,7 @@ pub fn generate(benchmarks: Vec<&BenchmarkResult>, directive: &ChartDirectiveIR)
     let x_axis_label = match overall_mode {
         OverallMetricMode::Fixed => "time (ms)",
         OverallMetricMode::Auto => "iterations",
+        OverallMetricMode::Memory => "bytes/op",
         OverallMetricMode::Mixed => "time / iterations by mode",
     };
     svg.push_str(&format!(
@@ -778,6 +811,12 @@ fn svg_title(
                 baseline_name
             )
         }
+        OverallMetricMode::Memory => {
+            format!(
+                "Memory mode · bars show bytes/op · memory comparison vs {} in legend",
+                baseline_name
+            )
+        }
         OverallMetricMode::Mixed => format!(
             "Mixed modes · auto bars show iterations, fixed bars show runtime · speedup details vs {} in legend",
             baseline_name
@@ -870,16 +909,20 @@ fn svg_detail_legend(
         let lang_name = full_lang_name(summary.lang);
         let total = format_duration(summary.total_nanos);
         let iters = format_iterations_short(summary.total_iterations);
-        let speedup =
-            format_speedup_phrase(summary.total_speedup, summary.is_baseline, baseline_lang);
+        let speedup = format_speedup_phrase(
+            summary.total_speedup,
+            summary.is_baseline,
+            baseline_lang,
+            mode == OverallMetricMode::Memory,
+        );
         let line = match mode {
             OverallMetricMode::Fixed => {
                 format!("{lang_name}: total {total} · {iters} iter · {speedup}")
             }
-            OverallMetricMode::Auto => {
+            OverallMetricMode::Auto | OverallMetricMode::Mixed => {
                 format!("{lang_name}: total {iters} iter · {total} runtime · {speedup}")
             }
-            OverallMetricMode::Mixed => {
+            OverallMetricMode::Memory => {
                 format!("{lang_name}: total {iters} iter · {total} runtime · {speedup}")
             }
         };
@@ -905,6 +948,7 @@ fn svg_combined_summary(
     height: i32,
     summaries: &[LangSummary],
     baseline_lang: Lang,
+    mode: OverallMetricMode,
     theme: &ThemeColors,
 ) -> String {
     let box_width = plot_width.min(summary_max_width).max(300);
@@ -918,12 +962,18 @@ fn svg_combined_summary(
         "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
         box_x, y, box_width, height, theme.detail_box_fill, theme.detail_box_stroke
     ));
+    let gain_label = if mode == OverallMetricMode::Memory {
+        "Average memory reduction across all benchmarks (geometric mean)"
+    } else {
+        "Average gain across all benchmarks (geometric mean)"
+    };
     svg.push_str(&format!(
-        "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"10\" font-weight=\"600\" fill=\"{}\">Average gain across all benchmarks (geometric mean)</text>\n",
+        "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"10\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
         box_x + box_width / 2,
         y + 14,
         FONT_FAMILY,
-        theme.text_secondary
+        theme.text_secondary,
+        gain_label
     ));
 
     let track_x = box_x + 170;
@@ -937,6 +987,12 @@ fn svg_combined_summary(
         let fill_width = ((track_width as f64) * ratio) as i32;
         let label = if summary.is_baseline {
             "baseline".to_string()
+        } else if mode == OverallMetricMode::Memory {
+            if speedup >= 1.0 {
+                format!("{:.2}x less memory", speedup)
+            } else {
+                format!("{:.2}x more memory", 1.0 / speedup.max(1e-9))
+            }
         } else if speedup >= 1.0 {
             format!("{:.2}x faster", speedup)
         } else {
@@ -1018,20 +1074,34 @@ fn full_lang_name(lang: Lang) -> &'static str {
     }
 }
 
-fn format_speedup_phrase(speedup: f64, is_baseline: bool, baseline_lang: Lang) -> String {
+fn format_speedup_phrase(
+    speedup: f64,
+    is_baseline: bool,
+    baseline_lang: Lang,
+    is_memory: bool,
+) -> String {
     if is_baseline {
         return "baseline".to_string();
     }
 
     let baseline_name = full_lang_name(baseline_lang);
-    if speedup >= 1.0 {
+    if is_memory {
+        if speedup >= 1.0 {
+            format!("{:.2}x less memory vs {}", speedup, baseline_name)
+        } else {
+            format!("{:.2}x more memory vs {}", 1.0 / speedup, baseline_name)
+        }
+    } else if speedup >= 1.0 {
         format!("{:.2}x faster vs {}", speedup, baseline_name)
     } else {
         format!("{:.2}x slower vs {}", 1.0 / speedup, baseline_name)
     }
 }
 
-fn infer_benchmark_mode(bench_speedups: &[LangSpeedup]) -> BenchMetricMode {
+fn infer_benchmark_mode(bench_speedups: &[LangSpeedup], is_memory: bool) -> BenchMetricMode {
+    if is_memory {
+        return BenchMetricMode::Memory;
+    }
     if bench_speedups.len() < 2 {
         return BenchMetricMode::Fixed;
     }
@@ -1048,12 +1118,16 @@ fn bench_metric_value(mode: BenchMetricMode, ls: &LangSpeedup) -> f64 {
     match mode {
         BenchMetricMode::Fixed => ls.total_nanos,
         BenchMetricMode::Auto => ls.iterations as f64,
+        BenchMetricMode::Memory => ls.primary_value.max(1.0),
     }
 }
 
-fn format_primary_metric(mode: BenchMetricMode, total_nanos: f64, iterations: u64) -> String {
+fn format_primary_metric(mode: BenchMetricMode, ls: &LangSpeedup) -> String {
     match mode {
-        BenchMetricMode::Fixed => format_duration(total_nanos),
-        BenchMetricMode::Auto => format!("{} iter", format_iterations_short(iterations)),
+        BenchMetricMode::Fixed => format_duration(ls.total_nanos),
+        BenchMetricMode::Auto => format!("{} iter", format_iterations_short(ls.iterations)),
+        BenchMetricMode::Memory => {
+            poly_bench_runtime::measurement::Measurement::format_bytes(ls.primary_value as u64)
+        }
     }
 }

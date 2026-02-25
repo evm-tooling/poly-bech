@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="680" viewBox="0 0 980 680">
+<rect width="980" height="680" fill="#1E1E20"/>
+<rect x="0.5" y="0.5" width="979" height="679" fill="none" stroke="rgba(255,255,255,0.12)" rx="10"/>
+<defs>
+<linearGradient id="goGrad" x1="0" y1="0" x2="1" y2="0">
+<stop offset="0%" stop-color="#00ADD8" stop-opacity="0.95"/>
+<stop offset="100%" stop-color="#0891B2" stop-opacity="0.8"/>
+</linearGradient>
+<linearGradient id="tsGrad" x1="0" y1="0" x2="1" y2="0">
+<stop offset="0%" stop-color="#3178C6" stop-opacity="0.95"/>
+<stop offset="100%" stop-color="#1D4ED8" stop-opacity="0.8"/>
+</linearGradient>
+<linearGradient id="rustGrad" x1="0" y1="0" x2="1" y2="0">
+<stop offset="0%" stop-color="#DEA584" stop-opacity="0.95"/>
+<stop offset="100%" stop-color="#B7410E" stop-opacity="0.8"/>
+</linearGradient>
+<filter id="barShadow" x="-5%" y="-15%" width="110%" height="140%">
+<feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.25"/>
+</filter>
+</defs>
+<rect x="90.0" y="84.0" width="850.0" height="404.0" rx="8" fill="rgba(255,255,255,0.02)"/>
+<line x1="90.0" y1="488.0" x2="940.0" y2="488.0" stroke="rgba(255,255,255,0.45)" stroke-width="1.2"/>
+<line x1="90.0" y1="84.0" x2="90.0" y2="488.0" stroke="rgba(255,255,255,0.45)" stroke-width="1.2"/>
+<line x1="90.0" y1="84.0" x2="940.0" y2="84.0" stroke="rgba(255,255,255,0.10)"/>
+<line x1="84.0" y1="84.0" x2="90.0" y2="84.0" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="82.0" y="88.0" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">11360</text>
+<line x1="90.0" y1="151.3" x2="940.0" y2="151.3" stroke="rgba(255,255,255,0.10)"/>
+<line x1="84.0" y1="151.3" x2="90.0" y2="151.3" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="82.0" y="155.3" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">9467</text>
+<line x1="90.0" y1="218.7" x2="940.0" y2="218.7" stroke="rgba(255,255,255,0.10)"/>
+<line x1="84.0" y1="218.7" x2="90.0" y2="218.7" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="82.0" y="222.7" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">7573</text>
+<line x1="90.0" y1="286.0" x2="940.0" y2="286.0" stroke="rgba(255,255,255,0.10)"/>
+<line x1="84.0" y1="286.0" x2="90.0" y2="286.0" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="82.0" y="290.0" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">5680</text>
+<line x1="90.0" y1="353.3" x2="940.0" y2="353.3" stroke="rgba(255,255,255,0.10)"/>
+<line x1="84.0" y1="353.3" x2="90.0" y2="353.3" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="82.0" y="357.3" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">3787</text>
+<line x1="90.0" y1="420.7" x2="940.0" y2="420.7" stroke="rgba(255,255,255,0.10)"/>
+<line x1="84.0" y1="420.7" x2="90.0" y2="420.7" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="82.0" y="424.7" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">1893</text>
+<line x1="90.0" y1="488.0" x2="940.0" y2="488.0" stroke="rgba(255,255,255,0.10)"/>
+<line x1="84.0" y1="488.0" x2="90.0" y2="488.0" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="82.0" y="492.0" text-anchor="end" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">0</text>
+<rect x="100.62" y="457.49" width="19.12" height="30.51" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="100.62" y="457.49" width="19.12" height="30.51" fill="url(#goGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<rect x="121.88" y="487.75" width="19.12" height="1.00" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="121.88" y="487.75" width="19.12" height="1.00" fill="url(#tsGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<line x1="132.50" y1="488.00" x2="132.50" y2="494.00" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="132.50" y="508.00" text-anchor="middle" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">n100</text>
+<rect x="185.62" y="422.53" width="19.12" height="65.47" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="185.62" y="422.53" width="19.12" height="65.47" fill="url(#goGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<rect x="206.88" y="481.71" width="19.12" height="6.29" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="206.88" y="481.71" width="19.12" height="6.29" fill="url(#tsGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<line x1="217.50" y1="488.00" x2="217.50" y2="494.00" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="217.50" y="508.00" text-anchor="middle" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">n200</text>
+<rect x="270.62" y="393.19" width="19.12" height="94.81" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="270.62" y="393.19" width="19.12" height="94.81" fill="url(#goGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<rect x="291.88" y="475.27" width="19.12" height="12.73" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="291.88" y="475.27" width="19.12" height="12.73" fill="url(#tsGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<line x1="302.50" y1="488.00" x2="302.50" y2="494.00" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="302.50" y="508.00" text-anchor="middle" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">n300</text>
+<rect x="355.62" y="351.76" width="19.12" height="136.24" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="355.62" y="351.76" width="19.12" height="136.24" fill="url(#goGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<rect x="376.88" y="446.36" width="19.12" height="41.64" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="376.88" y="446.36" width="19.12" height="41.64" fill="url(#tsGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<line x1="387.50" y1="488.00" x2="387.50" y2="494.00" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="387.50" y="508.00" text-anchor="middle" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">n400</text>
+<rect x="440.62" y="327.54" width="19.12" height="160.46" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="440.62" y="327.54" width="19.12" height="160.46" fill="url(#goGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<rect x="461.88" y="430.78" width="19.12" height="57.22" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="461.88" y="430.78" width="19.12" height="57.22" fill="url(#tsGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<line x1="472.50" y1="488.00" x2="472.50" y2="494.00" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="472.50" y="508.00" text-anchor="middle" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">n500</text>
+<rect x="525.62" y="270.96" width="19.12" height="217.04" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="525.62" y="270.96" width="19.12" height="217.04" fill="url(#goGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<rect x="546.88" y="408.34" width="19.12" height="79.66" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="546.88" y="408.34" width="19.12" height="79.66" fill="url(#tsGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<line x1="557.50" y1="488.00" x2="557.50" y2="494.00" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="557.50" y="508.00" text-anchor="middle" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">n600</text>
+<rect x="610.62" y="227.53" width="19.12" height="260.47" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="610.62" y="227.53" width="19.12" height="260.47" fill="url(#goGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<rect x="631.88" y="401.76" width="19.12" height="86.24" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="631.88" y="401.76" width="19.12" height="86.24" fill="url(#tsGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<line x1="642.50" y1="488.00" x2="642.50" y2="494.00" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="642.50" y="508.00" text-anchor="middle" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">n700</text>
+<rect x="695.62" y="457.49" width="19.12" height="30.51" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="695.62" y="457.49" width="19.12" height="30.51" fill="url(#goGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<rect x="716.88" y="487.04" width="19.12" height="1.00" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="716.88" y="487.04" width="19.12" height="1.00" fill="url(#tsGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<line x1="727.50" y1="488.00" x2="727.50" y2="494.00" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="727.50" y="508.00" text-anchor="middle" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">n800</text>
+<rect x="780.62" y="106.97" width="19.12" height="381.03" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="780.62" y="106.97" width="19.12" height="381.03" fill="url(#goGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<rect x="801.88" y="174.08" width="19.12" height="313.92" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="801.88" y="174.08" width="19.12" height="313.92" fill="url(#tsGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<line x1="812.50" y1="488.00" x2="812.50" y2="494.00" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="812.50" y="508.00" text-anchor="middle" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">n900</text>
+<rect x="865.62" y="84.00" width="19.12" height="404.00" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="865.62" y="84.00" width="19.12" height="404.00" fill="url(#goGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<rect x="886.88" y="214.16" width="19.12" height="273.84" fill="none" stroke="rgba(255,255,255,0.23)" stroke-width="1.2"/>
+<rect x="886.88" y="214.16" width="19.12" height="273.84" fill="url(#tsGrad)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" filter="url(#barShadow)"/>
+<line x1="897.50" y1="488.00" x2="897.50" y2="494.00" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+<text x="897.50" y="508.00" text-anchor="middle" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">n1000</text>
+<path d="M 90.00 426.18 L 100.62 425.44 L 111.25 424.63 L 121.88 423.73 L 132.50 422.76 L 143.12 421.71 L 153.75 420.58 L 164.38 419.38 L 175.00 418.09 L 185.62 416.73 L 196.25 415.28 L 206.88 413.76 L 217.50 412.16 L 228.12 410.48 L 238.75 408.73 L 249.38 406.89 L 260.00 404.98 L 270.62 402.99 L 281.25 400.92 L 291.88 398.77 L 302.50 396.54 L 313.12 394.23 L 323.75 391.85 L 334.38 389.39 L 345.00 386.85 L 355.62 384.23 L 366.25 381.53 L 376.88 378.75 L 387.50 375.90 L 398.12 372.96 L 408.75 369.95 L 419.38 366.86 L 430.00 363.69 L 440.62 360.44 L 451.25 357.12 L 461.88 353.71 L 472.50 350.23 L 483.12 346.67 L 493.75 343.03 L 504.38 339.31 L 515.00 335.52 L 525.62 331.64 L 536.25 327.69 L 546.88 323.66 L 557.50 319.55 L 568.12 315.36 L 578.75 311.09 L 589.38 306.74 L 600.00 302.32 L 610.62 297.82 L 621.25 293.24 L 631.88 288.58 L 642.50 283.84 L 653.12 279.02 L 663.75 274.13 L 674.38 269.15 L 685.00 264.10 L 695.62 258.97 L 706.25 253.76 L 716.88 248.48 L 727.50 243.11 L 738.12 237.67 L 748.75 232.14 L 759.38 226.54 L 770.00 220.86 L 780.62 215.10 L 791.25 209.27 L 801.88 203.35 L 812.50 197.36 L 823.12 191.29 L 833.75 185.14 L 844.38 178.91 L 855.00 172.60 L 865.62 166.22 L 876.25 159.75 L 886.88 153.21 L 897.50 146.59 L 908.12 139.89 L 918.75 133.11 L 929.38 126.25 L 940.00 119.32" fill="none" stroke="#00ADD8" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.9"/>
+<text x="930.0" y="119.3" text-anchor="end" font-family="sans-serif" font-size="13" font-weight="700" fill="#00ADD8" paint-order="stroke" stroke="#1E1E20" stroke-width="3">O(n^2)</text>
+<path d="M 90.00 468.35 L 100.62 470.21 L 111.25 471.94 L 121.88 473.55 L 132.50 475.03 L 143.12 476.37 L 153.75 477.59 L 164.38 478.68 L 175.00 479.65 L 185.62 480.48 L 196.25 481.19 L 206.88 481.76 L 217.50 482.21 L 228.12 482.53 L 238.75 482.72 L 249.38 482.78 L 260.00 482.72 L 270.62 482.53 L 281.25 482.20 L 291.88 481.75 L 302.50 481.17 L 313.12 480.46 L 323.75 479.63 L 334.38 478.66 L 345.00 477.57 L 355.62 476.35 L 366.25 475.00 L 376.88 473.52 L 387.50 471.91 L 398.12 470.18 L 408.75 468.31 L 419.38 466.32 L 430.00 464.20 L 440.62 461.95 L 451.25 459.57 L 461.88 457.06 L 472.50 454.43 L 483.12 451.66 L 493.75 448.77 L 504.38 445.75 L 515.00 442.60 L 525.62 439.32 L 536.25 435.92 L 546.88 432.38 L 557.50 428.72 L 568.12 424.93 L 578.75 421.01 L 589.38 416.96 L 600.00 412.78 L 610.62 408.48 L 621.25 404.04 L 631.88 399.48 L 642.50 394.79 L 653.12 389.97 L 663.75 385.02 L 674.38 379.94 L 685.00 374.74 L 695.62 369.41 L 706.25 363.94 L 716.88 358.35 L 727.50 352.63 L 738.12 346.79 L 748.75 340.81 L 759.38 334.71 L 770.00 328.47 L 780.62 322.11 L 791.25 315.62 L 801.88 309.00 L 812.50 302.26 L 823.12 295.38 L 833.75 288.38 L 844.38 281.25 L 855.00 273.99 L 865.62 266.60 L 876.25 259.08 L 886.88 251.43 L 897.50 243.66 L 908.12 235.76 L 918.75 227.72 L 929.38 219.56 L 940.00 211.27" fill="none" stroke="#3178C6" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.9"/>
+<text x="930.0" y="235.3" text-anchor="end" font-family="sans-serif" font-size="13" font-weight="700" fill="#3178C6" paint-order="stroke" stroke="#1E1E20" stroke-width="3">mixed</text>
+<text x="490.0" y="30" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="700" fill="#FFFFFF">Bubble Sort - Grouped Bars</text>
+<text x="490.0" y="50" text-anchor="middle" font-family="sans-serif" font-size="13" fill="rgba(255,255,255,0.45)">Grouped bars per dataset size with statistical overlays</text>
+<text x="515.0" y="534.0" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="700" fill="rgba(255,255,255,0.45)">Benchmark (natural order)</text>
+<text x="14.0" y="290.0" transform="rotate(-90 14.0 290.0)" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="700" fill="rgba(255,255,255,0.45)">bytes/op</text>
+<rect x="100.0" y="94.0" width="118" height="98.0" rx="8" fill="#1E1E20" stroke="rgba(255,255,255,0.14)" stroke-width="1"/>
+<rect x="100.0" y="94.0" width="118" height="98.0" rx="8" fill="rgba(255,255,255,0.015)" fill-opacity="0.15"/>
+<text x="110.0" y="110.0" font-family="sans-serif" font-size="11" font-weight="600" fill="rgba(255,255,255,0.45)">Legend</text>
+<circle cx="112.0" cy="129.0" r="4.5" fill="#00ADD8"/>
+<text x="122.0" y="132.0" font-family="sans-serif" font-size="11" fill="#FFFFFF">Go</text>
+<circle cx="112.0" cy="151.0" r="4.5" fill="#3178C6"/>
+<text x="122.0" y="154.0" font-family="sans-serif" font-size="11" fill="#FFFFFF">TypeScript</text>
+<circle cx="112.0" cy="173.0" r="4.5" fill="#DEA584"/>
+<text x="122.0" y="176.0" font-family="sans-serif" font-size="11" fill="#FFFFFF">Rust</text>
+<rect x="90.0" y="552.0" width="850.0" height="104.0" rx="8" fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.14)" stroke-width="1"/>
+<circle cx="110.0" cy="572.0" r="5" fill="#00ADD8"/>
+<text x="120.0" y="576.0" font-family="sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">Go</text>
+<circle cx="109.0" cy="586.0" r="2.8" fill="#FFBA07"/>
+<text x="116.0" y="590.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">
+mean: 4.89 KB/op</text>
+<circle cx="109.0" cy="602.0" r="2.8" fill="#FFBA07"/>
+<text x="116.0" y="606.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">min / max: 858 B/op / 11.09 KB/op</text>
+<circle cx="109.0" cy="618.0" r="2.8" fill="#FFBA07"/>
+<text x="116.0" y="622.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">samples: 2,	R²: 0.609</text>
+<circle cx="109.0" cy="634.0" r="2.8" fill="#FFBA07"/>
+<text x="116.0" y="638.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">equation: y = 1651.16 + 0.01·x²</text>
+<line x1="515.0" y1="564.0" x2="515.0" y2="646.0" stroke="rgba(255,255,255,0.14)" stroke-width="1" stroke-opacity="0.5"/>
+<circle cx="531.0" cy="572.0" r="5" fill="#3178C6"/>
+<text x="541.0" y="576.0" font-family="sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">TypeScript</text>
+<circle cx="530.0" cy="586.0" r="2.8" fill="#FFBA07"/>
+<text x="537.0" y="590.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">
+mean: 2.40 KB/op</text>
+<circle cx="530.0" cy="602.0" r="2.8" fill="#FFBA07"/>
+<text x="537.0" y="606.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">min / max: 7 B/op / 8.62 KB/op</text>
+<circle cx="530.0" cy="618.0" r="2.8" fill="#FFBA07"/>
+<text x="537.0" y="622.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">samples: 2,	R²: 0.695</text>
+<circle cx="530.0" cy="634.0" r="2.8" fill="#FFBA07"/>
+<text x="537.0" y="638.0" font-family="sans-serif" font-size="11" fill="rgba(255,255,255,0.45)">equation: y = 1176.68 + -7.67·x +…</text>
+</svg>

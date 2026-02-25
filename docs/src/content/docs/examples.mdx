@@ -421,19 +421,18 @@ suite abiBenchmarks {
 
 ### Memory Profiling Example
 
-Enable memory profiling to track allocations alongside timing. This helps identify not just which implementation is fastest, but which is most memory-efficient.
+Use `suiteType: memory` in the suite declaration to track allocations alongside timing. This helps identify not just which implementation is fastest, but which is most memory-efficient.
 
 <CodeGroup 
   tabs={[
     {
       title: "memory.bench",
       language: "bench",
-      code: `suite memoryBenchmarks {
+      code: `declare suite memoryBenchmarks memory timeBased sameDataset: true {
     description: "Benchmarks with memory profiling"
     warmup: 50
     compare: true
     baseline: "go"
-    memory: true  # Enable memory profiling
 
     setup go {
         helpers {

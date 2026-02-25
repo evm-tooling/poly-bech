@@ -138,6 +138,11 @@ pub fn validate_suite(suite: &Suite) -> ValidationResult {
     // Validate: fixtures referenced in benchmarks exist
     validate_fixture_references(suite, &mut result);
 
+    // Validate: sameDataset consistency (fixture refs match across benchmarks)
+    if suite.same_dataset == Some(true) {
+        validate_same_dataset_consistency(suite, &mut result);
+    }
+
     // Validate: baseline language is valid
     validate_baseline(suite, &mut result);
 
@@ -227,6 +232,19 @@ fn validate_chart_dataset_constraints(suite: &Suite, result: &mut ValidationResu
                     "Chart '{}' requires suite '{}' to declare sameDataset: true",
                     directive.chart_type.as_str(),
                     suite.name
+                ))
+                .with_location(format!("suite.{}", suite.name)),
+            );
+        }
+        if matches!(directive.chart_type, ChartType::LineChart | ChartType::BarChart) &&
+            suite.benchmarks.len() < 2
+        {
+            result.add_error(
+                ValidationError::new(format!(
+                    "Chart '{}' requires at least 2 benchmarks for meaningful comparison; suite '{}' has {}",
+                    directive.chart_type.as_str(),
+                    suite.name,
+                    suite.benchmarks.len()
                 ))
                 .with_location(format!("suite.{}", suite.name)),
             );
@@ -461,6 +479,50 @@ fn validate_benchmark(benchmark: &Benchmark, suite: &Suite, result: &mut Validat
     }
 }
 
+/// Extract fixture references from code (heuristic: fixture name appears in code)
+fn extract_fixture_refs(code: &str, known_fixtures: &[String]) -> Vec<String> {
+    let mut refs = Vec::new();
+    for fixture in known_fixtures {
+        if code.contains(fixture.as_str()) {
+            refs.push(fixture.clone());
+        }
+    }
+    refs
+}
+
+/// Validate that when sameDataset: true, all benchmarks use the same fixture set
+fn validate_same_dataset_consistency(suite: &Suite, result: &mut ValidationResult) {
+    if suite.benchmarks.len() < 2 || suite.fixtures.is_empty() {
+        return;
+    }
+
+    let fixture_names: Vec<String> = suite.fixtures.iter().map(|f| f.name.clone()).collect();
+
+    let mut bench_fixture_sets: Vec<(String, HashSet<String>)> = Vec::new();
+    for benchmark in &suite.benchmarks {
+        let mut refs = HashSet::new();
+        for code_block in benchmark.implementations.values() {
+            for r in extract_fixture_refs(&code_block.code, &fixture_names) {
+                refs.insert(r);
+            }
+        }
+        bench_fixture_sets.push((benchmark.name.clone(), refs));
+    }
+
+    let first_set = &bench_fixture_sets[0].1;
+    for (bench_name, refs) in bench_fixture_sets.iter().skip(1) {
+        if refs != first_set {
+            result.add_warning(
+                ValidationWarning::new(format!(
+                    "Benchmark '{}' may use different fixtures than other benchmarks; sameDataset: true expects all benchmarks to operate on the same dataset",
+                    bench_name
+                ))
+                .with_location(format!("suite.{}.bench.{}", suite.name, bench_name)),
+            );
+        }
+    }
+}
+
 /// Validate that fixtures referenced in benchmarks exist
 fn validate_fixture_references(suite: &Suite, result: &mut ValidationResult) {
     // Validate fixture definitions
@@ -521,18 +583,16 @@ fn validate_fixture_references(suite: &Suite, result: &mut ValidationResult) {
 /// Validate baseline language configuration
 fn validate_baseline(suite: &Suite, result: &mut ValidationResult) {
     if let Some(baseline) = suite.baseline {
-        // Check that at least one benchmark has this language
-        let has_baseline_impl =
-            suite.benchmarks.iter().any(|b| b.implementations.contains_key(&baseline));
-
-        if !has_baseline_impl {
-            result.add_warning(
-                ValidationWarning::new(format!(
-                    "Baseline language '{}' has no implementations in any benchmark",
-                    baseline
-                ))
-                .with_location(format!("suite.{}", suite.name)),
-            );
+        for benchmark in &suite.benchmarks {
+            if !benchmark.implementations.contains_key(&baseline) {
+                result.add_error(
+                    ValidationError::new(format!(
+                        "Benchmark '{}' missing baseline language '{}'; baseline comparisons require every benchmark to implement the baseline",
+                        benchmark.name, baseline
+                    ))
+                    .with_location(format!("suite.{}.bench.{}", suite.name, benchmark.name)),
+                );
+            }
         }
     }
 }
@@ -817,5 +877,75 @@ declare suite test performance timeBased sameDataset: true {
         let ast = parse(source, "test.bench").unwrap();
         let result = validate_suite(&ast.suites[0]);
         assert!(result.errors.iter().any(|e| e.message.contains("invalid yScale")));
+    }
+
+    #[test]
+    fn test_validate_chart_requires_multiple_benchmarks() {
+        let source = r#"
+use std::charting
+
+declare suite test performance timeBased sameDataset: true {
+    targetTime: 2s
+    bench foo {
+        go: work()
+        ts: work()
+    }
+    after {
+        charting.drawLineChart(title: "Trend")
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let result = validate_suite(&ast.suites[0]);
+        assert!(result.errors.iter().any(|e| {
+            e.message.contains("at least 2 benchmarks") && e.message.contains("meaningful comparison")
+        }));
+    }
+
+    #[test]
+    fn test_validate_baseline_missing_in_benchmark() {
+        let source = r#"
+declare suite test performance timeBased sameDataset: true {
+    baseline: "go"
+    targetTime: 2s
+    bench foo {
+        go: work()
+    }
+    bench bar {
+        ts: work()
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let result = validate_suite(&ast.suites[0]);
+        assert!(result.errors.iter().any(|e| {
+            e.message.contains("missing baseline") && e.message.contains("bar")
+        }));
+    }
+
+    #[test]
+    fn test_validate_same_dataset_consistency() {
+        let source = r#"
+declare suite test performance timeBased sameDataset: true {
+    targetTime: 2s
+    fixture data1 {
+        hex: "01020304"
+    }
+    fixture data2 {
+        hex: "05060708"
+    }
+    bench foo {
+        go: process(data1)
+    }
+    bench bar {
+        go: process(data2)
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let result = validate_suite(&ast.suites[0]);
+        assert!(result.warnings.iter().any(|w| {
+            w.message.contains("different fixtures") || w.message.contains("same dataset")
+        }));
     }
 }

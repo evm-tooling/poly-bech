@@ -492,6 +492,8 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
     let is_async_bench = spec.kind == BenchmarkKind::Async;
     let impl_is_async = is_async_bench || impl_code.contains("await");
     let use_auto_mode = spec.mode == BenchMode::Auto;
+    let use_sink = if spec.use_sink { "true" } else { "false" };
+    let track_memory = if spec.memory { "true" } else { "false" };
     let async_sampling_policy = match spec.async_sampling_policy {
         AsyncSamplingPolicy::FixedCap => "fixedCap",
         AsyncSamplingPolicy::TimeBudgeted => "timeBudgeted",
@@ -530,9 +532,11 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         script.push_str(";\n");
         script.push_str("    },\n");
         script.push_str(&format!(
-            "    {}, {}, {}, {}, \"{}\"\n",
+            "    {}, {}, {}, {}, {}, {}, \"{}\"\n",
             spec.iterations,
             spec.warmup,
+            use_sink,
+            track_memory,
             spec.async_sample_cap,
             spec.async_warmup_cap,
             async_sampling_policy
@@ -540,7 +544,6 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         script.push_str(");\n");
     } else if use_auto_mode {
         // Auto-calibration mode: only uses targetTime (no min/max iteration caps)
-        let use_sink = if spec.use_sink { "true" } else { "false" };
         if impl_is_async {
             script.push_str(
                 "const __result = await __polybench.runBenchmarkAutoAsync(async function() {\n",
@@ -552,9 +555,10 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         script.push_str(impl_code);
         script.push_str(");\n");
         script.push_str(&format!(
-            "}}, {}, {}, false, {}, {}, {}, \"{}\");\n",
+            "}}, {}, {}, {}, {}, {}, {}, \"{}\");\n",
             spec.target_time_ms,
             use_sink,
+            track_memory,
             spec.warmup,
             spec.async_sample_cap,
             spec.async_warmup_cap,
@@ -562,7 +566,6 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         ));
     } else {
         // Fixed iteration mode
-        let use_sink = if spec.use_sink { "true" } else { "false" };
         if impl_is_async {
             script.push_str(
                 "const __result = await __polybench.runBenchmarkAsync(async function() {\n",
@@ -575,16 +578,23 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         script.push_str(");\n");
         if impl_is_async {
             script.push_str(&format!(
-                "}}, {}, {}, {}, false, {}, {}, \"{}\");\n",
+                "}}, {}, {}, {}, {}, {}, {}, \"{}\");\n",
                 spec.iterations,
                 spec.warmup,
                 use_sink,
+                track_memory,
                 spec.async_sample_cap,
                 spec.async_warmup_cap,
                 async_sampling_policy
             ));
         } else {
-            script.push_str(&format!("}}, {}, {});\n", spec.iterations, spec.warmup));
+            script.push_str(&format!(
+                "}}, {}, {}, {}, {});\n",
+                spec.iterations,
+                spec.warmup,
+                use_sink,
+                track_memory
+            ));
         }
     }
 
@@ -633,6 +643,9 @@ struct BenchResultJson {
     ops_per_sec: f64,
     #[serde(default)]
     samples: Vec<f64>,
+    /// Bytes allocated per operation (from process.memoryUsage().heapUsed delta)
+    #[serde(default)]
+    bytes_per_op: Option<f64>,
     #[serde(default)]
     raw_result: Option<serde_json::Value>,
     #[serde(default)]
@@ -653,7 +666,7 @@ impl BenchResultJson {
     ) -> Measurement {
         let samples: Vec<u64> = self.samples.iter().map(|&s| s as u64).collect();
 
-        if samples.is_empty() {
+        let mut m = if samples.is_empty() {
             let mut m = Measurement::from_aggregate(self.iterations, self.total_nanos as u64);
             m.raw_result = self.raw_result.as_ref().map(|v| v.to_string());
             if !self.successful_results.is_empty() {
@@ -684,7 +697,15 @@ impl BenchResultJson {
                 m.async_error_samples = Some(self.error_samples);
             }
             m
+        };
+
+        // Apply memory stats from JS (heapUsed delta); allocs_per_op not available in Node
+        if let Some(bytes) = self.bytes_per_op {
+            let bytes_u64 = bytes.max(0.0) as u64;
+            m = m.with_allocs(bytes_u64, 0);
         }
+
+        m
     }
 }
 
