@@ -3,49 +3,12 @@
 //! This module extracts embedded code blocks (Go, TypeScript, Rust, Python) from
 //! the partial AST and provides utilities for working with them.
 
+pub use poly_bench_lsp_traits::{BlockType, EmbeddedBlock};
 use poly_bench_syntax::{
     CodeBlock, Lang, Node, PartialBenchmark, PartialFile, PartialFixture, PartialSuite, Span,
     StructuredSetup,
 };
 use std::collections::HashMap;
-
-/// The type of embedded block (affects how code is wrapped in virtual files)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BlockType {
-    /// Setup section: imports
-    SetupImport,
-    /// Setup section: declarations
-    SetupDeclare,
-    /// Setup section: init code
-    SetupInit,
-    /// Setup section: helper functions
-    SetupHelpers,
-    /// Fixture implementation
-    Fixture,
-    /// Benchmark implementation
-    Benchmark,
-    /// Lifecycle hook (before/after/each)
-    Hook,
-    /// Skip condition
-    Skip,
-    /// Validation expression
-    Validate,
-}
-
-/// An embedded code block extracted from a .bench file
-#[derive(Debug, Clone)]
-pub struct EmbeddedBlock {
-    /// The programming language
-    pub lang: Lang,
-    /// The type of block (affects wrapping)
-    pub block_type: BlockType,
-    /// The code content
-    pub code: String,
-    /// Source span in the .bench file
-    pub span: Span,
-    /// Name of the containing construct (for error messages)
-    pub context_name: String,
-}
 
 /// Configuration for embedded language checking
 /// Module roots are keyed by language (registry-based)

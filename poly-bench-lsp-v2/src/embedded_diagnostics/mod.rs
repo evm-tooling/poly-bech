@@ -1,27 +1,23 @@
 //! Embedded language diagnostics
 //!
 //! This module provides diagnostics for embedded code blocks (Go, TypeScript, Rust, Python)
-//! by running compilers directly (tsc, rustc) or communicating with language servers (gopls).
-//!
-//! Architecture:
-//! - TypeScript: Runs `tsc --noEmit` directly for reliable diagnostics
-//! - Rust: Runs `rustc --emit=metadata` directly for reliable diagnostics
-//! - Go: Uses gopls via LSP protocol (Go tooling is more stable)
-//! - Position mappings translate between .bench file and virtual file positions
-
-pub mod go;
-pub mod python;
-pub mod rust;
-pub mod typescript;
+//! via runtime-registered providers. Each runtime implements EmbeddedDiagnosticProvider
+//! and EmbeddedDiagnosticSetup; position mappings translate between .bench file and virtual file.
 
 use crate::{
     document::Document,
     embedded::{extract_embedded_blocks, EmbeddedBlock},
-    gopls_client::init_gopls_client,
-    pyright_client::init_pyright_client,
-    virtual_files::{get_virtual_file_builder, VirtualFile, VirtualFileParams},
+    embedded_diagnostic_context::LspEmbeddedDiagnosticContext,
+};
+use poly_bench_lsp_traits::{
+    syntax_lang_to_dsl, EmbeddedDiagnosticContext, EmbeddedDiagnosticProvider,
+    EmbeddedDiagnosticSetup, VirtualFile, VirtualFileParams,
 };
 use poly_bench_project::get_detector;
+use poly_bench_runtime::{
+    get_embedded_diagnostic_provider as get_registry_provider,
+    get_embedded_diagnostic_setup as get_registry_setup, get_virtual_file_builder,
+};
 use poly_bench_syntax::{Lang, Node};
 use std::{
     collections::{HashMap, HashSet},
@@ -29,142 +25,19 @@ use std::{
 };
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range};
 
-/// Result of checking embedded code
-#[derive(Debug, Clone)]
-pub struct EmbeddedDiagnostic {
-    /// The diagnostic message
-    pub message: String,
-    /// Severity level
-    pub severity: DiagnosticSeverity,
-    /// Position in the virtual file (line, character)
-    pub virtual_line: u32,
-    pub virtual_character: u32,
-    /// Length of the diagnostic range
-    pub length: u32,
-    /// Diagnostic code (optional)
-    pub code: Option<String>,
-}
+/// Result of checking embedded code (re-export from traits)
+pub use poly_bench_lsp_traits::EmbeddedDiagnostic;
 
-/// Trait for language-specific diagnostic providers
-pub trait EmbeddedDiagnosticProvider: Send + Sync {
-    /// Check a virtual file and return diagnostics
-    fn check_blocks(&self, virtual_file: &dyn VirtualFile) -> Vec<EmbeddedDiagnostic>;
-
-    /// Get the language this provider handles
-    fn language(&self) -> Lang;
-}
-
-struct GoEmbeddedDiagnosticProvider;
-impl EmbeddedDiagnosticProvider for GoEmbeddedDiagnosticProvider {
-    fn check_blocks(&self, virtual_file: &dyn VirtualFile) -> Vec<EmbeddedDiagnostic> {
-        go::check_go_blocks(virtual_file)
-    }
-    fn language(&self) -> Lang {
-        Lang::Go
-    }
-}
-
-struct TsEmbeddedDiagnosticProvider;
-impl EmbeddedDiagnosticProvider for TsEmbeddedDiagnosticProvider {
-    fn check_blocks(&self, virtual_file: &dyn VirtualFile) -> Vec<EmbeddedDiagnostic> {
-        typescript::check_ts_blocks(virtual_file)
-    }
-    fn language(&self) -> Lang {
-        Lang::TypeScript
-    }
-}
-
-struct RustEmbeddedDiagnosticProvider;
-impl EmbeddedDiagnosticProvider for RustEmbeddedDiagnosticProvider {
-    fn check_blocks(&self, virtual_file: &dyn VirtualFile) -> Vec<EmbeddedDiagnostic> {
-        rust::check_rust_blocks(virtual_file)
-    }
-    fn language(&self) -> Lang {
-        Lang::Rust
-    }
-}
-
-struct PythonEmbeddedDiagnosticProvider;
-impl EmbeddedDiagnosticProvider for PythonEmbeddedDiagnosticProvider {
-    fn check_blocks(&self, virtual_file: &dyn VirtualFile) -> Vec<EmbeddedDiagnostic> {
-        python::check_python_blocks(virtual_file)
-    }
-    fn language(&self) -> Lang {
-        Lang::Python
-    }
-}
-
-/// Trait for language-specific setup before running diagnostics
-/// (e.g. init gopls, ensure tsconfig, create src/bin)
-pub trait EmbeddedDiagnosticSetup: Send + Sync {
-    fn lang(&self) -> Lang;
-    /// Called before checking; e.g. init gopls, ensure tsconfig, etc.
-    fn prepare(&self, module_root: &str);
-}
-
-struct GoEmbeddedDiagnosticSetup;
-impl EmbeddedDiagnosticSetup for GoEmbeddedDiagnosticSetup {
-    fn lang(&self) -> Lang {
-        Lang::Go
-    }
-    fn prepare(&self, module_root: &str) {
-        let _ = init_gopls_client(module_root);
-    }
-}
-
-struct TsEmbeddedDiagnosticSetup;
-impl EmbeddedDiagnosticSetup for TsEmbeddedDiagnosticSetup {
-    fn lang(&self) -> Lang {
-        Lang::TypeScript
-    }
-    fn prepare(&self, module_root: &str) {
-        tracing::debug!("[embedded-diagnostics] TypeScript module root: {}", module_root);
-        ensure_tsconfig(module_root);
-    }
-}
-
-struct RustEmbeddedDiagnosticSetup;
-impl EmbeddedDiagnosticSetup for RustEmbeddedDiagnosticSetup {
-    fn lang(&self) -> Lang {
-        Lang::Rust
-    }
-    fn prepare(&self, module_root: &str) {
-        tracing::debug!("[embedded-diagnostics] Rust project root: {}", module_root);
-    }
-}
-
-struct PythonEmbeddedDiagnosticSetup;
-impl EmbeddedDiagnosticSetup for PythonEmbeddedDiagnosticSetup {
-    fn lang(&self) -> Lang {
-        Lang::Python
-    }
-    fn prepare(&self, module_root: &str) {
-        let _ = init_pyright_client(module_root);
-    }
-}
-
-/// Get the embedded diagnostic setup for a language
-pub fn get_embedded_diagnostic_setup(lang: Lang) -> Option<&'static dyn EmbeddedDiagnosticSetup> {
-    match lang {
-        Lang::Go => Some(&GoEmbeddedDiagnosticSetup),
-        Lang::TypeScript => Some(&TsEmbeddedDiagnosticSetup),
-        Lang::Rust => Some(&RustEmbeddedDiagnosticSetup),
-        Lang::Python => Some(&PythonEmbeddedDiagnosticSetup),
-        _ => None,
-    }
-}
-
-/// Get the embedded diagnostic provider for a language
-pub fn get_embedded_diagnostic_provider(
-    lang: Lang,
+fn get_embedded_diagnostic_provider(
+    dsl_lang: poly_bench_dsl::Lang,
 ) -> Option<&'static dyn EmbeddedDiagnosticProvider> {
-    match lang {
-        Lang::Go => Some(&GoEmbeddedDiagnosticProvider),
-        Lang::TypeScript => Some(&TsEmbeddedDiagnosticProvider),
-        Lang::Rust => Some(&RustEmbeddedDiagnosticProvider),
-        Lang::Python => Some(&PythonEmbeddedDiagnosticProvider),
-        _ => None,
-    }
+    get_registry_provider(dsl_lang)
+}
+
+fn get_embedded_diagnostic_setup(
+    dsl_lang: poly_bench_dsl::Lang,
+) -> Option<&'static dyn EmbeddedDiagnosticSetup> {
+    get_registry_setup(dsl_lang)
 }
 
 /// Check all embedded code in a document and return diagnostics
@@ -197,18 +70,23 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
 
     // Check each language via registry
     for (lang, blocks) in &blocks_by_lang {
-        let Some(builder) = get_virtual_file_builder(*lang) else {
+        let dsl_lang = syntax_lang_to_dsl(*lang);
+        let Some(builder) = get_virtual_file_builder(dsl_lang) else {
             continue;
         };
-        let Some(provider) = get_embedded_diagnostic_provider(*lang) else {
+        let Some(provider) = get_embedded_diagnostic_provider(dsl_lang) else {
             continue;
         };
 
         let module_root = find_module_root_for_lang(*lang, &bench_path);
 
-        // Language-specific setup via registry
-        if let Some(setup) = get_embedded_diagnostic_setup(*lang) {
-            setup.prepare(&module_root);
+        let ctx = LspEmbeddedDiagnosticContext::new(&module_root);
+
+        // Language-specific setup via registry or context
+        if let Some(setup) = get_embedded_diagnostic_setup(dsl_lang) {
+            setup.prepare(&module_root, &ctx);
+        } else {
+            ctx.ensure_ready(*lang, &module_root);
         }
 
         let params = VirtualFileParams {
@@ -223,7 +101,7 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
         let virtual_file = builder.build(params);
         write_virtual_file_to_disk(virtual_file.path(), virtual_file.content());
 
-        let diagnostics = provider.check_blocks(virtual_file.as_ref());
+        let diagnostics = provider.check_blocks(virtual_file.as_ref(), &ctx);
         let filtered = filter_fixture_diagnostics(diagnostics, &fixture_names, has_anvil_stdlib);
         all_diagnostics.extend(map_diagnostics_to_bench(
             filtered,
@@ -348,7 +226,8 @@ fn write_virtual_file_to_disk(path: &str, content: &str) {
     }
 }
 
-/// Ensure tsconfig.json exists in the TypeScript module root
+/// Ensure tsconfig.json exists (used by LspEmbeddedDiagnosticContext)
+#[allow(dead_code)]
 fn ensure_tsconfig(ts_module_root: &str) {
     let tsconfig_path = Path::new(ts_module_root).join("tsconfig.json");
     if !tsconfig_path.exists() {
@@ -376,20 +255,10 @@ fn ensure_tsconfig(ts_module_root: &str) {
     }
 }
 
-/// Convert poly_bench_syntax::Lang to poly_bench_dsl::Lang for detector lookup
-fn to_dsl_lang(lang: Lang) -> poly_bench_dsl::Lang {
-    match lang {
-        Lang::Go => poly_bench_dsl::Lang::Go,
-        Lang::TypeScript => poly_bench_dsl::Lang::TypeScript,
-        Lang::Rust => poly_bench_dsl::Lang::Rust,
-        Lang::Python => poly_bench_dsl::Lang::Python,
-    }
-}
-
 /// Find module root for a language (used by embedded diagnostics)
 /// Uses poly-bench runtime layout first, then ProjectRootDetector
 fn find_module_root_for_lang(lang: Lang, bench_path: &str) -> String {
-    let dsl_lang = to_dsl_lang(lang);
+    let dsl_lang = syntax_lang_to_dsl(lang);
     find_polybench_runtime(bench_path, lang.as_str())
         .or_else(|| find_module_root_via_detector(dsl_lang, bench_path))
         .unwrap_or_else(|| bench_path.to_string())
