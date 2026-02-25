@@ -1,7 +1,7 @@
 //! Built-in JavaScript functions for the benchmark runtime
 
-/// JavaScript harness code that gets injected into the V8 context
-pub const BENCHMARK_HARNESS: &str = r#"
+/// Performance harness: no memory instrumentation. Zero overhead for performance benchmarks.
+pub const BENCH_HARNESS_PERF: &str = r#"
 // Benchmark harness for poly-bench
 (function(globalThis) {
     'use strict';
@@ -22,14 +22,6 @@ pub const BENCHMARK_HARNESS: &str = r#"
 
     // Global sink to prevent dead code elimination
     globalThis.__polybench_sink = undefined;
-
-    // Memory profiling helper (Node.js only)
-    const getMemoryUsage = () => {
-        if (typeof process !== 'undefined' && process.memoryUsage) {
-            return process.memoryUsage().heapUsed;
-        }
-        return 0;
-    };
 
     // Convert benchmark return values into JSON-safe data for reporting.
     function normalizeRawResult(value) {
@@ -56,6 +48,7 @@ pub const BENCHMARK_HARNESS: &str = r#"
     }
 
     // Run a benchmark function (fixed iterations with sink pattern)
+    // trackMemory param accepted for API compatibility but ignored - no memory overhead
     function runBenchmark(fn, iterations, warmup, useSink = true, trackMemory = false) {
         const samples = new Array(iterations);
         let lastResult;
@@ -70,10 +63,7 @@ pub const BENCHMARK_HARNESS: &str = r#"
             }
         }
         
-        // Memory tracking before
-        const memBefore = trackMemory ? getMemoryUsage() : 0;
-        
-        // Timed phase
+        // Timed phase (no memory tracking)
         let totalNanos = 0;
         for (let i = 0; i < iterations; i++) {
             const start = now();
@@ -88,10 +78,6 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos += elapsed;
         }
         
-        // Memory tracking after
-        const memAfter = trackMemory ? getMemoryUsage() : 0;
-        const bytesPerOp = trackMemory ? Math.max(0, (memAfter - memBefore) / iterations) : undefined;
-        
         const nanosPerOp = totalNanos / iterations;
         const opsPerSec = 1e9 / nanosPerOp;
         
@@ -100,7 +86,7 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos: totalNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
-            bytesPerOp: bytesPerOp,
+            bytesPerOp: undefined,
             samples: samples,
             rawResult: normalizeRawResult(lastResult),
         };
@@ -121,9 +107,6 @@ pub const BENCHMARK_HARNESS: &str = r#"
                 fn();
             }
         }
-        
-        // Memory tracking before
-        const memBefore = trackMemory ? getMemoryUsage() : 0;
         
         // Adaptive measurement phase (like Go's testing.B)
         // Run batches, scale up N, stop when total elapsed >= targetTime
@@ -179,10 +162,6 @@ pub const BENCHMARK_HARNESS: &str = r#"
             }
         }
         
-        // Memory tracking after
-        const memAfter = trackMemory ? getMemoryUsage() : 0;
-        const bytesPerOp = trackMemory ? Math.max(0, (memAfter - memBefore) / totalIterations) : undefined;
-        
         const nanosPerOp = totalNanos / totalIterations;
         const opsPerSec = 1e9 / nanosPerOp;
         
@@ -206,7 +185,7 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos: totalNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
-            bytesPerOp: bytesPerOp,
+            bytesPerOp: undefined,
             samples: samples,
             rawResult: normalizeRawResult(lastResult),
         };
@@ -262,9 +241,6 @@ pub const BENCHMARK_HARNESS: &str = r#"
             }
         }
         
-        // Memory tracking before
-        const memBefore = trackMemory ? getMemoryUsage() : 0;
-        
         // Timed phase
         let totalNanos = 0;
         for (let i = 0; i < iterations; i++) {
@@ -295,10 +271,6 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos += elapsed;
         }
         
-        // Memory tracking after
-        const memAfter = trackMemory ? getMemoryUsage() : 0;
-        const bytesPerOp = trackMemory ? Math.max(0, (memAfter - memBefore) / iterations) : undefined;
-        
         const nanosPerOp = totalNanos / iterations;
         const opsPerSec = 1e9 / nanosPerOp;
 
@@ -307,7 +279,7 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos: totalNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
-            bytesPerOp: bytesPerOp,
+            bytesPerOp: undefined,
             samples: samples,
             rawResult: normalizeRawResult(lastResult),
             successfulResults: successfulResults,
@@ -344,9 +316,6 @@ pub const BENCHMARK_HARNESS: &str = r#"
                 // Ignore warmup failures; ratio counters are for timed phase only.
             }
         }
-        
-        // Memory tracking before
-        const memBefore = trackMemory ? getMemoryUsage() : 0;
         
         let totalIterations = 0;
         let totalNanos = 0;
@@ -402,12 +371,7 @@ pub const BENCHMARK_HARNESS: &str = r#"
             }
         }
         
-        // Memory tracking after
-        const memAfter = trackMemory ? getMemoryUsage() : 0;
-        const denomIterations = totalIterations > 0 ? totalIterations : 1;
-        const bytesPerOp = trackMemory ? Math.max(0, (memAfter - memBefore) / denomIterations) : undefined;
-        
-        const nanosPerOp = totalNanos / denomIterations;
+        const nanosPerOp = totalNanos / (totalIterations > 0 ? totalIterations : 1);
         const opsPerSec = 1e9 / nanosPerOp;
         
         return {
@@ -415,7 +379,7 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos: totalNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
-            bytesPerOp: bytesPerOp,
+            bytesPerOp: undefined,
             samples: samples,
             rawResult: normalizeRawResult(lastResult),
             successfulResults: successfulResults,
@@ -441,9 +405,6 @@ pub const BENCHMARK_HARNESS: &str = r#"
             }
         }
         
-        // Memory tracking before
-        const memBefore = trackMemory ? getMemoryUsage() : 0;
-        
         // Timed phase with hook (hook runs outside timing)
         let totalNanos = 0;
         for (let i = 0; i < iterations; i++) {
@@ -460,10 +421,6 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos += elapsed;
         }
         
-        // Memory tracking after
-        const memAfter = trackMemory ? getMemoryUsage() : 0;
-        const bytesPerOp = trackMemory ? Math.max(0, (memAfter - memBefore) / iterations) : undefined;
-        
         const nanosPerOp = totalNanos / iterations;
         const opsPerSec = 1e9 / nanosPerOp;
         
@@ -472,7 +429,7 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos: totalNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
-            bytesPerOp: bytesPerOp,
+            bytesPerOp: undefined,
             samples: samples,
             rawResult: normalizeRawResult(lastResult),
         };
@@ -504,9 +461,6 @@ pub const BENCHMARK_HARNESS: &str = r#"
             }
         }
         
-        // Memory tracking before
-        const memBefore = trackMemory ? getMemoryUsage() : 0;
-        
         // Timed phase with hook (hook runs outside timing)
         let totalNanos = 0;
         for (let i = 0; i < iterations; i++) {
@@ -537,10 +491,6 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos += elapsed;
         }
         
-        // Memory tracking after
-        const memAfter = trackMemory ? getMemoryUsage() : 0;
-        const bytesPerOp = trackMemory ? Math.max(0, (memAfter - memBefore) / iterations) : undefined;
-        
         const nanosPerOp = totalNanos / iterations;
         const opsPerSec = 1e9 / nanosPerOp;
         
@@ -549,7 +499,7 @@ pub const BENCHMARK_HARNESS: &str = r#"
             totalNanos: totalNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
-            bytesPerOp: bytesPerOp,
+            bytesPerOp: undefined,
             samples: samples,
             rawResult: normalizeRawResult(lastResult),
             successfulResults: successfulResults,
@@ -590,6 +540,287 @@ pub const BENCHMARK_HARNESS: &str = r#"
 })(globalThis);
 "#;
 
+/// Memory harness: uses V8 total_allocated_bytes (GC-insensitive) and forces GC before measurement.
+/// Use with Node --expose-gc for memory benchmarks.
+pub const BENCH_HARNESS_MEMORY: &str = r#"
+// Benchmark harness for poly-bench (memory path)
+(function(globalThis) {
+    'use strict';
+
+    const v8 = (typeof require !== 'undefined') ? require('node:v8') : null;
+
+    // High-resolution timing - use best available timer
+    const now = (() => {
+        if (typeof process !== 'undefined' && process.hrtime && process.hrtime.bigint) {
+            return () => Number(process.hrtime.bigint());
+        }
+        if (typeof performance !== 'undefined') {
+            return () => performance.now() * 1e6;
+        }
+        return () => Date.now() * 1e6;
+    })();
+
+    globalThis.__polybench_sink = undefined;
+
+    // GC before measurement when available (Node --expose-gc)
+    const forceGC = () => { if (typeof global.gc === 'function') global.gc(); };
+    // Prefer V8 total_allocated_bytes (GC-insensitive); fallback to heapUsed when unavailable or zero
+    const getMemorySnapshot = () => {
+        forceGC();
+        const stats = v8 && v8.getHeapStatistics ? v8.getHeapStatistics() : null;
+        const totalAllocated = (stats && typeof stats.total_allocated_bytes === 'number') ? stats.total_allocated_bytes : null;
+        const heapUsed = (typeof process !== 'undefined' && process.memoryUsage) ? process.memoryUsage().heapUsed : 0;
+        return { totalAllocated, heapUsed };
+    };
+    const bytesPerOpFromSnapshots = (before, after, iters) => {
+        if (before.totalAllocated != null && after.totalAllocated != null) {
+            const delta = (after.totalAllocated - before.totalAllocated) / iters;
+            if (delta > 0) return Math.round(delta);
+        }
+        const heapDelta = (after.heapUsed - before.heapUsed) / iters;
+        const rounded = Math.round(heapDelta);
+        if (rounded < 100) return undefined;
+        return Math.max(0, rounded);
+    };
+
+    function normalizeRawResult(value) {
+        if (value === undefined) return null;
+        if (typeof value === 'bigint') return value.toString();
+        try {
+            return JSON.parse(JSON.stringify(value, (_, v) => typeof v === 'bigint' ? v.toString() : v));
+        } catch (_) {
+            return String(value);
+        }
+    }
+
+    function normalizeErrorResult(error) {
+        if (error === undefined || error === null) return 'Unknown async error';
+        if (error && typeof error === 'object') {
+            if (typeof error.stack === 'string' && error.stack.length > 0) return error.stack;
+            if (typeof error.message === 'string' && error.message.length > 0) return error.message;
+        }
+        try {
+            return String(error);
+        } catch (_) {
+            return 'Unserializable async error';
+        }
+    }
+
+    function runBenchmark(fn, iterations, warmup, useSink = true, trackMemory = true) {
+        const samples = new Array(iterations);
+        let lastResult;
+        for (let i = 0; i < warmup; i++) {
+            if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); }
+        }
+        const memBefore = getMemorySnapshot();
+        let totalNanos = 0;
+        for (let i = 0; i < iterations; i++) {
+            const start = now();
+            if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); }
+            samples[i] = now() - start;
+            totalNanos += samples[i];
+        }
+        const memAfter = getMemorySnapshot();
+        const bytesPerOp = bytesPerOpFromSnapshots(memBefore, memAfter, iterations);
+        return { iterations, totalNanos, nanosPerOp: totalNanos / iterations, opsPerSec: 1e9 / (totalNanos / iterations), bytesPerOp, samples, rawResult: normalizeRawResult(lastResult) };
+    }
+
+    function runBenchmarkAuto(fn, targetTimeMs, useSink = true, trackMemory = true, warmupCount = 100) {
+        const targetNanos = targetTimeMs * 1e6;
+        let lastResult;
+        for (let i = 0; i < warmupCount; i++) {
+            if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); }
+        }
+        const memBefore = getMemorySnapshot();
+        let iterations = 1, totalIterations = 0, totalNanos = 0;
+        while (totalNanos < targetNanos) {
+            const batchStart = now();
+            for (let i = 0; i < iterations; i++) {
+                if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); }
+            }
+            const batchElapsed = now() - batchStart;
+            totalIterations += iterations;
+            totalNanos += batchElapsed;
+            if (totalNanos >= targetNanos) break;
+            if (batchElapsed > 0) {
+                const remainingNanos = targetNanos - totalNanos;
+                const predicted = Math.floor(iterations * (remainingNanos / batchElapsed));
+                let newIters = remainingNanos < batchElapsed ? Math.max(1, predicted) : remainingNanos < targetNanos / 5 ? Math.max(1, Math.floor(predicted * 0.9)) : Math.min(iterations * 10, Math.max(iterations * 2, Math.floor(predicted * 1.1)));
+                iterations = Math.max(1, newIters);
+            } else { iterations *= 10; }
+        }
+        const memAfter = getMemorySnapshot();
+        const bytesPerOp = bytesPerOpFromSnapshots(memBefore, memAfter, totalIterations);
+        const nanosPerOp = totalNanos / totalIterations;
+        const sampleCount = Math.min(1000, totalIterations);
+        const samples = new Array(sampleCount);
+        for (let i = 0; i < sampleCount; i++) {
+            const start = now();
+            if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); }
+            samples[i] = now() - start;
+        }
+        return { iterations: totalIterations, totalNanos, nanosPerOp, opsPerSec: 1e9 / nanosPerOp, bytesPerOp, samples, rawResult: normalizeRawResult(lastResult) };
+    }
+
+    function normalizeAsyncSamplingPolicy(policy) {
+        if (typeof policy !== 'string') return 'timeBudgeted';
+        return (policy.toLowerCase() === 'fixedcap' || policy.toLowerCase() === 'fixed_cap' || policy.toLowerCase() === 'fixed-cap') ? 'fixedCap' : 'timeBudgeted';
+    }
+
+    function reservoirSamplePush(samples, sampleCap, value, seenCount) {
+        const nextSeenCount = seenCount + 1;
+        if (sampleCap <= 0) return nextSeenCount;
+        if (samples.length < sampleCap) { samples.push(value); return nextSeenCount; }
+        const replaceIdx = Math.floor(Math.random() * nextSeenCount);
+        if (replaceIdx < sampleCap) samples[replaceIdx] = value;
+        return nextSeenCount;
+    }
+
+    async function runBenchmarkAsync(fn, iterations, warmup, useSink = true, trackMemory = true, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
+        const effectiveWarmup = Math.min(warmup, warmupCap);
+        const effectiveSampleCount = Math.min(sampleCap, iterations);
+        const samples = []; let sampleSeenCount = 0, lastResult;
+        const successfulResults = [], errorSamples = [];
+        let successfulCount = 0, errorCount = 0;
+        const policy = normalizeAsyncSamplingPolicy(samplingPolicy);
+        for (let i = 0; i < effectiveWarmup; i++) {
+            try { if (useSink) { lastResult = await fn(); globalThis.__polybench_sink = lastResult; } else { lastResult = await fn(); } } catch (_) {}
+        }
+        const memBefore = getMemorySnapshot();
+        let totalNanos = 0;
+        for (let i = 0; i < iterations; i++) {
+            const start = now();
+            try {
+                if (useSink) { lastResult = await fn(); globalThis.__polybench_sink = lastResult; } else { lastResult = await fn(); }
+                successfulCount++;
+                if (policy === 'fixedCap') { if (successfulResults.length < effectiveSampleCount) successfulResults.push(normalizeRawResult(lastResult)); }
+                else { successfulResults.push(normalizeRawResult(lastResult)); }
+            } catch (error) { errorCount++; if (errorSamples.length < effectiveSampleCount) errorSamples.push(normalizeErrorResult(error)); }
+            const elapsed = now() - start;
+            sampleSeenCount = reservoirSamplePush(samples, effectiveSampleCount, elapsed, sampleSeenCount);
+            totalNanos += elapsed;
+        }
+        const memAfter = getMemorySnapshot();
+        const bytesPerOp = bytesPerOpFromSnapshots(memBefore, memAfter, iterations);
+        return { iterations, totalNanos, nanosPerOp: totalNanos / iterations, opsPerSec: 1e9 / (totalNanos / iterations), bytesPerOp, samples, rawResult: normalizeRawResult(lastResult), successfulResults, successfulCount, errorCount, errorSamples };
+    }
+
+    async function runBenchmarkAutoAsync(fn, targetTimeMs, useSink = true, trackMemory = true, warmupCount = 100, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
+        const targetNanos = targetTimeMs * 1e6;
+        const effectiveWarmup = Math.min(warmupCount, warmupCap);
+        const effectiveSampleCount = Math.max(0, sampleCap);
+        const policy = normalizeAsyncSamplingPolicy(samplingPolicy);
+        let lastResult;
+        const successfulResults = [], errorSamples = [];
+        let successfulCount = 0, errorCount = 0;
+        const samples = []; let sampleSeenCount = 0;
+        for (let i = 0; i < effectiveWarmup; i++) {
+            try { if (useSink) { lastResult = await fn(); globalThis.__polybench_sink = lastResult; } else { lastResult = await fn(); } } catch (_) {}
+        }
+        const memBefore = getMemorySnapshot();
+        let totalIterations = 0, totalNanos = 0;
+        if (policy === 'fixedCap') {
+            const fixedIterations = Math.max(1, sampleCap);
+            for (let i = 0; i < fixedIterations; i++) {
+                const start = now();
+                try { if (useSink) { lastResult = await fn(); globalThis.__polybench_sink = lastResult; } else { lastResult = await fn(); } successfulCount++; successfulResults.push(normalizeRawResult(lastResult)); }
+                catch (error) { errorCount++; if (errorSamples.length < sampleCap) errorSamples.push(normalizeErrorResult(error)); }
+                const elapsed = now() - start;
+                totalIterations++; totalNanos += elapsed;
+                sampleSeenCount = reservoirSamplePush(samples, effectiveSampleCount, elapsed, sampleSeenCount);
+            }
+        } else {
+            while (totalNanos < targetNanos) {
+                const start = now();
+                try { if (useSink) { lastResult = await fn(); globalThis.__polybench_sink = lastResult; } else { lastResult = await fn(); } successfulCount++; successfulResults.push(normalizeRawResult(lastResult)); }
+                catch (error) { errorCount++; if (errorSamples.length < sampleCap) errorSamples.push(normalizeErrorResult(error)); }
+                const elapsed = now() - start;
+                totalIterations++; totalNanos += elapsed;
+                sampleSeenCount = reservoirSamplePush(samples, effectiveSampleCount, elapsed, sampleSeenCount);
+            }
+        }
+        const memAfter = getMemorySnapshot();
+        const denomIterations = totalIterations > 0 ? totalIterations : 1;
+        const bytesPerOp = bytesPerOpFromSnapshots(memBefore, memAfter, denomIterations);
+        return { iterations: totalIterations, totalNanos, nanosPerOp: totalNanos / denomIterations, opsPerSec: 1e9 / (totalNanos / denomIterations), bytesPerOp, samples, rawResult: normalizeRawResult(lastResult), successfulResults, successfulCount, errorCount, errorSamples };
+    }
+
+    function runBenchmarkWithHook(fn, eachHook, iterations, warmup, useSink = true, trackMemory = true) {
+        const samples = new Array(iterations);
+        let lastResult;
+        for (let i = 0; i < warmup; i++) { eachHook(); if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); } }
+        const memBefore = getMemorySnapshot();
+        let totalNanos = 0;
+        for (let i = 0; i < iterations; i++) {
+            eachHook();
+            const start = now();
+            if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); }
+            samples[i] = now() - start;
+            totalNanos += samples[i];
+        }
+        const memAfter = getMemorySnapshot();
+        const bytesPerOp = bytesPerOpFromSnapshots(memBefore, memAfter, iterations);
+        return { iterations, totalNanos, nanosPerOp: totalNanos / iterations, opsPerSec: 1e9 / (totalNanos / iterations), bytesPerOp, samples, rawResult: normalizeRawResult(lastResult) };
+    }
+
+    async function runBenchmarkWithHookAsync(fn, eachHook, iterations, warmup, useSink = true, trackMemory = true, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
+        const samples = new Array(iterations);
+        let lastResult;
+        const successfulResults = [], errorSamples = [];
+        let successfulCount = 0, errorCount = 0;
+        const effectiveWarmup = Math.min(warmup, warmupCap);
+        const policy = normalizeAsyncSamplingPolicy(samplingPolicy);
+        for (let i = 0; i < effectiveWarmup; i++) {
+            try { await eachHook(); if (useSink) { lastResult = await fn(); globalThis.__polybench_sink = lastResult; } else { lastResult = await fn(); } } catch (_) {}
+        }
+        const memBefore = getMemorySnapshot();
+        let totalNanos = 0;
+        for (let i = 0; i < iterations; i++) {
+            let elapsed = 0;
+            try {
+                await eachHook();
+                const start = now();
+                if (useSink) { lastResult = await fn(); globalThis.__polybench_sink = lastResult; } else { lastResult = await fn(); }
+                elapsed = now() - start;
+                successfulCount++;
+                if (policy === 'fixedCap' && successfulResults.length < sampleCap) successfulResults.push(normalizeRawResult(lastResult));
+                else if (policy !== 'fixedCap') successfulResults.push(normalizeRawResult(lastResult));
+            } catch (error) { errorCount++; if (errorSamples.length < sampleCap) errorSamples.push(normalizeErrorResult(error)); }
+            samples[i] = elapsed;
+            totalNanos += elapsed;
+        }
+        const memAfter = getMemorySnapshot();
+        const bytesPerOp = bytesPerOpFromSnapshots(memBefore, memAfter, iterations);
+        return { iterations, totalNanos, nanosPerOp: totalNanos / iterations, opsPerSec: 1e9 / (totalNanos / iterations), bytesPerOp, samples, rawResult: normalizeRawResult(lastResult), successfulResults, successfulCount, errorCount, errorSamples };
+    }
+
+    function hexToBytes(hex) {
+        hex = hex.replace(/^0x/, '');
+        const bytes = new Uint8Array(hex.length / 2);
+        for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+        return bytes;
+    }
+
+    function bytesToHex(bytes) {
+        return '0x' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    globalThis.__polybench = {
+        now, runBenchmark, runBenchmarkAuto, runBenchmarkAsync, runBenchmarkAutoAsync,
+        runBenchmarkWithHook, runBenchmarkWithHookAsync, hexToBytes, bytesToHex,
+    };
+})(globalThis);
+"#;
+
+/// Select harness based on memory mode. Performance path has zero memory overhead.
+pub fn get_bench_harness(track_memory: bool) -> &'static str {
+    if track_memory {
+        BENCH_HARNESS_MEMORY
+    } else {
+        BENCH_HARNESS_PERF
+    }
+}
+
 /// Generate fixture injection code
 pub fn generate_fixture_code(name: &str, hex_data: &str) -> String {
     format!(
@@ -626,27 +857,34 @@ pub fn generate_benchmark_code(
 
 #[cfg(test)]
 mod tests {
-    use super::BENCHMARK_HARNESS;
+    use super::{BENCH_HARNESS_MEMORY, BENCH_HARNESS_PERF};
 
     #[test]
     fn test_harness_contains_async_sampling_policy_switch() {
-        assert!(BENCHMARK_HARNESS.contains("normalizeAsyncSamplingPolicy"));
-        assert!(BENCHMARK_HARNESS.contains("policy === 'fixedCap'"));
-        assert!(BENCHMARK_HARNESS.contains("policy !== 'fixedCap'"));
+        assert!(BENCH_HARNESS_PERF.contains("normalizeAsyncSamplingPolicy"));
+        assert!(BENCH_HARNESS_PERF.contains("policy === 'fixedCap'"));
+        assert!(BENCH_HARNESS_PERF.contains("policy !== 'fixedCap'"));
     }
 
     #[test]
     fn test_harness_contains_async_error_capture_fields() {
-        assert!(BENCHMARK_HARNESS.contains("successfulCount"));
-        assert!(BENCHMARK_HARNESS.contains("errorCount"));
-        assert!(BENCHMARK_HARNESS.contains("errorSamples"));
-        assert!(BENCHMARK_HARNESS.contains("normalizeErrorResult"));
+        assert!(BENCH_HARNESS_PERF.contains("successfulCount"));
+        assert!(BENCH_HARNESS_PERF.contains("errorCount"));
+        assert!(BENCH_HARNESS_PERF.contains("errorSamples"));
+        assert!(BENCH_HARNESS_PERF.contains("normalizeErrorResult"));
     }
 
     #[test]
     fn test_harness_uses_reservoir_sampling_for_async_samples() {
-        assert!(BENCHMARK_HARNESS.contains("function reservoirSamplePush"));
-        assert!(BENCHMARK_HARNESS.contains("sampleSeenCount = reservoirSamplePush"));
-        assert!(!BENCHMARK_HARNESS.contains("samples.slice(0, effectiveSampleCount)"));
+        assert!(BENCH_HARNESS_PERF.contains("function reservoirSamplePush"));
+        assert!(BENCH_HARNESS_PERF.contains("sampleSeenCount = reservoirSamplePush"));
+        assert!(!BENCH_HARNESS_PERF.contains("samples.slice(0, effectiveSampleCount)"));
+    }
+
+    #[test]
+    fn test_memory_harness_uses_total_allocated_bytes() {
+        assert!(BENCH_HARNESS_MEMORY.contains("total_allocated_bytes"));
+        assert!(BENCH_HARNESS_MEMORY.contains("global.gc"));
+        assert!(BENCH_HARNESS_MEMORY.contains("node:v8"));
     }
 }

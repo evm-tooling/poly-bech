@@ -303,9 +303,8 @@ pub fn generate(
                 let x = x_to_px(x_values[idx]);
                 let y = y_to_px(v);
                 points.push((x_values[idx], v));
-                let in_split_gap = split_gap
-                    .map(|(low, high)| v > low && v < high)
-                    .unwrap_or(false);
+                let in_split_gap =
+                    split_gap.map(|(low, high)| v > low && v < high).unwrap_or(false);
                 if in_split_gap {
                     if !current_path.is_empty() {
                         path_segments.push(std::mem::take(&mut current_path));

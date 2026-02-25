@@ -339,7 +339,7 @@ impl Measurement {
         let p99_nanos = median_of_options(runs.iter().filter_map(|r| r.p99_nanos).collect());
         let p995_nanos = median_of_options(runs.iter().filter_map(|r| r.p995_nanos).collect());
 
-        // Aggregate memory stats (average)
+        // Aggregate memory stats (average for performance path)
         let bytes_per_op = {
             let values: Vec<u64> = runs.iter().filter_map(|r| r.bytes_per_op).collect();
             if values.is_empty() {
@@ -437,6 +437,152 @@ impl Measurement {
             outliers_removed: Some(total_outliers),
             is_stable,
             // Multi-run aggregation fields
+            run_count: Some(run_count as u64),
+            median_across_runs: Some(median),
+            ci_95_lower: Some(ci_lower),
+            ci_95_upper: Some(ci_upper),
+            std_dev_nanos: Some(std_dev),
+            estimator_source: Some("paired-robust".to_string()),
+            raw_nanos_per_op: Some(mean),
+            filtered_nanos_per_op: Some(median),
+            timed_out: Some(false),
+            run_nanos_per_op: Some(run_nanos_per_op),
+        }
+    }
+
+    /// Aggregate multiple run measurements for memory suites.
+    /// Same as aggregate_runs but uses median for bytes_per_op and allocs_per_op
+    /// (more robust for memory metrics which can have high variance).
+    pub fn aggregate_runs_memory(runs: Vec<Measurement>) -> Self {
+        if runs.is_empty() {
+            return Measurement::from_aggregate(0, 0);
+        }
+        if runs.len() == 1 {
+            let mut single = runs.into_iter().next().unwrap();
+            single.run_count = Some(1);
+            return single;
+        }
+
+        let run_count = runs.len();
+
+        // Collect nanos_per_op from each run
+        let mut nanos_values: Vec<f64> = runs.iter().map(|r| r.nanos_per_op).collect();
+        let run_nanos_per_op = nanos_values.clone();
+        nanos_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Calculate median
+        let median = if run_count % 2 == 0 {
+            (nanos_values[run_count / 2 - 1] + nanos_values[run_count / 2]) / 2.0
+        } else {
+            nanos_values[run_count / 2]
+        };
+
+        // Calculate mean and std deviation for descriptive stats
+        let mean: f64 = nanos_values.iter().sum::<f64>() / run_count as f64;
+        let variance: f64 =
+            nanos_values.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (run_count - 1) as f64;
+        let std_dev = variance.sqrt();
+        // Robust 95% CI from bootstrap distribution of medians
+        let (ci_lower, ci_upper) = bootstrap_ci_median(&nanos_values, 1000);
+
+        // Aggregate totals across runs
+        let total_iterations: u64 = runs.iter().map(|r| r.iterations).sum();
+        let total_nanos: u64 = runs.iter().map(|r| r.total_nanos).sum();
+
+        // Use min/max across all runs
+        let min_nanos = runs.iter().filter_map(|r| r.min_nanos).min();
+        let max_nanos = runs.iter().filter_map(|r| r.max_nanos).max();
+
+        // Aggregate percentiles using median of percentiles
+        let p50_nanos = median_of_options(runs.iter().filter_map(|r| r.p50_nanos).collect());
+        let p75_nanos = median_of_options(runs.iter().filter_map(|r| r.p75_nanos).collect());
+        let p99_nanos = median_of_options(runs.iter().filter_map(|r| r.p99_nanos).collect());
+        let p995_nanos = median_of_options(runs.iter().filter_map(|r| r.p995_nanos).collect());
+
+        // Aggregate memory stats (median for memory path - more robust)
+        let bytes_per_op = median_of_options(runs.iter().filter_map(|r| r.bytes_per_op).collect());
+        let allocs_per_op =
+            median_of_options(runs.iter().filter_map(|r| r.allocs_per_op).collect());
+
+        // Total samples across all runs
+        let total_samples: u64 = runs.iter().filter_map(|r| r.samples).sum();
+        let total_outliers: u64 = runs.iter().filter_map(|r| r.outliers_removed).sum();
+
+        // Calculate cross-run CV and RME
+        let cv_percent = if mean > 0.0 { Some((std_dev / mean) * 100.0) } else { None };
+        let rme_percent =
+            if median > 0.0 { Some(((ci_upper - median).max(0.0) / median) * 100.0) } else { None };
+        let is_stable = cv_percent.map(|cv| cv <= DEFAULT_CV_THRESHOLD);
+
+        let total_success_count: u64 = runs.iter().filter_map(|r| r.async_success_count).sum();
+        let has_success_count = runs.iter().any(|r| r.async_success_count.is_some());
+        let total_error_count: u64 = runs.iter().filter_map(|r| r.async_error_count).sum();
+        let has_error_count = runs.iter().any(|r| r.async_error_count.is_some());
+
+        // Aggregate successful_results across all runs (capped at 100)
+        let mut aggregated_successful_results: Vec<String> = Vec::new();
+        for run in &runs {
+            if let Some(results) = &run.successful_results {
+                for result in results {
+                    if aggregated_successful_results.len() >= 100 {
+                        break;
+                    }
+                    aggregated_successful_results.push(result.clone());
+                }
+            }
+            if aggregated_successful_results.len() >= 100 {
+                break;
+            }
+        }
+
+        // Aggregate error_samples across all runs (capped at 50)
+        let mut aggregated_error_samples: Vec<String> = Vec::new();
+        for run in &runs {
+            if let Some(samples) = &run.async_error_samples {
+                for sample in samples {
+                    if aggregated_error_samples.len() >= 50 {
+                        break;
+                    }
+                    aggregated_error_samples.push(sample.clone());
+                }
+            }
+            if aggregated_error_samples.len() >= 50 {
+                break;
+            }
+        }
+
+        Self {
+            iterations: total_iterations,
+            total_nanos,
+            nanos_per_op: median,
+            ops_per_sec: if median > 0.0 { 1_000_000_000.0 / median } else { 0.0 },
+            min_nanos,
+            max_nanos,
+            p50_nanos,
+            p75_nanos,
+            p99_nanos,
+            p995_nanos,
+            rme_percent,
+            samples: Some(total_samples),
+            bytes_per_op,
+            allocs_per_op,
+            raw_samples: None,
+            raw_result: runs.last().and_then(|r| r.raw_result.clone()),
+            successful_results: if aggregated_successful_results.is_empty() {
+                None
+            } else {
+                Some(aggregated_successful_results)
+            },
+            async_success_count: if has_success_count { Some(total_success_count) } else { None },
+            async_error_count: if has_error_count { Some(total_error_count) } else { None },
+            async_error_samples: if aggregated_error_samples.is_empty() {
+                None
+            } else {
+                Some(aggregated_error_samples)
+            },
+            cv_percent,
+            outliers_removed: Some(total_outliers),
+            is_stable,
             run_count: Some(run_count as u64),
             median_across_runs: Some(median),
             ci_95_lower: Some(ci_lower),
@@ -676,8 +822,9 @@ impl Comparison {
         )
     }
 
-    /// Create a comparison using explicit metric values (for memory: bytes_per_op; for time: nanos_per_op).
-    /// Lower value is better; ratio = first/second, so ratio > 1 means second wins.
+    /// Create a comparison using explicit metric values (for memory: bytes_per_op; for time:
+    /// nanos_per_op). Lower value is better; ratio = first/second, so ratio > 1 means second
+    /// wins.
     pub fn new_with_metric(
         name: String,
         first: Measurement,

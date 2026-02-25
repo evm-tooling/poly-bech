@@ -331,7 +331,8 @@ pub fn generate(
                 .enumerate()
                 .filter_map(|(idx, bench)| {
                     bench.measurements.get(lang).and_then(|m| {
-                        primary_value(m).filter(|v| v.is_finite() && *v < f64::MAX)
+                        primary_value(m)
+                            .filter(|v| v.is_finite() && *v < f64::MAX)
                             .map(|v| (x_values[idx], v))
                     })
                 })
@@ -443,9 +444,10 @@ pub fn generate(
             let ys: Vec<f64> = filtered
                 .iter()
                 .filter_map(|bench| {
-                    bench.measurements.get(lang).and_then(|m| {
-                        primary_value(m).filter(|v| v.is_finite() && *v < f64::MAX)
-                    })
+                    bench
+                        .measurements
+                        .get(lang)
+                        .and_then(|m| primary_value(m).filter(|v| v.is_finite() && *v < f64::MAX))
                 })
                 .collect();
             if ys.is_empty() {

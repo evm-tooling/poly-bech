@@ -333,6 +333,9 @@ impl Runtime for JsRuntime {
 
         // Run with Node.js from the working directory (which has node_modules)
         let mut cmd = tokio::process::Command::new(&self.node_binary);
+        if spec.memory {
+            cmd.arg("--expose-gc");
+        }
         cmd.arg(&script_path).current_dir(&working_dir);
 
         // Pass Anvil RPC URL if available
@@ -401,8 +404,13 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         }
     }
 
-    // Add harness
-    script.push_str(builtins::BENCHMARK_HARNESS);
+    // ESM: require is undefined; memory harness needs node:v8. Add createRequire so require works.
+    if spec.memory {
+        script.push_str("import { createRequire } from 'node:module';\nconst require = createRequire(import.meta.url);\n\n");
+    }
+
+    // Add harness (performance or memory path - memory uses total_allocated_bytes + gc)
+    script.push_str(builtins::get_bench_harness(spec.memory));
     script.push_str("\n\n");
 
     // Add stdlib code (e.g., ANVIL_RPC_URL for std::anvil)
@@ -590,10 +598,7 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         } else {
             script.push_str(&format!(
                 "}}, {}, {}, {}, {});\n",
-                spec.iterations,
-                spec.warmup,
-                use_sink,
-                track_memory
+                spec.iterations, spec.warmup, use_sink, track_memory
             ));
         }
     }
@@ -699,9 +704,10 @@ impl BenchResultJson {
             m
         };
 
-        // Apply memory stats from JS (heapUsed delta); allocs_per_op not available in Node
+        // Apply memory stats from JS (total_allocated_bytes or heapUsed fallback); allocs_per_op
+        // not available in Node
         if let Some(bytes) = self.bytes_per_op {
-            let bytes_u64 = bytes.max(0.0) as u64;
+            let bytes_u64 = bytes.max(0.0).round() as u64;
             m = m.with_allocs(bytes_u64, 0);
         }
 

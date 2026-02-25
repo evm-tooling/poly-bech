@@ -197,11 +197,7 @@ fn filter_results_by_suite(results: &BenchmarkResults, suite_name: &str) -> Benc
 
 /// Get suite type from results (for memory vs performance chart mode)
 fn suite_type_from_results(results: &BenchmarkResults) -> poly_bench_dsl::SuiteType {
-    results
-        .suites
-        .first()
-        .map(|s| s.suite_type)
-        .unwrap_or(poly_bench_dsl::SuiteType::Performance)
+    results.suites.first().map(|s| s.suite_type).unwrap_or(poly_bench_dsl::SuiteType::Performance)
 }
 
 /// Generate a speedup chart SVG

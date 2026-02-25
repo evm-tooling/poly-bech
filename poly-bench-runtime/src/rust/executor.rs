@@ -3,7 +3,7 @@
 use crate::{measurement::Measurement, traits::Runtime};
 use async_trait::async_trait;
 use miette::{miette, Result};
-use poly_bench_dsl::{BenchMode, BenchmarkKind, Lang};
+use poly_bench_dsl::{BenchMode, BenchmarkKind, Lang, SuiteType};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use poly_bench_stdlib as stdlib;
 use std::{
@@ -11,6 +11,37 @@ use std::{
     path::{Path, PathBuf},
     process::Stdio,
 };
+
+/// Ensure alloc_tracker is in Cargo.toml when running memory benchmarks in runtime-env.
+/// Runtime-env uses a pre-existing Cargo.toml that may not include alloc_tracker.
+fn ensure_alloc_tracker_in_cargo_toml(cargo_path: &Path, spec: &BenchmarkSpec) -> Result<()> {
+    if !spec.memory {
+        return Ok(());
+    }
+    let content = std::fs::read_to_string(cargo_path)
+        .map_err(|e| miette!("Failed to read Cargo.toml: {}", e))?;
+    if content.contains("alloc_tracker") {
+        return Ok(());
+    }
+    // Add alloc_tracker after [dependencies] line
+    const DEP_SECTION: &str = "\n[dependencies]\n";
+    const DEP_SECTION_ALT: &str = "[dependencies]\n";
+    let (search, insert) = if content.starts_with("[dependencies]") {
+        (DEP_SECTION_ALT, "alloc_tracker = \"0.5\"\n")
+    } else if content.contains(DEP_SECTION) {
+        (DEP_SECTION, "alloc_tracker = \"0.5\"\n")
+    } else if content.contains(DEP_SECTION_ALT) {
+        (DEP_SECTION_ALT, "alloc_tracker = \"0.5\"\n")
+    } else {
+        return Err(miette!(
+            "Cargo.toml has no [dependencies] section; cannot add alloc_tracker for memory profiling"
+        ));
+    };
+    let new_content = content.replacen(search, &format!("{}{}", search, insert), 1);
+    std::fs::write(cargo_path, new_content)
+        .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
+    Ok(())
+}
 
 /// Clean up LSP virtual files from the src/bin directory that would interfere with cargo
 /// compilation
@@ -100,6 +131,11 @@ impl Runtime for RustRuntime {
                 // Use runtime-env directly - it has user's Cargo.toml with dependencies
                 // Clean up any LSP virtual files that might interfere with cargo check
                 cleanup_lsp_virtual_files(project_root);
+                // Add alloc_tracker for memory suites (runtime-env Cargo.toml may not have it)
+                let cargo_path = project_root.join("Cargo.toml");
+                if cargo_path.exists() {
+                    ensure_alloc_tracker_in_cargo_toml(&cargo_path, spec)?;
+                }
                 (project_root.clone(), false)
             } else {
                 // Not a runtime-env: use hash-based subdirectory for isolation
@@ -272,6 +308,15 @@ impl RustRuntime {
             } else {
                 project_root.join(".polybench").join("rust")
             };
+
+            // Runtime-env Cargo.toml may not have alloc_tracker; add it for memory suites
+            if is_runtime_env {
+                let cargo_path = project_root.join("Cargo.toml");
+                if cargo_path.exists() {
+                    ensure_alloc_tracker_in_cargo_toml(&cargo_path, spec)?;
+                }
+            }
+
             (src_path, working)
         } else {
             // Create temp directory for standalone execution
@@ -284,7 +329,7 @@ impl RustRuntime {
                 .map_err(|e| miette!("Failed to create src directory: {}", e))?;
 
             // Create minimal Cargo.toml
-            let cargo_toml = generate_minimal_cargo_toml();
+            let cargo_toml = generate_minimal_cargo_toml(spec);
             std::fs::write(temp_dir.join("Cargo.toml"), cargo_toml)
                 .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
 
@@ -385,6 +430,15 @@ impl RustRuntime {
             } else {
                 project_root.join(".polybench").join("rust")
             };
+
+            // Runtime-env Cargo.toml may not have alloc_tracker; add it for memory suites
+            if is_runtime_env {
+                let cargo_path = project_root.join("Cargo.toml");
+                if cargo_path.exists() {
+                    ensure_alloc_tracker_in_cargo_toml(&cargo_path, spec)?;
+                }
+            }
+
             (src_path, working)
         } else {
             // Create temp directory for standalone execution
@@ -397,7 +451,7 @@ impl RustRuntime {
                 .map_err(|e| miette!("Failed to create src directory: {}", e))?;
 
             // Create minimal Cargo.toml
-            let cargo_toml = generate_minimal_cargo_toml();
+            let cargo_toml = generate_minimal_cargo_toml(spec);
             std::fs::write(temp_dir.join("Cargo.toml"), cargo_toml)
                 .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
 
@@ -551,8 +605,8 @@ impl BenchResultJson {
 }
 
 /// Generate a minimal Cargo.toml for standalone execution
-fn generate_minimal_cargo_toml() -> String {
-    r#"[package]
+fn generate_minimal_cargo_toml(spec: &BenchmarkSpec) -> String {
+    let mut cargo = r#"[package]
 name = "polybench_runner"
 version = "0.1.0"
 edition = "2021"
@@ -560,13 +614,20 @@ edition = "2021"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
+"#
+    .to_string();
+    if spec.memory {
+        cargo.push_str("alloc_tracker = \"0.5\"\n");
+    }
+    cargo.push_str(
+        r#"
 [profile.release]
 opt-level = 3
 lto = true
 codegen-units = 1
-"#
-    .to_string()
+"#,
+    );
+    cargo
 }
 
 /// Generate Cargo.toml with dependencies extracted from suite imports
@@ -585,6 +646,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 "#,
     );
+    if suite.suite_type == SuiteType::Memory {
+        cargo.push_str("alloc_tracker = \"0.5\"\n");
+    }
 
     // Extract dependencies from Rust imports
     if let Some(imports) = suite.imports.get(&Lang::Rust) {
@@ -681,6 +745,17 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
         code.push('\n');
     }
     code.push('\n');
+
+    // Global allocator for memory profiling (only when spec.memory)
+    if spec.memory {
+        code.push_str(
+            r#"
+#[global_allocator]
+static ALLOCATOR: alloc_tracker::Allocator<std::alloc::System> = alloc_tracker::Allocator::system();
+
+"#,
+        );
+    }
 
     // BenchResult type
     code.push_str(BENCH_RESULT_STRUCT);

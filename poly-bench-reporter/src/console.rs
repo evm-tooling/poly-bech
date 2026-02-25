@@ -250,7 +250,8 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
     }
 
     // Legend
-    let has_memory_suite = results.suites.iter().any(|s| s.suite_type == poly_bench_dsl::SuiteType::Memory);
+    let has_memory_suite =
+        results.suites.iter().any(|s| s.suite_type == poly_bench_dsl::SuiteType::Memory);
     println!("{}", "─".repeat(110));
     println!("{}", "LEGEND".dimmed());
     println!(
@@ -261,7 +262,11 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
     );
     println!("  {} = operations per second (higher is better)", "hz".dimmed());
     if has_memory_suite {
-        println!("  {} = bytes per operation (lower is better)  |  {} = allocations per operation", "bytes/op".dimmed(), "allocs/op".dimmed());
+        println!(
+            "  {} = bytes per operation (lower is better)  |  {} = allocations per operation",
+            "bytes/op".dimmed(),
+            "allocs/op".dimmed()
+        );
     }
     println!(
         "  {} = minimum latency  |  {} = maximum latency  |  {} = mean latency (all in ms)",
@@ -428,11 +433,7 @@ fn print_distribution_table(
 
     let go_best: Option<&str> = benchmarks
         .iter()
-        .filter_map(|b| {
-            b.measurements
-                .get(&Lang::Go)
-                .map(|m| (b.name.as_str(), metric_val(m)))
-        })
+        .filter_map(|b| b.measurements.get(&Lang::Go).map(|m| (b.name.as_str(), metric_val(m))))
         .max_by(|a, b| {
             if better(a.1, b.1) {
                 std::cmp::Ordering::Greater
@@ -446,11 +447,7 @@ fn print_distribution_table(
 
     let go_worst: Option<&str> = benchmarks
         .iter()
-        .filter_map(|b| {
-            b.measurements
-                .get(&Lang::Go)
-                .map(|m| (b.name.as_str(), metric_val(m)))
-        })
+        .filter_map(|b| b.measurements.get(&Lang::Go).map(|m| (b.name.as_str(), metric_val(m))))
         .min_by(|a, b| {
             if better(a.1, b.1) {
                 std::cmp::Ordering::Greater
@@ -465,9 +462,7 @@ fn print_distribution_table(
     let ts_best: Option<&str> = benchmarks
         .iter()
         .filter_map(|b| {
-            b.measurements
-                .get(&Lang::TypeScript)
-                .map(|m| (b.name.as_str(), metric_val(m)))
+            b.measurements.get(&Lang::TypeScript).map(|m| (b.name.as_str(), metric_val(m)))
         })
         .max_by(|a, b| {
             if better(a.1, b.1) {
@@ -483,9 +478,7 @@ fn print_distribution_table(
     let ts_worst: Option<&str> = benchmarks
         .iter()
         .filter_map(|b| {
-            b.measurements
-                .get(&Lang::TypeScript)
-                .map(|m| (b.name.as_str(), metric_val(m)))
+            b.measurements.get(&Lang::TypeScript).map(|m| (b.name.as_str(), metric_val(m)))
         })
         .min_by(|a, b| {
             if better(a.1, b.1) {
@@ -500,11 +493,7 @@ fn print_distribution_table(
 
     let rust_best: Option<&str> = benchmarks
         .iter()
-        .filter_map(|b| {
-            b.measurements
-                .get(&Lang::Rust)
-                .map(|m| (b.name.as_str(), metric_val(m)))
-        })
+        .filter_map(|b| b.measurements.get(&Lang::Rust).map(|m| (b.name.as_str(), metric_val(m))))
         .max_by(|a, b| {
             if better(a.1, b.1) {
                 std::cmp::Ordering::Greater
@@ -518,11 +507,7 @@ fn print_distribution_table(
 
     let rust_worst: Option<&str> = benchmarks
         .iter()
-        .filter_map(|b| {
-            b.measurements
-                .get(&Lang::Rust)
-                .map(|m| (b.name.as_str(), metric_val(m)))
-        })
+        .filter_map(|b| b.measurements.get(&Lang::Rust).map(|m| (b.name.as_str(), metric_val(m))))
         .min_by(|a, b| {
             if better(a.1, b.1) {
                 std::cmp::Ordering::Greater
@@ -534,11 +519,8 @@ fn print_distribution_table(
         })
         .map(|(name, _)| name);
 
-    let (best_label, worst_label) = if is_memory {
-        (" lowest", " highest")
-    } else {
-        (" fastest", " slowest")
-    };
+    let (best_label, worst_label) =
+        if is_memory { (" lowest", " highest") } else { (" fastest", " slowest") };
 
     for bench in benchmarks {
         // Go row
@@ -554,8 +536,12 @@ fn print_distribution_table(
             let name = format!("· go: {}", bench.name);
 
             if is_memory {
-                let bytes = m.bytes_per_op.map(Measurement::format_bytes).unwrap_or_else(|| "-".to_string());
-                let allocs = m.allocs_per_op.map(|a| a.to_string()).unwrap_or_else(|| "-".to_string());
+                let bytes = m
+                    .bytes_per_op
+                    .map(Measurement::format_bytes)
+                    .unwrap_or_else(|| "-".to_string());
+                let allocs =
+                    m.allocs_per_op.map(|a| a.to_string()).unwrap_or_else(|| "-".to_string());
                 let mean_ns = m.nanos_per_op;
                 let samples = m.samples.unwrap_or(1000);
                 println!(
@@ -655,8 +641,12 @@ fn print_distribution_table(
             let name = format!("· ts: {}", bench.name);
 
             if is_memory {
-                let bytes = m.bytes_per_op.map(Measurement::format_bytes).unwrap_or_else(|| "-".to_string());
-                let allocs = m.allocs_per_op.map(|a| a.to_string()).unwrap_or_else(|| "-".to_string());
+                let bytes = m
+                    .bytes_per_op
+                    .map(Measurement::format_bytes)
+                    .unwrap_or_else(|| "-".to_string());
+                let allocs =
+                    m.allocs_per_op.map(|a| a.to_string()).unwrap_or_else(|| "-".to_string());
                 let mean_ns = m.nanos_per_op;
                 let samples = m.samples.unwrap_or(1000);
                 println!(
@@ -756,8 +746,12 @@ fn print_distribution_table(
             let name = format!("· rust: {}", bench.name);
 
             if is_memory {
-                let bytes = m.bytes_per_op.map(Measurement::format_bytes).unwrap_or_else(|| "-".to_string());
-                let allocs = m.allocs_per_op.map(|a| a.to_string()).unwrap_or_else(|| "-".to_string());
+                let bytes = m
+                    .bytes_per_op
+                    .map(Measurement::format_bytes)
+                    .unwrap_or_else(|| "-".to_string());
+                let allocs =
+                    m.allocs_per_op.map(|a| a.to_string()).unwrap_or_else(|| "-".to_string());
                 let mean_ns = m.nanos_per_op;
                 let samples = m.samples.unwrap_or(1000);
                 println!(

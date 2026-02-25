@@ -898,7 +898,8 @@ declare suite test performance timeBased sameDataset: true {
         let ast = parse(source, "test.bench").unwrap();
         let result = validate_suite(&ast.suites[0]);
         assert!(result.errors.iter().any(|e| {
-            e.message.contains("at least 2 benchmarks") && e.message.contains("meaningful comparison")
+            e.message.contains("at least 2 benchmarks") &&
+                e.message.contains("meaningful comparison")
         }));
     }
 
@@ -918,9 +919,10 @@ declare suite test performance timeBased sameDataset: true {
 "#;
         let ast = parse(source, "test.bench").unwrap();
         let result = validate_suite(&ast.suites[0]);
-        assert!(result.errors.iter().any(|e| {
-            e.message.contains("missing baseline") && e.message.contains("bar")
-        }));
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| { e.message.contains("missing baseline") && e.message.contains("bar") }));
     }
 
     #[test]

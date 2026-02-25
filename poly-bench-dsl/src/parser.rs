@@ -411,7 +411,8 @@ impl Parser {
             }
             TokenKind::Memory => {
                 return Err(self.make_error(ParseError::InvalidProperty {
-                    name: "memory: use suiteType: memory in the suite declaration instead".to_string(),
+                    name: "memory: use suiteType: memory in the suite declaration instead"
+                        .to_string(),
                     span: token.span.clone(),
                 }));
             }
@@ -1127,7 +1128,8 @@ impl Parser {
             }
             TokenKind::Memory => {
                 return Err(self.make_error(ParseError::InvalidProperty {
-                    name: "memory: use suiteType: memory in the suite declaration instead".to_string(),
+                    name: "memory: use suiteType: memory in the suite declaration instead"
+                        .to_string(),
                     span: token.span.clone(),
                 }));
             }
