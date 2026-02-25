@@ -410,6 +410,7 @@ pub fn generate(
         Lang::Go => "Go",
         Lang::TypeScript => "TypeScript",
         Lang::Rust => "Rust",
+        Lang::Python => "Python",
         _ => "Baseline",
     };
     svg.push_str(&svg_title(chart_width, title, baseline_name, overall_mode, &theme));

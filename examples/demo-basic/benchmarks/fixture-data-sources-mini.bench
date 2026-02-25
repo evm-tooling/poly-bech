@@ -12,12 +12,10 @@ declare suite fixtureDataSourcesMini performance timeBased sameDataset: false {
         }
     }
 
-    # Legacy compatibility path
     fixture legacyHexInline {
         hex: "68656c6c6f"
     }
 
-    # New data source + explicit encodings
     fixture hexViaDataFile {
         data: @file("fixtures/data_sources_hex_payload.hex")
         encoding: hex
@@ -38,7 +36,6 @@ declare suite fixtureDataSourcesMini performance timeBased sameDataset: false {
         encoding: base64
     }
 
-    # Structured extraction paths
     fixture jsonSelected {
         data: @file("fixtures/data_sources_sample.json")
         format: json
@@ -78,4 +75,5 @@ declare suite fixtureDataSourcesMini performance timeBased sameDataset: false {
     bench csv_selected {
         ts: bytesLen(csvSelected)
     }
+
 }

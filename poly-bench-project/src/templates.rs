@@ -444,8 +444,30 @@ pub fn tsconfig_json() -> String {
     .to_string()
 }
 
-/// Generate requirements.txt for Python runtime env
+/// Internal Python deps always included in .polybench runtime-env (e.g. pyright for LSP).
+/// These are never in polybench.toml; install/remove must not strip them from requirements.txt.
+const PYTHON_INTERNAL_DEPS: &[(&str, &str)] = &[("pyright[nodejs]", "latest")];
+
+/// Generate requirements.txt for Python runtime env.
+/// When writing to .polybench/runtime-env/python/, use `requirements_txt_for_runtime_env` to
+/// preserve internal deps (pyright) that must not be removed by install/remove.
 pub fn requirements_txt(deps: &[(String, String)]) -> String {
+    format_requirements_txt(deps)
+}
+
+/// Generate requirements.txt for .polybench runtime-env, always including internal deps (pyright).
+/// Use this when writing to .polybench/runtime-env/python/ so install/remove never strips pyright.
+pub fn requirements_txt_for_runtime_env(manifest_deps: &[(String, String)]) -> String {
+    let mut all: Vec<(String, String)> = manifest_deps.to_vec();
+    for (k, v) in PYTHON_INTERNAL_DEPS {
+        if !all.iter().any(|(d, _)| d == *k || d == "pyright") {
+            all.push((k.to_string(), v.to_string()));
+        }
+    }
+    format_requirements_txt(&all)
+}
+
+fn format_requirements_txt(deps: &[(String, String)]) -> String {
     if deps.is_empty() {
         "# Python dependencies for poly-bench runtime\n# Add packages with: poly-bench add --py \"package==version\"\n".to_string()
     } else {

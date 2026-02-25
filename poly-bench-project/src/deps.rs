@@ -567,7 +567,7 @@ pub fn add_python_dependency(spec: &str) -> Result<()> {
         .iter()
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
-    let requirements_content = templates::requirements_txt(&deps);
+    let requirements_content = templates::requirements_txt_for_runtime_env(&deps);
     std::fs::write(python_root.join("requirements.txt"), requirements_content)
         .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
 
@@ -632,7 +632,7 @@ pub fn remove_python_dependency(package: &str) -> Result<()> {
         .iter()
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
-    let requirements_content = templates::requirements_txt(&deps);
+    let requirements_content = templates::requirements_txt_for_runtime_env(&deps);
     std::fs::write(python_root.join("requirements.txt"), requirements_content)
         .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
 
@@ -931,7 +931,7 @@ fn install_python_deps(project_root: &Path, python_config: &manifest::PythonConf
 
     let deps: Vec<(String, String)> =
         python_config.dependencies.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-    let requirements_content = templates::requirements_txt(&deps);
+    let requirements_content = templates::requirements_txt_for_runtime_env(&deps);
     std::fs::write(python_root.join("requirements.txt"), requirements_content)
         .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
 

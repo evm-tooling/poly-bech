@@ -1,9 +1,7 @@
 declare suite pythonTest performance timeBased sameDataset: false {
-    setup python {
-        import {
-            import matplotlib.pyplot as plt
-        }
+    targetTime: 3000
 
+    setup python {
         helpers {
             def add_one(x):
                 return x + 1;

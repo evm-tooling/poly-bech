@@ -7,7 +7,7 @@ use poly_bench_runtime::measurement::Measurement;
 
 use super::{
     escape_xml, filter_benchmarks, format_duration, sort_benchmarks, BG_COLOR, BORDER_COLOR,
-    GO_COLOR, RUST_COLOR, TEXT_COLOR, TEXT_MUTED, TEXT_SECONDARY, TS_COLOR,
+    GO_COLOR, PYTHON_COLOR, RUST_COLOR, TEXT_COLOR, TEXT_MUTED, TEXT_SECONDARY, TS_COLOR,
 };
 
 const ROW_HEIGHT: i32 = 32;
@@ -32,6 +32,7 @@ pub fn generate(
     let has_go = filtered.iter().any(|b| b.measurements.contains_key(&Lang::Go));
     let has_ts = filtered.iter().any(|b| b.measurements.contains_key(&Lang::TypeScript));
     let has_rust = filtered.iter().any(|b| b.measurements.contains_key(&Lang::Rust));
+    let has_python = filtered.iter().any(|b| b.measurements.contains_key(&Lang::Python));
 
     // Build column structure
     let mut columns: Vec<(&str, &str, i32)> = vec![("Benchmark", "name", 150)];
@@ -43,6 +44,9 @@ pub fn generate(
     }
     if has_rust {
         columns.push(("Rust", "rust", MIN_COL_WIDTH));
+    }
+    if has_python {
+        columns.push(("Python", "python", MIN_COL_WIDTH));
     }
     columns.push(("Winner", "winner", 80));
 
@@ -91,6 +95,7 @@ pub fn generate(
             "go" => GO_COLOR,
             "ts" => TS_COLOR,
             "rust" => RUST_COLOR,
+            "python" => PYTHON_COLOR,
             _ => TEXT_COLOR,
         };
         svg.push_str(&format!(
@@ -130,6 +135,7 @@ pub fn generate(
         let go_val = bench.measurements.get(&Lang::Go).and_then(primary_value);
         let ts_val = bench.measurements.get(&Lang::TypeScript).and_then(primary_value);
         let rust_val = bench.measurements.get(&Lang::Rust).and_then(primary_value);
+        let python_val = bench.measurements.get(&Lang::Python).and_then(primary_value);
 
         let mut values: Vec<(Lang, f64)> = vec![];
         if let Some(v) = go_val {
@@ -140,6 +146,9 @@ pub fn generate(
         }
         if let Some(v) = rust_val {
             values.push((Lang::Rust, v));
+        }
+        if let Some(v) = python_val {
+            values.push((Lang::Python, v));
         }
 
         let winner = if values.len() >= 2 {
@@ -246,11 +255,38 @@ pub fn generate(
                         ));
                     }
                 }
+                "python" => {
+                    if let Some(m) = bench.measurements.get(&Lang::Python) {
+                        let is_winner = winner == Some(Lang::Python);
+                        let bg_color = if is_winner { "#E0F2FE" } else { "transparent" };
+                        let text_color = if is_winner { "#0C4A6E" } else { TEXT_SECONDARY };
+
+                        if is_winner {
+                            svg.push_str(&format!(
+                                "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>\n",
+                                x, row_y, width, ROW_HEIGHT, bg_color
+                            ));
+                        }
+
+                        let cell_text = if suite_type == SuiteType::Memory {
+                            m.bytes_per_op
+                                .map(|b| Measurement::format_bytes(b))
+                                .unwrap_or_else(|| "—".to_string())
+                        } else {
+                            format_duration(m.nanos_per_op)
+                        };
+                        svg.push_str(&format!(
+                            "<text x=\"{}\" y=\"{}\" font-family=\"monospace\" font-size=\"11\" fill=\"{}\">{}</text>\n",
+                            x + CELL_PADDING, text_y, text_color, cell_text
+                        ));
+                    }
+                }
                 "winner" => {
                     let (label, color) = match winner {
                         Some(Lang::Go) => ("Go", GO_COLOR),
                         Some(Lang::TypeScript) => ("TS", TS_COLOR),
                         Some(Lang::Rust) => ("Rust", RUST_COLOR),
+                        Some(Lang::Python) => ("Python", PYTHON_COLOR),
                         _ => ("Tie", TEXT_MUTED),
                     };
                     svg.push_str(&format!(

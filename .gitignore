@@ -26,6 +26,9 @@ extensions/vscode/tree-sitter/*.wasm
 /results/
 /generated/
 
+# poly-bench generated runtime artifacts
+.polybench/
+
 # Temp files
 *.tmp
 *.bak

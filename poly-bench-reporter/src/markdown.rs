@@ -3,7 +3,7 @@
 use miette::Result;
 use poly_bench_dsl::Lang;
 use poly_bench_executor::BenchmarkResults;
-use poly_bench_runtime::measurement::Measurement;
+use poly_bench_runtime::{lang_full_name, measurement::Measurement};
 
 /// Generate markdown report
 pub fn report(results: &BenchmarkResults) -> Result<String> {
@@ -28,6 +28,9 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
         Some(Lang::Rust) => {
             md.push_str(&format!("**🏆 {}**\n\n", summary.winner_description));
         }
+        Some(Lang::Python) => {
+            md.push_str(&format!("**🏆 {}**\n\n", summary.winner_description));
+        }
         _ => {
             md.push_str(&format!("**🤝 {}**\n\n", summary.winner_description));
         }
@@ -48,6 +51,16 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
         (summary.ts_wins * 100) / summary.total_benchmarks.max(1)
     ));
     md.push_str(&format!(
+        "| Rust Wins | {} ({}%) |\n",
+        summary.rust_wins,
+        (summary.rust_wins * 100) / summary.total_benchmarks.max(1)
+    ));
+    md.push_str(&format!(
+        "| Python Wins | {} ({}%) |\n",
+        summary.python_wins,
+        (summary.python_wins * 100) / summary.total_benchmarks.max(1)
+    ));
+    md.push_str(&format!(
         "| Ties | {} ({}%) |\n",
         summary.ties,
         (summary.ties * 100) / summary.total_benchmarks.max(1)
@@ -62,6 +75,7 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
             Some(Lang::Go) => "🟢",
             Some(Lang::TypeScript) => "🔵",
             Some(Lang::Rust) => "🟠",
+            Some(Lang::Python) => "🐍",
             _ => "⚪",
         };
 
@@ -76,14 +90,29 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
 
         // Determine which languages are present in this suite
         let has_rust = suite.benchmarks.iter().any(|b| b.measurements.contains_key(&Lang::Rust));
+        let has_python =
+            suite.benchmarks.iter().any(|b| b.measurements.contains_key(&Lang::Python));
 
+        // Build header based on present languages
+        let mut header = "| Benchmark | Go | TypeScript |".to_string();
         if has_rust {
-            md.push_str("| Benchmark | Go | TypeScript | Rust | Result |\n");
-            md.push_str("|-----------|-----|------------|------|--------|\n");
-        } else {
-            md.push_str("| Benchmark | Go | TypeScript | Result |\n");
-            md.push_str("|-----------|-----|------------|--------|\n");
+            header.push_str(" Rust |");
         }
+        if has_python {
+            header.push_str(" Python |");
+        }
+        header.push_str(" Result |\n");
+        md.push_str(&header);
+
+        let mut sep = "|-----------|-----|------------|".to_string();
+        if has_rust {
+            sep.push_str("------|");
+        }
+        if has_python {
+            sep.push_str("--------|");
+        }
+        sep.push_str("--------|\n");
+        md.push_str(&sep);
 
         for bench in &suite.benchmarks {
             let go_str = bench
@@ -104,7 +133,36 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
                 .map(|m| Measurement::format_duration(m.nanos_per_op))
                 .unwrap_or_else(|| "-".to_string());
 
-            let result_str = if let Some(ref cmp) = bench.comparison {
+            let python_str = bench
+                .measurements
+                .get(&Lang::Python)
+                .map(|m| Measurement::format_duration(m.nanos_per_op))
+                .unwrap_or_else(|| "-".to_string());
+
+            // Determine winner from all measurements (lower is better)
+            let mut times: Vec<(Lang, f64)> = bench
+                .measurements
+                .iter()
+                .filter_map(|(lang, m)| Some((*lang, m.nanos_per_op)))
+                .collect();
+            times.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            let result_str = if times.len() >= 2 {
+                let (best_lang, best_time) = times[0];
+                let (_, second_time) = times[1];
+                let speedup = second_time / best_time.max(1e-9);
+                let icon = match best_lang {
+                    Lang::Go => "🟢",
+                    Lang::TypeScript => "🔵",
+                    Lang::Rust => "🟠",
+                    Lang::Python => "🐍",
+                    _ => "⚪",
+                };
+                if speedup < 1.05 {
+                    "⚪ Similar".to_string()
+                } else {
+                    format!("{} {} {:.2}x faster", icon, lang_full_name(best_lang), speedup)
+                }
+            } else if let Some(ref cmp) = bench.comparison {
                 let icon = match cmp.winner {
                     poly_bench_runtime::measurement::ComparisonWinner::First => "🟢",
                     poly_bench_runtime::measurement::ComparisonWinner::Second => "🔵",
@@ -115,17 +173,15 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
                 "-".to_string()
             };
 
+            let mut row = format!("| {} | {} | {} |", bench.name, go_str, ts_str);
             if has_rust {
-                md.push_str(&format!(
-                    "| {} | {} | {} | {} | {} |\n",
-                    bench.name, go_str, ts_str, rust_str, result_str
-                ));
-            } else {
-                md.push_str(&format!(
-                    "| {} | {} | {} | {} |\n",
-                    bench.name, go_str, ts_str, result_str
-                ));
+                row.push_str(&format!(" {} |", rust_str));
             }
+            if has_python {
+                row.push_str(&format!(" {} |", python_str));
+            }
+            row.push_str(&format!(" {} |\n", result_str));
+            md.push_str(&row);
         }
 
         md.push_str("\n");
@@ -136,6 +192,7 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
     md.push_str("- 🟢 Go faster\n");
     md.push_str("- 🔵 TypeScript faster\n");
     md.push_str("- 🟠 Rust faster\n");
+    md.push_str("- 🐍 Python faster\n");
     md.push_str("- ⚪ Similar (within 5%)\n");
     md.push_str("- ns/op = nanoseconds per operation (lower is better)\n");
 

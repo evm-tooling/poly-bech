@@ -92,6 +92,7 @@ fn lang_short_name(lang: Lang) -> &'static str {
         Lang::Go => "Go",
         Lang::TypeScript => "TS",
         Lang::Rust => "Rust",
+        Lang::Python => "Python",
         _ => "Unknown",
     }
 }
@@ -180,7 +181,13 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
     }
 
     println!("  Legend");
-    println!("  {}  {}  {}", "go".green(), "ts".cyan(), "rust".yellow());
+    println!(
+        "  {}  {}  {}  {}",
+        "go".green(),
+        "ts".cyan(),
+        "rust".yellow(),
+        "python".bright_blue()
+    );
     println!("  hz = operations per second (higher is better)");
     println!("  b = bytes/op,  │  lower is better");
     println!("  a = allocs/op  │  lower is better");
@@ -199,8 +206,8 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
     }
 
     println!(
-        "   Summary: Go: {} wins | TS: {} wins | Rust: {} wins | Ties: {} | Geo mean: {:.2}x",
-        summary.go_wins, summary.ts_wins, summary.rust_wins, summary.ties, summary.geo_mean_speedup
+        "   Summary: Go: {} wins | TS: {} wins | Rust: {} wins | Python: {} wins | Ties: {} | Geo mean: {:.2}x",
+        summary.go_wins, summary.ts_wins, summary.rust_wins, summary.python_wins, summary.ties, summary.geo_mean_speedup
     );
     println!();
 
@@ -407,6 +414,34 @@ fn print_distribution_table(
     let rust_worst: Option<&str> = benchmarks
         .iter()
         .filter_map(|b| b.measurements.get(&Lang::Rust).map(|m| (b.name.as_str(), metric_val(m))))
+        .min_by(|a, b| {
+            if better(a.1, b.1) {
+                std::cmp::Ordering::Greater
+            } else if better(b.1, a.1) {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
+        .map(|(name, _)| name);
+
+    let python_best: Option<&str> = benchmarks
+        .iter()
+        .filter_map(|b| b.measurements.get(&Lang::Python).map(|m| (b.name.as_str(), metric_val(m))))
+        .max_by(|a, b| {
+            if better(a.1, b.1) {
+                std::cmp::Ordering::Greater
+            } else if better(b.1, a.1) {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
+        .map(|(name, _)| name);
+
+    let python_worst: Option<&str> = benchmarks
+        .iter()
+        .filter_map(|b| b.measurements.get(&Lang::Python).map(|m| (b.name.as_str(), metric_val(m))))
         .min_by(|a, b| {
             if better(a.1, b.1) {
                 std::cmp::Ordering::Greater
@@ -737,6 +772,109 @@ fn print_distribution_table(
             }
         }
 
+        // Python row
+        if let Some(m) = bench.measurements.get(&Lang::Python) {
+            let badge = if Some(bench.name.as_str()) == python_best && benchmarks.len() > 1 {
+                best_label.green().to_string()
+            } else if Some(bench.name.as_str()) == python_worst && benchmarks.len() > 1 {
+                worst_label.yellow().to_string()
+            } else {
+                String::new()
+            };
+
+            let name = format!("· python: {}", bench.name);
+
+            if is_memory {
+                let bytes = m
+                    .bytes_per_op
+                    .map(Measurement::format_bytes)
+                    .unwrap_or_else(|| "-".to_string());
+                let allocs =
+                    m.allocs_per_op.map(|a| a.to_string()).unwrap_or_else(|| "-".to_string());
+                let mean_ns = m.nanos_per_op;
+                let samples = m.samples.unwrap_or(1000);
+                println!(
+                    "   {:<40} {:>12} {:>10} {:>12} {:>8} {:>8}{}",
+                    name.bright_blue(),
+                    bytes,
+                    allocs,
+                    format_hz(m.ops_per_sec),
+                    format_ms(mean_ns),
+                    samples,
+                    badge
+                );
+            } else if has_multi_run && m.run_count.unwrap_or(1) > 1 {
+                let median_ns = m.median_across_runs.unwrap_or(m.nanos_per_op);
+                let ci_str = if let (Some(lower), Some(upper)) = (m.ci_95_lower, m.ci_95_upper) {
+                    format!("±{}", format_ms((upper - lower) / 2.0))
+                } else {
+                    "-".to_string()
+                };
+                let min_ns = m.min_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let max_ns = m.max_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let p75_ns = m.p75_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let p99_ns = m.p99_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let rme = m.rme_percent.unwrap_or(0.0);
+                let cv = m.cv_percent.unwrap_or(0.0);
+                let runs = m.run_count.unwrap_or(1);
+
+                let cv_str = if m.is_stable == Some(false) {
+                    format!("{:.1}%", cv).yellow().to_string()
+                } else {
+                    format!("{:.1}%", cv)
+                };
+
+                println!(
+                    "   {:<40} {:>12} {:>10} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8}% {:>7} {:>6}{}",
+                    name.bright_blue(),
+                    format_hz(m.ops_per_sec),
+                    format_ms(median_ns),
+                    ci_str,
+                    format_ms(min_ns),
+                    format_ms(max_ns),
+                    format_ms(p75_ns),
+                    format_ms(p99_ns),
+                    format!("±{:.2}", rme),
+                    cv_str,
+                    runs,
+                    badge
+                );
+            } else {
+                let min_ns = m.min_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let max_ns = m.max_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let mean_ns = m.nanos_per_op;
+                let p75_ns = m.p75_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let p99_ns = m.p99_nanos.unwrap_or(m.nanos_per_op as u64) as f64;
+                let p995_ns =
+                    m.p995_nanos.unwrap_or(m.p99_nanos.unwrap_or(m.nanos_per_op as u64)) as f64;
+                let rme = m.rme_percent.unwrap_or(0.0);
+                let cv = m.cv_percent.unwrap_or(0.0);
+                let samples = m.samples.unwrap_or(1000);
+
+                let cv_str = if m.is_stable == Some(false) {
+                    format!("{:.1}%", cv).yellow().to_string()
+                } else {
+                    format!("{:.1}%", cv)
+                };
+
+                println!(
+                    "   {:<40} {:>12} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}% {:>7} {:>8}{}",
+                    name.bright_blue(),
+                    format_hz(m.ops_per_sec),
+                    format_ms(min_ns),
+                    format_ms(max_ns),
+                    format_ms(mean_ns),
+                    format_ms(p75_ns),
+                    format_ms(p99_ns),
+                    format_ms(p995_ns),
+                    format!("±{:.2}", rme),
+                    cv_str,
+                    samples,
+                    badge
+                );
+            }
+        }
+
         // Multi-language comparison row
         if bench.kind == BenchmarkKind::Async {
             println!("   {}", "  mode: async-sequential".dimmed());
@@ -752,6 +890,7 @@ fn print_distribution_table(
         let go_val = bench.measurements.get(&Lang::Go).map(primary);
         let ts_val = bench.measurements.get(&Lang::TypeScript).map(primary);
         let rust_val = bench.measurements.get(&Lang::Rust).map(primary);
+        let python_val = bench.measurements.get(&Lang::Python).map(primary);
 
         // Find winner across all languages present (lower is better for both time and memory)
         let mut times: Vec<(&str, f64)> = vec![];
@@ -763,6 +902,9 @@ fn print_distribution_table(
         }
         if let Some(v) = rust_val {
             times.push(("Rust", v));
+        }
+        if let Some(v) = python_val {
+            times.push(("Python", v));
         }
 
         if times.len() >= 2 {
@@ -778,6 +920,7 @@ fn print_distribution_table(
                     "Go" => |s: String| s.green().to_string(),
                     "TS" => |s: String| s.cyan().to_string(),
                     "Rust" => |s: String| s.yellow().to_string(),
+                    "Python" => |s: String| s.bright_blue().to_string(),
                     _ => |s: String| s,
                 };
                 let msg = if is_memory {

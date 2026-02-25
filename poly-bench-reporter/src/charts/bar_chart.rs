@@ -542,7 +542,7 @@ pub fn generate(
 }
 
 fn available_langs(benchmarks: &[&BenchmarkResult]) -> Vec<Lang> {
-    [Lang::Go, Lang::TypeScript, Lang::Rust]
+    [Lang::Go, Lang::TypeScript, Lang::Rust, Lang::Python]
         .into_iter()
         .filter(|lang| benchmarks.iter().any(|b| b.measurements.contains_key(lang)))
         .collect()

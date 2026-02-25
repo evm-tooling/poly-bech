@@ -379,14 +379,9 @@ fn build_python_env(
         .map_err(|e| miette::miette!("Failed to create {}: {}", python_env.display(), e))?;
 
     let requirements_path = python_env.join("requirements.txt");
-    let mut deps: Vec<(String, String)> =
+    let deps: Vec<(String, String)> =
         python_config.dependencies.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-    // Add pyright for LSP (hover, diagnostics). The pip package provides pyright-langserver.
-    // Use pyright[nodejs] for reliable Node.js bundling (recommended by PyPI).
-    if !deps.iter().any(|(k, _)| k == "pyright" || k == "pyright[nodejs]") {
-        deps.push(("pyright[nodejs]".to_string(), "latest".to_string()));
-    }
-    let requirements_content = templates::requirements_txt(&deps);
+    let requirements_content = templates::requirements_txt_for_runtime_env(&deps);
     std::fs::write(&requirements_path, requirements_content)
         .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
 
