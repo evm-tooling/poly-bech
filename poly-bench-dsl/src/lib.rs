@@ -13,7 +13,10 @@ pub mod validate;
 
 pub use ast::*;
 pub use error::{NamedSource, ParseError};
-pub use formatter::{format_file, format_file_with_source};
+pub use formatter::{
+    format_file, format_file_with_options, format_file_with_source,
+    format_file_with_source_and_options,
+};
 pub use validate::{
     validate_file, validate_suite, ValidationError, ValidationResult, ValidationWarning,
 };

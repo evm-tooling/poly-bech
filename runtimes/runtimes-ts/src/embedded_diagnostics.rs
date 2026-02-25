@@ -45,6 +45,25 @@ impl EmbeddedDiagnosticSetup for TsEmbeddedDiagnosticSetup {
     fn prepare(&self, module_root: &str, ctx: &dyn EmbeddedDiagnosticContext) {
         ctx.ensure_ready(Lang::TypeScript, module_root);
     }
+    fn prepare_environment(&self, module_root: &str) {
+        let tsconfig_path = Path::new(module_root).join("tsconfig.json");
+        if !tsconfig_path.exists() {
+            let tsconfig_content = r#"{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true
+  }
+}
+"#;
+            let _ = std::fs::write(&tsconfig_path, tsconfig_content);
+        }
+    }
 }
 
 pub(crate) static TS_EMBEDDED_DIAGNOSTIC_SETUP: TsEmbeddedDiagnosticSetup =

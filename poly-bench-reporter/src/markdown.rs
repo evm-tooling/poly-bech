@@ -20,22 +20,10 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
 
     let summary = &results.summary;
 
-    match summary.winner {
-        Some(Lang::Go) => {
-            md.push_str(&format!("**🏆 {}**\n\n", summary.winner_description));
-        }
-        Some(Lang::TypeScript) => {
-            md.push_str(&format!("**🏆 {}**\n\n", summary.winner_description));
-        }
-        Some(Lang::Rust) => {
-            md.push_str(&format!("**🏆 {}**\n\n", summary.winner_description));
-        }
-        Some(Lang::Python) => {
-            md.push_str(&format!("**🏆 {}**\n\n", summary.winner_description));
-        }
-        _ => {
-            md.push_str(&format!("**🤝 {}**\n\n", summary.winner_description));
-        }
+    if summary.winner.is_some() {
+        md.push_str(&format!("**🏆 {}**\n\n", summary.winner_description));
+    } else {
+        md.push_str(&format!("**🤝 {}**\n\n", summary.winner_description));
     }
 
     md.push_str("| Metric | Value |\n");
@@ -74,55 +62,37 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
         }
 
         // Determine which languages are present in this suite
-        let has_rust = suite.benchmarks.iter().any(|b| b.measurements.contains_key(&Lang::Rust));
-        let has_python =
-            suite.benchmarks.iter().any(|b| b.measurements.contains_key(&Lang::Python));
+        let present_langs: Vec<Lang> = supported_languages()
+            .iter()
+            .copied()
+            .filter(|lang| suite.benchmarks.iter().any(|b| b.measurements.contains_key(lang)))
+            .collect();
 
         // Build header based on present languages
-        let mut header = "| Benchmark | Go | TypeScript |".to_string();
-        if has_rust {
-            header.push_str(" Rust |");
-        }
-        if has_python {
-            header.push_str(" Python |");
+        let mut header = "| Benchmark |".to_string();
+        for lang in &present_langs {
+            header.push_str(&format!(" {} |", lang_full_name(*lang)));
         }
         header.push_str(" Result |\n");
         md.push_str(&header);
 
-        let mut sep = "|-----------|-----|------------|".to_string();
-        if has_rust {
-            sep.push_str("------|");
-        }
-        if has_python {
-            sep.push_str("--------|");
+        let mut sep = "|-----------|".to_string();
+        for _ in &present_langs {
+            sep.push_str("------------|");
         }
         sep.push_str("--------|\n");
         md.push_str(&sep);
 
         for bench in &suite.benchmarks {
-            let go_str = bench
-                .measurements
-                .get(&Lang::Go)
-                .map(|m| Measurement::format_duration(m.nanos_per_op))
-                .unwrap_or_else(|| "-".to_string());
-
-            let ts_str = bench
-                .measurements
-                .get(&Lang::TypeScript)
-                .map(|m| Measurement::format_duration(m.nanos_per_op))
-                .unwrap_or_else(|| "-".to_string());
-
-            let rust_str = bench
-                .measurements
-                .get(&Lang::Rust)
-                .map(|m| Measurement::format_duration(m.nanos_per_op))
-                .unwrap_or_else(|| "-".to_string());
-
-            let python_str = bench
-                .measurements
-                .get(&Lang::Python)
-                .map(|m| Measurement::format_duration(m.nanos_per_op))
-                .unwrap_or_else(|| "-".to_string());
+            let mut cells: Vec<String> = vec![bench.name.clone()];
+            for lang in &present_langs {
+                let cell = bench
+                    .measurements
+                    .get(lang)
+                    .map(|m| Measurement::format_duration(m.nanos_per_op))
+                    .unwrap_or_else(|| "-".to_string());
+                cells.push(cell);
+            }
 
             // Determine winner from all measurements (lower is better)
             let mut times: Vec<(Lang, f64)> = bench
@@ -151,16 +121,10 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
             } else {
                 "-".to_string()
             };
+            cells.push(result_str);
 
-            let mut row = format!("| {} | {} | {} |", bench.name, go_str, ts_str);
-            if has_rust {
-                row.push_str(&format!(" {} |", rust_str));
-            }
-            if has_python {
-                row.push_str(&format!(" {} |", python_str));
-            }
-            row.push_str(&format!(" {} |\n", result_str));
-            md.push_str(&row);
+            let row: String = cells.iter().map(|c| format!(" {} |", c)).collect();
+            md.push_str(&format!("|{}\n", row));
         }
 
         md.push_str("\n");
@@ -168,10 +132,9 @@ pub fn report(results: &BenchmarkResults) -> Result<String> {
 
     // Legend
     md.push_str("## Legend\n\n");
-    md.push_str("- 🟢 Go faster\n");
-    md.push_str("- 🔵 TypeScript faster\n");
-    md.push_str("- 🟠 Rust faster\n");
-    md.push_str("- 🐍 Python faster\n");
+    for lang in supported_languages() {
+        md.push_str(&format!("- {} {} faster\n", lang_icon(*lang), lang_full_name(*lang)));
+    }
     md.push_str("- ⚪ Similar (within 5%)\n");
     md.push_str("- ns/op = nanoseconds per operation (lower is better)\n");
 

@@ -3,11 +3,11 @@
 use poly_bench_dsl::{BenchmarkKind, Lang, SuiteType};
 use poly_bench_executor::comparison::BenchmarkResult;
 use poly_bench_ir::ChartDirectiveIR;
-use poly_bench_runtime::measurement::Measurement;
+use poly_bench_runtime::{lang_color, lang_label, measurement::Measurement, supported_languages};
 
 use super::{
     escape_xml, filter_benchmarks, format_duration, sort_benchmarks, BG_COLOR, BORDER_COLOR,
-    GO_COLOR, PYTHON_COLOR, RUST_COLOR, TEXT_COLOR, TEXT_MUTED, TEXT_SECONDARY, TS_COLOR,
+    TEXT_COLOR, TEXT_MUTED, TEXT_SECONDARY,
 };
 
 const ROW_HEIGHT: i32 = 32;
@@ -28,27 +28,14 @@ pub fn generate(
         return String::from("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"400\" height=\"100\"><text x=\"200\" y=\"50\" text-anchor=\"middle\" font-family=\"sans-serif\">No benchmark data available</text></svg>");
     }
 
-    // Determine which languages have data
-    let has_go = filtered.iter().any(|b| b.measurements.contains_key(&Lang::Go));
-    let has_ts = filtered.iter().any(|b| b.measurements.contains_key(&Lang::TypeScript));
-    let has_rust = filtered.iter().any(|b| b.measurements.contains_key(&Lang::Rust));
-    let has_python = filtered.iter().any(|b| b.measurements.contains_key(&Lang::Python));
-
-    // Build column structure
-    let mut columns: Vec<(&str, &str, i32)> = vec![("Benchmark", "name", 150)];
-    if has_go {
-        columns.push(("Go", "go", MIN_COL_WIDTH));
+    // Build column structure: (label, lang_opt, width) - lang_opt is Some(lang) for lang columns
+    let mut columns: Vec<(&'static str, Option<Lang>, i32)> = vec![("Benchmark", None, 150)];
+    for lang in supported_languages() {
+        if filtered.iter().any(|b| b.measurements.contains_key(lang)) {
+            columns.push((lang_label(*lang), Some(*lang), MIN_COL_WIDTH));
+        }
     }
-    if has_ts {
-        columns.push(("TypeScript", "ts", MIN_COL_WIDTH));
-    }
-    if has_rust {
-        columns.push(("Rust", "rust", MIN_COL_WIDTH));
-    }
-    if has_python {
-        columns.push(("Python", "python", MIN_COL_WIDTH));
-    }
-    columns.push(("Winner", "winner", 80));
+    columns.push(("Winner", None, 80));
 
     let _num_cols = columns.len();
     let total_width: i32 = columns.iter().map(|(_, _, w)| w).sum();
@@ -90,14 +77,8 @@ pub fn generate(
     ));
 
     let mut x = table_x;
-    for (label, id, width) in &columns {
-        let color = match *id {
-            "go" => GO_COLOR,
-            "ts" => TS_COLOR,
-            "rust" => RUST_COLOR,
-            "python" => PYTHON_COLOR,
-            _ => TEXT_COLOR,
-        };
+    for (label, lang_opt, width) in &columns {
+        let color = lang_opt.map_or(TEXT_COLOR, |l| lang_color(l));
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"12\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
             x + CELL_PADDING, table_y + HEADER_HEIGHT / 2 + 4, color, escape_xml(label)
@@ -132,23 +113,11 @@ pub fn generate(
             }
         };
 
-        let go_val = bench.measurements.get(&Lang::Go).and_then(primary_value);
-        let ts_val = bench.measurements.get(&Lang::TypeScript).and_then(primary_value);
-        let rust_val = bench.measurements.get(&Lang::Rust).and_then(primary_value);
-        let python_val = bench.measurements.get(&Lang::Python).and_then(primary_value);
-
-        let mut values: Vec<(Lang, f64)> = vec![];
-        if let Some(v) = go_val {
-            values.push((Lang::Go, v));
-        }
-        if let Some(v) = ts_val {
-            values.push((Lang::TypeScript, v));
-        }
-        if let Some(v) = rust_val {
-            values.push((Lang::Rust, v));
-        }
-        if let Some(v) = python_val {
-            values.push((Lang::Python, v));
+        let mut values: Vec<(Lang, f64)> = Vec::new();
+        for lang in supported_languages() {
+            if let Some(v) = bench.measurements.get(lang).and_then(primary_value) {
+                values.push((*lang, v));
+            }
         }
 
         let winner = if values.len() >= 2 {
@@ -167,19 +136,29 @@ pub fn generate(
 
         // Draw cells
         let mut x = table_x;
-        for (_, id, width) in &columns {
+        for (col_label, lang_opt, width) in &columns {
             let text_y = row_y + ROW_HEIGHT / 2 + 4;
 
-            match *id {
-                "name" => {
-                    svg.push_str(&format!(
-                        "<text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"11\" font-weight=\"500\" fill=\"{}\">{}</text>\n",
-                        x + CELL_PADDING, text_y, TEXT_COLOR, escape_xml(&bench.name)
-                    ));
+            match lang_opt {
+                None => {
+                    if *col_label == "Benchmark" {
+                        svg.push_str(&format!(
+                            "<text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"11\" font-weight=\"500\" fill=\"{}\">{}</text>\n",
+                            x + CELL_PADDING, text_y, TEXT_COLOR, escape_xml(&bench.name)
+                        ));
+                    } else {
+                        let (label, color) = winner
+                            .map(|l| (lang_label(l), lang_color(l)))
+                            .unwrap_or(("Tie", TEXT_MUTED));
+                        svg.push_str(&format!(
+                            "<text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"11\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
+                            x + CELL_PADDING, text_y, color, label
+                        ));
+                    }
                 }
-                "go" => {
-                    if let Some(m) = bench.measurements.get(&Lang::Go) {
-                        let is_winner = winner == Some(Lang::Go);
+                Some(lang) => {
+                    if let Some(m) = bench.measurements.get(lang) {
+                        let is_winner = winner == Some(*lang);
                         let bg_color = if is_winner { "#DCFCE7" } else { "transparent" };
                         let text_color = if is_winner { "#166534" } else { TEXT_SECONDARY };
 
@@ -203,98 +182,6 @@ pub fn generate(
                         ));
                     }
                 }
-                "ts" => {
-                    if let Some(m) = bench.measurements.get(&Lang::TypeScript) {
-                        let is_winner = winner == Some(Lang::TypeScript);
-                        let bg_color = if is_winner { "#DBEAFE" } else { "transparent" };
-                        let text_color = if is_winner { "#1E40AF" } else { TEXT_SECONDARY };
-
-                        if is_winner {
-                            svg.push_str(&format!(
-                                "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>\n",
-                                x, row_y, width, ROW_HEIGHT, bg_color
-                            ));
-                        }
-
-                        let cell_text = if suite_type == SuiteType::Memory {
-                            m.bytes_per_op
-                                .map(|b| Measurement::format_bytes(b))
-                                .unwrap_or_else(|| "—".to_string())
-                        } else {
-                            format_duration(m.nanos_per_op)
-                        };
-                        svg.push_str(&format!(
-                            "<text x=\"{}\" y=\"{}\" font-family=\"monospace\" font-size=\"11\" fill=\"{}\">{}</text>\n",
-                            x + CELL_PADDING, text_y, text_color, cell_text
-                        ));
-                    }
-                }
-                "rust" => {
-                    if let Some(m) = bench.measurements.get(&Lang::Rust) {
-                        let is_winner = winner == Some(Lang::Rust);
-                        let bg_color = if is_winner { "#FEF3C7" } else { "transparent" };
-                        let text_color = if is_winner { "#92400E" } else { TEXT_SECONDARY };
-
-                        if is_winner {
-                            svg.push_str(&format!(
-                                "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>\n",
-                                x, row_y, width, ROW_HEIGHT, bg_color
-                            ));
-                        }
-
-                        let cell_text = if suite_type == SuiteType::Memory {
-                            m.bytes_per_op
-                                .map(|b| Measurement::format_bytes(b))
-                                .unwrap_or_else(|| "—".to_string())
-                        } else {
-                            format_duration(m.nanos_per_op)
-                        };
-                        svg.push_str(&format!(
-                            "<text x=\"{}\" y=\"{}\" font-family=\"monospace\" font-size=\"11\" fill=\"{}\">{}</text>\n",
-                            x + CELL_PADDING, text_y, text_color, cell_text
-                        ));
-                    }
-                }
-                "python" => {
-                    if let Some(m) = bench.measurements.get(&Lang::Python) {
-                        let is_winner = winner == Some(Lang::Python);
-                        let bg_color = if is_winner { "#E0F2FE" } else { "transparent" };
-                        let text_color = if is_winner { "#0C4A6E" } else { TEXT_SECONDARY };
-
-                        if is_winner {
-                            svg.push_str(&format!(
-                                "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>\n",
-                                x, row_y, width, ROW_HEIGHT, bg_color
-                            ));
-                        }
-
-                        let cell_text = if suite_type == SuiteType::Memory {
-                            m.bytes_per_op
-                                .map(|b| Measurement::format_bytes(b))
-                                .unwrap_or_else(|| "—".to_string())
-                        } else {
-                            format_duration(m.nanos_per_op)
-                        };
-                        svg.push_str(&format!(
-                            "<text x=\"{}\" y=\"{}\" font-family=\"monospace\" font-size=\"11\" fill=\"{}\">{}</text>\n",
-                            x + CELL_PADDING, text_y, text_color, cell_text
-                        ));
-                    }
-                }
-                "winner" => {
-                    let (label, color) = match winner {
-                        Some(Lang::Go) => ("Go", GO_COLOR),
-                        Some(Lang::TypeScript) => ("TS", TS_COLOR),
-                        Some(Lang::Rust) => ("Rust", RUST_COLOR),
-                        Some(Lang::Python) => ("Python", PYTHON_COLOR),
-                        _ => ("Tie", TEXT_MUTED),
-                    };
-                    svg.push_str(&format!(
-                        "<text x=\"{}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"11\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
-                        x + CELL_PADDING, text_y, color, label
-                    ));
-                }
-                _ => {}
             }
 
             x += width;

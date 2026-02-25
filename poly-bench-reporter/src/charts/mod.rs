@@ -507,13 +507,14 @@ pub fn filter_benchmarks<'a>(
                             .fold(f64::MAX, f64::min);
                         let speedup = second_best / best_val.max(1e-9);
                         let is_tie = speedup < 1.05;
-                        let winner_matches = match wf.as_str() {
-                            "go" => winner_lang == Lang::Go,
-                            "ts" | "typescript" => winner_lang == Lang::TypeScript,
-                            "rust" | "rs" => winner_lang == Lang::Rust,
-                            "python" | "py" => winner_lang == Lang::Python,
-                            _ => true,
-                        };
+                        let winner_matches =
+                            poly_bench_runtime::supported_languages().iter().any(|lang| {
+                                *lang == winner_lang &&
+                                    (wf == lang.as_str() ||
+                                        (*lang == Lang::TypeScript && wf == "typescript") ||
+                                        (*lang == Lang::Rust && wf == "rs") ||
+                                        (*lang == Lang::Python && wf == "py"))
+                            });
                         if !is_tie && !winner_matches {
                             return false;
                         }
