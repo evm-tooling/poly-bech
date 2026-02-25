@@ -12,7 +12,7 @@ poly-bench-project = { path = "../poly-bench-project" }
 poly-bench-runtime = { path = "../poly-bench-runtime" }
 poly-bench-dsl = { path = "../poly-bench-dsl" }
 tree-sitter-polybench = { path = "../poly-bench-grammar" }
-tree-sitter = "0.22"
+tree-sitter = "0.26"
 
 tower-lsp = "0.20"
 tokio = { version = "1", features = ["full"] }
