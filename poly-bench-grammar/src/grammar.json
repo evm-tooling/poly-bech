@@ -707,6 +707,22 @@
         },
         {
           "type": "SYMBOL",
+          "name": "data_property"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "encoding_property"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "format_property"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "selector_property"
+        },
+        {
+          "type": "SYMBOL",
           "name": "shape_property"
         },
         {
@@ -738,6 +754,101 @@
               "name": "file_ref"
             }
           ]
+        }
+      ]
+    },
+    "data_property": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "data"
+        },
+        {
+          "type": "STRING",
+          "value": ":"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "string"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "file_ref"
+            }
+          ]
+        }
+      ]
+    },
+    "encoding_property": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "encoding"
+        },
+        {
+          "type": "STRING",
+          "value": ":"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "identifier"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "string"
+            }
+          ]
+        }
+      ]
+    },
+    "format_property": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "format"
+        },
+        {
+          "type": "STRING",
+          "value": ":"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "identifier"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "string"
+            }
+          ]
+        }
+      ]
+    },
+    "selector_property": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "selector"
+        },
+        {
+          "type": "STRING",
+          "value": ":"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "string"
         }
       ]
     },

@@ -345,6 +345,25 @@
     }
   },
   {
+    "type": "data_property",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "file_ref",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "declare_section",
     "named": true,
     "fields": {},
@@ -397,6 +416,25 @@
         },
         {
           "type": "hook_grouped",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "encoding_property",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "string",
           "named": true
         }
       ]
@@ -456,6 +494,18 @@
       "required": false,
       "types": [
         {
+          "type": "data_property",
+          "named": true
+        },
+        {
+          "type": "encoding_property",
+          "named": true
+        },
+        {
+          "type": "format_property",
+          "named": true
+        },
+        {
           "type": "hex_property",
           "named": true
         },
@@ -465,6 +515,10 @@
         },
         {
           "type": "property",
+          "named": true
+        },
+        {
+          "type": "selector_property",
           "named": true
         },
         {
@@ -510,6 +564,25 @@
       "types": [
         {
           "type": "fixture_param",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "format_property",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "string",
           "named": true
         }
       ]
@@ -805,6 +878,21 @@
     "type": "run_mode",
     "named": true,
     "fields": {}
+  },
+  {
+    "type": "selector_property",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "setup_block",
@@ -1231,6 +1319,10 @@
     "named": false
   },
   {
+    "type": "data",
+    "named": false
+  },
+  {
     "type": "declare",
     "named": false
   },
@@ -1261,6 +1353,10 @@
   {
     "type": "embedded_code",
     "named": true
+  },
+  {
+    "type": "encoding",
+    "named": false
   },
   {
     "type": "escape_sequence",
@@ -1296,6 +1392,10 @@
   },
   {
     "type": "fork",
+    "named": false
+  },
+  {
+    "type": "format",
     "named": false
   },
   {
@@ -1416,6 +1516,10 @@
   },
   {
     "type": "sameDataset",
+    "named": false
+  },
+  {
+    "type": "selector",
     "named": false
   },
   {

@@ -335,6 +335,10 @@ pub struct PartialFixture {
     pub params: Vec<FixtureParam>,
     pub properties: Vec<Node<Property>>,
     pub hex: Option<HexData>,
+    pub data: Option<FixtureData>,
+    pub encoding: Option<String>,
+    pub format: Option<String>,
+    pub selector: Option<String>,
     pub shape: Option<CodeBlock>,
     pub implementations: HashMap<Lang, Node<CodeBlock>>,
     pub impl_order: Vec<Lang>,
@@ -348,6 +352,10 @@ impl PartialFixture {
             params: Vec::new(),
             properties: Vec::new(),
             hex: None,
+            data: None,
+            encoding: None,
+            format: None,
+            selector: None,
             shape: None,
             implementations: HashMap::new(),
             impl_order: Vec::new(),
@@ -366,6 +374,12 @@ pub struct FixtureParam {
 /// Hex data for fixtures
 #[derive(Debug, Clone)]
 pub enum HexData {
+    Inline(String),
+    File(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum FixtureData {
     Inline(String),
     File(String),
 }

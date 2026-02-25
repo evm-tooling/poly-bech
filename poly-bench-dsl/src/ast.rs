@@ -747,9 +747,19 @@ pub struct Fixture {
     pub span: Span,
     /// Optional description
     pub description: Option<String>,
-    /// Hex-encoded data (portable format)
+    /// Generic fixture data source (inline string)
+    pub data: Option<String>,
+    /// Generic fixture data source file reference
+    pub data_file: Option<String>,
+    /// Data encoding (hex/raw/utf8/base64)
+    pub encoding: Option<String>,
+    /// Structured data format (json/csv)
+    pub format: Option<String>,
+    /// Optional selector for structured data extraction
+    pub selector: Option<String>,
+    /// Compatibility: inline hex fixture data
     pub hex_data: Option<String>,
-    /// File reference for hex data
+    /// Compatibility: file-based hex fixture data
     pub hex_file: Option<String>,
     /// Per-language implementations (alternative to hex)
     pub implementations: HashMap<Lang, CodeBlock>,
@@ -769,6 +779,11 @@ impl Fixture {
             name,
             span,
             description: None,
+            data: None,
+            data_file: None,
+            encoding: None,
+            format: None,
+            selector: None,
             hex_data: None,
             hex_file: None,
             implementations: HashMap::new(),

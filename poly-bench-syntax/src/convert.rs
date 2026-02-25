@@ -417,6 +417,18 @@ fn convert_fixture_body(node: TsNode, source: &str, fixture: &mut PartialFixture
             "hex_property" => {
                 fixture.hex = convert_hex_property(child, source);
             }
+            "data_property" => {
+                fixture.data = convert_fixture_data_property(child, source);
+            }
+            "encoding_property" => {
+                fixture.encoding = extract_identifier_or_string_value(child, source);
+            }
+            "format_property" => {
+                fixture.format = extract_identifier_or_string_value(child, source);
+            }
+            "selector_property" => {
+                fixture.selector = extract_string_from_property(child, source);
+            }
             "shape_property" => {
                 fixture.shape = extract_code_block_from_section(child, source);
             }
@@ -431,6 +443,50 @@ fn convert_fixture_body(node: TsNode, source: &str, fixture: &mut PartialFixture
             _ => {}
         }
     }
+}
+
+fn convert_fixture_data_property(node: TsNode, source: &str) -> Option<FixtureData> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "string" => {
+                return Some(FixtureData::Inline(extract_string_value(child, source)));
+            }
+            "file_ref" => {
+                let mut file_cursor = child.walk();
+                for file_child in child.children(&mut file_cursor) {
+                    if file_child.kind() == "string" {
+                        return Some(FixtureData::File(extract_string_value(file_child, source)));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn extract_identifier_or_string_value(node: TsNode, source: &str) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "identifier" {
+            return Some(child.text(source).to_string());
+        }
+        if child.kind() == "string" {
+            return Some(extract_string_value(child, source));
+        }
+    }
+    None
+}
+
+fn extract_string_from_property(node: TsNode, source: &str) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "string" {
+            return Some(extract_string_value(child, source));
+        }
+    }
+    None
 }
 
 fn convert_hex_property(node: TsNode, source: &str) -> Option<HexData> {

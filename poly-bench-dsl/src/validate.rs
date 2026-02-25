@@ -465,14 +465,51 @@ fn validate_benchmark(benchmark: &Benchmark, suite: &Suite, result: &mut Validat
 fn validate_fixture_references(suite: &Suite, result: &mut ValidationResult) {
     // Validate fixture definitions
     for fixture in &suite.fixtures {
-        let has_data = fixture.hex_data.is_some() || fixture.hex_file.is_some();
+        let has_data = fixture.hex_data.is_some() ||
+            fixture.hex_file.is_some() ||
+            fixture.data.is_some() ||
+            fixture.data_file.is_some();
         let has_implementations = !fixture.implementations.is_empty();
         let has_params = !fixture.params.is_empty();
+
+        let source_count = fixture.hex_data.iter().count() +
+            fixture.hex_file.iter().count() +
+            fixture.data.iter().count() +
+            fixture.data_file.iter().count();
+        if source_count > 1 {
+            result.add_error(
+                ValidationError::new(format!(
+                    "Fixture '{}' defines multiple data sources; use exactly one of hex/data (inline or @file)",
+                    fixture.name
+                ))
+                .with_location(format!("suite.{}.fixture.{}", suite.name, fixture.name)),
+            );
+        }
+
+        if fixture.encoding.is_some() && fixture.data.is_none() && fixture.data_file.is_none() {
+            result.add_error(
+                ValidationError::new(format!(
+                    "Fixture '{}' sets encoding but has no data source. Add `data: ...` or remove `encoding`",
+                    fixture.name
+                ))
+                .with_location(format!("suite.{}.fixture.{}", suite.name, fixture.name)),
+            );
+        }
+
+        if fixture.selector.is_some() && fixture.format.is_none() {
+            result.add_error(
+                ValidationError::new(format!(
+                    "Fixture '{}' sets selector without format. Add `format: json|csv`",
+                    fixture.name
+                ))
+                .with_location(format!("suite.{}.fixture.{}", suite.name, fixture.name)),
+            );
+        }
 
         if !has_data && !has_implementations && !has_params {
             result.add_error(
                 ValidationError::new(format!(
-                    "Fixture '{}' has no hex data, implementations, or parameters",
+                    "Fixture '{}' has no fixture data, implementations, or parameters",
                     fixture.name
                 ))
                 .with_location(format!("suite.{}.fixture.{}", suite.name, fixture.name)),

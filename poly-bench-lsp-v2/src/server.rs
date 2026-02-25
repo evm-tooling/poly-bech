@@ -2031,6 +2031,46 @@ fn get_fixture_body_completions() -> Vec<CompletionItem> {
             ..Default::default()
         },
         CompletionItem {
+            label: "data".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("data: \"$0\"".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Fixture data payload".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "data @file".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("data: @file(\"$0\")".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Fixture data from file".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "encoding".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("encoding: ${1|hex,raw,utf8,base64|}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Fixture data encoding".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "format".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("format: ${1|json,csv|}".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Structured fixture format".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "selector".to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            insert_text: Some("selector: \"$0\"".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Structured fixture selector".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
             label: "go".to_string(),
             kind: Some(CompletionItemKind::KEYWORD),
             insert_text: Some("go: $0".to_string()),

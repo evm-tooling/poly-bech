@@ -32,6 +32,84 @@ suite test {
             (inline_code)))))))
 
 ================================================================================
+Fixture with data+encoding
+================================================================================
+
+suite test {
+    fixture payload {
+        data: @file("fixtures/payload.bin")
+        encoding: raw
+    }
+
+    bench foo {
+        ts: process(payload)
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (fixture
+        name: (identifier)
+        (fixture_body
+          (data_property
+            (file_ref
+              (string
+                (string_content))))
+          (encoding_property
+            (identifier))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
+Fixture with format+selector
+================================================================================
+
+suite test {
+    fixture request {
+        data: @file("fixtures/request.json")
+        format: json
+        selector: "$.items[0].id"
+    }
+
+    bench foo {
+        go: process(request)
+    }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (suite
+    name: (identifier)
+    (suite_body
+      (fixture
+        name: (identifier)
+        (fixture_body
+          (data_property
+            (file_ref
+              (string
+                (string_content))))
+          (format_property
+            (identifier))
+          (selector_property
+            (string
+              (string_content)))))
+      (benchmark
+        name: (identifier)
+        (benchmark_body
+          (language_implementation
+            language: (language_tag)
+            (inline_code)))))))
+
+================================================================================
 Fixture with file reference
 ================================================================================
 

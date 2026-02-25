@@ -3,7 +3,11 @@
 //! Transforms the parsed AST into a normalized IR suitable for execution.
 
 use crate::{
-    fixtures::{decode_hex, extract_fixture_refs, load_hex_file},
+    fixtures::{
+        decode_base64, decode_hex, decode_raw, decode_utf8, extract_fixture_refs, load_base64_file,
+        load_hex_file, load_raw_file, load_utf8_file, normalize_csv_to_bytes,
+        normalize_json_to_bytes,
+    },
     imports::{extract_go_imports, extract_rust_imports, extract_ts_imports, ParsedSetup},
     AnvilConfigIR, BenchmarkIR, BenchmarkSpec, ChartDirectiveIR, FixtureIR, FixtureParamIR,
     SourceLocation, SuiteIR,
@@ -176,7 +180,24 @@ fn lower_suite(
 /// Lower a Fixture to FixtureIR
 fn lower_fixture(fixture: &Fixture, base_dir: Option<&Path>) -> Result<FixtureIR> {
     // Resolve the fixture data
-    let data = if let Some(ref hex) = fixture.hex_data {
+    let data = if let Some(ref data) = fixture.data {
+        decode_fixture_source(
+            data,
+            fixture.encoding.as_deref().unwrap_or("utf8"),
+            fixture.format.as_deref(),
+            fixture.selector.as_deref(),
+            &fixture.name,
+        )?
+    } else if let Some(ref file_path) = fixture.data_file {
+        load_fixture_file(
+            Path::new(file_path),
+            base_dir,
+            fixture.encoding.as_deref().unwrap_or("utf8"),
+            fixture.format.as_deref(),
+            fixture.selector.as_deref(),
+            &fixture.name,
+        )?
+    } else if let Some(ref hex) = fixture.hex_data {
         decode_hex(hex)?
     } else if let Some(ref file_path) = fixture.hex_file {
         load_hex_file(Path::new(file_path), base_dir)?
@@ -208,6 +229,83 @@ fn lower_fixture(fixture: &Fixture, base_dir: Option<&Path>) -> Result<FixtureIR
     }
 
     Ok(ir)
+}
+
+fn decode_fixture_source(
+    source: &str,
+    encoding: &str,
+    format: Option<&str>,
+    selector: Option<&str>,
+    fixture_name: &str,
+) -> Result<Vec<u8>> {
+    if let Some(fmt) = format {
+        return match fmt.trim().to_ascii_lowercase().as_str() {
+            "json" => normalize_json_to_bytes(source, selector)
+                .map_err(|e| miette!("Fixture '{}' JSON decode failed: {}", fixture_name, e)),
+            "csv" => normalize_csv_to_bytes(source, selector)
+                .map_err(|e| miette!("Fixture '{}' CSV decode failed: {}", fixture_name, e)),
+            other => Err(miette!(
+                "Fixture '{}' has unsupported format '{}'; expected json|csv",
+                fixture_name,
+                other
+            )),
+        };
+    }
+
+    match encoding.trim().to_ascii_lowercase().as_str() {
+        "hex" => decode_hex(source)
+            .map_err(|e| miette!("Fixture '{}' hex decode failed: {}", fixture_name, e)),
+        "raw" => decode_raw(source)
+            .map_err(|e| miette!("Fixture '{}' raw decode failed: {}", fixture_name, e)),
+        "utf8" => decode_utf8(source)
+            .map_err(|e| miette!("Fixture '{}' utf8 decode failed: {}", fixture_name, e)),
+        "base64" => decode_base64(source)
+            .map_err(|e| miette!("Fixture '{}' base64 decode failed: {}", fixture_name, e)),
+        other => Err(miette!(
+            "Fixture '{}' has unsupported encoding '{}'; expected hex|raw|utf8|base64",
+            fixture_name,
+            other
+        )),
+    }
+}
+
+fn load_fixture_file(
+    path: &Path,
+    base_dir: Option<&Path>,
+    encoding: &str,
+    format: Option<&str>,
+    selector: Option<&str>,
+    fixture_name: &str,
+) -> Result<Vec<u8>> {
+    if let Some(fmt) = format {
+        let text = std::fs::read_to_string(
+            if path.is_absolute() {
+                path.to_path_buf()
+            } else if let Some(base) = base_dir {
+                base.join(path)
+            } else {
+                path.to_path_buf()
+            },
+        )
+        .map_err(|e| miette!("Failed to read fixture file {}: {}", path.display(), e))?;
+        return decode_fixture_source(&text, encoding, Some(fmt), selector, fixture_name);
+    }
+
+    match encoding.trim().to_ascii_lowercase().as_str() {
+        "hex" => load_hex_file(path, base_dir)
+            .map_err(|e| miette!("Fixture '{}' file hex decode failed: {}", fixture_name, e)),
+        "raw" => load_raw_file(path, base_dir)
+            .map_err(|e| miette!("Fixture '{}' file raw decode failed: {}", fixture_name, e)),
+        "utf8" => load_utf8_file(path, base_dir)
+            .map_err(|e| miette!("Fixture '{}' file utf8 decode failed: {}", fixture_name, e)),
+        "base64" => load_base64_file(path, base_dir)
+            .map_err(|e| miette!("Fixture '{}' file base64 decode failed: {}", fixture_name, e)),
+        other => Err(miette!(
+            "Fixture '{}' has unsupported encoding '{}'; expected hex|raw|utf8|base64",
+            fixture_name,
+            other
+        )),
+    }
 }
 
 /// Lower a Benchmark to BenchmarkSpec
@@ -509,6 +607,64 @@ declare suite fairnessTest performance timeBased sameDataset: false {
         assert_eq!(bench.fairness_seed, Some(42));
         assert_eq!(bench.async_warmup_cap, 7);
         assert_eq!(bench.async_sample_cap, 88);
+    }
+
+    #[test]
+    fn test_lower_fixture_raw_data() {
+        let source = r#"
+declare suite test performance timeBased sameDataset: false {
+    fixture payload {
+        data: "hello"
+        encoding: raw
+    }
+
+    bench foo {
+        ts: run(payload)
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let ir = lower(&ast, None).unwrap();
+        assert_eq!(ir.suites[0].fixtures[0].data, b"hello");
+    }
+
+    #[test]
+    fn test_lower_fixture_base64_data() {
+        let source = r#"
+declare suite test performance timeBased sameDataset: false {
+    fixture payload {
+        data: "aGVsbG8="
+        encoding: base64
+    }
+
+    bench foo {
+        ts: run(payload)
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let ir = lower(&ast, None).unwrap();
+        assert_eq!(ir.suites[0].fixtures[0].data, b"hello");
+    }
+
+    #[test]
+    fn test_lower_fixture_json_selector() {
+        let source = r#"
+declare suite test performance timeBased sameDataset: false {
+    fixture payload {
+        data: "{\"items\":[{\"id\":\"abc\"},{\"id\":\"xyz\"}]}"
+        format: json
+        selector: "$.items[1].id"
+    }
+
+    bench foo {
+        ts: run(payload)
+    }
+}
+"#;
+        let ast = parse(source, "test.bench").unwrap();
+        let ir = lower(&ast, None).unwrap();
+        assert_eq!(ir.suites[0].fixtures[0].data, b"xyz");
     }
 
     #[test]

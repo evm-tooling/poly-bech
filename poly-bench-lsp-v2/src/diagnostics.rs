@@ -366,13 +366,45 @@ fn validate_fixture(
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     // Check for empty fixture
-    if fixture.hex.is_none() && fixture.implementations.is_empty() && fixture.shape.is_none() {
+    if fixture.hex.is_none() &&
+        fixture.data.is_none() &&
+        fixture.implementations.is_empty() &&
+        fixture.shape.is_none()
+    {
         diagnostics.push(Diagnostic {
             range: doc.span_to_range(&fixture.span),
             severity: Some(DiagnosticSeverity::WARNING),
             code: Some(NumberOrString::String("empty-fixture".to_string())),
             source: Some("poly-bench".to_string()),
             message: format!("Fixture '{}' has no data or implementations", fixture.name),
+            ..Default::default()
+        });
+    }
+
+    if fixture.encoding.is_some() && fixture.data.is_none() {
+        diagnostics.push(Diagnostic {
+            range: doc.span_to_range(&fixture.span),
+            severity: Some(DiagnosticSeverity::ERROR),
+            code: Some(NumberOrString::String("fixture-encoding-without-data".to_string())),
+            source: Some("poly-bench".to_string()),
+            message: format!(
+                "Fixture '{}' sets encoding but has no data source. Add data: ...",
+                fixture.name
+            ),
+            ..Default::default()
+        });
+    }
+
+    if fixture.selector.is_some() && fixture.format.is_none() {
+        diagnostics.push(Diagnostic {
+            range: doc.span_to_range(&fixture.span),
+            severity: Some(DiagnosticSeverity::ERROR),
+            code: Some(NumberOrString::String("fixture-selector-without-format".to_string())),
+            source: Some("poly-bench".to_string()),
+            message: format!(
+                "Fixture '{}' sets selector without format. Add format: json|csv",
+                fixture.name
+            ),
             ..Default::default()
         });
     }
