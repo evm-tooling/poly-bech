@@ -6,11 +6,11 @@
 macro_rules! lang_tokens {
     () => {
         TokenKind::Go |
-        TokenKind::Ts |
-        TokenKind::TypeScript |
-        TokenKind::Rust |
-        TokenKind::Python |
-        TokenKind::CSharp
+            TokenKind::Ts |
+            TokenKind::TypeScript |
+            TokenKind::Rust |
+            TokenKind::Python |
+            TokenKind::CSharp
     };
 }
 // END-GENERATED: lang_tokens macro

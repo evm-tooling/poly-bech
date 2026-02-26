@@ -29,7 +29,6 @@ const MIN_CARD_WIDTH: i32 = 260;
 const MAX_GRID_COLUMNS: i32 = 4;
 const TARGET_COMBINED_GRID_HEIGHT: i32 = 420;
 
-
 // Accent colors (same for both themes)
 const ACCENT_COLOR: &str = "#FF8A00";
 const ACCENT_GLOW: &str = "#FFBA07";
@@ -747,9 +746,7 @@ fn svg_header(width: i32, height: i32, theme: &ThemeColors) -> String {
     <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
     <stop offset=\"100%\" stop-color=\"{}\" stop-opacity=\"0.8\"/>\n\
   </linearGradient>\n",
-            info.gradient_id,
-            info.color,
-            info.gradient_end
+            info.gradient_id, info.color, info.gradient_end
         ));
     }
 

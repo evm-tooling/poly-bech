@@ -361,9 +361,7 @@ pub fn svg_header(width: i32, height: i32) -> String {
     <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
     <stop offset=\"100%\" stop-color=\"{}\" stop-opacity=\"0.85\"/>\n\
   </linearGradient>\n",
-            info.gradient_id,
-            info.color,
-            info.gradient_end
+            info.gradient_id, info.color, info.gradient_end
         ));
     }
     defs.push_str("</defs>\n");
@@ -502,9 +500,10 @@ pub fn filter_benchmarks<'a>(
                             .fold(f64::MAX, f64::min);
                         let speedup = second_best / best_val.max(1e-9);
                         let is_tie = speedup < 1.05;
-                        // filterWinner accepts any valid lang alias (e.g. "go", "ts", "typescript", "rs", "rust")
-                        let winner_matches =
-                            Lang::from_str(&wf).map_or(false, |filter_lang| filter_lang == winner_lang);
+                        // filterWinner accepts any valid lang alias (e.g. "go", "ts", "typescript",
+                        // "rs", "rust")
+                        let winner_matches = Lang::from_str(&wf)
+                            .map_or(false, |filter_lang| filter_lang == winner_lang);
                         if !is_tie && !winner_matches {
                             return false;
                         }

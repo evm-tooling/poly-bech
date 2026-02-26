@@ -159,28 +159,16 @@ impl BenchmarkResult {
 
         let use_memory = suite_type == SuiteType::Memory;
         let (first_val, second_val) = if use_memory {
-            match (
-                first_measurement.bytes_per_op,
-                second_measurement.bytes_per_op,
-            ) {
+            match (first_measurement.bytes_per_op, second_measurement.bytes_per_op) {
                 (Some(a), Some(b)) => (a as f64, b as f64),
-                _ => (
-                    first_measurement.nanos_per_op,
-                    second_measurement.nanos_per_op,
-                ),
+                _ => (first_measurement.nanos_per_op, second_measurement.nanos_per_op),
             }
         } else {
-            (
-                first_measurement.nanos_per_op,
-                second_measurement.nanos_per_op,
-            )
+            (first_measurement.nanos_per_op, second_measurement.nanos_per_op)
         };
 
         let ratio_ci_95 = if !use_memory {
-            match (
-                &first_measurement.run_nanos_per_op,
-                &second_measurement.run_nanos_per_op,
-            ) {
+            match (&first_measurement.run_nanos_per_op, &second_measurement.run_nanos_per_op) {
                 (Some(a), Some(b)) => {
                     Measurement::paired_ratio_ci(a, b).map(|(_, lo, hi)| (lo, hi))
                 }
@@ -429,12 +417,8 @@ impl OverallSummary {
                 }
             };
             for bench in &suite.benchmarks {
-                let mut vals: Vec<f64> = bench
-                    .measurements
-                    .values()
-                    .filter_map(metric)
-                    .filter(|&v| v > 0.0)
-                    .collect();
+                let mut vals: Vec<f64> =
+                    bench.measurements.values().filter_map(metric).filter(|&v| v > 0.0).collect();
                 vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                 if vals.len() >= 2 {
                     let best = vals[0];
