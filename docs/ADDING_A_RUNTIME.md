@@ -4,9 +4,11 @@ This checklist describes how to add support for a new language runtime (e.g. Pyt
 
 > **Design Reference**: For a comprehensive description of the runtime plugin architecture, see [RUNTIME_PLUGIN_ARCHITECTURE.md](./RUNTIME_PLUGIN_ARCHITECTURE.md).
 
-## What You Must Touch (4–5 files)
+## What You Must Touch (4 required + 0–1 optional)
 
-When adding a new runtime, you only need to modify these files:
+The runtime plugin registry is dynamic, but `Lang` enums are compile-time types and must be updated explicitly.
+
+When adding a new runtime, you must modify these files:
 
 | # | File | Change |
 |---|------|--------|
@@ -16,7 +18,13 @@ When adding a new runtime, you only need to modify these files:
 | 4 | Root `Cargo.toml` | Add `"runtimes/runtimes-<lang>"` to workspace `members` |
 | 5 | `poly-bench-grammar/bindings/rust/build.rs` | Add entry to `languages` array for tree-sitter injections |
 
-**No longer required:** registry.rs, lsp-traits, RuntimeConfig, ProjectRoots, CLI args, runtime_env_*, manifest has_* — these are now dynamic.
+Optional (backward compatibility only):
+
+| # | File | Change |
+|---|------|--------|
+| 6 | `poly-bench-runtime/src/lib.rs` | Add `pub mod <lang> { ... }` re-export only if you keep per-language backward-compat re-exports |
+
+**No longer required when adding a runtime:** `poly-bench-lsp-traits`, `poly-bench-runtime/registry.rs`, `poly-bench-runtime-traits/src/config.rs`, `poly-bench-executor` language wiring, `cli/main.rs` language switch wiring, `runtime_env_<lang>` helpers, `has_<lang>()` call-site plumbing, and manual edits to `poly-bench-grammar/queries/injections.scm`.
 
 ## Runtime Integration Interface
 

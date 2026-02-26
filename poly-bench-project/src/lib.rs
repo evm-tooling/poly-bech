@@ -41,6 +41,47 @@ pub fn is_runtime_env_root(path: &Path) -> bool {
     path.as_os_str().to_string_lossy().contains("runtime-env")
 }
 
+/// Validate that a path is a project root for a language using its detector markers.
+pub fn is_valid_project_root_for_lang(path: &Path, lang: poly_bench_dsl::Lang) -> bool {
+    if !path.is_dir() {
+        return false;
+    }
+
+    if let Some(detector) = get_detector(lang) {
+        if detector.marker_files().iter().any(|marker| marker_matches(path, marker)) {
+            return true;
+        }
+    }
+
+    // Compatibility for C# projects that may not include polybench.csproj.
+    if lang == poly_bench_dsl::Lang::CSharp {
+        return dir_contains_extension(path, "csproj") || dir_contains_extension(path, "sln");
+    }
+
+    false
+}
+
+fn marker_matches(path: &Path, marker: &str) -> bool {
+    if path.join(marker).exists() {
+        return true;
+    }
+
+    if let Some(ext) = marker.strip_prefix('.') {
+        return dir_contains_extension(path, ext);
+    }
+
+    false
+}
+
+fn dir_contains_extension(path: &Path, ext: &str) -> bool {
+    std::fs::read_dir(path)
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|entry| entry.path().extension().and_then(|e| e.to_str()) == Some(ext))
+}
+
 /// Find the project root by searching for polybench.toml
 ///
 /// Starts from `start_path` and walks up the directory tree until

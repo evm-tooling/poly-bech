@@ -3,7 +3,10 @@
 use miette::Result;
 use poly_bench_dsl::Lang;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 
 /// The main manifest structure for a poly-bench project
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -283,11 +286,8 @@ impl Default for OutputConfig {
 impl Manifest {
     /// Create a new manifest with the given project name and languages
     pub fn new(name: &str, languages: &[String]) -> Self {
-        let has_go = languages.iter().any(|l| l == "go");
-        let has_ts = languages.iter().any(|l| l == "ts" || l == "typescript");
-        let has_rust = languages.iter().any(|l| l == "rust" || l == "rs");
-        let has_python = languages.iter().any(|l| l == "python" || l == "py");
-        let has_csharp = languages.iter().any(|l| l == "csharp" || l == "cs");
+        let enabled = parse_enabled_languages(languages);
+        let has_lang = |lang: Lang| enabled.contains(&lang);
 
         Self {
             project: ProjectConfig {
@@ -296,7 +296,7 @@ impl Manifest {
                 description: None,
             },
             defaults: DefaultsConfig { languages: languages.to_vec(), ..Default::default() },
-            go: if has_go {
+            go: if has_lang(Lang::Go) {
                 Some(GoConfig {
                     module: name.to_string(),
                     version: Some("1.21".to_string()),
@@ -305,17 +305,17 @@ impl Manifest {
             } else {
                 None
             },
-            ts: if has_ts {
+            ts: if has_lang(Lang::TypeScript) {
                 Some(TsConfig { runtime: default_ts_runtime(), dependencies: HashMap::new() })
             } else {
                 None
             },
-            rust: if has_rust {
+            rust: if has_lang(Lang::Rust) {
                 Some(RustConfig { edition: default_rust_edition(), dependencies: HashMap::new() })
             } else {
                 None
             },
-            python: if has_python {
+            python: if has_lang(Lang::Python) {
                 Some(PythonConfig {
                     version: Some(default_python_version()),
                     dependencies: HashMap::new(),
@@ -323,7 +323,7 @@ impl Manifest {
             } else {
                 None
             },
-            csharp: if has_csharp {
+            csharp: if has_lang(Lang::CSharp) {
                 Some(CSharpConfig {
                     target_framework: default_csharp_target_framework(),
                     dependencies: HashMap::new(),
@@ -474,6 +474,10 @@ impl Manifest {
         csharp.dependencies.remove(package);
         Ok(())
     }
+}
+
+fn parse_enabled_languages(languages: &[String]) -> HashSet<Lang> {
+    languages.iter().filter_map(|l| Lang::from_str(l.trim())).collect()
 }
 
 /// Load a manifest from a file

@@ -68,39 +68,36 @@ pub fn build_project(options: &BuildOptions) -> Result<()> {
     terminal::ensure_min_display(&spinner);
     spinner.finish_and_clear();
 
-    // Build Go environment
-    if manifest.has_runtime(Lang::Go) {
-        build_go_env(&project_root, manifest.go.as_ref().unwrap(), options)?;
-    }
-
-    // Build TypeScript environment
-    if manifest.has_runtime(Lang::TypeScript) {
-        build_ts_env(
-            &project_root,
-            manifest.ts.as_ref().unwrap(),
-            &manifest.project.name,
-            options,
-        )?;
-    }
-
-    // Build Rust environment
-    if manifest.has_runtime(Lang::Rust) {
-        build_rust_env(&project_root, manifest.rust.as_ref().unwrap(), options)?;
-    }
-
-    // Build Python environment
-    if manifest.has_runtime(Lang::Python) {
-        build_python_env(&project_root, manifest.python.as_ref().unwrap(), options)?;
-    }
-
-    if manifest.has_runtime(Lang::CSharp) {
-        build_csharp_env(&project_root, manifest.csharp.as_ref().unwrap(), options)?;
+    for lang in poly_bench_runtime::supported_languages() {
+        if manifest.has_runtime(*lang) {
+            build_runtime_env_for_lang(*lang, &project_root, &manifest, options)?;
+        }
     }
 
     println!();
     terminal::success("Runtime environment ready!");
 
     Ok(())
+}
+
+fn build_runtime_env_for_lang(
+    lang: Lang,
+    project_root: &Path,
+    manifest: &manifest::Manifest,
+    options: &BuildOptions,
+) -> Result<()> {
+    match lang {
+        Lang::Go => build_go_env(project_root, manifest.go.as_ref().unwrap(), options),
+        Lang::TypeScript => build_ts_env(
+            project_root,
+            manifest.ts.as_ref().unwrap(),
+            &manifest.project.name,
+            options,
+        ),
+        Lang::Rust => build_rust_env(project_root, manifest.rust.as_ref().unwrap(), options),
+        Lang::Python => build_python_env(project_root, manifest.python.as_ref().unwrap(), options),
+        Lang::CSharp => build_csharp_env(project_root, manifest.csharp.as_ref().unwrap(), options),
+    }
 }
 
 /// Build/regenerate the Go runtime environment
