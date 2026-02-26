@@ -13,18 +13,20 @@ use super::{escape_xml, filter_benchmarks, format_duration, sort_benchmarks, svg
 // Bar dimensions
 const DEFAULT_BAR_HEIGHT: i32 = 48;
 const BAR_GAP: i32 = 8;
+/// Multiplier for bar width (1.8 = bars 1.8x wider by default)
+const SPEEDUP_BAR_WIDTH_FACTOR: f64 = 1.8;
 
 // Margins and spacing
 const MARGIN_TOP: i32 = 72;
-const MARGIN_BOTTOM: i32 = 156;
+const MARGIN_BOTTOM: i32 = 100; // Reduced to favour wider aspect ratio (more width vs height)
 const MARGIN_LEFT: i32 = 50;
 const MARGIN_RIGHT: i32 = 40;
 const PLOT_PADDING: i32 = 12;
 const GRID_GAP_X: i32 = 18;
 const GRID_GAP_Y: i32 = 22;
 const CARD_TITLE_HEIGHT: i32 = 22;
-const MIN_CARD_WIDTH: i32 = 260;
-const MAX_GRID_COLUMNS: i32 = 4;
+const MIN_CARD_WIDTH: i32 = 468; // 260 * 1.8 for wider bars
+const MAX_GRID_COLUMNS: i32 = 4; // Allow more columns → fewer rows → taller aspect ratio
 const TARGET_COMBINED_GRID_HEIGHT: i32 = 420;
 
 // Accent colors (same for both themes)
@@ -327,10 +329,11 @@ pub fn generate(
         (default_columns * MIN_CARD_WIDTH) +
         ((default_columns - 1) * GRID_GAP_X) +
         MARGIN_RIGHT;
+    let default_single_width = (720.0 * SPEEDUP_BAR_WIDTH_FACTOR) as i32;
     let chart_width = if num_benchmarks > 1 {
         directive.width.unwrap_or(combined_min_width).max(combined_min_width)
     } else {
-        directive.width.unwrap_or(720)
+        directive.width.unwrap_or(default_single_width)
     };
     let plot_y = MARGIN_TOP;
     let details_height = ((language_summaries.len() as i32).max(1) * 16) + 18;
@@ -378,7 +381,9 @@ pub fn generate(
         let x_axis_label_y = plot_y + plot_height + 20;
         let legend_y = x_axis_label_y + 28;
         let details_y = legend_y + 26;
-        let chart_height = directive.height.unwrap_or(MARGIN_TOP + plot_height + MARGIN_BOTTOM);
+        let chart_height = directive.height.unwrap_or(
+            (details_y + details_height + 24).max(MARGIN_TOP + plot_height + MARGIN_BOTTOM),
+        );
         (
             plot_x,
             plot_width,

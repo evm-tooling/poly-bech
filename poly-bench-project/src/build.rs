@@ -98,6 +98,7 @@ fn build_runtime_env_for_lang(
         Lang::Python => build_python_env(project_root, manifest.python.as_ref().unwrap(), options),
         Lang::C => build_c_env(project_root, manifest.c.as_ref().unwrap(), options),
         Lang::CSharp => build_csharp_env(project_root, manifest.csharp.as_ref().unwrap(), options),
+        Lang::Zig => build_zig_env(project_root, manifest.zig.as_ref().unwrap(), options),
     }
 }
 
@@ -612,6 +613,172 @@ fn build_c_env(
 
     terminal::success_indented("C environment ready");
     Ok(())
+}
+
+fn build_zig_env(
+    project_root: &Path,
+    _zig_config: &manifest::ZigConfig,
+    _options: &BuildOptions,
+) -> Result<()> {
+    terminal::section("Zig environment");
+
+    let zig_env = runtime_env(project_root, Lang::Zig);
+    std::fs::create_dir_all(&zig_env)
+        .map_err(|e| miette::miette!("Failed to create {}: {}", zig_env.display(), e))?;
+
+    let build_zig_path = zig_env.join("build.zig");
+    if !build_zig_path.exists() {
+        std::fs::write(&build_zig_path, templates::build_zig())
+            .map_err(|e| miette::miette!("Failed to write build.zig: {}", e))?;
+        terminal::success_indented("Created build.zig");
+    } else {
+        terminal::info_indented("build.zig exists");
+    }
+
+    let build_zig_zon_path = zig_env.join("build.zig.zon");
+    if !build_zig_zon_path.exists() {
+        std::fs::write(&build_zig_zon_path, templates::build_zig_zon())
+            .map_err(|e| miette::miette!("Failed to write build.zig.zon: {}", e))?;
+        terminal::success_indented("Created build.zig.zon");
+    } else {
+        terminal::info_indented("build.zig.zon exists");
+    }
+
+    let src_dir = zig_env.join("src");
+    std::fs::create_dir_all(&src_dir)
+        .map_err(|e| miette::miette!("Failed to create src directory: {}", e))?;
+
+    let main_zig_path = src_dir.join("main.zig");
+    if !main_zig_path.exists() {
+        std::fs::write(&main_zig_path, templates::main_zig())
+            .map_err(|e| miette::miette!("Failed to write main.zig: {}", e))?;
+        terminal::success_indented("Created src/main.zig");
+    } else {
+        terminal::info_indented("src/main.zig exists");
+    }
+
+    install_local_zls(&zig_env, _options)?;
+
+    terminal::success_indented("Zig environment ready");
+    Ok(())
+}
+
+/// ZLS version to download (pinned for reproducibility)
+const ZLS_VERSION: &str = "0.15.1";
+
+/// Download and install ZLS locally for LSP support
+fn install_local_zls(zig_env: &Path, options: &BuildOptions) -> Result<()> {
+    let bin_dir = zig_env.join("bin");
+    std::fs::create_dir_all(&bin_dir)
+        .map_err(|e| miette::miette!("Failed to create bin directory: {}", e))?;
+
+    let zls_path = bin_dir.join(if cfg!(windows) { "zls.exe" } else { "zls" });
+
+    if zls_path.exists() && !options.force {
+        terminal::info_indented("ZLS already installed (use --force to reinstall)");
+        return Ok(());
+    }
+
+    let (arch, os) = zls_platform();
+    let archive_name = format!("zls-{}-{}.tar.xz", arch, os);
+    let url = format!(
+        "https://github.com/zigtools/zls/releases/download/{}/{}",
+        ZLS_VERSION, archive_name
+    );
+
+    terminal::info_indented(&format!("Downloading ZLS {} for {}-{}...", ZLS_VERSION, arch, os));
+
+    let response = ureq::get(&url).call().map_err(|e| {
+        miette::miette!("Failed to download ZLS: {}. Ensure you have network access.", e)
+    })?;
+
+    let mut reader = response.into_reader();
+    let mut body = Vec::new();
+    std::io::Read::read_to_end(&mut reader, &mut body)
+        .map_err(|e| miette::miette!("Failed to read ZLS download: {}", e))?;
+
+    let temp_dir =
+        tempfile::tempdir().map_err(|e| miette::miette!("Failed to create temp dir: {}", e))?;
+    let archive_path = temp_dir.path().join(&archive_name);
+    std::fs::write(&archive_path, &body)
+        .map_err(|e| miette::miette!("Failed to write ZLS archive: {}", e))?;
+
+    let extract_dir = temp_dir.path().join("extract");
+    std::fs::create_dir_all(&extract_dir)
+        .map_err(|e| miette::miette!("Failed to create extract dir: {}", e))?;
+
+    let status = Command::new("tar")
+        .args(["-xJf", archive_path.to_str().unwrap(), "-C", extract_dir.to_str().unwrap()])
+        .status()
+        .map_err(|e| miette::miette!("Failed to extract ZLS (tar required): {}", e))?;
+
+    if !status.success() {
+        return Err(miette::miette!(
+            "Failed to extract ZLS archive. Ensure 'tar' supports xz (e.g. tar -xJf)."
+        ));
+    }
+
+    let zls_name = if cfg!(windows) { "zls.exe" } else { "zls" };
+    let zls_binary = find_zls_in_dir(&extract_dir, zls_name);
+
+    let src = zls_binary.ok_or_else(|| {
+        miette::miette!("ZLS binary not found in archive. Archive structure may have changed.")
+    })?;
+
+    std::fs::copy(&src, &zls_path)
+        .map_err(|e| miette::miette!("Failed to copy ZLS to {}: {}", zls_path.display(), e))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&zls_path)
+            .map_err(|e| miette::miette!("Failed to read ZLS metadata: {}", e))?
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&zls_path, perms)
+            .map_err(|e| miette::miette!("Failed to set ZLS executable: {}", e))?;
+    }
+
+    terminal::success_indented(&format!("Installed ZLS at {}", zls_path.display()));
+    Ok(())
+}
+
+fn find_zls_in_dir(dir: &Path, zls_name: &str) -> Option<std::path::PathBuf> {
+    let direct = dir.join(zls_name);
+    if direct.exists() {
+        return Some(direct);
+    }
+    for entry in std::fs::read_dir(dir).ok()?.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if path.is_file() {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name == "zls" || name == "zls.exe" {
+                return Some(path);
+            }
+        } else if path.is_dir() {
+            if let Some(found) = find_zls_in_dir(&path, zls_name) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
+fn zls_platform() -> (&'static str, &'static str) {
+    let arch = std::env::consts::ARCH;
+    let os = std::env::consts::OS;
+    let arch = match arch {
+        "x86_64" => "x86_64",
+        "aarch64" | "arm64" => "aarch64",
+        _ => "x86_64",
+    };
+    let os = match os {
+        "macos" => "macos",
+        "linux" => "linux",
+        "windows" => "windows",
+        _ => "linux",
+    };
+    (arch, os)
 }
 
 fn install_local_csharp_ls(csharp_env: &Path, options: &BuildOptions) -> Result<()> {

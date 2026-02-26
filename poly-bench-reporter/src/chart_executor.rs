@@ -126,8 +126,8 @@ fn execute_per_benchmark_charts(
         let safe_name = sanitize_filename(&bench.name);
         single_directive.output_file = format!("{}.svg", safe_name);
 
-        // Use compact width for single-benchmark charts, let height auto-calculate
-        single_directive.width = single_directive.width.or(Some(520));
+        // Use wider default for single-benchmark charts (matches SPEEDUP_BAR_WIDTH_FACTOR)
+        single_directive.width = single_directive.width.or(Some(936));
 
         // Create results with just this benchmark
         let single_results = create_single_benchmark_results(&filtered_results, bench);

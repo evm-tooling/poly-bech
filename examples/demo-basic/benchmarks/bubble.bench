@@ -3,11 +3,11 @@ use std::charting
 declare suite bubbleN performance timeBased sameDataset: true {
     description: "O(n^2) bubble sort on int32 array"
     baseline: "go"
-    warmupIterations: 100
-    targetTime: 500ms
+    warmup: 100
+    targetTime: 100ms
     fairness: "strict"
     cvThreshold: 5
-    count: 3
+    count: 1
 
     setup go {
         import (
@@ -112,7 +112,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
             }
         }
     }
-    
+
     setup csharp {
         import {
             using System;
@@ -142,6 +142,43 @@ declare suite bubbleN performance timeBased sameDataset: true {
                     BinaryPrimitives.WriteInt32BigEndian(new Span<byte>(outBytes, j, 4), arr[i]);
                 }
                 return outBytes;
+            }
+        }
+    }
+
+    setup zig {
+        helpers {
+            fn bubbleZig(data: []const u8) []u8 {
+                const n = data.len / 4;
+                const allocator = std.heap.page_allocator;
+                const arr = allocator.alloc(i32, n) catch @panic("alloc failed");
+                defer allocator.free(arr);
+                for (0..n) |i| {
+                    const offset = i * 4;
+                    arr[i] = std.mem.readInt(i32, @ptrCast(data[offset..].ptr), .big);
+                }
+                for (0..n) |i| {
+                    for (0..n - 1 - i) |j| {
+                        if (arr[j] > arr[j + 1]) {
+                            const tmp = arr[j];
+                            arr[j] = arr[j + 1];
+                            arr[j + 1] = tmp;
+                        }
+                    }
+                }
+                const out = allocator.alloc(u8, data.len) catch @panic("alloc failed");
+                errdefer allocator.free(out);
+                for (0..n) |i| {
+                    const offset = i * 4;
+                    std.mem.writeInt(i32, @ptrCast(out[offset..].ptr), arr[i], .big);
+                }
+                return out;
+            }
+
+            fn bubbleZigAndFree(data: []const u8) void {
+                const allocator = std.heap.page_allocator;
+                const result = bubbleZig(data);
+                allocator.free(result);
             }
         }
     }
@@ -239,6 +276,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s100)
         python: bubble_python(s100)
         csharp: BubbleCsharp(s100);
+        zig: bubbleZigAndFree(&s100);
         c: {
             unsigned char __buf[sizeof(s100)];
             memcpy(__buf, s100, sizeof(s100));
@@ -252,6 +290,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s200)
         python: bubble_python(s200)
         csharp: BubbleCsharp(s200);
+        zig: bubbleZigAndFree(&s200);
         c: {
             unsigned char __buf[sizeof(s200)];
             memcpy(__buf, s200, sizeof(s200));
@@ -265,6 +304,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s300)
         python: bubble_python(s300)
         csharp: BubbleCsharp(s300);
+        zig: bubbleZigAndFree(&s300);
         c: {
             unsigned char __buf[sizeof(s300)];
             memcpy(__buf, s300, sizeof(s300));
@@ -278,6 +318,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s400)
         python: bubble_python(s400)
         csharp: BubbleCsharp(s400);
+        zig: bubbleZigAndFree(&s400);
         c: {
             unsigned char __buf[sizeof(s400)];
             memcpy(__buf, s400, sizeof(s400));
@@ -291,6 +332,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s500)
         python: bubble_python(s500)
         csharp: BubbleCsharp(s500);
+        zig: bubbleZigAndFree(&s500);
         c: {
             unsigned char __buf[sizeof(s500)];
             memcpy(__buf, s500, sizeof(s500));
@@ -304,6 +346,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s600)
         python: bubble_python(s600)
         csharp: BubbleCsharp(s600);
+        zig: bubbleZigAndFree(&s600);
         c: {
             unsigned char __buf[sizeof(s600)];
             memcpy(__buf, s600, sizeof(s600));
@@ -317,6 +360,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s700)
         python: bubble_python(s700)
         csharp: BubbleCsharp(s700);
+        zig: bubbleZigAndFree(&s700);
         c: {
             unsigned char __buf[sizeof(s700)];
             memcpy(__buf, s700, sizeof(s700));
@@ -330,6 +374,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s800)
         python: bubble_python(s800)
         csharp: BubbleCsharp(s800);
+        zig: bubbleZigAndFree(&s800);
         c: {
             unsigned char __buf[sizeof(s800)];
             memcpy(__buf, s800, sizeof(s800));
@@ -343,6 +388,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s900)
         python: bubble_python(s900)
         csharp: BubbleCsharp(s900);
+        zig: bubbleZigAndFree(&s900);
         c: {
             unsigned char __buf[sizeof(s900)];
             memcpy(__buf, s900, sizeof(s900));
@@ -356,6 +402,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s1000)
         python: bubble_python(s1000)
         csharp: BubbleCsharp(s1000);
+        zig: bubbleZigAndFree(&s1000);
         c: {
             unsigned char __buf[sizeof(s1000)];
             memcpy(__buf, s1000, sizeof(s1000));
@@ -393,6 +440,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
             showErrorBars: true,
             showRegression: true,
             regressionModel: "auto",
+            showStatsTable: false
         )
         charting.drawBarChart(
             title: "Bubble Sort - Grouped Bars",
@@ -403,6 +451,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
             showErrorBars: true,
             showRegression: true,
             regressionModel: "auto",
+            showStatsTable: false
         )
         charting.drawLineChart(
             title: "Bubble Sort - O(n²)",
@@ -449,8 +498,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
             description: "Naive string concat s += 'x' - quadratic complexity",
             output: "cbubble-bar-speed.svg",
         )
-
-          charting.drawTable(
+        charting.drawTable(
             title: "Sort Performance Comparison",
             description: "Vertical grouped bars - Go vs TypeScript vs Rust",
             output: "bubble-table-curr.svg",

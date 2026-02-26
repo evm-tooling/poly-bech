@@ -10,9 +10,10 @@ use runtimes_go::GO_PLUGIN;
 use runtimes_python::PYTHON_PLUGIN;
 use runtimes_rust::RUST_PLUGIN;
 use runtimes_ts::TS_PLUGIN;
+use runtimes_zig::ZIG_PLUGIN;
 
 static PLUGINS: &[&dyn poly_bench_runtime_traits::RuntimePlugin] =
-    &[&GO_PLUGIN, &TS_PLUGIN, &RUST_PLUGIN, &PYTHON_PLUGIN, &C_PLUGIN, &CSHARP_PLUGIN];
+    &[&GO_PLUGIN, &TS_PLUGIN, &RUST_PLUGIN, &PYTHON_PLUGIN, &C_PLUGIN, &CSHARP_PLUGIN, &ZIG_PLUGIN];
 
 const FALLBACK: LangDisplayInfo =
     LangDisplayInfo::new("Unknown", "Unknown", "#9CA3AF", "goGrad", "#0891B2", "white");

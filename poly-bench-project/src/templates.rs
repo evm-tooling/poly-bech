@@ -14,6 +14,7 @@ pub fn example_bench_for_langs(enabled_langs: &[Lang]) -> String {
         has_lang(enabled_langs, Lang::Python),
         has_lang(enabled_langs, Lang::C),
         has_lang(enabled_langs, Lang::CSharp),
+        has_lang(enabled_langs, Lang::Zig),
     )
 }
 
@@ -26,6 +27,7 @@ pub fn example_bench(
     has_python: bool,
     has_c: bool,
     has_csharp: bool,
+    has_zig: bool,
 ) -> String {
     let mut content = String::new();
 
@@ -35,7 +37,8 @@ pub fn example_bench(
         has_rust as i32 +
         has_python as i32 +
         has_c as i32 +
-        has_csharp as i32;
+        has_csharp as i32 +
+        has_zig as i32;
     if lang_count > 1 {
         content.push_str("use std::charting\n\n");
     }
@@ -180,6 +183,26 @@ pub fn example_bench(
         content.push('\n');
     }
 
+    if has_zig {
+        content.push_str("    setup zig {\n");
+        content.push_str("        helpers {\n");
+        content.push_str("            fn fibZig(data: []const u8) u8 {\n");
+        content.push_str("                const n = data[0];\n");
+        content.push_str("                if (n <= 1) return @intCast(n);\n");
+        content.push_str("                var a: u32 = 0;\n");
+        content.push_str("                var b: u32 = 1;\n");
+        content.push_str("                for (2..n + 1) |_| {\n");
+        content.push_str("                    const next = a + b;\n");
+        content.push_str("                    a = b;\n");
+        content.push_str("                    b = next;\n");
+        content.push_str("                }\n");
+        content.push_str("                return @intCast(b & 0xFF);\n");
+        content.push_str("            }\n");
+        content.push_str("        }\n");
+        content.push_str("    }\n");
+        content.push('\n');
+    }
+
     // Fixtures with different input sizes (n values encoded as single bytes)
     content.push_str("    fixture n20 {\n");
     content.push_str("        hex: \"14\"\n");
@@ -226,6 +249,9 @@ pub fn example_bench(
     if has_csharp {
         content.push_str("        csharp: fib_csharp(n20)\n");
     }
+    if has_zig {
+        content.push_str("        zig: fibZig(n20[0..])\n");
+    }
     content.push_str("    }\n");
     content.push('\n');
 
@@ -247,6 +273,9 @@ pub fn example_bench(
     }
     if has_csharp {
         content.push_str("        csharp: fib_csharp(n30)\n");
+    }
+    if has_zig {
+        content.push_str("        zig: fibZig(n30[0..])\n");
     }
     content.push_str("    }\n");
     content.push('\n');
@@ -270,6 +299,9 @@ pub fn example_bench(
     if has_csharp {
         content.push_str("        csharp: fib_csharp(n40)\n");
     }
+    if has_zig {
+        content.push_str("        zig: fibZig(n40[0..])\n");
+    }
     content.push_str("    }\n");
     content.push('\n');
 
@@ -291,6 +323,9 @@ pub fn example_bench(
     }
     if has_csharp {
         content.push_str("        csharp: fib_csharp(n50)\n");
+    }
+    if has_zig {
+        content.push_str("        zig: fibZig(n50[0..])\n");
     }
     content.push_str("    }\n");
     content.push('\n');
@@ -314,6 +349,9 @@ pub fn example_bench(
     if has_csharp {
         content.push_str("        csharp: fib_csharp(n60)\n");
     }
+    if has_zig {
+        content.push_str("        zig: fibZig(n60[0..])\n");
+    }
     content.push_str("    }\n");
     content.push('\n');
 
@@ -335,6 +373,9 @@ pub fn example_bench(
     }
     if has_csharp {
         content.push_str("        csharp: fib_csharp(n70)\n");
+    }
+    if has_zig {
+        content.push_str("        zig: fibZig(n70[0..])\n");
     }
     content.push_str("    }\n");
 
@@ -574,6 +615,42 @@ pub fn csharp_csproj(target_framework: &str) -> String {
     )
 }
 
+/// Generate build.zig for Zig runtime env
+pub fn build_zig() -> String {
+    r#"const std = @import("std");
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const exe = b.addExecutable(.{
+        .name = "polybench-runner",
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    b.installArtifact(exe);
+}
+"#
+    .to_string()
+}
+
+/// Generate build.zig.zon for Zig runtime env
+pub fn build_zig_zon() -> String {
+    r#".{
+    .name = "polybench",
+    .version = "0.0.1",
+}
+"#
+    .to_string()
+}
+
+/// Generate src/main.zig for Zig runtime env
+pub fn main_zig() -> String {
+    "pub fn main() void {}\n".to_string()
+}
+
 /// Internal Python deps always included in .polybench runtime-env (e.g. pyright for LSP).
 /// These are never in polybench.toml; install/remove must not strip them from requirements.txt.
 const PYTHON_INTERNAL_DEPS: &[(&str, &str)] = &[("pyright[nodejs]", "latest")];
@@ -660,6 +737,7 @@ pub fn readme_for_langs(name: &str, enabled_langs: &[Lang]) -> String {
         has_lang(enabled_langs, Lang::Python),
         has_lang(enabled_langs, Lang::C),
         has_lang(enabled_langs, Lang::CSharp),
+        has_lang(enabled_langs, Lang::Zig),
     )
 }
 
@@ -672,6 +750,7 @@ pub fn readme(
     has_python: bool,
     has_c: bool,
     has_csharp: bool,
+    has_zig: bool,
 ) -> String {
     let mut content = String::new();
 
@@ -722,6 +801,11 @@ pub fn readme(
             "        └── csharp/       # polybench.csproj, Program.cs, generated bench code\n",
         );
     }
+    if has_zig {
+        content.push_str(
+            "        └── zig/          # build.zig, build.zig.zon, src/main.zig, generated bench code\n",
+        );
+    }
     content.push_str("```\n\n");
 
     content.push_str("## Adding Dependencies\n\n");
@@ -765,6 +849,13 @@ pub fn readme(
         content.push_str("### C#\n\n");
         content.push_str("```bash\n");
         content.push_str("poly-bench add --cs \"Newtonsoft.Json@13.0.3\"\n");
+        content.push_str("```\n\n");
+    }
+
+    if has_zig {
+        content.push_str("### Zig\n\n");
+        content.push_str("```bash\n");
+        content.push_str("poly-bench add --zig \"package@0.1.0\"\n");
         content.push_str("```\n\n");
     }
 
@@ -827,7 +918,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_both_languages() {
-        let content = example_bench(true, true, false, false, false, false);
+        let content = example_bench(true, true, false, false, false, false, false);
         assert!(content.contains("setup go"));
         assert!(content.contains("setup ts"));
         assert!(content.contains("fibGo(n20)"));
@@ -841,7 +932,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_go_only() {
-        let content = example_bench(true, false, false, false, false, false);
+        let content = example_bench(true, false, false, false, false, false, false);
         assert!(content.contains("setup go"));
         assert!(!content.contains("setup ts"));
         assert!(!content.contains("baseline: \"go\"")); // No baseline with single language
@@ -850,7 +941,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_all_languages() {
-        let content = example_bench(true, true, true, true, false, false);
+        let content = example_bench(true, true, true, true, false, false, false);
         assert!(content.contains("setup go"));
         assert!(content.contains("setup ts"));
         assert!(content.contains("setup rust"));
@@ -866,7 +957,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_rust_only() {
-        let content = example_bench(false, false, true, false, false, false);
+        let content = example_bench(false, false, true, false, false, false, false);
         assert!(!content.contains("setup go"));
         assert!(!content.contains("setup ts"));
         assert!(content.contains("setup rust"));
@@ -877,7 +968,7 @@ mod tests {
     #[test]
     fn test_example_bench_no_external_deps() {
         // Verify no external dependencies are required
-        let content = example_bench(true, true, true, true, false, false);
+        let content = example_bench(true, true, true, true, false, false, false);
         assert!(!content.contains("sha2"));
         assert!(!content.contains("crypto/sha256"));
         assert!(!content.contains("node:crypto"));

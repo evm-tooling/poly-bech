@@ -611,6 +611,7 @@ impl Parser {
                 "showStdDev" => directive.show_std_dev = self.expect_bool()?,
                 "showErrorBars" => directive.show_error_bars = self.expect_bool()?,
                 "showRegression" => directive.show_regression = self.expect_bool()?,
+                "showStatsTable" => directive.show_stats_table = self.expect_bool()?,
 
                 // Array parameters
                 "includeBenchmarks" => directive.include_benchmarks = self.expect_string_array()?,

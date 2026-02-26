@@ -54,6 +54,13 @@ pub fn is_valid_project_root_for_lang(path: &Path, lang: poly_bench_dsl::Lang) -
         return true;
     }
 
+    if lang == poly_bench_dsl::Lang::Zig &&
+        is_runtime_env_root(path) &&
+        path.join("src").join("main.zig").exists()
+    {
+        return true;
+    }
+
     if let Some(detector) = get_detector(lang) {
         if detector.marker_files().iter().any(|marker| marker_matches(path, marker)) {
             return true;

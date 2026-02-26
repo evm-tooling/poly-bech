@@ -761,6 +761,60 @@ pub fn remove_csharp_dependency(package: &str) -> Result<()> {
     Ok(())
 }
 
+/// Add a Zig dependency to the project
+pub fn add_zig_dependency(spec: &str) -> Result<()> {
+    let current_dir = std::env::current_dir()
+        .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+
+    let project_root = crate::find_project_root(&current_dir)
+        .ok_or_else(|| miette::miette!("Not in a poly-bench project"))?;
+
+    let mut manifest = crate::load_manifest(&project_root)?;
+
+    if !manifest.has_runtime(Lang::Zig) {
+        return Err(miette::miette!("Zig is not enabled in this project"));
+    }
+
+    let (package, version) = parse_dep_spec(spec);
+    manifest.add_zig_dependency(&package, &version)?;
+    crate::save_manifest(&project_root, &manifest)?;
+
+    let zig_root = resolve_runtime_root(&project_root, Lang::Zig);
+    std::fs::create_dir_all(&zig_root)
+        .map_err(|e| miette::miette!("Failed to create Zig env dir: {}", e))?;
+
+    terminal::success(&format!("Added {}@{} to polybench.toml", package, version));
+    Ok(())
+}
+
+/// Remove a Zig dependency from the project
+pub fn remove_zig_dependency(package: &str) -> Result<()> {
+    let current_dir = std::env::current_dir()
+        .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+
+    let project_root = crate::find_project_root(&current_dir)
+        .ok_or_else(|| miette::miette!("Not in a poly-bench project"))?;
+
+    let mut manifest = crate::load_manifest(&project_root)?;
+
+    if !manifest.has_runtime(Lang::Zig) {
+        return Err(miette::miette!("Zig is not enabled in this project"));
+    }
+
+    if !manifest.zig.as_ref().unwrap().dependencies.contains_key(package) {
+        return Err(miette::miette!(
+            "Dependency '{}' is not installed. Check polybench.toml for installed Zig dependencies.",
+            package
+        ));
+    }
+
+    manifest.remove_zig_dependency(package)?;
+    crate::save_manifest(&project_root, &manifest)?;
+
+    terminal::success(&format!("Removed {} from polybench.toml", package));
+    Ok(())
+}
+
 /// Read a dependency version from Cargo.toml
 fn read_cargo_dep_version(rust_root: &Path, crate_name: &str) -> Option<String> {
     let cargo_toml_path = rust_root.join("Cargo.toml");
@@ -860,6 +914,7 @@ fn install_runtime_deps_for_lang(
         Lang::Python => install_python_deps(project_root, manifest.python.as_ref().unwrap()),
         Lang::C => install_c_deps(project_root, manifest.c.as_ref().unwrap()),
         Lang::CSharp => install_csharp_deps(project_root, manifest.csharp.as_ref().unwrap()),
+        Lang::Zig => install_zig_deps(project_root, manifest.zig.as_ref().unwrap()),
     }
 }
 
@@ -1166,6 +1221,26 @@ fn install_csharp_deps(project_root: &Path, csharp_config: &manifest::CSharpConf
             "Resolve NuGet restore errors before running C# benchmarks.",
         ));
     }
+    Ok(())
+}
+
+/// Install Zig dependencies from manifest
+fn install_zig_deps(project_root: &Path, zig_config: &manifest::ZigConfig) -> Result<()> {
+    terminal::section("Zig dependencies");
+
+    let zig_root = runtime_env(project_root, Lang::Zig);
+    std::fs::create_dir_all(&zig_root)
+        .map_err(|e| miette::miette!("Failed to create Zig env dir: {}", e))?;
+
+    if zig_config.dependencies.is_empty() {
+        terminal::success_indented("No Zig dependencies to install");
+        return Ok(());
+    }
+
+    terminal::success_indented(&format!(
+        "Zig dependencies recorded in manifest: {}",
+        zig_config.dependencies.len()
+    ));
     Ok(())
 }
 

@@ -547,6 +547,8 @@ pub struct ChartDirectiveIR {
     pub regression_model: String,
     /// Y-axis scale type
     pub y_scale: String,
+    /// Show stats table below chart (line/bar charts only, default true)
+    pub show_stats_table: bool,
 }
 
 impl ChartDirectiveIR {
@@ -579,6 +581,7 @@ impl ChartDirectiveIR {
             show_regression: true,
             regression_model: "auto".to_string(),
             y_scale: "linear".to_string(),
+            show_stats_table: true,
         }
     }
 

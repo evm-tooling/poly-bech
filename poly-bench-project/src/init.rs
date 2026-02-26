@@ -279,6 +279,25 @@ fn init_runtime_env_for_lang(
                 );
             }
         }
+        Lang::Zig => {
+            let zig_env = runtime_env(project_dir, Lang::Zig);
+            std::fs::create_dir_all(&zig_env)
+                .map_err(|e| miette::miette!("Failed to create {}: {}", zig_env.display(), e))?;
+            std::fs::write(zig_env.join("build.zig"), templates::build_zig())
+                .map_err(|e| miette::miette!("Failed to write build.zig: {}", e))?;
+            std::fs::write(zig_env.join("build.zig.zon"), templates::build_zig_zon())
+                .map_err(|e| miette::miette!("Failed to write build.zig.zon: {}", e))?;
+            let src_dir = zig_env.join("src");
+            std::fs::create_dir_all(&src_dir)
+                .map_err(|e| miette::miette!("Failed to create src directory: {}", e))?;
+            std::fs::write(src_dir.join("main.zig"), templates::main_zig())
+                .map_err(|e| miette::miette!("Failed to write main.zig: {}", e))?;
+            if !quiet {
+                terminal::success(
+                    "Created .polybench/runtime-env/zig/ (build.zig, build.zig.zon, src/main.zig)",
+                );
+            }
+        }
     }
 
     Ok(())

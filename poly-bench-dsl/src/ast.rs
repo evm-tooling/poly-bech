@@ -41,11 +41,12 @@ pub enum Lang {
     Python,
     C,
     CSharp,
+    Zig,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 6] =
-        [Lang::Go, Lang::TypeScript, Lang::Rust, Lang::Python, Lang::C, Lang::CSharp];
+    pub const ALL: [Lang; 7] =
+        [Lang::Go, Lang::TypeScript, Lang::Rust, Lang::Python, Lang::C, Lang::CSharp, Lang::Zig];
 
     pub fn all() -> &'static [Lang] {
         &Self::ALL
@@ -59,6 +60,7 @@ impl Lang {
             "python" | "py" => Some(Lang::Python),
             "c" => Some(Lang::C),
             "csharp" | "cs" => Some(Lang::CSharp),
+            "zig" | "z" => Some(Lang::Zig),
             _ => None,
         }
     }
@@ -71,6 +73,7 @@ impl Lang {
             Lang::Python => "python",
             Lang::C => "c",
             Lang::CSharp => "csharp",
+            Lang::Zig => "zig",
         }
     }
 
@@ -83,6 +86,7 @@ impl Lang {
             Lang::Python => &["python", "py"],
             Lang::C => &["c"],
             Lang::CSharp => &["csharp", "cs"],
+            Lang::Zig => &["zig", "z"],
         }
     }
 
@@ -95,6 +99,7 @@ impl Lang {
             Lang::Python => "Python",
             Lang::C => "C",
             Lang::CSharp => "C#",
+            Lang::Zig => "Zig",
         }
     }
 
@@ -602,6 +607,8 @@ pub struct ChartDirective {
     pub regression_model: String,
     /// Y-axis scale type: "linear" (default), "log10", "symlog", "split"
     pub y_scale: String,
+    /// Show stats table below chart (line/bar charts only, default true)
+    pub show_stats_table: bool,
 
     /// Order of parameters as they appeared in source (for formatting)
     #[serde(default)]
@@ -638,6 +645,7 @@ impl ChartDirective {
             show_regression: true,
             regression_model: "auto".to_string(),
             y_scale: "linear".to_string(),
+            show_stats_table: true,
             // Parameter order tracking
             param_order: Vec::new(),
         }

@@ -87,18 +87,25 @@ pub fn generate(
 
     let theme = Theme::from_name(directive.theme.as_deref());
     let width = directive.width.unwrap_or(980).max(520) as f64;
-    let height = directive.height.unwrap_or(680).max(620) as f64;
     let plot_w = (width - MARGIN_LEFT - MARGIN_RIGHT).max(120.0);
     let langs = available_langs(&filtered);
     if langs.is_empty() {
         return empty_chart("No language measurements available");
     }
-    let (_, _, stats_box_height) = stats_layout(langs.len(), plot_w);
+    let (_, _, stats_box_height) =
+        if directive.show_stats_table { stats_layout(langs.len(), plot_w) } else { (1, 0, 0.0) };
+    let default_height = if directive.show_stats_table { 680 } else { 554 };
+    let height = directive.height.unwrap_or(default_height).max(if directive.show_stats_table {
+        620
+    } else {
+        400
+    }) as f64;
+    let stats_top_gap = if directive.show_stats_table { STATS_TOP_GAP } else { 0.0 };
     let plot_h = (height -
         MARGIN_TOP -
         MARGIN_BOTTOM -
         X_AXIS_LABEL_OFFSET -
-        STATS_TOP_GAP -
+        stats_top_gap -
         stats_box_height)
         .max(120.0);
 
@@ -497,15 +504,17 @@ pub fn generate(
         theme.detail_box_stroke,
         theme.bg,
     ));
-    svg.push_str(&stats_panel(
-        &stats,
-        MARGIN_LEFT,
-        MARGIN_TOP + plot_h + X_AXIS_LABEL_OFFSET + STATS_TOP_GAP,
-        plot_w,
-        stats_box_height,
-        is_memory,
-        theme,
-    ));
+    if directive.show_stats_table {
+        svg.push_str(&stats_panel(
+            &stats,
+            MARGIN_LEFT,
+            MARGIN_TOP + plot_h + X_AXIS_LABEL_OFFSET + stats_top_gap,
+            plot_w,
+            stats_box_height,
+            is_memory,
+            theme,
+        ));
+    }
     svg.push_str(&format!(
         "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"1.6\"/>\n",
         MARGIN_LEFT,
