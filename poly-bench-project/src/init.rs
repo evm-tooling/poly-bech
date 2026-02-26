@@ -53,23 +53,14 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         }
     }
 
-    // Normalize languages
-    let languages: Vec<String> = options
-        .languages
+    let enabled_langs: Vec<Lang> = poly_bench_runtime::supported_languages()
         .iter()
-        .map(|l| match l.as_str() {
-            "typescript" => "ts".to_string(),
-            "rs" => "rust".to_string(),
-            "py" => "python".to_string(),
-            other => other.to_string(),
+        .copied()
+        .filter(|lang| {
+            options.languages.iter().any(|raw| Lang::from_str(raw.trim()) == Some(*lang))
         })
         .collect();
-
-    let has_go = languages.iter().any(|l| l == "go");
-    let has_ts = languages.iter().any(|l| l == "ts");
-    let has_rust = languages.iter().any(|l| l == "rust");
-    let has_python = languages.iter().any(|l| l == "python");
-    let has_csharp = languages.iter().any(|l| l == "csharp" || l == "cs");
+    let languages: Vec<String> = enabled_langs.iter().map(|l| l.as_str().to_string()).collect();
 
     // Create manifest
     let manifest = Manifest::new(&project_name, &languages);
@@ -90,8 +81,13 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     // Create example benchmark
     if !options.no_example {
         let example_path = benchmarks_dir.join("example.bench");
-        let example_content =
-            templates::example_bench(has_go, has_ts, has_rust, has_python, has_csharp);
+        let example_content = templates::example_bench(
+            manifest.has_runtime(Lang::Go),
+            manifest.has_runtime(Lang::TypeScript),
+            manifest.has_runtime(Lang::Rust),
+            manifest.has_runtime(Lang::Python),
+            manifest.has_runtime(Lang::CSharp),
+        );
         std::fs::write(&example_path, example_content)
             .map_err(|e| miette::miette!("Failed to write example.bench: {}", e))?;
         if !options.quiet {
@@ -100,126 +96,15 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     }
 
     // Create runtime-env dirs and language-specific env files (keeps root uncluttered)
-    if has_go {
-        let go_env = runtime_env(&project_dir, Lang::Go);
-        std::fs::create_dir_all(&go_env)
-            .map_err(|e| miette::miette!("Failed to create {}: {}", go_env.display(), e))?;
-        let go_version = manifest.go.as_ref().and_then(|g| g.version.as_deref());
-        let go_mod_content = templates::go_mod(&project_name, go_version);
-        std::fs::write(go_env.join("go.mod"), go_mod_content)
-            .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
-        // Note: No .go file created yet - bench_standalone.go is generated when running benchmarks.
-        // This keeps deps in go.mod since `go mod tidy` won't run until bench code exists.
-        if !options.quiet {
-            terminal::success("Created .polybench/runtime-env/go/ (go.mod)");
-        }
-    }
-
-    if has_ts {
-        let ts_env = runtime_env(&project_dir, Lang::TypeScript);
-        std::fs::create_dir_all(&ts_env)
-            .map_err(|e| miette::miette!("Failed to create {}: {}", ts_env.display(), e))?;
-        let package_json_content = templates::package_json_pretty(&project_name);
-        std::fs::write(ts_env.join("package.json"), package_json_content)
-            .map_err(|e| miette::miette!("Failed to write package.json: {}", e))?;
-        let tsconfig_content = templates::tsconfig_json();
-        std::fs::write(ts_env.join("tsconfig.json"), tsconfig_content)
-            .map_err(|e| miette::miette!("Failed to write tsconfig.json: {}", e))?;
-        if !options.quiet {
-            terminal::success("Created .polybench/runtime-env/ts/ (package.json, tsconfig.json)");
-        }
-
-        // Run npm install to install dev dependencies (@types/node, typescript)
-        if options.quiet {
-            let output = Command::new("npm")
-                .arg("install")
-                .current_dir(&ts_env)
-                .output()
-                .map_err(|e| miette::miette!("Could not run npm install: {}", e))?;
-            if !output.status.success() {
-                return Err(miette::miette!(
-                    "npm install failed in {}:\n{}",
-                    ts_env.display(),
-                    terminal::stderr_excerpt(&output.stderr, 10)
-                ));
-            }
-        } else {
-            let spinner = terminal::step_spinner("Installing TypeScript dependencies...");
-            let npm_result = terminal::run_command_with_spinner(
-                &spinner,
-                Command::new("npm").arg("install").current_dir(&ts_env),
-            );
-            match npm_result {
-                Ok(output) if output.status.success() => {
-                    terminal::finish_success(&spinner, "TypeScript dependencies installed");
-                }
-                Ok(output) => {
-                    terminal::finish_failure(&spinner, "npm install failed");
-                    terminal::print_stderr_excerpt(&output.stderr, 8);
-                    return Err(miette::miette!("npm install failed in {}", ts_env.display()));
-                }
-                Err(e) => {
-                    terminal::finish_failure(&spinner, &format!("Could not run npm: {}", e));
-                    return Err(miette::miette!("Could not run npm install: {}", e));
-                }
-            }
-        }
-    }
-
-    if has_rust {
-        let rust_env = runtime_env(&project_dir, Lang::Rust);
-        std::fs::create_dir_all(&rust_env)
-            .map_err(|e| miette::miette!("Failed to create {}: {}", rust_env.display(), e))?;
-        let rust_edition = manifest.rust.as_ref().map(|r| r.edition.as_str()).unwrap_or("2021");
-        let cargo_toml_content = templates::cargo_toml(&project_name, rust_edition);
-        std::fs::write(rust_env.join("Cargo.toml"), cargo_toml_content)
-            .map_err(|e| miette::miette!("Failed to write Cargo.toml: {}", e))?;
-
-        // Create src/main.rs placeholder
-        let src_dir = rust_env.join("src");
-        std::fs::create_dir_all(&src_dir)
-            .map_err(|e| miette::miette!("Failed to create src dir: {}", e))?;
-        std::fs::write(src_dir.join("main.rs"), "fn main() {}\n")
-            .map_err(|e| miette::miette!("Failed to write main.rs: {}", e))?;
-
-        if !options.quiet {
-            terminal::success("Created .polybench/runtime-env/rust/ (Cargo.toml, src/main.rs)");
-        }
-    }
-
-    if has_python {
-        let python_env = runtime_env(&project_dir, Lang::Python);
-        std::fs::create_dir_all(&python_env)
-            .map_err(|e| miette::miette!("Failed to create {}: {}", python_env.display(), e))?;
-        // Include pyright[nodejs] for LSP (provides pyright-langserver)
-        let requirements_content = templates::requirements_txt_for_runtime_env(&[]);
-        std::fs::write(python_env.join("requirements.txt"), requirements_content)
-            .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
-        if !options.quiet {
-            terminal::success("Created .polybench/runtime-env/python/ (requirements.txt)");
-        }
-    }
-
-    if has_csharp {
-        let csharp_env = runtime_env(&project_dir, Lang::CSharp);
-        std::fs::create_dir_all(&csharp_env)
-            .map_err(|e| miette::miette!("Failed to create {}: {}", csharp_env.display(), e))?;
-        let target_framework =
-            manifest.csharp.as_ref().map(|c| c.target_framework.as_str()).unwrap_or("net8.0");
-        std::fs::write(
-            csharp_env.join("polybench.csproj"),
-            templates::csharp_csproj(target_framework),
-        )
-        .map_err(|e| miette::miette!("Failed to write polybench.csproj: {}", e))?;
-        std::fs::write(
-            csharp_env.join("Program.cs"),
-            "public static class Program { public static void Main() {} }\n",
-        )
-        .map_err(|e| miette::miette!("Failed to write Program.cs: {}", e))?;
-        if !options.quiet {
-            terminal::success(
-                "Created .polybench/runtime-env/csharp/ (polybench.csproj, Program.cs)",
-            );
+    for lang in poly_bench_runtime::supported_languages() {
+        if manifest.has_runtime(*lang) {
+            init_runtime_env_for_lang(
+                *lang,
+                &project_dir,
+                &manifest,
+                &project_name,
+                options.quiet,
+            )?;
         }
     }
 
@@ -245,8 +130,14 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     // Create README.md
     let readme_path = project_dir.join("README.md");
     if !readme_path.exists() {
-        let readme_content =
-            templates::readme(&project_name, has_go, has_ts, has_rust, has_python, has_csharp);
+        let readme_content = templates::readme(
+            &project_name,
+            manifest.has_runtime(Lang::Go),
+            manifest.has_runtime(Lang::TypeScript),
+            manifest.has_runtime(Lang::Rust),
+            manifest.has_runtime(Lang::Python),
+            manifest.has_runtime(Lang::CSharp),
+        );
         std::fs::write(&readme_path, readme_content)
             .map_err(|e| miette::miette!("Failed to write README.md: {}", e))?;
         if !options.quiet {
@@ -268,6 +159,132 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     }
 
     Ok(project_dir)
+}
+
+fn init_runtime_env_for_lang(
+    lang: Lang,
+    project_dir: &std::path::Path,
+    manifest: &Manifest,
+    project_name: &str,
+    quiet: bool,
+) -> Result<()> {
+    match lang {
+        Lang::Go => {
+            let go_env = runtime_env(project_dir, Lang::Go);
+            std::fs::create_dir_all(&go_env)
+                .map_err(|e| miette::miette!("Failed to create {}: {}", go_env.display(), e))?;
+            let go_version = manifest.go.as_ref().and_then(|g| g.version.as_deref());
+            let go_mod_content = templates::go_mod(project_name, go_version);
+            std::fs::write(go_env.join("go.mod"), go_mod_content)
+                .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
+            if !quiet {
+                terminal::success("Created .polybench/runtime-env/go/ (go.mod)");
+            }
+        }
+        Lang::TypeScript => {
+            let ts_env = runtime_env(project_dir, Lang::TypeScript);
+            std::fs::create_dir_all(&ts_env)
+                .map_err(|e| miette::miette!("Failed to create {}: {}", ts_env.display(), e))?;
+            let package_json_content = templates::package_json_pretty(project_name);
+            std::fs::write(ts_env.join("package.json"), package_json_content)
+                .map_err(|e| miette::miette!("Failed to write package.json: {}", e))?;
+            let tsconfig_content = templates::tsconfig_json();
+            std::fs::write(ts_env.join("tsconfig.json"), tsconfig_content)
+                .map_err(|e| miette::miette!("Failed to write tsconfig.json: {}", e))?;
+            if !quiet {
+                terminal::success(
+                    "Created .polybench/runtime-env/ts/ (package.json, tsconfig.json)",
+                );
+            }
+
+            if quiet {
+                let output = Command::new("npm")
+                    .arg("install")
+                    .current_dir(&ts_env)
+                    .output()
+                    .map_err(|e| miette::miette!("Could not run npm install: {}", e))?;
+                if !output.status.success() {
+                    return Err(miette::miette!(
+                        "npm install failed in {}:\n{}",
+                        ts_env.display(),
+                        terminal::stderr_excerpt(&output.stderr, 10)
+                    ));
+                }
+            } else {
+                let spinner = terminal::step_spinner("Installing TypeScript dependencies...");
+                let npm_result = terminal::run_command_with_spinner(
+                    &spinner,
+                    Command::new("npm").arg("install").current_dir(&ts_env),
+                );
+                match npm_result {
+                    Ok(output) if output.status.success() => {
+                        terminal::finish_success(&spinner, "TypeScript dependencies installed");
+                    }
+                    Ok(output) => {
+                        terminal::finish_failure(&spinner, "npm install failed");
+                        terminal::print_stderr_excerpt(&output.stderr, 8);
+                        return Err(miette::miette!("npm install failed in {}", ts_env.display()));
+                    }
+                    Err(e) => {
+                        terminal::finish_failure(&spinner, &format!("Could not run npm: {}", e));
+                        return Err(miette::miette!("Could not run npm install: {}", e));
+                    }
+                }
+            }
+        }
+        Lang::Rust => {
+            let rust_env = runtime_env(project_dir, Lang::Rust);
+            std::fs::create_dir_all(&rust_env)
+                .map_err(|e| miette::miette!("Failed to create {}: {}", rust_env.display(), e))?;
+            let rust_edition = manifest.rust.as_ref().map(|r| r.edition.as_str()).unwrap_or("2021");
+            let cargo_toml_content = templates::cargo_toml(project_name, rust_edition);
+            std::fs::write(rust_env.join("Cargo.toml"), cargo_toml_content)
+                .map_err(|e| miette::miette!("Failed to write Cargo.toml: {}", e))?;
+            let src_dir = rust_env.join("src");
+            std::fs::create_dir_all(&src_dir)
+                .map_err(|e| miette::miette!("Failed to create src dir: {}", e))?;
+            std::fs::write(src_dir.join("main.rs"), "fn main() {}\n")
+                .map_err(|e| miette::miette!("Failed to write main.rs: {}", e))?;
+            if !quiet {
+                terminal::success("Created .polybench/runtime-env/rust/ (Cargo.toml, src/main.rs)");
+            }
+        }
+        Lang::Python => {
+            let python_env = runtime_env(project_dir, Lang::Python);
+            std::fs::create_dir_all(&python_env)
+                .map_err(|e| miette::miette!("Failed to create {}: {}", python_env.display(), e))?;
+            let requirements_content = templates::requirements_txt_for_runtime_env(&[]);
+            std::fs::write(python_env.join("requirements.txt"), requirements_content)
+                .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
+            if !quiet {
+                terminal::success("Created .polybench/runtime-env/python/ (requirements.txt)");
+            }
+        }
+        Lang::CSharp => {
+            let csharp_env = runtime_env(project_dir, Lang::CSharp);
+            std::fs::create_dir_all(&csharp_env)
+                .map_err(|e| miette::miette!("Failed to create {}: {}", csharp_env.display(), e))?;
+            let target_framework =
+                manifest.csharp.as_ref().map(|c| c.target_framework.as_str()).unwrap_or("net8.0");
+            std::fs::write(
+                csharp_env.join("polybench.csproj"),
+                templates::csharp_csproj(target_framework),
+            )
+            .map_err(|e| miette::miette!("Failed to write polybench.csproj: {}", e))?;
+            std::fs::write(
+                csharp_env.join("Program.cs"),
+                "public static class Program { public static void Main() {} }\n",
+            )
+            .map_err(|e| miette::miette!("Failed to write Program.cs: {}", e))?;
+            if !quiet {
+                terminal::success(
+                    "Created .polybench/runtime-env/csharp/ (polybench.csproj, Program.cs)",
+                );
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Create a new benchmark file in the project

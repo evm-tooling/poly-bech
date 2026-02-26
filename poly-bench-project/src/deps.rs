@@ -782,34 +782,34 @@ pub fn install_all() -> Result<()> {
     terminal::ensure_min_display(&spinner);
     spinner.finish_and_clear();
 
-    // Install Go dependencies
-    if let Some(ref go_config) = manifest.go {
-        install_go_deps(&project_root, go_config)?;
-    }
-
-    // Install TypeScript dependencies
-    if let Some(ref ts_config) = manifest.ts {
-        install_ts_deps(&project_root, ts_config, &manifest.project.name)?;
-    }
-
-    // Install Rust dependencies
-    if let Some(ref rust_config) = manifest.rust {
-        install_rust_deps(&project_root, rust_config, &manifest.project.name)?;
-    }
-
-    // Install Python dependencies
-    if let Some(ref python_config) = manifest.python {
-        install_python_deps(&project_root, python_config)?;
-    }
-
-    if let Some(ref csharp_config) = manifest.csharp {
-        install_csharp_deps(&project_root, csharp_config)?;
+    for lang in poly_bench_runtime::supported_languages() {
+        if manifest.has_runtime(*lang) {
+            install_runtime_deps_for_lang(*lang, &project_root, &manifest)?;
+        }
     }
 
     println!();
     terminal::success("All dependencies installed!");
 
     Ok(())
+}
+
+fn install_runtime_deps_for_lang(
+    lang: Lang,
+    project_root: &Path,
+    manifest: &manifest::Manifest,
+) -> Result<()> {
+    match lang {
+        Lang::Go => install_go_deps(project_root, manifest.go.as_ref().unwrap()),
+        Lang::TypeScript => {
+            install_ts_deps(project_root, manifest.ts.as_ref().unwrap(), &manifest.project.name)
+        }
+        Lang::Rust => {
+            install_rust_deps(project_root, manifest.rust.as_ref().unwrap(), &manifest.project.name)
+        }
+        Lang::Python => install_python_deps(project_root, manifest.python.as_ref().unwrap()),
+        Lang::CSharp => install_csharp_deps(project_root, manifest.csharp.as_ref().unwrap()),
+    }
 }
 
 /// Install Go dependencies

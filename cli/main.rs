@@ -462,21 +462,7 @@ async fn cmd_compile(
     }
 
     // Filter languages if specified
-    let langs: Vec<dsl::Lang> = match lang.as_deref() {
-        Some("go") => vec![dsl::Lang::Go],
-        Some("ts") | Some("typescript") => vec![dsl::Lang::TypeScript],
-        Some("rust") | Some("rs") => vec![dsl::Lang::Rust],
-        Some("python") | Some("py") => vec![dsl::Lang::Python],
-        Some("csharp") | Some("cs") => vec![dsl::Lang::CSharp],
-        Some(l) => return Err(miette::miette!("Unknown language: {}", l)),
-        None => vec![
-            dsl::Lang::Go,
-            dsl::Lang::TypeScript,
-            dsl::Lang::Rust,
-            dsl::Lang::Python,
-            dsl::Lang::CSharp,
-        ],
-    };
+    let langs = selected_languages(lang.as_deref())?;
 
     if run_parallel && files.len() > 1 {
         compile_files_parallel_cached(&files, &langs, &cache, verbose).await
@@ -736,8 +722,6 @@ async fn cmd_run(
     project_dir: Vec<String>,
     verbose: bool,
 ) -> Result<()> {
-    use colored::Colorize;
-
     // Get benchmark files to run
     let files = match file {
         Some(f) => vec![f],
@@ -768,21 +752,7 @@ async fn cmd_run(
     };
 
     // Filter languages if specified
-    let langs: Vec<dsl::Lang> = match lang.as_deref() {
-        Some("go") => vec![dsl::Lang::Go],
-        Some("ts") | Some("typescript") => vec![dsl::Lang::TypeScript],
-        Some("rust") | Some("rs") => vec![dsl::Lang::Rust],
-        Some("python") | Some("py") => vec![dsl::Lang::Python],
-        Some("csharp") | Some("cs") => vec![dsl::Lang::CSharp],
-        Some(l) => return Err(miette::miette!("Unknown language: {}", l)),
-        None => vec![
-            dsl::Lang::Go,
-            dsl::Lang::TypeScript,
-            dsl::Lang::Rust,
-            dsl::Lang::Python,
-            dsl::Lang::CSharp,
-        ],
-    };
+    let langs = selected_languages(lang.as_deref())?;
 
     // Run each benchmark file
     let mut all_results = Vec::new();
@@ -922,9 +892,7 @@ fn parse_project_dirs(specs: &[String]) -> Result<std::collections::HashMap<dsl:
                 spec
             )
         })?;
-        let lang = dsl::Lang::from_str(lang_str.trim()).ok_or_else(|| {
-            miette::miette!("Unknown language '{}' in --project-dir", lang_str.trim())
-        })?;
+        let lang = parse_lang_arg(lang_str.trim(), "--project-dir")?;
         map.insert(lang, PathBuf::from(dir_str.trim()));
     }
     Ok(map)
@@ -942,18 +910,7 @@ fn resolve_project_roots(
         let canonical = dir
             .canonicalize()
             .map_err(|e| miette::miette!("Cannot access project root {}: {}", dir.display(), e))?;
-        let valid = match lang {
-            dsl::Lang::Go => canonical.join("go.mod").exists(),
-            dsl::Lang::TypeScript => {
-                canonical.join("package.json").exists() || canonical.join("node_modules").exists()
-            }
-            dsl::Lang::Rust => canonical.join("Cargo.toml").exists(),
-            dsl::Lang::Python => {
-                canonical.join("requirements.txt").exists() ||
-                    canonical.join("pyproject.toml").exists()
-            }
-            dsl::Lang::CSharp => is_csharp_project_root(&canonical),
-        };
+        let valid = project::is_valid_project_root_for_lang(&canonical, *lang);
         if !valid {
             return Err(miette::miette!(
                 "Invalid project root for {}: {} does not contain expected markers",
@@ -974,19 +931,7 @@ fn resolve_project_roots(
             for lang in runtime::supported_languages() {
                 if roots.get_root(*lang).is_none() {
                     let env = project::runtime_env(&dir, *lang);
-                    let found = match lang {
-                        dsl::Lang::Go => env.join("go.mod").exists(),
-                        dsl::Lang::TypeScript => {
-                            env.join("package.json").exists() || env.join("node_modules").exists()
-                        }
-                        dsl::Lang::Rust => env.join("Cargo.toml").exists(),
-                        dsl::Lang::Python => {
-                            env.join("requirements.txt").exists() ||
-                                env.join("pyproject.toml").exists()
-                        }
-                        dsl::Lang::CSharp => env.join("polybench.csproj").exists(),
-                    };
-                    if found {
+                    if project::is_valid_project_root_for_lang(&env, *lang) {
                         roots.set_root(*lang, Some(env));
                     }
                 }
@@ -1009,19 +954,30 @@ fn resolve_project_roots(
     Ok(roots)
 }
 
-fn is_csharp_project_root(path: &std::path::Path) -> bool {
-    if path.join("polybench.csproj").exists() {
-        return true;
+fn parse_lang_arg(raw: &str, arg_name: &str) -> Result<dsl::Lang> {
+    dsl::Lang::from_str(raw).ok_or_else(|| {
+        miette::miette!(
+            "Unknown language '{}' for {}. Supported: {}",
+            raw,
+            arg_name,
+            supported_languages_help()
+        )
+    })
+}
+
+fn selected_languages(lang: Option<&str>) -> Result<Vec<dsl::Lang>> {
+    match lang {
+        Some(raw) => Ok(vec![parse_lang_arg(raw, "--lang")?]),
+        None => Ok(runtime::supported_languages().to_vec()),
     }
-    if let Ok(entries) = std::fs::read_dir(path) {
-        for entry in entries.flatten() {
-            let p = entry.path();
-            if p.extension().map(|e| e == "csproj" || e == "sln").unwrap_or(false) {
-                return true;
-            }
-        }
-    }
-    false
+}
+
+fn supported_languages_help() -> String {
+    runtime::supported_languages()
+        .iter()
+        .map(|l| l.as_str().to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 async fn cmd_codegen(file: &PathBuf, lang: &str, output: &PathBuf) -> Result<()> {
@@ -1347,9 +1303,7 @@ fn cmd_add_runtime(runtime: &str) -> Result<()> {
     use colored::Colorize;
     use poly_bench_dsl::Lang;
 
-    let lang = Lang::from_str(runtime).ok_or_else(|| {
-        miette::miette!("Unknown runtime '{}'. Supported: go, ts, rust, python, csharp", runtime)
-    })?;
+    let lang = parse_lang_arg(runtime, "add-runtime")?;
 
     let supported = poly_bench_runtime::supported_languages();
     if !supported.contains(&lang) {
@@ -1382,17 +1336,7 @@ fn cmd_add_runtime(runtime: &str) -> Result<()> {
     }
 
     // Add to defaults.languages
-    if !manifest.defaults.languages.iter().any(|l| {
-        let lower = l.to_lowercase();
-        matches!(
-            (lang, lower.as_str()),
-            (Lang::Go, "go") |
-                (Lang::TypeScript, "ts" | "typescript") |
-                (Lang::Rust, "rust" | "rs") |
-                (Lang::Python, "python" | "py") |
-                (Lang::CSharp, "csharp" | "cs")
-        )
-    }) {
+    if !manifest.defaults.languages.iter().any(|l| Lang::from_str(l.trim()) == Some(lang)) {
         manifest.defaults.languages.push(lang_str.to_string());
     }
 
