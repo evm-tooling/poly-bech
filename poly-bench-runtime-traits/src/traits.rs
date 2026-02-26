@@ -35,6 +35,13 @@ pub trait Runtime: Send + Sync {
         Ok(())
     }
 
+    /// Duration of the last precompile in nanoseconds, if the runtime measured it.
+    /// Used for accurate precompile timing when the runtime does significant work (e.g. cargo
+    /// build).
+    fn last_precompile_nanos(&self) -> Option<u64> {
+        None
+    }
+
     /// Initialize the runtime with suite-level setup
     async fn initialize(&mut self, suite: &SuiteIR) -> Result<()>;
 

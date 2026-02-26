@@ -17,12 +17,19 @@ pub struct CRuntime {
     project_root: Option<PathBuf>,
     anvil_rpc_url: Option<String>,
     cached_binary: Option<(PathBuf, u64)>,
+    last_precompile_nanos: Option<u64>,
 }
 
 impl CRuntime {
     pub fn new() -> Result<Self> {
         let clang_binary = which::which("clang").map_err(|_| miette!("clang not found in PATH"))?;
-        Ok(Self { clang_binary, project_root: None, anvil_rpc_url: None, cached_binary: None })
+        Ok(Self {
+            clang_binary,
+            project_root: None,
+            anvil_rpc_url: None,
+            cached_binary: None,
+            last_precompile_nanos: None,
+        })
     }
 
     pub fn set_project_root(&mut self, path: Option<PathBuf>) {
@@ -151,6 +158,10 @@ impl Runtime for CRuntime {
         Lang::C
     }
 
+    fn last_precompile_nanos(&self) -> Option<u64> {
+        self.last_precompile_nanos
+    }
+
     fn set_anvil_rpc_url(&mut self, url: String) {
         self.anvil_rpc_url = Some(url);
     }
@@ -179,10 +190,12 @@ impl Runtime for CRuntime {
 
         if let Some((ref binary_path, cached_hash)) = self.cached_binary {
             if cached_hash == source_hash && binary_path.exists() {
+                self.last_precompile_nanos = Some(0);
                 return Ok(());
             }
         }
 
+        let pc_start = std::time::Instant::now();
         let work_dir = self.resolve_work_dir()?;
         let binary_path = self.write_source_and_build(
             &work_dir,
@@ -191,6 +204,7 @@ impl Runtime for CRuntime {
             "polybench_runner",
         )?;
         self.cached_binary = Some((binary_path, source_hash));
+        self.last_precompile_nanos = Some(pc_start.elapsed().as_nanos() as u64);
         Ok(())
     }
 
