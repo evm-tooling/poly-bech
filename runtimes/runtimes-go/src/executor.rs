@@ -282,6 +282,7 @@ impl GoRuntime {
 
         cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
         cmd.kill_on_drop(true);
+        let run_start = std::time::Instant::now();
         let child = cmd.spawn().map_err(|e| miette!("Failed to run Go benchmark: {}", e))?;
         let output = if let Some(timeout_ms) = spec.timeout {
             match tokio::time::timeout(
@@ -307,6 +308,7 @@ impl GoRuntime {
             return Err(miette!("Go benchmark failed:\n{}", stderr));
         }
 
+        let run_wall_nanos = run_start.elapsed().as_nanos() as u64;
         let stdout = String::from_utf8_lossy(&output.stdout);
         let json_line = stdout
             .lines()
@@ -315,8 +317,15 @@ impl GoRuntime {
             .ok_or_else(|| miette!("No output from benchmark"))?;
         let result: BenchResultJson = serde_json::from_str(json_line)
             .map_err(|e| miette!("Failed to parse benchmark result: {}\nOutput: {}", e, stdout))?;
+        let mut m = result.into_measurement_with_options(spec.outlier_detection, spec.cv_threshold);
+        let spawn = if let Some(w) = m.warmup_nanos {
+            run_wall_nanos.saturating_sub(w).saturating_sub(m.total_nanos)
+        } else {
+            run_wall_nanos.saturating_sub(m.total_nanos)
+        };
+        m.spawn_nanos = Some(spawn);
 
-        Ok(result.into_measurement_with_options(spec.outlier_detection, spec.cv_threshold))
+        Ok(m)
     }
 
     /// Run benchmark via subprocess (fallback for unsupported platforms)
@@ -396,6 +405,8 @@ impl GoRuntime {
 struct BenchResultJson {
     iterations: u64,
     total_nanos: u64,
+    #[serde(default)]
+    warmup_nanos: Option<u64>,
     nanos_per_op: f64,
     ops_per_sec: f64,
     #[serde(default)]
@@ -425,9 +436,10 @@ impl BenchResultJson {
         let mut m = if self.samples.is_empty() {
             Measurement::from_aggregate(self.iterations, self.total_nanos)
         } else {
-            Measurement::from_samples_with_options(
-                self.samples,
+            Measurement::from_aggregate_with_sample_stats(
                 self.iterations,
+                self.total_nanos,
+                self.samples,
                 outlier_detection,
                 cv_threshold,
             )
@@ -444,6 +456,9 @@ impl BenchResultJson {
         m.async_error_count = self.error_count;
         if !self.error_samples.is_empty() {
             m.async_error_samples = Some(self.error_samples);
+        }
+        if let Some(w) = self.warmup_nanos {
+            m.warmup_nanos = Some(w);
         }
 
         m
@@ -570,6 +585,7 @@ fn generate_auto_main(
         r#"
 func main() {{
 {}{}
+	warmupNanos := uint64(0)
 	var successfulResults []string
 	successfulCount := 0
 	errorCount := 0
@@ -588,18 +604,20 @@ func main() {{
 
     code.push_str(decls.memory_before);
 
-    // Warmup
+    // Warmup (warmup_time_ms takes precedence over warmup_iterations)
+    let warmup_iters = if spec.kind == BenchmarkKind::Async {
+        spec.warmup_iterations.min(spec.async_warmup_cap)
+    } else {
+        spec.warmup_iterations
+    };
     code.push_str(&format!(
         "\n{}",
         shared::generate_warmup_loop(
             bench_call,
             decls.sink_keepalive,
             each_hook,
-            &if spec.kind == BenchmarkKind::Async {
-                spec.warmup.min(spec.async_warmup_cap).to_string()
-            } else {
-                spec.warmup.to_string()
-            }
+            warmup_iters,
+            spec.warmup_time_ms,
         )
     ));
 
@@ -628,18 +646,9 @@ func main() {{
         ));
     }
 
-    // Sample collection
+    // No post-sample collection for sync (rely on batch aggregate, like Go testing.B)
     if !is_async {
-        code.push_str(&format!(
-            "\n{}",
-            shared::generate_sample_collection(
-                bench_call,
-                decls.sink_keepalive,
-                each_hook,
-                "1000",
-                "totalIterations"
-            )
-        ));
+        code.push_str("\n\tsamples := []uint64{}\n");
     }
 }
 
@@ -657,15 +666,15 @@ fn generate_fixed_main(
         r#"
 func main() {{
 	iterations := {}
-	warmup := {}
 	samples := make([]uint64, iterations)
+	warmupNanos := uint64(0)
 	var successfulResults []string
 	successfulCount := 0
 	errorCount := 0
 	var errorSamples []string
 {}{}
 "#,
-        spec.iterations, spec.warmup, decls.sink_decl, decls.memory_decl
+        spec.iterations, decls.sink_decl, decls.memory_decl
     ));
 
     // Before hook
@@ -678,10 +687,21 @@ func main() {{
 
     code.push_str(decls.memory_before);
 
-    // Warmup
+    // Warmup (warmup_time_ms takes precedence over warmup_iterations)
+    let warmup_iters = if spec.kind == BenchmarkKind::Async {
+        spec.warmup_iterations.min(spec.async_warmup_cap)
+    } else {
+        spec.warmup_iterations
+    };
     code.push_str(&format!(
         "\n{}",
-        shared::generate_warmup_loop(bench_call, decls.sink_keepalive, each_hook, "warmup")
+        shared::generate_warmup_loop(
+            bench_call,
+            decls.sink_keepalive,
+            each_hook,
+            warmup_iters,
+            spec.warmup_time_ms,
+        )
     ));
 
     // Fixed measurement loop

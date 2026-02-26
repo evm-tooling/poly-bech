@@ -525,6 +525,7 @@ impl RustRuntime {
 
         cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
         cmd.kill_on_drop(true);
+        let run_start = std::time::Instant::now();
         let child = cmd.spawn().map_err(|e| miette!("Failed to run Rust benchmark: {}", e))?;
         let output = if let Some(timeout_ms) = spec.timeout {
             match tokio::time::timeout(
@@ -550,11 +551,19 @@ impl RustRuntime {
             return Err(miette!("Rust benchmark failed:\n{}", stderr));
         }
 
+        let run_wall_nanos = run_start.elapsed().as_nanos() as u64;
         let stdout = String::from_utf8_lossy(&output.stdout);
         let result: BenchResultJson = serde_json::from_str(&stdout)
             .map_err(|e| miette!("Failed to parse benchmark result: {}\nOutput: {}", e, stdout))?;
+        let mut m = result.into_measurement_with_options(spec.outlier_detection, spec.cv_threshold);
+        let spawn = if let Some(w) = m.warmup_nanos {
+            run_wall_nanos.saturating_sub(w).saturating_sub(m.total_nanos)
+        } else {
+            run_wall_nanos.saturating_sub(m.total_nanos)
+        };
+        m.spawn_nanos = Some(spawn);
 
-        Ok(result.into_measurement_with_options(spec.outlier_detection, spec.cv_threshold))
+        Ok(m)
     }
 }
 
@@ -563,6 +572,8 @@ impl RustRuntime {
 struct BenchResultJson {
     iterations: u64,
     total_nanos: u64,
+    #[serde(default)]
+    warmup_nanos: Option<u64>,
     nanos_per_op: f64,
     ops_per_sec: f64,
     #[serde(default)]
@@ -592,9 +603,10 @@ impl BenchResultJson {
         let mut m = if self.samples.is_empty() {
             Measurement::from_aggregate(self.iterations, self.total_nanos)
         } else {
-            Measurement::from_samples_with_options(
-                self.samples,
+            Measurement::from_aggregate_with_sample_stats(
                 self.iterations,
+                self.total_nanos,
+                self.samples,
                 outlier_detection,
                 cv_threshold,
             )
@@ -619,6 +631,9 @@ impl BenchResultJson {
         }
         if !self.error_samples.is_empty() {
             m.async_error_samples = Some(self.error_samples);
+        }
+        if let Some(w) = self.warmup_nanos {
+            m.warmup_nanos = Some(w);
         }
 
         m
@@ -811,6 +826,7 @@ static ALLOCATOR: alloc_tracker::Allocator<std::alloc::System> = alloc_tracker::
     // Variable declarations
     code.push_str(decls.sink_decl);
     code.push_str(decls.memory_decl);
+    code.push_str("    let mut warmup_nanos: Option<u64> = None;\n");
 
     // Before hook
     if let Some(before) = before_hook {
@@ -830,14 +846,15 @@ static ALLOCATOR: alloc_tracker::Allocator<std::alloc::System> = alloc_tracker::
         BenchMode::Auto => {
             if is_async {
                 // Async + Auto: use capped warmup and async-specific loops
-                let capped_warmup = spec.warmup.min(spec.async_warmup_cap);
+                let warmup_iters = spec.warmup_iterations.min(spec.async_warmup_cap);
 
-                // Warmup with capped iterations
+                // Warmup (warmup_time_ms takes precedence)
                 code.push_str(&shared::generate_warmup_loop(
                     &bench_call,
                     decls.sink_keepalive,
                     each_hook,
-                    &capped_warmup.to_string(),
+                    warmup_iters,
+                    spec.warmup_time_ms,
                 ));
 
                 // Async loop based on policy
@@ -855,7 +872,8 @@ static ALLOCATOR: alloc_tracker::Allocator<std::alloc::System> = alloc_tracker::
                     &bench_call,
                     decls.sink_keepalive,
                     each_hook,
-                    &spec.warmup.to_string(),
+                    spec.warmup_iterations,
+                    spec.warmup_time_ms,
                 ));
 
                 code.push_str(&shared::generate_auto_mode_loop(
@@ -865,13 +883,8 @@ static ALLOCATOR: alloc_tracker::Allocator<std::alloc::System> = alloc_tracker::
                     spec.target_time_ms,
                 ));
 
-                code.push_str(&shared::generate_sample_collection(
-                    &bench_call,
-                    decls.sink_keepalive,
-                    each_hook,
-                    "1000",
-                    "total_iterations",
-                ));
+                // No post-sample collection for sync (rely on batch aggregate, like Go testing.B)
+                code.push_str("    let samples: Vec<u64> = vec![];\n");
             }
         }
         BenchMode::Fixed => {
@@ -882,17 +895,18 @@ static ALLOCATOR: alloc_tracker::Allocator<std::alloc::System> = alloc_tracker::
                 iterations
             ));
 
-            // Warmup (capped for async)
-            let warmup_count = if is_async {
-                spec.warmup.min(spec.async_warmup_cap).to_string()
+            // Warmup (warmup_time_ms takes precedence; cap iterations for async)
+            let warmup_iters = if is_async {
+                spec.warmup_iterations.min(spec.async_warmup_cap)
             } else {
-                spec.warmup.to_string()
+                spec.warmup_iterations
             };
             code.push_str(&shared::generate_warmup_loop(
                 &bench_call,
                 decls.sink_keepalive,
                 each_hook,
-                &warmup_count,
+                warmup_iters,
+                spec.warmup_time_ms,
             ));
 
             if is_async {

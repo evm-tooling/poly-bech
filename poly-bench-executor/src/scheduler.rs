@@ -479,8 +479,8 @@ pub async fn run(
             }
 
             let mut measurements: HashMap<Lang, Measurement> = HashMap::new();
-            let bench_start = Instant::now();
             let strict_fairness = spec_clone.fairness_mode == FairnessMode::Strict;
+            let bench_wall_elapsed: Option<f64>;
 
             if strict_fairness {
                 // Precompile all participating runtimes before timed runs so interleaving does not
@@ -504,6 +504,7 @@ pub async fn run(
                 let mut run_measurements: HashMap<Lang, Vec<Measurement>> = HashMap::new();
                 let strict_label = format!("{}:", suite.name);
                 let strict_timer = start_multi_run_timer(&strict_label, "cyan", run_count);
+                let bench_wall_start = Instant::now();
 
                 // Run-block interleaving: execute run k across all runtimes before run k+1.
                 for run_idx in 0..run_count {
@@ -552,6 +553,7 @@ pub async fn run(
                     }
                 }
                 stop_multi_run_timer(&strict_timer);
+                bench_wall_elapsed = Some(bench_wall_start.elapsed().as_secs_f64());
 
                 for (lang, runs) in run_measurements {
                     if runs.is_empty() {
@@ -568,6 +570,7 @@ pub async fn run(
                 }
             } else {
                 // Run each language benchmark (non-strict fairness: sequential per lang)
+                let bench_wall_start = Instant::now();
                 for lang in langs {
                     if !spec.has_lang(*lang) {
                         continue;
@@ -587,7 +590,6 @@ pub async fn run(
                     })?;
                     let _precompile_elapsed = precompile_start.elapsed();
 
-                    let lang_start = Instant::now();
                     let timer_color = poly_bench_runtime::lang_display(*lang).terminal_color;
                     let lang_label_str = lang_label(*lang);
 
@@ -627,7 +629,7 @@ pub async fn run(
                             } else {
                                 Measurement::aggregate_runs(run_measurements)
                             };
-                            let elapsed = lang_start.elapsed();
+                            let actual_run_secs = aggregated.total_nanos as f64 / 1e9;
                             let ci_str = if let (Some(median), Some(ci_upper)) =
                                 (aggregated.median_across_runs, aggregated.ci_95_upper)
                             {
@@ -644,7 +646,7 @@ pub async fn run(
                                 ci_str,
                                 async_outcome_suffix(spec.kind, &aggregated),
                                 spec_clone.count,
-                                elapsed.as_secs_f64()
+                                actual_run_secs
                             );
                             measurements.insert(*lang, aggregated);
                         }
@@ -657,7 +659,7 @@ pub async fn run(
 
                         match result {
                             Ok(m) => {
-                                let elapsed = lang_start.elapsed();
+                                let actual_run_secs = m.total_nanos as f64 / 1e9;
                                 let colored_label =
                                     colorize_lang_label(&format!("{}:", lang_label_str), *lang);
                                 print!(
@@ -665,7 +667,7 @@ pub async fn run(
                                     colored_label,
                                     format_primary_metric(&m, suite.suite_type),
                                     async_outcome_suffix(spec.kind, &m),
-                                    format!("{:.2}s", elapsed.as_secs_f64()).dimmed()
+                                    format!("{:.2}s", actual_run_secs).dimmed()
                                 );
                                 measurements.insert(*lang, m);
                             }
@@ -688,20 +690,40 @@ pub async fn run(
                     }
                     println!();
                 }
+                bench_wall_elapsed = Some(bench_wall_start.elapsed().as_secs_f64());
             }
 
-            let bench_elapsed = bench_start.elapsed();
+            // Title: only total elapsed (wall when available, else exec)
+            let total_elapsed = bench_wall_elapsed.unwrap_or_else(|| {
+                measurements.values().map(|m| m.total_nanos).sum::<u64>() as f64 / 1e9
+            });
+            println!("  ▸ {} {:.2}s", spec.name.bold(), total_elapsed);
 
-            println!("  ▸ {} {:.2}s", spec.name.bold(), bench_elapsed.as_secs_f64());
+            println!(
+                "    {:<8} {:<16} {:<24} {:>12} {:>16} {:>10}",
+                "lang", "ns/op", "speedup/baseline", "runtime (ms)", "warmupTime (ms)", "spawn(ms)"
+            );
             for lang in langs {
                 if let Some(m) = measurements.get(&lang) {
                     let metric = format_primary_metric(m, suite.suite_type);
                     let rel = lang_versus_counterpart(&measurements, *lang, suite.suite_type)
                         .map(|(peer, ratio)| format!("{:.2}x vs {}", ratio, lang_label(peer)))
                         .unwrap_or_default();
-                    let padded_label = format!("{:<6}", format!("{}:", lang_label(*lang)));
+                    let runtime_secs = m.total_nanos as f64 / 1e9;
+                    let warmup_str = m
+                        .warmup_nanos
+                        .map(|n| format!("{:.2}", n as f64 / 1e6))
+                        .unwrap_or_else(|| "-".to_string());
+                    let spawn_str = m
+                        .spawn_nanos
+                        .map(|n| format!("{:.2}", n as f64 / 1e6))
+                        .unwrap_or_else(|| "-".to_string());
+                    let padded_label = format!("{:<7}", format!("{}:", lang_label(*lang)));
                     let colored_label = colorize_lang_label(&padded_label, *lang);
-                    println!("    {} {:<16} {}", colored_label, metric, rel);
+                    println!(
+                        "    {} {:<16} {:<24} {:>12.2}s {:>16} {:>10}",
+                        colored_label, metric, rel, runtime_secs, warmup_str, spawn_str
+                    );
                 }
             }
             println!();
@@ -770,7 +792,7 @@ mod tests {
     #[test]
     fn test_strict_run_lang_order_is_seeded_and_deterministic() {
         let mut suite = SuiteIR::new("suite".to_string());
-        let mut spec = BenchmarkSpec::new("bench".to_string(), "suite", 100, 10);
+        let mut spec = BenchmarkSpec::new("bench".to_string(), "suite", 100, 10, 0);
         spec.fairness_seed = Some(42);
         suite.benchmarks.push(spec.clone());
 

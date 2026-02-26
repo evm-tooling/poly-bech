@@ -12,6 +12,8 @@ pub const BENCH_RESULT_STRUCT: &str = r#"#[derive(serde::Serialize)]
 struct BenchResult {
     iterations: u64,
     total_nanos: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    warmup_nanos: Option<u64>,
     nanos_per_op: f64,
     ops_per_sec: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -174,24 +176,46 @@ pub fn format_hook(hook: Option<&String>, prefix: &str, indent: &str) -> String 
     .unwrap_or_default()
 }
 
-/// Generate the warmup loop for Rust
+/// Generate the warmup loop for Rust.
+/// When warmup_time_ms > 0, uses time-based warmup (takes precedence).
+/// Otherwise when warmup_iterations > 0, uses iteration-based warmup.
+/// When both are 0, returns empty string (no warmup).
 pub fn generate_warmup_loop(
     bench_call: &str,
     sink_keepalive: &str,
     each_hook: Option<&String>,
-    warmup_count: &str,
+    warmup_iterations: u64,
+    warmup_time_ms: u64,
 ) -> String {
     let each_hook_code = each_hook
         .map(|h| h.trim().lines().map(|line| format!("        {}\n", line)).collect::<String>())
         .unwrap_or_default();
 
-    format!(
-        r#"    // Warmup
-    for _ in 0..{warmup_count} {{
+    if warmup_time_ms > 0 {
+        format!(
+            r#"    // Warmup (time-based)
+    let warmup_start = Instant::now();
+    let warmup_limit = std::time::Duration::from_millis({});
+    while warmup_start.elapsed() < warmup_limit {{
 {each_hook_code}        {bench_call};
 {sink_keepalive}    }}
+    warmup_nanos = Some(warmup_start.elapsed().as_nanos() as u64);
+"#,
+            warmup_time_ms,
+        )
+    } else if warmup_iterations > 0 {
+        format!(
+            r#"    // Warmup
+    let warmup_start = Instant::now();
+    for _ in 0..{warmup_iterations} {{
+{each_hook_code}        {bench_call};
+{sink_keepalive}    }}
+    warmup_nanos = Some(warmup_start.elapsed().as_nanos() as u64);
 "#
-    )
+        )
+    } else {
+        String::new()
+    }
 }
 
 /// Generate fixed iteration measurement loop for Rust
@@ -555,6 +579,7 @@ pub fn generate_async_result_return(iter_var: &str, memory_result: &str) -> Stri
     let result = BenchResult {{
         iterations: {iter_var} as u64,
         total_nanos: total_nanos as u64,
+        warmup_nanos,
         nanos_per_op,
         ops_per_sec,
 {memory_result}        samples,
@@ -653,6 +678,7 @@ pub fn generate_result_return(iter_var: &str, memory_result: &str) -> String {
     let result = BenchResult {{
         iterations: {iter_var} as u64,
         total_nanos: total_nanos as u64,
+        warmup_nanos,
         nanos_per_op,
         ops_per_sec,
 {memory_result}        samples,

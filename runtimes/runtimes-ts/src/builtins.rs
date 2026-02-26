@@ -47,21 +47,36 @@ pub const BENCH_HARNESS_PERF: &str = r#"
         }
     }
 
+    // Warmup helper: warmupTimeMs takes precedence over warmupIterations. Both 0 = skip.
+    // Returns warmup duration in nanoseconds.
+    function doWarmupSync(fn, warmupIterations, warmupTimeMs, useSink) {
+        let warmupNanos = 0;
+        if (warmupTimeMs > 0) {
+            const start = now();
+            const limitNs = warmupTimeMs * 1e6;
+            while ((now() - start) < limitNs) {
+                if (useSink) { globalThis.__polybench_sink = fn(); } else { fn(); }
+            }
+            warmupNanos = now() - start;
+        } else if (warmupIterations > 0) {
+            const start = now();
+            for (let i = 0; i < warmupIterations; i++) {
+                if (useSink) { globalThis.__polybench_sink = fn(); } else { fn(); }
+            }
+            warmupNanos = now() - start;
+        }
+        return warmupNanos;
+    }
+
     // Run a benchmark function (fixed iterations with sink pattern)
     // trackMemory param accepted for API compatibility but ignored - no memory overhead
-    function runBenchmark(fn, iterations, warmup, useSink = true, trackMemory = false) {
+    function runBenchmark(fn, iterations, warmupIterations, warmupTimeMs, useSink = true, trackMemory = false) {
         const samples = new Array(iterations);
         let lastResult;
         
-        // Warmup phase
-        for (let i = 0; i < warmup; i++) {
-            if (useSink) {
-                lastResult = fn();
-                globalThis.__polybench_sink = lastResult;
-            } else {
-                fn();
-            }
-        }
+        // Warmup phase (warmupTimeMs takes precedence)
+        const warmupNanos = doWarmupSync(fn, warmupIterations, warmupTimeMs || 0, useSink);
+        if (useSink) lastResult = globalThis.__polybench_sink;
         
         // Timed phase (no memory tracking)
         let totalNanos = 0;
@@ -84,6 +99,7 @@ pub const BENCH_HARNESS_PERF: &str = r#"
         return {
             iterations: iterations,
             totalNanos: totalNanos,
+            warmupNanos: warmupNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
             bytesPerOp: undefined,
@@ -94,22 +110,15 @@ pub const BENCH_HARNESS_PERF: &str = r#"
 
     // Run a benchmark with auto-calibration (time-based, like Go's testing.B)
     // Total benchmark time is approximately targetTimeMs
-    // Uses batch-average samples (like C) instead of per-iteration timing to avoid GC/V8 variance.
-    function runBenchmarkAuto(fn, targetTimeMs, useSink = true, trackMemory = false, warmupCount = 100) {
+    // Uses batch timing only; no samples (aligns with Go/Rust - aggregate for nanos_per_op).
+    function runBenchmarkAuto(fn, targetTimeMs, useSink = true, trackMemory = false, warmupIterations = 0, warmupTimeMs = 0) {
         const targetNanos = targetTimeMs * 1e6;
         let lastResult;
-        for (let i = 0; i < warmupCount; i++) {
-            if (useSink) {
-                lastResult = fn();
-                globalThis.__polybench_sink = lastResult;
-            } else {
-                fn();
-            }
-        }
+        const warmupNanos = doWarmupSync(fn, warmupIterations, warmupTimeMs, useSink);
+        if (useSink) lastResult = globalThis.__polybench_sink;
         let iterations = 1;
         let totalIterations = 0;
         let totalNanos = 0;
-        const samples = [];
         while (totalNanos < targetNanos) {
             const batchStart = now();
             for (let i = 0; i < iterations; i++) {
@@ -123,7 +132,6 @@ pub const BENCH_HARNESS_PERF: &str = r#"
             const batchElapsed = now() - batchStart;
             totalIterations += iterations;
             totalNanos += batchElapsed;
-            samples.push(batchElapsed / (iterations || 1));
             if (totalNanos >= targetNanos) {
                 break;
             }
@@ -154,10 +162,11 @@ pub const BENCH_HARNESS_PERF: &str = r#"
         return {
             iterations: totalIterations,
             totalNanos: totalNanos,
+            warmupNanos: warmupNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
             bytesPerOp: undefined,
-            samples: samples,
+            samples: [],
             rawResult: normalizeRawResult(lastResult),
         };
     }
@@ -185,9 +194,34 @@ pub const BENCH_HARNESS_PERF: &str = r#"
         return nextSeenCount;
     }
 
+    // Warmup helper for async: warmupTimeMs takes precedence. When using iterations, cap by warmupCap.
+    // Returns warmup duration in nanoseconds.
+    async function doWarmupAsync(fn, warmupIterations, warmupTimeMs, warmupCap, useSink) {
+        let warmupNanos = 0;
+        if (warmupTimeMs > 0) {
+            const start = now();
+            const limitNs = warmupTimeMs * 1e6;
+            while ((now() - start) < limitNs) {
+                try {
+                    if (useSink) { globalThis.__polybench_sink = await fn(); } else { await fn(); }
+                } catch (_) {}
+            }
+            warmupNanos = now() - start;
+        } else if (warmupIterations > 0) {
+            const effective = Math.min(warmupIterations, warmupCap);
+            const start = now();
+            for (let i = 0; i < effective; i++) {
+                try {
+                    if (useSink) { globalThis.__polybench_sink = await fn(); } else { await fn(); }
+                } catch (_) {}
+            }
+            warmupNanos = now() - start;
+        }
+        return warmupNanos;
+    }
+
     // Run an async benchmark function
-    async function runBenchmarkAsync(fn, iterations, warmup, useSink = true, trackMemory = false, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
-        const effectiveWarmup = Math.min(warmup, warmupCap);
+    async function runBenchmarkAsync(fn, iterations, warmupIterations, warmupTimeMs, useSink = true, trackMemory = false, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
         const effectiveSampleCount = Math.min(sampleCap, iterations);
         const samples = [];
         let sampleSeenCount = 0;
@@ -198,19 +232,9 @@ pub const BENCH_HARNESS_PERF: &str = r#"
         let errorCount = 0;
         const policy = normalizeAsyncSamplingPolicy(samplingPolicy);
         
-        // Warmup phase
-        for (let i = 0; i < effectiveWarmup; i++) {
-            try {
-                if (useSink) {
-                    lastResult = await fn();
-                    globalThis.__polybench_sink = lastResult;
-                } else {
-                    lastResult = await fn();
-                }
-            } catch (_) {
-                // Ignore warmup failures; ratio counters are for timed phase only.
-            }
-        }
+        // Warmup phase (warmupTimeMs takes precedence)
+        const warmupNanos = await doWarmupAsync(fn, warmupIterations || 0, warmupTimeMs || 0, warmupCap, useSink);
+        lastResult = useSink ? globalThis.__polybench_sink : undefined;
         
         // Timed phase
         let totalNanos = 0;
@@ -248,6 +272,7 @@ pub const BENCH_HARNESS_PERF: &str = r#"
         return {
             iterations: iterations,
             totalNanos: totalNanos,
+            warmupNanos: warmupNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
             bytesPerOp: undefined,
@@ -261,9 +286,8 @@ pub const BENCH_HARNESS_PERF: &str = r#"
     }
 
     // Run an async benchmark with auto-calibration (time-based)
-    async function runBenchmarkAutoAsync(fn, targetTimeMs, useSink = true, trackMemory = false, warmupCount = 100, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
+    async function runBenchmarkAutoAsync(fn, targetTimeMs, useSink = true, trackMemory = false, warmupIterations = 0, warmupTimeMs = 0, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
         const targetNanos = targetTimeMs * 1e6;
-        const effectiveWarmup = Math.min(warmupCount, warmupCap);
         const effectiveSampleCount = Math.max(0, sampleCap);
         const policy = normalizeAsyncSamplingPolicy(samplingPolicy);
         let lastResult;
@@ -274,19 +298,9 @@ pub const BENCH_HARNESS_PERF: &str = r#"
         const samples = [];
         let sampleSeenCount = 0;
         
-        // Brief warmup
-        for (let i = 0; i < effectiveWarmup; i++) {
-            try {
-                if (useSink) {
-                    lastResult = await fn();
-                    globalThis.__polybench_sink = lastResult;
-                } else {
-                    lastResult = await fn();
-                }
-            } catch (_) {
-                // Ignore warmup failures; ratio counters are for timed phase only.
-            }
-        }
+        // Warmup (warmupTimeMs takes precedence)
+        const warmupNanos = await doWarmupAsync(fn, warmupIterations, warmupTimeMs, warmupCap, useSink);
+        lastResult = useSink ? globalThis.__polybench_sink : undefined;
         
         let totalIterations = 0;
         let totalNanos = 0;
@@ -348,6 +362,7 @@ pub const BENCH_HARNESS_PERF: &str = r#"
         return {
             iterations: totalIterations,
             totalNanos: totalNanos,
+            warmupNanos: warmupNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
             bytesPerOp: undefined,
@@ -360,21 +375,36 @@ pub const BENCH_HARNESS_PERF: &str = r#"
         };
     }
 
+    // Warmup with hook (sync). Returns warmup duration in nanoseconds.
+    function doWarmupSyncWithHook(fn, eachHook, warmupIterations, warmupTimeMs, useSink) {
+        let warmupNanos = 0;
+        if (warmupTimeMs > 0) {
+            const start = now();
+            const limitNs = warmupTimeMs * 1e6;
+            while ((now() - start) < limitNs) {
+                eachHook();
+                if (useSink) { globalThis.__polybench_sink = fn(); } else { fn(); }
+            }
+            warmupNanos = now() - start;
+        } else if (warmupIterations > 0) {
+            const start = now();
+            for (let i = 0; i < warmupIterations; i++) {
+                eachHook();
+                if (useSink) { globalThis.__polybench_sink = fn(); } else { fn(); }
+            }
+            warmupNanos = now() - start;
+        }
+        return warmupNanos;
+    }
+
     // Run a benchmark function with an each-iteration hook
-    function runBenchmarkWithHook(fn, eachHook, iterations, warmup, useSink = true, trackMemory = false) {
+    function runBenchmarkWithHook(fn, eachHook, iterations, warmupIterations, warmupTimeMs, useSink = true, trackMemory = false) {
         const samples = new Array(iterations);
         let lastResult;
         
-        // Warmup phase with hook
-        for (let i = 0; i < warmup; i++) {
-            eachHook();
-            if (useSink) {
-                lastResult = fn();
-                globalThis.__polybench_sink = lastResult;
-            } else {
-                fn();
-            }
-        }
+        // Warmup phase with hook (warmupTimeMs takes precedence)
+        const warmupNanos = doWarmupSyncWithHook(fn, eachHook, warmupIterations || 0, warmupTimeMs || 0, useSink);
+        lastResult = useSink ? globalThis.__polybench_sink : undefined;
         
         // Timed phase with hook (hook runs outside timing)
         let totalNanos = 0;
@@ -398,6 +428,7 @@ pub const BENCH_HARNESS_PERF: &str = r#"
         return {
             iterations: iterations,
             totalNanos: totalNanos,
+            warmupNanos: warmupNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
             bytesPerOp: undefined,
@@ -406,31 +437,46 @@ pub const BENCH_HARNESS_PERF: &str = r#"
         };
     }
 
+    // Warmup with hook (async). Returns warmup duration in nanoseconds.
+    async function doWarmupAsyncWithHook(fn, eachHook, warmupIterations, warmupTimeMs, warmupCap, useSink) {
+        let warmupNanos = 0;
+        if (warmupTimeMs > 0) {
+            const start = now();
+            const limitNs = warmupTimeMs * 1e6;
+            while ((now() - start) < limitNs) {
+                try {
+                    await eachHook();
+                    if (useSink) { globalThis.__polybench_sink = await fn(); } else { await fn(); }
+                } catch (_) {}
+            }
+            warmupNanos = now() - start;
+        } else if (warmupIterations > 0) {
+            const effective = Math.min(warmupIterations, warmupCap);
+            const start = now();
+            for (let i = 0; i < effective; i++) {
+                try {
+                    await eachHook();
+                    if (useSink) { globalThis.__polybench_sink = await fn(); } else { await fn(); }
+                } catch (_) {}
+            }
+            warmupNanos = now() - start;
+        }
+        return warmupNanos;
+    }
+
     // Run an async benchmark function with an each-iteration hook
-    async function runBenchmarkWithHookAsync(fn, eachHook, iterations, warmup, useSink = true, trackMemory = false, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
+    async function runBenchmarkWithHookAsync(fn, eachHook, iterations, warmupIterations, warmupTimeMs, useSink = true, trackMemory = false, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
         const samples = new Array(iterations);
         let lastResult;
         const successfulResults = [];
         const errorSamples = [];
         let successfulCount = 0;
         let errorCount = 0;
-        const effectiveWarmup = Math.min(warmup, warmupCap);
         const policy = normalizeAsyncSamplingPolicy(samplingPolicy);
         
-        // Warmup phase with hook
-        for (let i = 0; i < effectiveWarmup; i++) {
-            try {
-                await eachHook();
-                if (useSink) {
-                    lastResult = await fn();
-                    globalThis.__polybench_sink = lastResult;
-                } else {
-                    lastResult = await fn();
-                }
-            } catch (_) {
-                // Ignore warmup failures; ratio counters are for timed phase only.
-            }
-        }
+        // Warmup phase with hook (warmupTimeMs takes precedence)
+        const warmupNanos = await doWarmupAsyncWithHook(fn, eachHook, warmupIterations || 0, warmupTimeMs || 0, warmupCap, useSink);
+        lastResult = useSink ? globalThis.__polybench_sink : undefined;
         
         // Timed phase with hook (hook runs outside timing)
         let totalNanos = 0;
@@ -468,6 +514,7 @@ pub const BENCH_HARNESS_PERF: &str = r#"
         return {
             iterations: iterations,
             totalNanos: totalNanos,
+            warmupNanos: warmupNanos,
             nanosPerOp: nanosPerOp,
             opsPerSec: opsPerSec,
             bytesPerOp: undefined,
@@ -577,12 +624,21 @@ pub const BENCH_HARNESS_MEMORY: &str = r#"
         }
     }
 
-    function runBenchmark(fn, iterations, warmup, useSink = true, trackMemory = true) {
+    function runBenchmark(fn, iterations, warmupIterations, warmupTimeMs, useSink = true, trackMemory = true) {
         const samples = new Array(iterations);
         let lastResult;
-        for (let i = 0; i < warmup; i++) {
-            if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); }
+        if (warmupTimeMs > 0) {
+            const start = now();
+            const limitNs = warmupTimeMs * 1e6;
+            while ((now() - start) < limitNs) {
+                if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); }
+            }
+        } else if (warmupIterations > 0) {
+            for (let i = 0; i < warmupIterations; i++) {
+                if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); }
+            }
         }
+        lastResult = useSink ? globalThis.__polybench_sink : undefined;
         const memBefore = getMemorySnapshot();
         let totalNanos = 0;
         for (let i = 0; i < iterations; i++) {
@@ -596,12 +652,21 @@ pub const BENCH_HARNESS_MEMORY: &str = r#"
         return { iterations, totalNanos, nanosPerOp: totalNanos / iterations, opsPerSec: 1e9 / (totalNanos / iterations), bytesPerOp, samples, rawResult: normalizeRawResult(lastResult) };
     }
 
-    function runBenchmarkAuto(fn, targetTimeMs, useSink = true, trackMemory = true, warmupCount = 100) {
+    function runBenchmarkAuto(fn, targetTimeMs, useSink = true, trackMemory = true, warmupIterations = 0, warmupTimeMs = 0) {
         const targetNanos = targetTimeMs * 1e6;
         let lastResult;
-        for (let i = 0; i < warmupCount; i++) {
-            if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); }
+        if (warmupTimeMs > 0) {
+            const start = now();
+            const limitNs = warmupTimeMs * 1e6;
+            while ((now() - start) < limitNs) {
+                if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); }
+            }
+        } else if (warmupIterations > 0) {
+            for (let i = 0; i < warmupIterations; i++) {
+                if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); }
+            }
         }
+        lastResult = useSink ? globalThis.__polybench_sink : undefined;
         const memBefore = getMemorySnapshot();
         let iterations = 1, totalIterations = 0, totalNanos = 0;
         const samples = [];
@@ -642,16 +707,25 @@ pub const BENCH_HARNESS_MEMORY: &str = r#"
         return nextSeenCount;
     }
 
-    async function runBenchmarkAsync(fn, iterations, warmup, useSink = true, trackMemory = true, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
-        const effectiveWarmup = Math.min(warmup, warmupCap);
+    async function runBenchmarkAsync(fn, iterations, warmupIterations, warmupTimeMs, useSink = true, trackMemory = true, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
         const effectiveSampleCount = Math.min(sampleCap, iterations);
         const samples = []; let sampleSeenCount = 0, lastResult;
         const successfulResults = [], errorSamples = [];
         let successfulCount = 0, errorCount = 0;
         const policy = normalizeAsyncSamplingPolicy(samplingPolicy);
-        for (let i = 0; i < effectiveWarmup; i++) {
-            try { if (useSink) { lastResult = await fn(); globalThis.__polybench_sink = lastResult; } else { lastResult = await fn(); } } catch (_) {}
+        if (warmupTimeMs > 0) {
+            const start = now();
+            const limitNs = warmupTimeMs * 1e6;
+            while ((now() - start) < limitNs) {
+                try { if (useSink) { lastResult = await fn(); globalThis.__polybench_sink = lastResult; } else { lastResult = await fn(); } } catch (_) {}
+            }
+        } else if (warmupIterations > 0) {
+            const effective = Math.min(warmupIterations, warmupCap);
+            for (let i = 0; i < effective; i++) {
+                try { if (useSink) { lastResult = await fn(); globalThis.__polybench_sink = lastResult; } else { lastResult = await fn(); } } catch (_) {}
+            }
         }
+        lastResult = useSink ? globalThis.__polybench_sink : undefined;
         const memBefore = getMemorySnapshot();
         let totalNanos = 0;
         for (let i = 0; i < iterations; i++) {
@@ -671,18 +745,27 @@ pub const BENCH_HARNESS_MEMORY: &str = r#"
         return { iterations, totalNanos, nanosPerOp: totalNanos / iterations, opsPerSec: 1e9 / (totalNanos / iterations), bytesPerOp, samples, rawResult: normalizeRawResult(lastResult), successfulResults, successfulCount, errorCount, errorSamples };
     }
 
-    async function runBenchmarkAutoAsync(fn, targetTimeMs, useSink = true, trackMemory = true, warmupCount = 100, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
+    async function runBenchmarkAutoAsync(fn, targetTimeMs, useSink = true, trackMemory = true, warmupIterations = 0, warmupTimeMs = 0, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
         const targetNanos = targetTimeMs * 1e6;
-        const effectiveWarmup = Math.min(warmupCount, warmupCap);
         const effectiveSampleCount = Math.max(0, sampleCap);
         const policy = normalizeAsyncSamplingPolicy(samplingPolicy);
         let lastResult;
         const successfulResults = [], errorSamples = [];
         let successfulCount = 0, errorCount = 0;
         const samples = []; let sampleSeenCount = 0;
-        for (let i = 0; i < effectiveWarmup; i++) {
-            try { if (useSink) { lastResult = await fn(); globalThis.__polybench_sink = lastResult; } else { lastResult = await fn(); } } catch (_) {}
+        if (warmupTimeMs > 0) {
+            const start = now();
+            const limitNs = warmupTimeMs * 1e6;
+            while ((now() - start) < limitNs) {
+                try { if (useSink) { lastResult = await fn(); globalThis.__polybench_sink = lastResult; } else { lastResult = await fn(); } } catch (_) {}
+            }
+        } else if (warmupIterations > 0) {
+            const effective = Math.min(warmupIterations, warmupCap);
+            for (let i = 0; i < effective; i++) {
+                try { if (useSink) { lastResult = await fn(); globalThis.__polybench_sink = lastResult; } else { lastResult = await fn(); } } catch (_) {}
+            }
         }
+        lastResult = useSink ? globalThis.__polybench_sink : undefined;
         const memBefore = getMemorySnapshot();
         let totalIterations = 0, totalNanos = 0;
         if (policy === 'fixedCap') {
@@ -711,10 +794,17 @@ pub const BENCH_HARNESS_MEMORY: &str = r#"
         return { iterations: totalIterations, totalNanos, nanosPerOp: totalNanos / denomIterations, opsPerSec: 1e9 / (totalNanos / denomIterations), bytesPerOp, samples, rawResult: normalizeRawResult(lastResult), successfulResults, successfulCount, errorCount, errorSamples };
     }
 
-    function runBenchmarkWithHook(fn, eachHook, iterations, warmup, useSink = true, trackMemory = true) {
+    function runBenchmarkWithHook(fn, eachHook, iterations, warmupIterations, warmupTimeMs, useSink = true, trackMemory = true) {
         const samples = new Array(iterations);
         let lastResult;
-        for (let i = 0; i < warmup; i++) { eachHook(); if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); } }
+        if (warmupTimeMs > 0) {
+            const start = now();
+            const limitNs = warmupTimeMs * 1e6;
+            while ((now() - start) < limitNs) { eachHook(); if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); } }
+        } else if (warmupIterations > 0) {
+            for (let i = 0; i < warmupIterations; i++) { eachHook(); if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); } }
+        }
+        lastResult = useSink ? globalThis.__polybench_sink : undefined;
         const memBefore = getMemorySnapshot();
         let totalNanos = 0;
         for (let i = 0; i < iterations; i++) {
@@ -729,16 +819,25 @@ pub const BENCH_HARNESS_MEMORY: &str = r#"
         return { iterations, totalNanos, nanosPerOp: totalNanos / iterations, opsPerSec: 1e9 / (totalNanos / iterations), bytesPerOp, samples, rawResult: normalizeRawResult(lastResult) };
     }
 
-    async function runBenchmarkWithHookAsync(fn, eachHook, iterations, warmup, useSink = true, trackMemory = true, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
+    async function runBenchmarkWithHookAsync(fn, eachHook, iterations, warmupIterations, warmupTimeMs, useSink = true, trackMemory = true, sampleCap = 50, warmupCap = 5, samplingPolicy = 'timeBudgeted') {
         const samples = new Array(iterations);
         let lastResult;
         const successfulResults = [], errorSamples = [];
         let successfulCount = 0, errorCount = 0;
-        const effectiveWarmup = Math.min(warmup, warmupCap);
         const policy = normalizeAsyncSamplingPolicy(samplingPolicy);
-        for (let i = 0; i < effectiveWarmup; i++) {
-            try { await eachHook(); if (useSink) { lastResult = await fn(); globalThis.__polybench_sink = lastResult; } else { lastResult = await fn(); } } catch (_) {}
+        if (warmupTimeMs > 0) {
+            const start = now();
+            const limitNs = warmupTimeMs * 1e6;
+            while ((now() - start) < limitNs) {
+                try { await eachHook(); if (useSink) { lastResult = await fn(); globalThis.__polybench_sink = lastResult; } else { lastResult = await fn(); } } catch (_) {}
+            }
+        } else if (warmupIterations > 0) {
+            const effective = Math.min(warmupIterations, warmupCap);
+            for (let i = 0; i < effective; i++) {
+                try { await eachHook(); if (useSink) { lastResult = await fn(); globalThis.__polybench_sink = lastResult; } else { lastResult = await fn(); } } catch (_) {}
+            }
         }
+        lastResult = useSink ? globalThis.__polybench_sink : undefined;
         const memBefore = getMemorySnapshot();
         let totalNanos = 0;
         for (let i = 0; i < iterations; i++) {

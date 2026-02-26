@@ -217,7 +217,8 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
                     &bench_call,
                     decls.sink_keepalive,
                     each_hook,
-                    "100"
+                    100,
+                    0,
                 ),
                 auto_loop = shared::generate_auto_mode_loop(
                     &bench_call,
@@ -225,13 +226,7 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
                     each_hook,
                     bench.target_time_ms
                 ),
-                sample_collection = shared::generate_sample_collection(
-                    &bench_call,
-                    decls.sink_keepalive,
-                    each_hook,
-                    "1000",
-                    "total_iterations"
-                ),
+                sample_collection = "    let samples: Vec<u64> = vec![];\n",
                 after_hook = after_hook,
                 memory_result = memory_result,
             ));
@@ -266,7 +261,8 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
                     &bench_call,
                     decls.sink_keepalive,
                     each_hook,
-                    &bench.warmup.to_string()
+                    bench.warmup_iterations,
+                    bench.warmup_time_ms,
                 ),
                 fixed_loop = shared::generate_fixed_mode_loop(
                     &bench_call,

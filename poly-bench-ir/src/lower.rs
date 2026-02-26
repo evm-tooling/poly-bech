@@ -71,7 +71,8 @@ fn lower_suite(
 
     ir.description = suite.description.clone();
     ir.default_iterations = suite.iterations.unwrap_or(1000);
-    ir.default_warmup = suite.warmup.unwrap_or(1000); // Increased from 100 for better JIT optimization
+    ir.default_warmup_iterations = suite.warmup_iterations.unwrap_or(0);
+    ir.default_warmup_time_ms = suite.warmup_time_ms.unwrap_or(0);
 
     // Phase 4: Suite-level configuration
     ir.timeout = suite.timeout;
@@ -308,9 +309,17 @@ fn lower_benchmark(
     fixture_names: &[String],
 ) -> Result<BenchmarkSpec> {
     let iterations = benchmark.iterations.unwrap_or(suite_ir.default_iterations);
-    let warmup = benchmark.warmup.unwrap_or(suite_ir.default_warmup);
+    let warmup_iterations =
+        benchmark.warmup_iterations.unwrap_or(suite_ir.default_warmup_iterations);
+    let warmup_time_ms = benchmark.warmup_time_ms.unwrap_or(suite_ir.default_warmup_time_ms);
 
-    let mut spec = BenchmarkSpec::new(benchmark.name.clone(), suite_name, iterations, warmup);
+    let mut spec = BenchmarkSpec::new(
+        benchmark.name.clone(),
+        suite_name,
+        iterations,
+        warmup_iterations,
+        warmup_time_ms,
+    );
     spec.kind = benchmark.kind;
 
     spec.description = benchmark.description.clone();

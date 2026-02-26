@@ -258,6 +258,7 @@ impl Runtime for PythonRuntime {
             }
         });
 
+        let run_start = std::time::Instant::now();
         let child = cmd.spawn().map_err(|e| miette!("Failed to run Python: {}", e))?;
         let output = if let Some(timeout_ms) = effective_timeout_ms {
             match tokio::time::timeout(
@@ -280,8 +281,16 @@ impl Runtime for PythonRuntime {
             return Err(miette!("Python benchmark failed:\n{}", stderr));
         }
 
+        let run_wall_nanos = run_start.elapsed().as_nanos() as u64;
         let stdout = String::from_utf8_lossy(&output.stdout);
-        parse_benchmark_result(&stdout, spec.outlier_detection, spec.cv_threshold)
+        let mut m = parse_benchmark_result(&stdout, spec.outlier_detection, spec.cv_threshold)?;
+        let spawn = if let Some(w) = m.warmup_nanos {
+            run_wall_nanos.saturating_sub(w).saturating_sub(m.total_nanos)
+        } else {
+            run_wall_nanos.saturating_sub(m.total_nanos)
+        };
+        m.spawn_nanos = Some(spawn);
+        Ok(m)
     }
 
     async fn shutdown(&mut self) -> Result<()> {
@@ -436,7 +445,6 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
     let use_auto_mode = spec.mode == BenchMode::Auto;
     let target_nanos = (spec.target_time_ms as f64) * 1e6;
     let iterations = spec.iterations;
-    let warmup = spec.warmup;
 
     // Wrap impl in a function for consistent execution
     // When use_sink, add return so we can assign to __polybench_sink (prevents DCE)
@@ -464,15 +472,32 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
     if use_memory {
         script.push_str("    tracemalloc.start()\n");
     }
-    script.push_str("    samples = []\n\n");
-    script.push_str(&format!("    for _ in range({}):\n", warmup));
-    script.push_str(&each_hook_code);
-    if use_sink {
-        script.push_str("        __polybench_sink = __polybench_bench()\n");
-    } else {
-        script.push_str("        __polybench_bench()\n");
+    script.push_str("    samples = []\n");
+    script.push_str("    warmup_nanos = 0\n\n");
+    // Warmup (warmup_time_ms takes precedence over warmup_iterations)
+    if spec.warmup_time_ms > 0 {
+        script.push_str(&format!(
+            "    warmup_start = time.perf_counter()\n    warmup_limit_s = {} / 1000.0\n    while (time.perf_counter() - warmup_start) < warmup_limit_s:\n",
+            spec.warmup_time_ms
+        ));
+        script.push_str(&each_hook_code);
+        if use_sink {
+            script.push_str("        __polybench_sink = __polybench_bench()\n");
+        } else {
+            script.push_str("        __polybench_bench()\n");
+        }
+        script.push_str("    warmup_nanos = int((time.perf_counter() - warmup_start) * 1e9)\n\n");
+    } else if spec.warmup_iterations > 0 {
+        script.push_str("    warmup_start = time.perf_counter_ns()\n");
+        script.push_str(&format!("    for _ in range({}):\n", spec.warmup_iterations));
+        script.push_str(&each_hook_code);
+        if use_sink {
+            script.push_str("        __polybench_sink = __polybench_bench()\n");
+        } else {
+            script.push_str("        __polybench_bench()\n");
+        }
+        script.push_str("    warmup_nanos = time.perf_counter_ns() - warmup_start\n\n");
     }
-    script.push_str("\n");
 
     if let Some(before) = before_hook {
         script.push_str("    # Before hook\n");
@@ -566,6 +591,7 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
     script.push_str("    result = {\n");
     script.push_str("        \"iterations\": iterations,\n");
     script.push_str("        \"totalNanos\": float(total_nanos),\n");
+    script.push_str("        \"warmupNanos\": float(warmup_nanos),\n");
     script.push_str("        \"nanosPerOp\": nanos_per_op,\n");
     script.push_str("        \"opsPerSec\": ops_per_sec,\n");
     script.push_str("        \"samples\": samples\n");
@@ -589,6 +615,8 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
 struct BenchResultJson {
     iterations: u64,
     total_nanos: f64,
+    #[serde(default)]
+    warmup_nanos: Option<f64>,
     nanos_per_op: f64,
     ops_per_sec: f64,
     #[serde(default)]
@@ -610,9 +638,10 @@ impl BenchResultJson {
         let mut m = if samples.is_empty() {
             Measurement::from_aggregate(self.iterations, self.total_nanos as u64)
         } else {
-            Measurement::from_samples_with_options(
-                samples,
+            Measurement::from_aggregate_with_sample_stats(
                 self.iterations,
+                self.total_nanos as u64,
+                samples,
                 outlier_detection,
                 cv_threshold,
             )
@@ -623,6 +652,9 @@ impl BenchResultJson {
         }
         if let Some(raw) = self.raw_result {
             m.raw_result = Some(raw);
+        }
+        if let Some(w) = self.warmup_nanos {
+            m.warmup_nanos = Some(w as u64);
         }
 
         m

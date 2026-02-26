@@ -14,7 +14,9 @@ pub enum TokenKind {
     Hex,
     Description,
     Iterations,
-    Warmup,
+    Warmup,           // legacy alias for warmupIterations
+    WarmupIterations, // warmupIterations - number of warmup iterations
+    WarmupTime,       // warmupTime - warmup duration (e.g. 100ms)
 
     // Phase 1: Structured setup keywords
     Declare, // declare
@@ -126,6 +128,8 @@ impl TokenKind {
                 TokenKind::Description |
                 TokenKind::Iterations |
                 TokenKind::Warmup |
+                TokenKind::WarmupIterations |
+                TokenKind::WarmupTime |
                 TokenKind::Declare |
                 TokenKind::Init |
                 TokenKind::Helpers |
@@ -219,7 +223,9 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         "hex" => Some(TokenKind::Hex),
         "description" => Some(TokenKind::Description),
         "iterations" => Some(TokenKind::Iterations),
-        "warmup" => Some(TokenKind::Warmup),
+        "warmup" => Some(TokenKind::Warmup), // legacy alias for warmupIterations
+        "warmupIterations" => Some(TokenKind::WarmupIterations),
+        "warmupTime" => Some(TokenKind::WarmupTime),
 
         // Phase 1: Structured setup keywords
         "declare" => Some(TokenKind::Declare),

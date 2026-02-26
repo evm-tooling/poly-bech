@@ -11,6 +11,7 @@ use std::collections::HashSet;
 pub const BENCH_RESULT_STRUCT: &str = r#"type BenchResult struct {
 	Iterations  uint64   `json:"iterations"`
 	TotalNanos  uint64   `json:"total_nanos"`
+	WarmupNanos uint64   `json:"warmup_nanos,omitempty"`
 	NanosPerOp  float64  `json:"nanos_per_op"`
 	OpsPerSec   float64  `json:"ops_per_sec"`
 	BytesPerOp  uint64   `json:"bytes_per_op"`
@@ -401,25 +402,47 @@ pub fn generate_async_loop_by_policy(
     }
 }
 
-/// Generate the warmup loop
+/// Generate the warmup loop.
+/// When warmup_time_ms > 0, uses time-based warmup (takes precedence).
+/// Otherwise when warmup_iterations > 0, uses iteration-based warmup.
+/// When both are 0, returns empty string (no warmup).
 pub fn generate_warmup_loop(
     bench_call: &str,
     sink_keepalive: &str,
     each_hook: Option<&String>,
-    warmup_count: &str,
+    warmup_iterations: u64,
+    warmup_time_ms: u64,
 ) -> String {
     let each_hook_code = each_hook
         .map(|h| h.trim().lines().map(|line| format!("\t\t{}\n", line)).collect::<String>())
         .unwrap_or_default();
 
-    format!(
-        r#"	// Warmup
-	for i := 0; i < {warmup_count}; i++ {{
+    if warmup_time_ms > 0 {
+        format!(
+            r#"	// Warmup (time-based)
+	warmupStart := time.Now()
+	warmupLimit := time.Duration({}) * time.Millisecond
+	for time.Since(warmupStart) < warmupLimit {{
 {}		{}
 {}	}}
+	warmupNanos = uint64(time.Since(warmupStart).Nanoseconds())
 "#,
-        each_hook_code, bench_call, sink_keepalive
-    )
+            warmup_time_ms, each_hook_code, bench_call, sink_keepalive
+        )
+    } else if warmup_iterations > 0 {
+        format!(
+            r#"	// Warmup
+	warmupStart := time.Now()
+	for i := 0; i < {}; i++ {{
+{}		{}
+{}	}}
+	warmupNanos = uint64(time.Since(warmupStart).Nanoseconds())
+"#,
+            warmup_iterations, each_hook_code, bench_call, sink_keepalive
+        )
+    } else {
+        String::new()
+    }
 }
 
 /// Generate fixed iteration measurement loop
@@ -559,6 +582,7 @@ pub fn generate_result_return(
 	result := BenchResult{{
 		Iterations:  uint64({iter_var}),
 		TotalNanos:  uint64(totalNanos),
+		WarmupNanos: warmupNanos,
 		NanosPerOp:  nanosPerOp,
 		OpsPerSec:   opsPerSec,
 {memory_result}		Samples:     samples,

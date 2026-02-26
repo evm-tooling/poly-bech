@@ -199,14 +199,17 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
                     r#"func bench_{}(iterations int) BenchResult {{
 	// Async-sequential auto mode: one completed call per iteration
 {}{}
+	warmupNanos := uint64(0)
 	var successfulResults []string
 	successfulCount := 0
 	errorCount := 0
 	var errorSamples []string
 {}{}	// Brief warmup ({} iterations)
+	warmupStart := time.Now()
 	for i := 0; i < {}; i++ {{
 {}		{}
 {}	}}
+	warmupNanos = uint64(time.Since(warmupStart).Nanoseconds())
 	
 	var totalIterations int
 	var totalNanos int64
@@ -225,6 +228,7 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 	return BenchResult{{
 		Iterations:  uint64(totalIterations),
 		TotalNanos:  uint64(totalNanos),
+		WarmupNanos: warmupNanos,
 		NanosPerOp:  nanosPerOp,
 		OpsPerSec:   opsPerSec,
 {}		Samples:     samples,
@@ -242,8 +246,8 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
                     decls.memory_decl,
                     before_hook,
                     decls.memory_before,
-                    bench.warmup.min(bench.async_warmup_cap),
-                    bench.warmup.min(bench.async_warmup_cap),
+                    bench.warmup_iterations.min(bench.async_warmup_cap),
+                    bench.warmup_iterations.min(bench.async_warmup_cap),
                     each_hook_code,
                     bench_call,
                     decls.sink_keepalive,
@@ -260,16 +264,20 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
                     memory_result,
                 ));
             } else {
+                let warmup_block = shared::generate_warmup_loop(
+                    &bench_call,
+                    decls.sink_keepalive,
+                    each_hook,
+                    bench.warmup_iterations,
+                    bench.warmup_time_ms,
+                );
                 code.push_str(&format!(
                     r#"func bench_{}(iterations int) BenchResult {{
 	// Auto-calibration mode: iterations parameter is ignored, runs for targetTime
 	targetNanos := int64({})
 {}{}
-{}{}	// Brief warmup ({} iterations)
-	for i := 0; i < {}; i++ {{
-{}		{}
-{}	}}
-	
+	warmupNanos := uint64(0)
+{}{}{}
 {}
 {}
 	nanosPerOp := float64(totalNanos) / float64(totalIterations)
@@ -279,6 +287,7 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 	return BenchResult{{
 		Iterations:  uint64(totalIterations),
 		TotalNanos:  uint64(totalNanos),
+		WarmupNanos: warmupNanos,
 		NanosPerOp:  nanosPerOp,
 		OpsPerSec:   opsPerSec,
 {}		Samples:     samples,
@@ -292,24 +301,14 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
                     decls.memory_decl,
                     before_hook,
                     decls.memory_before,
-                    bench.warmup,
-                    bench.warmup,
-                    each_hook_code,
-                    bench_call,
-                    decls.sink_keepalive,
+                    warmup_block,
                     shared::generate_auto_mode_loop(
                         &bench_call,
                         decls.sink_keepalive,
                         each_hook,
                         bench.target_time_ms
                     ),
-                    shared::generate_sample_collection(
-                        &bench_call,
-                        decls.sink_keepalive,
-                        each_hook,
-                        "1000",
-                        "totalIterations"
-                    ),
+                    "	samples := []uint64{}\n",
                     after_hook,
                     memory_result,
                 ));
@@ -323,6 +322,7 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
                 r#"func bench_{}(iterations int) BenchResult {{
 	samples := make([]uint64, iterations)
 {}{}
+	warmupNanos := uint64(0)
 {}{}{}
 {}
 {}{}
@@ -332,6 +332,7 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
 	return BenchResult{{
 		Iterations:  uint64(iterations),
 		TotalNanos:  totalNanos,
+		WarmupNanos: warmupNanos,
 		NanosPerOp:  nanosPerOp,
 		OpsPerSec:   opsPerSec,
 {}		Samples:     samples,
@@ -348,7 +349,8 @@ fn generate_benchmark(code: &mut String, bench: &BenchmarkSpec, _suite: &SuiteIR
                     &bench_call,
                     decls.sink_keepalive,
                     each_hook,
-                    &bench.warmup.to_string()
+                    bench.warmup_iterations,
+                    bench.warmup_time_ms,
                 ),
                 shared::generate_fixed_mode_loop(
                     &bench_call,
@@ -465,7 +467,7 @@ declare suite rpc performance timeBased sameDataset: false {
     #[test]
     fn test_generate_bench_async_policy_fixed_cap() {
         let mut suite = SuiteIR::new("rpc".to_string());
-        let mut bench = BenchmarkSpec::new("block".to_string(), "rpc", 100, 10);
+        let mut bench = BenchmarkSpec::new("block".to_string(), "rpc", 100, 10, 0);
         bench.kind = BenchmarkKind::Async;
         bench.mode = BenchMode::Auto;
         bench.async_sampling_policy = AsyncSamplingPolicy::FixedCap;
@@ -483,7 +485,7 @@ declare suite rpc performance timeBased sameDataset: false {
     #[test]
     fn test_generate_bench_async_policy_time_budgeted() {
         let mut suite = SuiteIR::new("rpc".to_string());
-        let mut bench = BenchmarkSpec::new("block".to_string(), "rpc", 100, 10);
+        let mut bench = BenchmarkSpec::new("block".to_string(), "rpc", 100, 10, 0);
         bench.kind = BenchmarkKind::Async;
         bench.mode = BenchMode::Auto;
         bench.async_sampling_policy = AsyncSamplingPolicy::TimeBudgeted;

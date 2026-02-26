@@ -285,8 +285,11 @@ fn format_suite_with_source(
     if let Some(n) = suite.iterations {
         write!(out, "{}iterations: {}\n", inner, n).unwrap();
     }
-    if let Some(n) = suite.warmup {
-        write!(out, "{}warmup: {}\n", inner, n).unwrap();
+    if let Some(n) = suite.warmup_iterations {
+        write!(out, "{}warmupIterations: {}\n", inner, n).unwrap();
+    }
+    if let Some(n) = suite.warmup_time_ms {
+        write!(out, "{}warmupTime: {}ms\n", inner, n).unwrap();
     }
     if let Some(n) = suite.timeout {
         write!(out, "{}timeout: {}\n", inner, n).unwrap();
@@ -505,8 +508,11 @@ fn format_suite(out: &mut String, suite: &Suite, indent_level: usize, lang_order
     if let Some(n) = suite.iterations {
         write!(out, "{}iterations: {}\n", inner, n).unwrap();
     }
-    if let Some(n) = suite.warmup {
-        write!(out, "{}warmup: {}\n", inner, n).unwrap();
+    if let Some(n) = suite.warmup_iterations {
+        write!(out, "{}warmupIterations: {}\n", inner, n).unwrap();
+    }
+    if let Some(n) = suite.warmup_time_ms {
+        write!(out, "{}warmupTime: {}ms\n", inner, n).unwrap();
     }
     if let Some(n) = suite.timeout {
         write!(out, "{}timeout: {}\n", inner, n).unwrap();
@@ -788,8 +794,11 @@ fn format_benchmark(out: &mut String, bench: &Benchmark, indent_level: usize, la
     if let Some(n) = bench.iterations {
         write!(out, "{}iterations: {}\n", inner, n).unwrap();
     }
-    if let Some(n) = bench.warmup {
-        write!(out, "{}warmup: {}\n", inner, n).unwrap();
+    if let Some(n) = bench.warmup_iterations {
+        write!(out, "{}warmupIterations: {}\n", inner, n).unwrap();
+    }
+    if let Some(n) = bench.warmup_time_ms {
+        write!(out, "{}warmupTime: {}ms\n", inner, n).unwrap();
     }
     if let Some(n) = bench.timeout {
         write!(out, "{}timeout: {}\n", inner, n).unwrap();
