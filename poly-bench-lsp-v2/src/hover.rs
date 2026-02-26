@@ -3,9 +3,7 @@
 //! This module provides hover information for keywords and identifiers
 //! in poly-bench files, including embedded Go code via gopls,
 //! TypeScript code via typescript-language-server, Rust code via rust-analyzer,
-//! and Python code via pyright/pylsp.
-
-use poly_bench_syntax::Lang;
+//! Python code via pyright/pylsp, and C# via OmniSharp.
 use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position, Url};
 
 use crate::{
@@ -31,12 +29,21 @@ pub fn get_hover(
 
     // Check if we're in an embedded code block
     if let Some(block) = find_block_at_offset(&blocks, offset) {
+        tracing::trace!(
+            "[hover] embedded block lang={:?} uri={} at {}:{}",
+            block.lang,
+            uri,
+            position.line,
+            position.character
+        );
         // Check cache first
         if let Some(cached) = get_cached_hover(uri, position) {
+            tracing::trace!("[hover] cache hit");
             return cached;
         }
 
         let hover = if let Some(module_root) = config.module_root(block.lang) {
+            tracing::trace!("[hover] module_root found: {}", module_root);
             let bench_uri = uri.as_str();
             let bench_path = uri.to_file_path().ok().map(|p| p.to_string_lossy().to_string());
 
@@ -58,6 +65,7 @@ pub fn get_hover(
                 })
             })
         } else {
+            tracing::warn!("[hover] no module_root for embedded lang {:?}", block.lang);
             None
         };
 
@@ -75,6 +83,7 @@ pub fn get_hover(
     }
 
     // Try DSL hover (keywords, AST nodes)
+    tracing::trace!("[hover] falling back to DSL hover");
     get_dsl_hover(doc, position, &source)
 }
 
@@ -135,7 +144,17 @@ fn get_dsl_hover(doc: &Document, position: Position, source: &str) -> Option<Hov
         }
         "property_name" => get_property_documentation(text),
         "chart_function_name" => get_chart_function_documentation(text),
-        "language_tag" => format!("**Language**: `{}`\n\nEmbedded {} code block", text, text),
+        "language_tag" => {
+            let display = match text {
+                "go" => "Go",
+                "ts" | "typescript" => "TypeScript",
+                "rust" => "Rust",
+                "python" => "Python",
+                "csharp" => "C#",
+                _ => text,
+            };
+            format!("**Language**: `{}`\n\nEmbedded {} code block", text, display)
+        }
         "identifier" => {
             // Check if it's a keyword
             if let Some(docs) = keyword_docs(text) {
@@ -560,6 +579,10 @@ fn keyword_docs(word: &str) -> Option<&'static str> {
         "python" | "py" => Some(
             "**Python** language\n\n\
             Python benchmark support.",
+        ),
+        "csharp" => Some(
+            "**C#** language\n\n\
+            C# benchmark support.",
         ),
         _ => None,
     }

@@ -17,8 +17,8 @@ const MARGIN_TOP: f64 = 84.0;
 const MARGIN_BOTTOM: f64 = 24.0;
 const X_AXIS_LABEL_OFFSET: f64 = 46.0;
 const STATS_TOP_GAP: f64 = 18.0;
-const STATS_BOX_HEIGHT: f64 = 104.0;
-const ACCENT_BULLET: &str = "#FFBA07";
+const STATS_HEADER_HEIGHT: f64 = 22.0;
+const STATS_ROW_HEIGHT: f64 = 22.0;
 
 #[derive(Clone, Copy)]
 struct Theme {
@@ -45,7 +45,7 @@ impl Theme {
                 text_muted: "rgba(0,0,0,0.5)",
                 grid: "rgba(0,0,0,0.08)",
                 plot_bg: "rgba(0,0,0,0.02)",
-                bar_outline: "rgba(0,0,0,0.1)",
+                bar_outline: "rgba(0,0,0,0.32)",
                 detail_box_fill: "rgba(0,0,0,0.015)",
                 detail_box_stroke: "rgba(0,0,0,0.14)",
             },
@@ -57,7 +57,7 @@ impl Theme {
                 text_muted: "rgba(255,255,255,0.45)",
                 grid: "rgba(255,255,255,0.10)",
                 plot_bg: "rgba(255,255,255,0.02)",
-                bar_outline: "rgba(255,255,255,0.15)",
+                bar_outline: "rgba(255,255,255,0.28)",
                 detail_box_fill: "rgba(255,255,255,0.015)",
                 detail_box_stroke: "rgba(255,255,255,0.14)",
             },
@@ -89,18 +89,18 @@ pub fn generate(
     let width = directive.width.unwrap_or(980).max(520) as f64;
     let height = directive.height.unwrap_or(680).max(620) as f64;
     let plot_w = (width - MARGIN_LEFT - MARGIN_RIGHT).max(120.0);
+    let langs = available_langs(&filtered);
+    if langs.is_empty() {
+        return empty_chart("No language measurements available");
+    }
+    let (_, _, stats_box_height) = stats_layout(langs.len(), plot_w);
     let plot_h = (height -
         MARGIN_TOP -
         MARGIN_BOTTOM -
         X_AXIS_LABEL_OFFSET -
         STATS_TOP_GAP -
-        STATS_BOX_HEIGHT)
+        stats_box_height)
         .max(120.0);
-
-    let langs = available_langs(&filtered);
-    if langs.is_empty() {
-        return empty_chart("No language measurements available");
-    }
 
     let x_values: Vec<f64> = filtered
         .iter()
@@ -192,8 +192,12 @@ pub fn generate(
   <stop offset=\"100%\" stop-color=\"#B7410E\" stop-opacity=\"0.8\"/>\n\
 </linearGradient>\n\
 <linearGradient id=\"pythonGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-  <stop offset=\"0%\" stop-color=\"#3776AB\" stop-opacity=\"0.95\"/>\n\
-  <stop offset=\"100%\" stop-color=\"#FFD43B\" stop-opacity=\"0.8\"/>\n\
+  <stop offset=\"0%\" stop-color=\"#D8BD4A\" stop-opacity=\"1\"/>\n\
+  <stop offset=\"100%\" stop-color=\"#EEDB7A\" stop-opacity=\"1\"/>\n\
+</linearGradient>\n\
+<linearGradient id=\"csharpGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
+  <stop offset=\"0%\" stop-color=\"#512BD4\" stop-opacity=\"1\"/>\n\
+  <stop offset=\"100%\" stop-color=\"#7C3AED\" stop-opacity=\"1\"/>\n\
 </linearGradient>\n\
 <filter id=\"barShadow\" x=\"-5%\" y=\"-15%\" width=\"110%\" height=\"140%\">\n\
   <feDropShadow dx=\"0\" dy=\"2\" stdDeviation=\"2\" flood-opacity=\"0.25\"/>\n\
@@ -203,18 +207,6 @@ pub fn generate(
     svg.push_str(&format!(
         "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"8\" fill=\"{}\"/>\n",
         MARGIN_LEFT, MARGIN_TOP, plot_w, plot_h, theme.plot_bg
-    ));
-    svg.push_str(&format!(
-        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"1.2\"/>\n",
-        MARGIN_LEFT,
-        MARGIN_TOP + plot_h,
-        MARGIN_LEFT + plot_w,
-        MARGIN_TOP + plot_h,
-        theme.text_muted
-    ));
-    svg.push_str(&format!(
-        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"1.2\"/>\n",
-        MARGIN_LEFT, MARGIN_TOP, MARGIN_LEFT, MARGIN_TOP + plot_h, theme.text_muted
     ));
 
     let ticks = generate_y_ticks(scale, 0.0, y_upper, true, scale_params);
@@ -327,13 +319,13 @@ pub fn generate(
                 }
 
                 if !is_memory && directive.show_error_bars {
-                    draw_error_bar(&mut svg, x, m, &y_to_px, lang_color(*lang));
+                    draw_error_bar(&mut svg, x, m, &y_to_px, series_color(*lang));
                 }
                 svg.push_str(&format!(
                     "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"3.5\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.2\" filter=\"url(#barShadow)\"/>\n",
                     x,
                     y,
-                    lang_color(*lang),
+                    series_color(*lang),
                     theme.bar_outline
                 ));
             }
@@ -344,13 +336,13 @@ pub fn generate(
 
         if !path_segments.is_empty() {
             if directive.show_std_dev {
-                draw_std_dev_band(&mut svg, &band_points, &y_to_px, lang_color(*lang));
+                draw_std_dev_band(&mut svg, &band_points, &y_to_px, series_color(*lang));
             }
             for path in &path_segments {
                 svg.push_str(&format!(
                     "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"2\"/>\n",
                     path,
-                    lang_color(*lang)
+                    series_color(*lang)
                 ));
             }
         }
@@ -380,11 +372,11 @@ pub fn generate(
                 if !current_reg_points.is_empty() {
                     reg_segments.push(current_reg_points);
                 }
-                let regression_color = lang_color(*lang);
+                let regression_color = series_color(*lang);
                 for reg_points in &reg_segments {
                     let reg_path = path_from_points(reg_points);
                     svg.push_str(&format!(
-                        "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\" stroke-dasharray=\"4 3\" opacity=\"0.9\"/>\n",
+                        "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.1\" stroke-dasharray=\"4 3\" opacity=\"0.62\"/>\n",
                         reg_path, regression_color
                     ));
                 }
@@ -506,17 +498,30 @@ pub fn generate(
         MARGIN_LEFT,
         MARGIN_TOP + plot_h + X_AXIS_LABEL_OFFSET + STATS_TOP_GAP,
         plot_w,
-        STATS_BOX_HEIGHT,
+        stats_box_height,
         is_memory,
         theme,
+    ));
+    svg.push_str(&format!(
+        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"1.6\"/>\n",
+        MARGIN_LEFT,
+        MARGIN_TOP + plot_h,
+        MARGIN_LEFT + plot_w,
+        MARGIN_TOP + plot_h,
+        theme.text_muted
+    ));
+    svg.push_str(&format!(
+        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"1.6\"/>\n",
+        MARGIN_LEFT, MARGIN_TOP, MARGIN_LEFT, MARGIN_TOP + plot_h, theme.text_muted
     ));
     svg.push_str("</svg>\n");
     svg
 }
 
 fn available_langs(benchmarks: &[&BenchmarkResult]) -> Vec<Lang> {
-    [Lang::Go, Lang::TypeScript, Lang::Rust, Lang::Python]
-        .into_iter()
+    poly_bench_runtime::supported_languages()
+        .iter()
+        .copied()
         .filter(|lang| benchmarks.iter().any(|b| b.measurements.contains_key(lang)))
         .collect()
 }
@@ -622,7 +627,7 @@ fn legend_block(
             "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"4.5\" fill=\"{}\"/>\n",
             x + 12.0,
             item_y - 3.0,
-            lang_color(*lang)
+            badge_color(*lang)
         ));
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
@@ -640,49 +645,93 @@ fn stats_panel(
     x: f64,
     y: f64,
     width: f64,
-    height: f64,
+    _height: f64,
     is_memory: bool,
     theme: Theme,
 ) -> String {
     let mut svg = String::new();
-    svg.push_str(&format!(
-        "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"8\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
-        x, y, width, height, theme.detail_box_fill, theme.detail_box_stroke
-    ));
+
     if stats.is_empty() {
         return svg;
     }
-    let gap = 12.0;
-    let inner_x = x + 10.0;
-    let inner_w = width - 20.0;
-    let section_w = (inner_w - gap * (stats.len().saturating_sub(1) as f64)) / stats.len() as f64;
-    for (idx, stat) in stats.iter().enumerate() {
-        let sx = inner_x + idx as f64 * (section_w + gap);
-        if idx > 0 {
-            let sep_x = sx - (gap / 2.0);
+    let pad_x = 10.0;
+    let pad_y = 10.0;
+    let table_x = x + pad_x;
+    let table_y = y + pad_y;
+    let table_w = width - pad_x * 2.0;
+    let lang_w = table_w * 0.18;
+    let mean_w = table_w * 0.18;
+    let range_w = table_w * 0.24;
+    let sample_w = table_w * 0.18;
+    let eq_w = (table_w - lang_w - mean_w - range_w - sample_w).max(90.0);
+    let cols = [lang_w, mean_w, range_w, sample_w, eq_w];
+    let headers = ["Language", "Mean", "Min / Max", "Samples / R2", "Regression"];
+    let header_y = table_y + STATS_HEADER_HEIGHT;
+    let table_h = STATS_HEADER_HEIGHT + stats.len() as f64 * STATS_ROW_HEIGHT;
+    svg.push_str(&format!(
+        "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"6\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+        table_x,
+        table_y,
+        table_w,
+        table_h,
+        theme.plot_bg,
+        theme.detail_box_stroke
+    ));
+    svg.push_str(&format!(
+        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+        table_x,
+        header_y,
+        table_x + table_w,
+        header_y,
+        theme.detail_box_stroke
+    ));
+    let mut col_x = table_x;
+    for (idx, col_w) in cols.iter().enumerate() {
+        if idx < headers.len() {
             svg.push_str(&format!(
-                "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"1\" stroke-opacity=\"0.5\"/>\n",
-                sep_x,
-                y + 12.0,
-                sep_x,
-                y + height - 10.0,
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"sans-serif\" font-size=\"10\" font-weight=\"700\" fill=\"{}\">{}</text>\n",
+                col_x + 8.0,
+                table_y + 15.0,
+                theme.text_secondary,
+                headers[idx]
+            ));
+        }
+        col_x += *col_w;
+        if idx < cols.len() - 1 {
+            svg.push_str(&format!(
+                "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+                col_x,
+                table_y,
+                col_x,
+                table_y + table_h,
                 theme.detail_box_stroke
             ));
         }
-        let badge = lang_color(stat.lang);
-        svg.push_str(&format!(
-            "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"5\" fill=\"{}\"/>\n",
-            sx + 10.0,
-            y + 20.0,
-            badge
-        ));
-        svg.push_str(&format!(
-            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"{}\">{}</text>\n",
-            sx + 20.0,
-            y + 24.0,
-            theme.text,
-            lang_label(stat.lang)
-        ));
+    }
+
+    for (idx, stat) in stats.iter().enumerate() {
+        let row_top = header_y + idx as f64 * STATS_ROW_HEIGHT;
+        if idx % 2 == 1 {
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"{}\" fill-opacity=\"0.35\"/>\n",
+                table_x,
+                row_top,
+                table_w,
+                STATS_ROW_HEIGHT,
+                theme.detail_box_fill
+            ));
+        }
+        if idx < stats.len() - 1 {
+            svg.push_str(&format!(
+                "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+                table_x,
+                row_top + STATS_ROW_HEIGHT,
+                table_x + table_w,
+                row_top + STATS_ROW_HEIGHT,
+                theme.detail_box_stroke
+            ));
+        }
+        let baseline_y = row_top + 15.0;
         let r2 = stat
             .regression
             .as_ref()
@@ -691,51 +740,99 @@ fn stats_panel(
         let eq = stat
             .regression
             .as_ref()
-            .map(|m| truncate_text(&m.format_equation(), 24))
+            .map(|m| truncate_text(&m.format_equation(), 34))
             .unwrap_or_else(|| "n/a".to_string());
         let (mean_fmt, range_fmt) = if is_memory {
             (
-                format!("\nmean: {}", Measurement::format_bytes(stat.mean as u64)),
+                Measurement::format_bytes(stat.mean as u64),
                 format!(
-                    "min / max: {} / {}",
+                    "{} / {}",
                     Measurement::format_bytes(stat.min as u64),
                     Measurement::format_bytes(stat.max as u64)
                 ),
             )
         } else {
-            (
-                format!("\nmean: {:.0} ns/op", stat.mean),
-                format!("min / max: {:.0} / {:.0} (ns/op)", stat.min, stat.max),
-            )
+            (format!("{:.0} ns/op", stat.mean), format!("{:.0} / {:.0}", stat.min, stat.max))
         };
-        let lines = vec![
-            mean_fmt,
-            range_fmt,
-            format!("samples: {},\tR²: {}", stat.samples, r2),
-            format!("equation: {}", eq),
-        ];
-        for (line_idx, line) in lines.iter().enumerate() {
-            let ly = y + 38.0 + line_idx as f64 * 16.0;
-            svg.push_str(&format!(
-                "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"2.8\" fill=\"{}\"/>\n",
-                sx + 9.0,
-                ly - 4.0,
-                ACCENT_BULLET
-            ));
-            svg.push_str(&format!(
-                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>\n",
-                sx + 16.0,
-                ly,
-                theme.text_muted,
-                escape_xml(line)
-            ));
-        }
+        let mut x_cursor = table_x;
+        let lang_badge = badge_color(stat.lang);
+        svg.push_str(&format!(
+            "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"4\" fill=\"{}\"/>\n",
+            x_cursor + 9.0,
+            baseline_y - 3.0,
+            lang_badge
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"sans-serif\" font-size=\"10.5\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
+            x_cursor + 17.0,
+            baseline_y,
+            theme.text,
+            lang_label(stat.lang)
+        ));
+        x_cursor += cols[0];
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"sans-serif\" font-size=\"10.5\" fill=\"{}\">{}</text>\n",
+            x_cursor + 8.0,
+            baseline_y,
+            theme.text_muted,
+            mean_fmt
+        ));
+        x_cursor += cols[1];
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"sans-serif\" font-size=\"10.5\" fill=\"{}\">{}</text>\n",
+            x_cursor + 8.0,
+            baseline_y,
+            theme.text_muted,
+            range_fmt
+        ));
+        x_cursor += cols[2];
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"sans-serif\" font-size=\"10.5\" fill=\"{}\">{} / {}</text>\n",
+            x_cursor + 8.0,
+            baseline_y,
+            theme.text_muted,
+            stat.samples,
+            r2
+        ));
+        x_cursor += cols[3];
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"sans-serif\" font-size=\"10.5\" fill=\"{}\">{}</text>\n",
+            x_cursor + 8.0,
+            baseline_y,
+            theme.text_muted,
+            escape_xml(&eq)
+        ));
     }
     svg
 }
 
 fn lang_label(lang: Lang) -> &'static str {
     poly_bench_runtime::lang_full_name(lang)
+}
+
+fn series_color(lang: Lang) -> &'static str {
+    match lang {
+        Lang::Python => "#D8BD4A",
+        _ => lang_color(lang),
+    }
+}
+
+fn badge_color(lang: Lang) -> &'static str {
+    match lang {
+        Lang::Python => "#C6A73B",
+        Lang::CSharp => "#6B32D6",
+        _ => series_color(lang),
+    }
+}
+
+fn stats_layout(count: usize, width: f64) -> (usize, usize, f64) {
+    if count == 0 {
+        return (1, 0, 0.0);
+    }
+    let _ = width;
+    let rows = count;
+    let height = 20.0 + STATS_HEADER_HEIGHT + (rows as f64 * STATS_ROW_HEIGHT) + 12.0;
+    (1, rows, height)
 }
 
 fn model_label(model: &SelectedModel) -> &'static str {

@@ -163,6 +163,9 @@ impl VirtualFileManagers {
     pub fn python(&self) -> VirtualLangManager<'_> {
         VirtualLangManager { managers: self, lang: Lang::Python }
     }
+    pub fn csharp(&self) -> VirtualLangManager<'_> {
+        VirtualLangManager { managers: self, lang: Lang::CSharp }
+    }
 }
 
 impl Default for VirtualFileManagers {

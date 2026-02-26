@@ -2,11 +2,18 @@
 
 /// Generate the example.bench file content
 /// Uses only standard library features - no external dependencies required
-pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool, has_python: bool) -> String {
+pub fn example_bench(
+    has_go: bool,
+    has_ts: bool,
+    has_rust: bool,
+    has_python: bool,
+    has_csharp: bool,
+) -> String {
     let mut content = String::new();
 
     // Add charting import for the after block
-    let lang_count = has_go as i32 + has_ts as i32 + has_rust as i32 + has_python as i32;
+    let lang_count =
+        has_go as i32 + has_ts as i32 + has_rust as i32 + has_python as i32 + has_csharp as i32;
     if lang_count > 1 {
         content.push_str("use std::charting\n\n");
     }
@@ -103,6 +110,28 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool, has_python: boo
         content.push('\n');
     }
 
+    if has_csharp {
+        content.push_str("    setup csharp {\n");
+        content.push_str("        import {\n");
+        content.push_str("            using System;\n");
+        content.push_str("        }\n");
+        content.push_str("        helpers {\n");
+        content.push_str("            static byte[] fib_csharp(byte[] data) {\n");
+        content.push_str("                int n = data[0];\n");
+        content.push_str("                if (n <= 1) return new byte[] { (byte)n };\n");
+        content.push_str("                int a = 0, b = 1;\n");
+        content.push_str("                for (int i = 2; i <= n; i++) {\n");
+        content.push_str("                    int next = a + b;\n");
+        content.push_str("                    a = b;\n");
+        content.push_str("                    b = next;\n");
+        content.push_str("                }\n");
+        content.push_str("                return new byte[] { (byte)(b & 0xFF) };\n");
+        content.push_str("            }\n");
+        content.push_str("        }\n");
+        content.push_str("    }\n");
+        content.push('\n');
+    }
+
     // Fixtures with different input sizes (n values encoded as single bytes)
     content.push_str("    fixture n20 {\n");
     content.push_str("        hex: \"14\"\n");
@@ -143,6 +172,9 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool, has_python: boo
     if has_python {
         content.push_str("        python: fib_python(n20)\n");
     }
+    if has_csharp {
+        content.push_str("        csharp: fib_csharp(n20)\n");
+    }
     content.push_str("    }\n");
     content.push('\n');
 
@@ -158,6 +190,9 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool, has_python: boo
     }
     if has_python {
         content.push_str("        python: fib_python(n30)\n");
+    }
+    if has_csharp {
+        content.push_str("        csharp: fib_csharp(n30)\n");
     }
     content.push_str("    }\n");
     content.push('\n');
@@ -175,6 +210,9 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool, has_python: boo
     if has_python {
         content.push_str("        python: fib_python(n40)\n");
     }
+    if has_csharp {
+        content.push_str("        csharp: fib_csharp(n40)\n");
+    }
     content.push_str("    }\n");
     content.push('\n');
 
@@ -190,6 +228,9 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool, has_python: boo
     }
     if has_python {
         content.push_str("        python: fib_python(n50)\n");
+    }
+    if has_csharp {
+        content.push_str("        csharp: fib_csharp(n50)\n");
     }
     content.push_str("    }\n");
     content.push('\n');
@@ -207,6 +248,9 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool, has_python: boo
     if has_python {
         content.push_str("        python: fib_python(n60)\n");
     }
+    if has_csharp {
+        content.push_str("        csharp: fib_csharp(n60)\n");
+    }
     content.push_str("    }\n");
     content.push('\n');
 
@@ -222,6 +266,9 @@ pub fn example_bench(has_go: bool, has_ts: bool, has_rust: bool, has_python: boo
     }
     if has_python {
         content.push_str("        python: fib_python(n70)\n");
+    }
+    if has_csharp {
+        content.push_str("        csharp: fib_csharp(n70)\n");
     }
     content.push_str("    }\n");
 
@@ -444,6 +491,23 @@ pub fn tsconfig_json() -> String {
     .to_string()
 }
 
+/// Generate C# project file content
+pub fn csharp_csproj(target_framework: &str) -> String {
+    format!(
+        r#"<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>{}</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+</Project>
+"#,
+        target_framework
+    )
+}
+
 /// Internal Python deps always included in .polybench runtime-env (e.g. pyright for LSP).
 /// These are never in polybench.toml; install/remove must not strip them from requirements.txt.
 const PYTHON_INTERNAL_DEPS: &[(&str, &str)] = &[("pyright[nodejs]", "latest")];
@@ -521,7 +585,14 @@ Thumbs.db
 }
 
 /// Generate README.md content
-pub fn readme(name: &str, has_go: bool, has_ts: bool, has_rust: bool, has_python: bool) -> String {
+pub fn readme(
+    name: &str,
+    has_go: bool,
+    has_ts: bool,
+    has_rust: bool,
+    has_python: bool,
+    has_csharp: bool,
+) -> String {
     let mut content = String::new();
 
     content.push_str(&format!("# {}\n\n", name));
@@ -563,6 +634,11 @@ pub fn readme(name: &str, has_go: bool, has_ts: bool, has_rust: bool, has_python
     if has_python {
         content.push_str("        └── python/       # requirements.txt, generated bench code\n");
     }
+    if has_csharp {
+        content.push_str(
+            "        └── csharp/       # polybench.csproj, Program.cs, generated bench code\n",
+        );
+    }
     content.push_str("```\n\n");
 
     content.push_str("## Adding Dependencies\n\n");
@@ -592,6 +668,13 @@ pub fn readme(name: &str, has_go: bool, has_ts: bool, has_rust: bool, has_python
         content.push_str("### Python\n\n");
         content.push_str("```bash\n");
         content.push_str("poly-bench add --py \"numpy==1.0\"\n");
+        content.push_str("```\n\n");
+    }
+
+    if has_csharp {
+        content.push_str("### C#\n\n");
+        content.push_str("```bash\n");
+        content.push_str("poly-bench add --cs \"Newtonsoft.Json@13.0.3\"\n");
         content.push_str("```\n\n");
     }
 
@@ -654,7 +737,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_both_languages() {
-        let content = example_bench(true, true, false, false);
+        let content = example_bench(true, true, false, false, false);
         assert!(content.contains("setup go"));
         assert!(content.contains("setup ts"));
         assert!(content.contains("fibGo(n20)"));
@@ -668,7 +751,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_go_only() {
-        let content = example_bench(true, false, false, false);
+        let content = example_bench(true, false, false, false, false);
         assert!(content.contains("setup go"));
         assert!(!content.contains("setup ts"));
         assert!(!content.contains("baseline: \"go\"")); // No baseline with single language
@@ -677,7 +760,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_all_languages() {
-        let content = example_bench(true, true, true, true);
+        let content = example_bench(true, true, true, true, false);
         assert!(content.contains("setup go"));
         assert!(content.contains("setup ts"));
         assert!(content.contains("setup rust"));
@@ -693,7 +776,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_rust_only() {
-        let content = example_bench(false, false, true, false);
+        let content = example_bench(false, false, true, false, false);
         assert!(!content.contains("setup go"));
         assert!(!content.contains("setup ts"));
         assert!(content.contains("setup rust"));
@@ -704,7 +787,7 @@ mod tests {
     #[test]
     fn test_example_bench_no_external_deps() {
         // Verify no external dependencies are required
-        let content = example_bench(true, true, true, true);
+        let content = example_bench(true, true, true, true, false);
         assert!(!content.contains("sha2"));
         assert!(!content.contains("crypto/sha256"));
         assert!(!content.contains("node:crypto"));

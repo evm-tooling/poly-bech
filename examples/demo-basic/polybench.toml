@@ -10,16 +10,16 @@ languages = [
     "ts",
     "rust",
     "python",
+    "csharp",
 ]
-[python]
 
 [go]
 module = "demo-basic"
 version = "1.21"
 
 [go.dependencies]
-"golang.org/x/crypto/sha3" = "latest"
 "github.com/ChefBingbong/viem-go" = "latest"
+"golang.org/x/crypto/sha3" = "latest"
 
 [ts]
 runtime = "node"
@@ -31,9 +31,13 @@ viem = "latest"
 edition = "2021"
 
 [rust.dependencies]
-lazy_static = "1.5.0"
 eyre = "0.6.12"
 regex = "1.12.3"
+lazy_static = "1.5.0"
+
+[rust.dependencies.alloy]
+version = "1.6.3"
+features = ["full"]
 
 [rust.dependencies.tokio]
 version = "1.49.0"
@@ -53,13 +57,11 @@ features = [
 version = "2.0"
 features = ["keccak"]
 
-[rust.dependencies.alloy]
-version = "1.6.3"
-features = ["full"]
-
 [python.dependencies]
-# 3.10+ has wheels for Python 3.14; 3.9 builds from source on newer Python
 matplotlib = "3.10"
+
+[csharp]
+target_framework = "net8.0"
 
 [output]
 report_formats = []

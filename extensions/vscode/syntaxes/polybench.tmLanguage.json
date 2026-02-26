@@ -184,6 +184,9 @@
           "include": "#setup-python-block"
         },
         {
+          "include": "#setup-csharp-block"
+        },
+        {
           "include": "#fixture-block"
         },
         {
@@ -954,6 +957,125 @@
         }
       ]
     },
+    "setup-csharp-block": {
+      "name": "meta.block.setup.csharp.bench",
+      "begin": "^(\\s*)(setup)\\s+(csharp)\\s*\\{\\s*$",
+      "end": "^\\1\\}\\s*$",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.bench"
+        },
+        "3": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#setup-import-csharp-block"
+        },
+        {
+          "include": "#setup-declare-csharp-block"
+        },
+        {
+          "include": "#setup-init-csharp-block"
+        },
+        {
+          "include": "#setup-helpers-csharp-block"
+        },
+        {
+          "include": "#comment"
+        }
+      ]
+    },
+    "setup-import-csharp-block": {
+      "name": "meta.block.import.csharp.bench",
+      "contentName": "source.csharp.embedded.bench",
+      "begin": "^(\\s*)(import)\\s*\\{",
+      "end": "^\\1\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.cs"
+        }
+      ]
+    },
+    "setup-declare-csharp-block": {
+      "name": "meta.block.declare.csharp.bench",
+      "contentName": "source.csharp.embedded.bench",
+      "begin": "^(\\s*)(declare)\\s*\\{",
+      "end": "^\\1\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.cs"
+        }
+      ]
+    },
+    "setup-init-csharp-block": {
+      "name": "meta.block.init.csharp.bench",
+      "contentName": "source.csharp.embedded.bench",
+      "begin": "^(\\s*)(init)\\s*\\{",
+      "end": "^\\1\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.cs"
+        }
+      ]
+    },
+    "setup-helpers-csharp-block": {
+      "name": "meta.block.helpers.csharp.bench",
+      "contentName": "source.csharp.embedded.bench",
+      "begin": "^(\\s*)(helpers)\\s*\\{",
+      "end": "^\\1\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.cs"
+        }
+      ]
+    },
     "fixture-block": {
       "begin": "\\b(fixture)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
       "end": "^\\s{0,8}\\}\\s*$",
@@ -988,6 +1110,9 @@
         },
         {
           "include": "#fixture-python-block"
+        },
+        {
+          "include": "#fixture-csharp-block"
         },
         {
           "name": "string.quoted.double.bench",
@@ -1053,6 +1178,9 @@
           "include": "#bench-python-block"
         },
         {
+          "include": "#bench-csharp-block"
+        },
+        {
           "include": "#bench-go-line"
         },
         {
@@ -1063,6 +1191,9 @@
         },
         {
           "include": "#bench-python-line"
+        },
+        {
+          "include": "#bench-csharp-line"
         }
       ]
     },
@@ -1202,7 +1333,7 @@
     "bench-hooks": {
       "patterns": [
         {
-          "match": "\\b(skip|validate)\\s+(go|ts|rust|python|py)\\s*:",
+          "match": "\\b(skip|validate)\\s+(go|ts|rust|python|py|csharp)\\s*:",
           "captures": {
             "1": {
               "name": "keyword.control.hook.bench"
@@ -1213,7 +1344,7 @@
           }
         },
         {
-          "match": "\\b(before|after|each)\\s+(go|ts|rust|python|py)\\s*:",
+          "match": "\\b(before|after|each)\\s+(go|ts|rust|python|py|csharp)\\s*:",
           "captures": {
             "1": {
               "name": "keyword.control.hook.bench"
@@ -1462,6 +1593,64 @@
       "patterns": [
         {
           "include": "source.python"
+        }
+      ]
+    },
+    "fixture-csharp-block": {
+      "name": "meta.block.fixture.csharp.bench",
+      "begin": "\\b(csharp)\\s*:\\s*\\{\\s*$",
+      "end": "^\\s{0,12}\\}\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "contentName": "source.csharp.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.cs"
+        }
+      ]
+    },
+    "bench-csharp-block": {
+      "name": "meta.block.bench.csharp.bench",
+      "begin": "\\b(csharp)\\s*:\\s*\\{\\s*$",
+      "end": "^\\s{0,12}\\}\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "contentName": "source.csharp.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.cs"
+        }
+      ]
+    },
+    "bench-csharp-line": {
+      "name": "meta.expression.csharp.bench",
+      "begin": "\\b(csharp)\\s*:\\s*",
+      "end": "$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "contentName": "source.csharp.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.cs"
         }
       ]
     }

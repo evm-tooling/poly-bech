@@ -443,6 +443,7 @@ pub async fn run(
             node_root: project_roots.node_root.clone(),
             rust_root: project_roots.rust_root.clone(),
             python_root: project_roots.python_root.clone(),
+            csharp_root: project_roots.csharp_root.clone(),
         };
         let mut runtimes = create_runtimes(langs, &config)
             .map_err(|e| miette!("Runtime initialization failed: {}", e))?;

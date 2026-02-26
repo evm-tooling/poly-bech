@@ -99,6 +99,7 @@ fn lang_colorize(s: &str, lang: Lang) -> colored::ColoredString {
         Lang::TypeScript => s.cyan(),
         Lang::Rust => s.yellow(),
         Lang::Python => s.bright_blue(),
+        Lang::CSharp => s.magenta(),
     }
 }
 

@@ -30,6 +30,10 @@ pub struct Manifest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub python: Option<PythonConfig>,
 
+    /// C#-specific configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub csharp: Option<CSharpConfig>,
+
     /// Output configuration
     #[serde(default)]
     pub output: OutputConfig,
@@ -151,6 +155,22 @@ pub struct PythonConfig {
     pub dependencies: HashMap<String, String>,
 }
 
+/// C#-specific configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CSharpConfig {
+    /// Target .NET framework (e.g., net8.0)
+    #[serde(default = "default_csharp_target_framework")]
+    pub target_framework: String,
+
+    /// NuGet dependencies (package -> version)
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub dependencies: HashMap<String, String>,
+}
+
+fn default_csharp_target_framework() -> String {
+    "net8.0".to_string()
+}
+
 fn default_python_version() -> String {
     "3.11".to_string()
 }
@@ -266,6 +286,7 @@ impl Manifest {
         let has_ts = languages.iter().any(|l| l == "ts" || l == "typescript");
         let has_rust = languages.iter().any(|l| l == "rust" || l == "rs");
         let has_python = languages.iter().any(|l| l == "python" || l == "py");
+        let has_csharp = languages.iter().any(|l| l == "csharp" || l == "cs");
 
         Self {
             project: ProjectConfig {
@@ -301,6 +322,14 @@ impl Manifest {
             } else {
                 None
             },
+            csharp: if has_csharp {
+                Some(CSharpConfig {
+                    target_framework: default_csharp_target_framework(),
+                    dependencies: HashMap::new(),
+                })
+            } else {
+                None
+            },
             output: OutputConfig::default(),
         }
     }
@@ -325,6 +354,11 @@ impl Manifest {
         self.python.is_some()
     }
 
+    /// Check if C# is enabled
+    pub fn has_csharp(&self) -> bool {
+        self.csharp.is_some()
+    }
+
     /// Get enabled languages
     pub fn enabled_languages(&self) -> Vec<String> {
         let mut langs = Vec::new();
@@ -339,6 +373,9 @@ impl Manifest {
         }
         if self.has_python() {
             langs.push("python".to_string());
+        }
+        if self.has_csharp() {
+            langs.push("csharp".to_string());
         }
         langs
     }
@@ -440,6 +477,26 @@ impl Manifest {
             .as_mut()
             .ok_or_else(|| miette::miette!("Python is not enabled in this project"))?;
         python.dependencies.remove(package);
+        Ok(())
+    }
+
+    /// Add a C# dependency
+    pub fn add_csharp_dependency(&mut self, package: &str, version: &str) -> Result<()> {
+        let csharp = self
+            .csharp
+            .as_mut()
+            .ok_or_else(|| miette::miette!("C# is not enabled in this project"))?;
+        csharp.dependencies.insert(package.to_string(), version.to_string());
+        Ok(())
+    }
+
+    /// Remove a C# dependency
+    pub fn remove_csharp_dependency(&mut self, package: &str) -> Result<()> {
+        let csharp = self
+            .csharp
+            .as_mut()
+            .ok_or_else(|| miette::miette!("C# is not enabled in this project"))?;
+        csharp.dependencies.remove(package);
         Ok(())
     }
 }
@@ -548,5 +605,15 @@ mod tests {
             manifest.rust.as_ref().unwrap().dependencies.get("serde").map(|d| d.version()),
             Some("1.0")
         );
+    }
+
+    #[test]
+    fn test_manifest_new_with_csharp() {
+        let manifest = Manifest::new(
+            "my-project",
+            &["go".to_string(), "ts".to_string(), "csharp".to_string()],
+        );
+        assert!(manifest.has_csharp());
+        assert_eq!(manifest.csharp.as_ref().unwrap().target_framework, "net8.0".to_string());
     }
 }

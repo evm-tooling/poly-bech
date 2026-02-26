@@ -95,7 +95,7 @@ enum Commands {
         #[arg(value_name = "FILE")]
         file: Option<PathBuf>,
 
-        /// Check only benchmarks for a specific language (go, ts, rust, python)
+        /// Check only benchmarks for a specific language (go, ts, rust, python, csharp)
         #[arg(long, value_name = "LANG")]
         lang: Option<String>,
 
@@ -120,7 +120,7 @@ enum Commands {
         #[arg(value_name = "FILE")]
         file: Option<PathBuf>,
 
-        /// Run only benchmarks for a specific language (go, ts, rust, python)
+        /// Run only benchmarks for a specific language (go, ts, rust, python, csharp)
         #[arg(long, value_name = "LANG")]
         lang: Option<String>,
 
@@ -153,6 +153,10 @@ enum Commands {
         /// Python project root directory (where requirements.txt or pyproject.toml is located).
         #[arg(long, value_name = "DIR")]
         python_project: Option<PathBuf>,
+
+        /// C# project root directory (where polybench.csproj/.sln is located).
+        #[arg(long, value_name = "DIR")]
+        csharp_project: Option<PathBuf>,
     },
 
     /// Generate code from a DSL file without running
@@ -211,6 +215,10 @@ enum Commands {
         #[arg(long)]
         py: Option<String>,
 
+        /// C# package (e.g., "Newtonsoft.Json@13.0.3")
+        #[arg(long)]
+        cs: Option<String>,
+
         /// Rust crate features (comma-separated, e.g., "keccak,sha3")
         #[arg(long, value_delimiter = ',')]
         features: Option<Vec<String>>,
@@ -218,7 +226,7 @@ enum Commands {
 
     /// Add a runtime to the project (adds to polybench.toml and builds .polybench)
     AddRuntime {
-        /// Runtime to add (go, ts, rust, python)
+        /// Runtime to add (go, ts, rust, python, csharp)
         #[arg(value_name = "RUNTIME")]
         runtime: String,
     },
@@ -240,6 +248,10 @@ enum Commands {
         /// Python package to remove (e.g., "numpy")
         #[arg(long)]
         py: Option<String>,
+
+        /// C# package to remove (e.g., "Newtonsoft.Json")
+        #[arg(long)]
+        cs: Option<String>,
     },
 
     /// Install dependencies from polybench.toml
@@ -339,6 +351,7 @@ async fn main() -> Result<()> {
             ts_project,
             rust_project,
             python_project,
+            csharp_project,
         } => {
             cmd_run(
                 file,
@@ -350,6 +363,7 @@ async fn main() -> Result<()> {
                 ts_project,
                 rust_project,
                 python_project,
+                csharp_project,
                 cli.verbose,
             )
             .await?;
@@ -363,14 +377,14 @@ async fn main() -> Result<()> {
         Commands::New { name } => {
             cmd_new(&name)?;
         }
-        Commands::Add { go, ts, rs, py, features } => {
-            cmd_add(go, ts, rs, py, features)?;
+        Commands::Add { go, ts, rs, py, cs, features } => {
+            cmd_add(go, ts, rs, py, cs, features)?;
         }
         Commands::AddRuntime { runtime } => {
             cmd_add_runtime(&runtime)?;
         }
-        Commands::Remove { go, ts, rs, py } => {
-            cmd_remove(go, ts, rs, py)?;
+        Commands::Remove { go, ts, rs, py, cs } => {
+            cmd_remove(go, ts, rs, py, cs)?;
         }
         Commands::Install => {
             cmd_install()?;
@@ -494,8 +508,15 @@ async fn cmd_compile(
         Some("ts") | Some("typescript") => vec![dsl::Lang::TypeScript],
         Some("rust") | Some("rs") => vec![dsl::Lang::Rust],
         Some("python") | Some("py") => vec![dsl::Lang::Python],
+        Some("csharp") | Some("cs") => vec![dsl::Lang::CSharp],
         Some(l) => return Err(miette::miette!("Unknown language: {}", l)),
-        None => vec![dsl::Lang::Go, dsl::Lang::TypeScript, dsl::Lang::Rust, dsl::Lang::Python],
+        None => vec![
+            dsl::Lang::Go,
+            dsl::Lang::TypeScript,
+            dsl::Lang::Rust,
+            dsl::Lang::Python,
+            dsl::Lang::CSharp,
+        ],
     };
 
     if run_parallel && files.len() > 1 {
@@ -526,7 +547,7 @@ async fn compile_single_file_cached(
     let ir_result = ir::lower(&ast, bench_file.parent())?;
 
     let bench_count: usize = ir_result.suites.iter().map(|s| s.benchmarks.len()).sum();
-    let project_roots = resolve_project_roots(None, None, None, None, &bench_file)?;
+    let project_roots = resolve_project_roots(None, None, None, None, None, &bench_file)?;
 
     let (compile_errors, stats) =
         executor::validate_benchmarks_with_cache(&ir_result, &langs, &project_roots, cache).await?;
@@ -653,7 +674,7 @@ async fn compile_files_sequential_cached(
         let bench_count: usize = ir_result.suites.iter().map(|s| s.benchmarks.len()).sum();
         total_benchmarks += bench_count;
 
-        let project_roots = resolve_project_roots(None, None, None, None, bench_file)?;
+        let project_roots = resolve_project_roots(None, None, None, None, None, bench_file)?;
 
         let spinner = create_compiling_spinner();
         let (compile_errors, stats) =
@@ -757,6 +778,7 @@ async fn cmd_run(
     ts_project: Option<PathBuf>,
     rust_project: Option<PathBuf>,
     python_project: Option<PathBuf>,
+    csharp_project: Option<PathBuf>,
     verbose: bool,
 ) -> Result<()> {
     use colored::Colorize;
@@ -796,8 +818,15 @@ async fn cmd_run(
         Some("ts") | Some("typescript") => vec![dsl::Lang::TypeScript],
         Some("rust") | Some("rs") => vec![dsl::Lang::Rust],
         Some("python") | Some("py") => vec![dsl::Lang::Python],
+        Some("csharp") | Some("cs") => vec![dsl::Lang::CSharp],
         Some(l) => return Err(miette::miette!("Unknown language: {}", l)),
-        None => vec![dsl::Lang::Go, dsl::Lang::TypeScript, dsl::Lang::Rust, dsl::Lang::Python],
+        None => vec![
+            dsl::Lang::Go,
+            dsl::Lang::TypeScript,
+            dsl::Lang::Rust,
+            dsl::Lang::Python,
+            dsl::Lang::CSharp,
+        ],
     };
 
     // Run each benchmark file
@@ -825,6 +854,7 @@ async fn cmd_run(
             ts_project.clone(),
             rust_project.clone(),
             python_project.clone(),
+            csharp_project.clone(),
             bench_file,
         )?;
 
@@ -940,6 +970,7 @@ fn resolve_project_roots(
     ts_explicit: Option<PathBuf>,
     rust_explicit: Option<PathBuf>,
     python_explicit: Option<PathBuf>,
+    csharp_explicit: Option<PathBuf>,
     bench_file: &PathBuf,
 ) -> Result<ProjectRoots> {
     let mut roots = ProjectRoots::default();
@@ -1000,6 +1031,17 @@ fn resolve_project_roots(
         roots.python_root = Some(canonical);
     }
 
+    // Handle explicit C# project root
+    if let Some(ref dir) = csharp_explicit {
+        let canonical = dir.canonicalize().map_err(|e| {
+            miette::miette!("Cannot access C# project root {}: {}", dir.display(), e)
+        })?;
+        if !is_csharp_project_root(&canonical) {
+            return Err(miette::miette!("No .csproj or .sln found in {}", canonical.display()));
+        }
+        roots.csharp_root = Some(canonical);
+    }
+
     // Search parent directories of the bench file for any missing roots
     let start_dir = bench_file.parent().unwrap_or(std::path::Path::new("."));
     let mut current = start_dir.canonicalize().ok();
@@ -1032,6 +1074,12 @@ fn resolve_project_roots(
                 roots.python_root = Some(python_env);
             }
         }
+        if roots.csharp_root.is_none() && dir.join(project::MANIFEST_FILENAME).exists() {
+            let csharp_env = project::runtime_env_csharp(&dir);
+            if csharp_env.join("polybench.csproj").exists() {
+                roots.csharp_root = Some(csharp_env);
+            }
+        }
         // Fallback: classic layout via detectors (go.mod / package.json / Cargo.toml)
         if roots.go_root.is_none() {
             if let Some(det) = project::get_detector(dsl::Lang::Go) {
@@ -1053,13 +1101,37 @@ fn resolve_project_roots(
                 roots.python_root = det.detect(&dir);
             }
         }
-        if roots.go_root.is_some() && roots.node_root.is_some() && roots.rust_root.is_some() {
+        if roots.csharp_root.is_none() {
+            if let Some(det) = project::get_detector(dsl::Lang::CSharp) {
+                roots.csharp_root = det.detect(&dir);
+            }
+        }
+        if roots.go_root.is_some() &&
+            roots.node_root.is_some() &&
+            roots.rust_root.is_some() &&
+            roots.csharp_root.is_some()
+        {
             break;
         }
         current = dir.parent().map(|p| p.to_path_buf());
     }
 
     Ok(roots)
+}
+
+fn is_csharp_project_root(path: &std::path::Path) -> bool {
+    if path.join("polybench.csproj").exists() {
+        return true;
+    }
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().map(|e| e == "csproj" || e == "sln").unwrap_or(false) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 async fn cmd_codegen(file: &PathBuf, lang: &str, output: &PathBuf) -> Result<()> {
@@ -1313,11 +1385,12 @@ fn cmd_add(
     ts: Option<String>,
     rs: Option<String>,
     py: Option<String>,
+    cs: Option<String>,
     features: Option<Vec<String>>,
 ) -> Result<()> {
-    if go.is_none() && ts.is_none() && rs.is_none() && py.is_none() {
+    if go.is_none() && ts.is_none() && rs.is_none() && py.is_none() && cs.is_none() {
         return Err(miette::miette!(
-            "No dependency specified. Use --go, --ts, --rs, or --py to add a dependency."
+            "No dependency specified. Use --go, --ts, --rs, --py, or --cs to add a dependency."
         ));
     }
 
@@ -1337,6 +1410,10 @@ fn cmd_add(
         project::deps::add_python_dependency(spec)?;
     }
 
+    if let Some(ref spec) = cs {
+        project::deps::add_csharp_dependency(spec)?;
+    }
+
     Ok(())
 }
 
@@ -1345,10 +1422,11 @@ fn cmd_remove(
     ts: Option<String>,
     rs: Option<String>,
     py: Option<String>,
+    cs: Option<String>,
 ) -> Result<()> {
-    if go.is_none() && ts.is_none() && rs.is_none() && py.is_none() {
+    if go.is_none() && ts.is_none() && rs.is_none() && py.is_none() && cs.is_none() {
         return Err(miette::miette!(
-            "No dependency specified. Use --go, --ts, --rs, or --py to remove a dependency."
+            "No dependency specified. Use --go, --ts, --rs, --py, or --cs to remove a dependency."
         ));
     }
 
@@ -1368,6 +1446,10 @@ fn cmd_remove(
         project::deps::remove_python_dependency(package)?;
     }
 
+    if let Some(ref package) = cs {
+        project::deps::remove_csharp_dependency(package)?;
+    }
+
     Ok(())
 }
 
@@ -1376,7 +1458,7 @@ fn cmd_add_runtime(runtime: &str) -> Result<()> {
     use poly_bench_dsl::Lang;
 
     let lang = Lang::from_str(runtime).ok_or_else(|| {
-        miette::miette!("Unknown runtime '{}'. Supported: go, ts, rust, python", runtime)
+        miette::miette!("Unknown runtime '{}'. Supported: go, ts, rust, python, csharp", runtime)
     })?;
 
     let supported = poly_bench_runtime::supported_languages();
@@ -1403,7 +1485,7 @@ fn cmd_add_runtime(runtime: &str) -> Result<()> {
         Lang::TypeScript => manifest.has_ts(),
         Lang::Rust => manifest.has_rust(),
         Lang::Python => manifest.has_python(),
-        _ => false,
+        Lang::CSharp => manifest.has_csharp(),
     };
 
     if already_has {
@@ -1421,7 +1503,8 @@ fn cmd_add_runtime(runtime: &str) -> Result<()> {
             (Lang::Go, "go") |
                 (Lang::TypeScript, "ts" | "typescript") |
                 (Lang::Rust, "rust" | "rs") |
-                (Lang::Python, "python" | "py")
+                (Lang::Python, "python" | "py") |
+                (Lang::CSharp, "csharp" | "cs")
         )
     }) {
         manifest.defaults.languages.push(lang_str.to_string());
@@ -1454,7 +1537,12 @@ fn cmd_add_runtime(runtime: &str) -> Result<()> {
                 dependencies: std::collections::HashMap::new(),
             });
         }
-        _ => {}
+        Lang::CSharp => {
+            manifest.csharp = Some(project::manifest::CSharpConfig {
+                target_framework: "net8.0".to_string(),
+                dependencies: std::collections::HashMap::new(),
+            });
+        }
     }
 
     project::save_manifest(&project_root, &manifest)?;

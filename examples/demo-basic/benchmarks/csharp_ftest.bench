@@ -1,0 +1,45 @@
+declare suite csharpftest performance timeBased sameDataset: false {
+    description: "C# runtime smoke benchmark for demo-basic"
+    warmup: 10
+    targetTime: 1000ms
+    count: 2
+    cvThreshold: 5
+    baseline: "csharp"
+
+    setup csharp {
+        import {
+            using System;
+        }
+
+        helpers {
+            static int SumBytes(byte[] data) {
+                int sum = 0;
+                for (int i = 0; i < data.Length; i++) {
+                    sum += data[i];
+                }
+                return sum;
+            }
+
+            static int XorFold(byte[] data) {
+                int acc = 0;
+                for (int i = 0; i < data.Length; i++) {
+                    acc ^= (data[i] << (i % 8));
+                }
+                return acc;
+            }
+        }
+    }
+
+    fixture sample {
+        hex: "0102030405060708090a0b0c0d0e0f10"
+    }
+
+    bench sum_bytes {
+        csharp: SumBytes(sample)
+    }
+
+    bench xor_fold {
+        csharp: XorFold(sample)
+    }
+
+}

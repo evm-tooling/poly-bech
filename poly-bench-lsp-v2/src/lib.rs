@@ -34,7 +34,10 @@ pub async fn run_server() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("poly_bench_lsp_v2=info".parse().unwrap()),
+                .add_directive("info".parse().unwrap())
+                .add_directive("poly_bench_lsp_v2=debug".parse().unwrap())
+                .add_directive("runtimes_csharp=debug".parse().unwrap())
+                .add_directive("poly_bench_lsp_traits=debug".parse().unwrap()),
         )
         .with_writer(std::io::stderr)
         .init();

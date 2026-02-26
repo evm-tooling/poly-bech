@@ -52,6 +52,7 @@ pub fn get_code(lang: Lang) -> String {
         Lang::TypeScript => TS_ANVIL.to_string(),
         Lang::Rust => RUST_ANVIL.to_string(),
         Lang::Python => PYTHON_ANVIL.to_string(),
+        Lang::CSharp => CSHARP_ANVIL.to_string(),
     }
 }
 
@@ -80,6 +81,12 @@ const PYTHON_ANVIL: &str = r#"
 # The Anvil node is automatically started by poly-bench before benchmarks run.
 import os
 ANVIL_RPC_URL = os.environ.get("ANVIL_RPC_URL", "")
+"#;
+
+const CSHARP_ANVIL: &str = r#"
+// std::anvil - Anvil RPC URL from poly-bench (managed by scheduler)
+// The Anvil node is automatically started by poly-bench before benchmarks run.
+var ANVIL_RPC_URL = Environment.GetEnvironmentVariable("ANVIL_RPC_URL") ?? string.Empty;
 "#;
 
 #[cfg(test)]

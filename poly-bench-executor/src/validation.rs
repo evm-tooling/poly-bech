@@ -142,6 +142,7 @@ pub async fn validate_benchmarks(
         node_root: project_roots.node_root.clone(),
         rust_root: project_roots.rust_root.clone(),
         python_root: project_roots.python_root.clone(),
+        csharp_root: project_roots.csharp_root.clone(),
     };
     let runtimes = create_runtimes_arc(langs, &config);
 
@@ -335,6 +336,7 @@ pub async fn validate_benchmarks_with_cache(
         node_root: project_roots.node_root.clone(),
         rust_root: project_roots.rust_root.clone(),
         python_root: project_roots.python_root.clone(),
+        csharp_root: project_roots.csharp_root.clone(),
     };
     let runtimes = create_runtimes_arc(langs, &config);
 
