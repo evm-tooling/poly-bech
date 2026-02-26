@@ -8,8 +8,8 @@
 //! a repo where it was gitignored.
 
 use crate::{
-    error::ProjectError, manifest, runtime_env_go, runtime_env_python, runtime_env_rust,
-    runtime_env_ts, templates, terminal,
+    error::ProjectError, manifest, runtime_env_csharp, runtime_env_go, runtime_env_python,
+    runtime_env_rust, runtime_env_ts, templates, terminal,
 };
 use miette::Result;
 use std::{
@@ -93,6 +93,10 @@ pub fn build_project(options: &BuildOptions) -> Result<()> {
     // Build Python environment
     if manifest.has_python() {
         build_python_env(&project_root, manifest.python.as_ref().unwrap(), options)?;
+    }
+
+    if manifest.has_csharp() {
+        build_csharp_env(&project_root, manifest.csharp.as_ref().unwrap(), options)?;
     }
 
     println!();
@@ -480,6 +484,168 @@ fn build_python_env(
     }
 
     terminal::success_indented("Python environment ready");
+
+    Ok(())
+}
+
+fn build_csharp_env(
+    project_root: &Path,
+    csharp_config: &manifest::CSharpConfig,
+    options: &BuildOptions,
+) -> Result<()> {
+    terminal::section("C# environment");
+
+    let csharp_env = runtime_env_csharp(project_root);
+    std::fs::create_dir_all(&csharp_env)
+        .map_err(|e| miette::miette!("Failed to create {}: {}", csharp_env.display(), e))?;
+
+    let csproj_path = csharp_env.join("polybench.csproj");
+    if !csproj_path.exists() || options.force {
+        let csproj_content = templates::csharp_csproj(&csharp_config.target_framework);
+        std::fs::write(&csproj_path, csproj_content)
+            .map_err(|e| miette::miette!("Failed to write polybench.csproj: {}", e))?;
+        if options.force {
+            terminal::success_indented("Regenerated polybench.csproj");
+        } else {
+            terminal::success_indented("Created polybench.csproj");
+        }
+    } else {
+        terminal::info_indented("polybench.csproj exists (use --force to regenerate)");
+    }
+
+    let program_path = csharp_env.join("Program.cs");
+    if !program_path.exists() {
+        std::fs::write(
+            &program_path,
+            "public static class Program { public static void Main() {} }\n",
+        )
+        .map_err(|e| miette::miette!("Failed to write Program.cs: {}", e))?;
+        terminal::success_indented("Created Program.cs");
+    }
+
+    install_local_csharp_ls(&csharp_env, options)?;
+
+    if !csharp_config.dependencies.is_empty() {
+        for (package, version) in &csharp_config.dependencies {
+            let spec = if version == "latest" {
+                package.clone()
+            } else {
+                format!("{}@{}", package, version)
+            };
+            let spinner = terminal::indented_spinner(&format!("Adding {}...", spec));
+            let output = terminal::run_command_with_spinner(
+                &spinner,
+                Command::new("dotnet")
+                    .args(["add", "polybench.csproj", "package", package, "--version", version])
+                    .current_dir(&csharp_env),
+            )
+            .map_err(|e| miette::miette!("Failed to run dotnet add package: {}", e))?;
+            if !output.status.success() {
+                terminal::finish_failure_indented(
+                    &spinner,
+                    &format!("Failed to add package {}", package),
+                );
+                terminal::print_stderr_excerpt(&output.stderr, 8);
+                return Err(command_failure(
+                    &format!("dotnet add package {}", package),
+                    &csharp_env,
+                    &output,
+                    "Fix NuGet package/version and rerun build.",
+                ));
+            }
+            terminal::finish_success_indented(&spinner, package);
+        }
+    }
+
+    if !options.skip_install {
+        let spinner = terminal::indented_spinner("Running dotnet restore...");
+        let output = terminal::run_command_with_spinner(
+            &spinner,
+            Command::new("dotnet").args(["restore", "polybench.csproj"]).current_dir(&csharp_env),
+        )
+        .map_err(|e| miette::miette!("Failed to run dotnet restore: {}", e))?;
+
+        if output.status.success() {
+            terminal::finish_success_indented(&spinner, "C# dependencies restored");
+        } else {
+            terminal::finish_failure_indented(&spinner, "dotnet restore failed");
+            terminal::print_stderr_excerpt(&output.stderr, 8);
+            return Err(command_failure(
+                "dotnet restore polybench.csproj",
+                &csharp_env,
+                &output,
+                "Fix NuGet restore issues and rerun build.",
+            ));
+        }
+    } else {
+        terminal::info_indented("Skipping dotnet restore (--skip-install)");
+    }
+
+    terminal::success_indented("C# environment ready");
+    Ok(())
+}
+
+fn install_local_csharp_ls(csharp_env: &Path, options: &BuildOptions) -> Result<()> {
+    let local_dir = csharp_env.join(".csharp-ls");
+    std::fs::create_dir_all(&local_dir)
+        .map_err(|e| miette::miette!("Failed to create {}: {}", local_dir.display(), e))?;
+
+    let local_bin_name = if cfg!(windows) { "csharp-ls.cmd" } else { "csharp-ls" };
+    let local_bin_path = local_dir.join(local_bin_name);
+
+    let src = std::env::var("POLYBENCH_CSHARP_LSP_BIN")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.exists())
+        .or_else(|| which::which("csharp-ls").ok());
+
+    let Some(src_path) = src else {
+        terminal::info_indented(
+            "C# LSP not found. Install csharp-ls or set POLYBENCH_CSHARP_LSP_BIN.",
+        );
+        return Ok(());
+    };
+
+    let should_copy = options.force || !local_bin_path.exists();
+    if should_copy {
+        std::fs::copy(&src_path, &local_bin_path).map_err(|e| {
+            miette::miette!(
+                "Failed to copy csharp-ls from {} to {}: {}",
+                src_path.display(),
+                local_bin_path.display(),
+                e
+            )
+        })?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&local_bin_path)
+                .map_err(|e| {
+                    miette::miette!(
+                        "Failed to read local csharp-ls metadata ({}): {}",
+                        local_bin_path.display(),
+                        e
+                    )
+                })?
+                .permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&local_bin_path, perms).map_err(|e| {
+                miette::miette!(
+                    "Failed to set executable bit on {}: {}",
+                    local_bin_path.display(),
+                    e
+                )
+            })?;
+        }
+        terminal::success_indented(&format!(
+            "Installed local csharp-ls at {}",
+            local_bin_path.display()
+        ));
+    } else {
+        terminal::info_indented("Local csharp-ls exists (use --force to refresh)");
+    }
 
     Ok(())
 }

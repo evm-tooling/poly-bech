@@ -502,6 +502,7 @@ module.exports = grammar({
       'typescript',
       'rust',
       'python',
+      'csharp',
     ),
 
     _code_or_inline: $ => choice(

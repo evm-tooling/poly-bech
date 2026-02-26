@@ -30,6 +30,7 @@ pub fn get_code(lang: Lang) -> String {
         Lang::TypeScript => TS_CONSTANTS.to_string(),
         Lang::Rust => RUST_CONSTANTS.to_string(),
         Lang::Python => PYTHON_CONSTANTS.to_string(),
+        Lang::CSharp => CSHARP_CONSTANTS.to_string(),
     }
 }
 
@@ -55,6 +56,12 @@ const PYTHON_CONSTANTS: &str = r#"
 # std::constants - Mathematical constants from poly-bench standard library
 std_PI = 3.14159265358979323846
 std_E = 2.71828182845904523536
+"#;
+
+const CSHARP_CONSTANTS: &str = r#"
+// std::constants - Mathematical constants from poly-bench standard library
+const double std_PI = 3.14159265358979323846;
+const double std_E = 2.71828182845904523536;
 "#;
 
 #[cfg(test)]

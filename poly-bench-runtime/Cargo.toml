@@ -17,6 +17,7 @@ runtimes-go = { path = "../runtimes/runtimes-go" }
 runtimes-ts = { path = "../runtimes/runtimes-ts" }
 runtimes-rust = { path = "../runtimes/runtimes-rust" }
 runtimes-python = { path = "../runtimes/runtimes-python" }
+runtimes-csharp = { path = "../runtimes/runtimes-csharp" }
 miette.workspace = true
 serde.workspace = true
 serde_json.workspace = true

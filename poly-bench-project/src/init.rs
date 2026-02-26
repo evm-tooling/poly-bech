@@ -2,8 +2,8 @@
 
 use crate::{
     manifest::{self, Manifest},
-    runtime_env_go, runtime_env_python, runtime_env_rust, runtime_env_ts, templates, terminal,
-    BENCHMARKS_DIR, MANIFEST_FILENAME,
+    runtime_env_csharp, runtime_env_go, runtime_env_python, runtime_env_rust, runtime_env_ts,
+    templates, terminal, BENCHMARKS_DIR, MANIFEST_FILENAME,
 };
 use miette::Result;
 use std::{path::PathBuf, process::Command};
@@ -69,6 +69,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     let has_ts = languages.iter().any(|l| l == "ts");
     let has_rust = languages.iter().any(|l| l == "rust");
     let has_python = languages.iter().any(|l| l == "python");
+    let has_csharp = languages.iter().any(|l| l == "csharp" || l == "cs");
 
     // Create manifest
     let manifest = Manifest::new(&project_name, &languages);
@@ -89,7 +90,8 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     // Create example benchmark
     if !options.no_example {
         let example_path = benchmarks_dir.join("example.bench");
-        let example_content = templates::example_bench(has_go, has_ts, has_rust, has_python);
+        let example_content =
+            templates::example_bench(has_go, has_ts, has_rust, has_python, has_csharp);
         std::fs::write(&example_path, example_content)
             .map_err(|e| miette::miette!("Failed to write example.bench: {}", e))?;
         if !options.quiet {
@@ -198,6 +200,29 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         }
     }
 
+    if has_csharp {
+        let csharp_env = runtime_env_csharp(&project_dir);
+        std::fs::create_dir_all(&csharp_env)
+            .map_err(|e| miette::miette!("Failed to create {}: {}", csharp_env.display(), e))?;
+        let target_framework =
+            manifest.csharp.as_ref().map(|c| c.target_framework.as_str()).unwrap_or("net8.0");
+        std::fs::write(
+            csharp_env.join("polybench.csproj"),
+            templates::csharp_csproj(target_framework),
+        )
+        .map_err(|e| miette::miette!("Failed to write polybench.csproj: {}", e))?;
+        std::fs::write(
+            csharp_env.join("Program.cs"),
+            "public static class Program { public static void Main() {} }\n",
+        )
+        .map_err(|e| miette::miette!("Failed to write Program.cs: {}", e))?;
+        if !options.quiet {
+            terminal::success(
+                "Created .polybench/runtime-env/csharp/ (polybench.csproj, Program.cs)",
+            );
+        }
+    }
+
     // Create .gitignore
     let gitignore_path = project_dir.join(".gitignore");
     // Append to existing .gitignore or create new one
@@ -220,7 +245,8 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     // Create README.md
     let readme_path = project_dir.join("README.md");
     if !readme_path.exists() {
-        let readme_content = templates::readme(&project_name, has_go, has_ts, has_rust, has_python);
+        let readme_content =
+            templates::readme(&project_name, has_go, has_ts, has_rust, has_python, has_csharp);
         std::fs::write(&readme_path, readme_content)
             .map_err(|e| miette::miette!("Failed to write README.md: {}", e))?;
         if !options.quiet {

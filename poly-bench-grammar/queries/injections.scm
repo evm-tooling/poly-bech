@@ -245,3 +245,60 @@
   (inline_code) @injection.content
   (#any-of? @_lang "python" "py")
   (#set! injection.language "python"))
+
+; C# setup/implementation/hooks (including cs alias)
+(setup_block
+  language: (language_tag) @_lang
+  (setup_body
+    (import_section
+      (code_block
+        (embedded_code) @injection.content)))
+  (#any-of? @_lang "csharp" "cs")
+  (#set! injection.language "c_sharp"))
+
+(setup_block
+  language: (language_tag) @_lang
+  (setup_body
+    (declare_section
+      (code_block
+        (embedded_code) @injection.content)))
+  (#any-of? @_lang "csharp" "cs")
+  (#set! injection.language "c_sharp"))
+
+(setup_block
+  language: (language_tag) @_lang
+  (setup_body
+    (init_section
+      (code_block
+        (embedded_code) @injection.content)))
+  (#any-of? @_lang "csharp" "cs")
+  (#set! injection.language "c_sharp"))
+
+(setup_block
+  language: (language_tag) @_lang
+  (setup_body
+    (helpers_section
+      (code_block
+        (embedded_code) @injection.content)))
+  (#any-of? @_lang "csharp" "cs")
+  (#set! injection.language "c_sharp"))
+
+(language_implementation
+  language: (language_tag) @_lang
+  (code_block
+    (embedded_code) @injection.content)
+  (#any-of? @_lang "csharp" "cs")
+  (#set! injection.language "c_sharp"))
+
+(hook_flat
+  language: (language_tag) @_lang
+  (code_block
+    (embedded_code) @injection.content)
+  (#any-of? @_lang "csharp" "cs")
+  (#set! injection.language "c_sharp"))
+
+(language_implementation
+  language: (language_tag) @_lang
+  (inline_code) @injection.content
+  (#any-of? @_lang "csharp" "cs")
+  (#set! injection.language "c_sharp"))

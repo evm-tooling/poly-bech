@@ -24,6 +24,8 @@ pub struct ProjectRoots {
     pub rust_root: Option<PathBuf>,
     /// Python project root (directory containing requirements.txt or pyproject.toml)
     pub python_root: Option<PathBuf>,
+    /// C# project root (directory containing .csproj/.sln)
+    pub csharp_root: Option<PathBuf>,
 }
 
 pub use comparison::{BenchmarkResult, BenchmarkResults, SuiteResults};

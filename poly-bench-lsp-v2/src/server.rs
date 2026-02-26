@@ -252,6 +252,10 @@ impl LanguageServer for PolyBenchLanguageServer {
                     info!("Detected {} change, clearing Python caches", filename);
                     self.virtual_file_managers.clear_caches_for_lang(DslLang::Python);
                 }
+                ".sln" | "polybench.csproj" => {
+                    info!("Detected {} change, clearing C# caches", filename);
+                    self.virtual_file_managers.clear_caches_for_lang(DslLang::CSharp);
+                }
                 _ => {}
             }
         }
@@ -579,6 +583,7 @@ fn to_syntax_lang(l: poly_bench_dsl::Lang) -> SyntaxLang {
         poly_bench_dsl::Lang::TypeScript => SyntaxLang::TypeScript,
         poly_bench_dsl::Lang::Rust => SyntaxLang::Rust,
         poly_bench_dsl::Lang::Python => SyntaxLang::Python,
+        poly_bench_dsl::Lang::CSharp => SyntaxLang::CSharp,
     }
 }
 
@@ -815,7 +820,10 @@ fn determine_completion_context(
         let line_trimmed = line.trim();
         if line_trimmed.starts_with("go:") ||
             line_trimmed.starts_with("ts:") ||
-            line_trimmed.starts_with("rust:")
+            line_trimmed.starts_with("rust:") ||
+            line_trimmed.starts_with("python:") ||
+            line_trimmed.starts_with("csharp:") ||
+            line_trimmed.starts_with("cs:")
         {
             return CompletionContext::EmbeddedCode;
         }
@@ -1414,7 +1422,7 @@ fn get_charting_param_completions() -> Vec<CompletionItem> {
         param_completion("minSpeedup", "number", "Only show benchmarks with speedup >= N"),
         enum_param_completion(
             "filterWinner",
-            &["go", "ts", "rust", "python", "all"],
+            &["go", "ts", "rust", "python", "csharp", "all"],
             "Filter by winner language",
         ),
         array_param_completion("includeBenchmarks", "Only include these benchmark names"),
@@ -1678,6 +1686,28 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
             ..Default::default()
         },
         CompletionItem {
+            label: "setup python".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some(
+                "setup python {\n\timport {\n\t\t$1\n\t}\n\n\thelpers {\n\t\t$0\n\t}\n}"
+                    .to_string(),
+            ),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Define Python setup block".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "setup csharp".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some(
+                "setup csharp {\n\timport {\n\t\tusing $1;\n\t}\n\n\thelpers {\n\t\t$0\n\t}\n}"
+                    .to_string(),
+            ),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Define C# setup block".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
             label: "after".to_string(),
             kind: Some(CompletionItemKind::KEYWORD),
             insert_text: Some("after {\n\t$0\n}".to_string()),
@@ -1851,6 +1881,22 @@ fn get_benchmark_body_completions() -> Vec<CompletionItem> {
             ..Default::default()
         },
         CompletionItem {
+            label: "python".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("python: $0".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Python implementation".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "csharp".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("csharp: $0".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("C# implementation".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
             label: "before".to_string(),
             kind: Some(CompletionItemKind::KEYWORD),
             insert_text: Some("before ${1:go}: $0".to_string()),
@@ -2013,6 +2059,22 @@ fn get_fixture_body_completions() -> Vec<CompletionItem> {
             insert_text: Some("rust: $0".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Rust fixture implementation".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "python".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("python: $0".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Python fixture implementation".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "csharp".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("csharp: $0".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("C# fixture implementation".to_string()),
             ..Default::default()
         },
         CompletionItem {

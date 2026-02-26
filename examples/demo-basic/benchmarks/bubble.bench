@@ -3,10 +3,10 @@ use std::charting
 declare suite bubbleN performance timeBased sameDataset: true {
     description: "O(n^2) bubble sort on int32 array"
     baseline: "go"
-    warmup: 0
-    targetTime: 1000ms
+    warmup: 5
+    targetTime: 300ms
     cvThreshold: 5
-    count: 1
+    count: 3
 
     setup go {
         import (
@@ -104,6 +104,39 @@ declare suite bubbleN performance timeBased sameDataset: true {
         }
     }
 
+    setup csharp {
+        import {
+            using System;
+            using System.Buffers.Binary;
+        }
+
+        helpers {
+            static byte[] BubbleCsharp(byte[] data) {
+                int n = data.Length / 4;
+                int[] arr = new int[n];
+                for (int i = 0; i < n; i++) {
+                    int j = i * 4;
+                    arr[i] = BinaryPrimitives.ReadInt32BigEndian(new ReadOnlySpan<byte>(data, j, 4));
+                }
+                for (int i = 0; i < n; i++) {
+                    for (int j = 0; j < n - 1 - i; j++) {
+                        if (arr[j] > arr[j + 1]) {
+                            int tmp = arr[j];
+                            arr[j] = arr[j + 1];
+                            arr[j + 1] = tmp;
+                        }
+                    }
+                }
+                byte[] outBytes = new byte[data.Length];
+                for (int i = 0; i < n; i++) {
+                    int j = i * 4;
+                    BinaryPrimitives.WriteInt32BigEndian(new Span<byte>(outBytes, j, 4), arr[i]);
+                }
+                return outBytes;
+            }
+        }
+    }
+
     fixture s100 {
         hex: @file("fixtures/sort/sort_100.hex")
     }
@@ -145,135 +178,83 @@ declare suite bubbleN performance timeBased sameDataset: true {
     }
 
     bench n100 {
-        before go: {
-            bubbleGo(s100)
-        }
-        before ts: {
-            bubbleTs(s100)
-        }
-        before python: {
-            bubble_python(s100)
-        }
-        before rust: {
-            bubble_rust(&s100);
-        }
-        before go: {
-            bubbleGo(s100)
-        }
         go: bubbleGo(s100)
         ts: bubbleTs(s100)
         rust: bubble_rust(&s100)
         python: bubble_python(s100)
+        csharp: BubbleCsharp(s100);
     }
 
     bench n200 {
-        before go: {
-            bubbleGo(s200)
-        }
-        before ts: {
-            bubbleTs(s200)
-        }
-        before python: {
-            bubble_python(s200)
-        }
-        before go: {
-            bubbleGo(s200)
-        }
-        before rust: {
-            bubble_rust(&s200);
-        }
         go: bubbleGo(s200)
         ts: bubbleTs(s200)
         rust: bubble_rust(&s200)
         python: bubble_python(s200)
+        csharp: BubbleCsharp(s200);
     }
 
     bench n300 {
-        before go: bubbleGo(s300)
-        before ts: bubbleTs(s300)
-        before rust: bubble_rust(&s300);
-        before python: bubble_python(s300)
         go: bubbleGo(s300)
         ts: bubbleTs(s300)
         rust: bubble_rust(&s300)
         python: bubble_python(s300)
+        csharp: BubbleCsharp(s300);
     }
 
     bench n400 {
-        before go: bubbleGo(s400)
-        before ts: bubbleTs(s400)
-        before rust: bubble_rust(&s400);
-        before python: bubble_python(s400)
         go: bubbleGo(s400)
         ts: bubbleTs(s400)
         rust: bubble_rust(&s400)
         python: bubble_python(s400)
+        csharp: BubbleCsharp(s400);
     }
 
     bench n500 {
-        before go: bubbleGo(s500)
-        before ts: bubbleTs(s500)
-        before rust: bubble_rust(&s500);
-        before python: bubble_python(s500)
         go: bubbleGo(s500)
         ts: bubbleTs(s500)
         rust: bubble_rust(&s500)
         python: bubble_python(s500)
+        csharp: BubbleCsharp(s500);
     }
 
     bench n600 {
-        before go: bubbleGo(s600)
-        before ts: bubbleTs(s600)
-        before rust: bubble_rust(&s600);
-        before python: bubble_python(s600)
         go: bubbleGo(s600)
         ts: bubbleTs(s600)
         rust: bubble_rust(&s600)
         python: bubble_python(s600)
+        csharp: BubbleCsharp(s600);
     }
 
     bench n700 {
-        before go: bubbleGo(s700)
-        before ts: bubbleTs(s700)
-        before rust: bubble_rust(&s700);
-        before python: bubble_python(s700)
         go: bubbleGo(s700)
         ts: bubbleTs(s700)
         rust: bubble_rust(&s700)
         python: bubble_python(s700)
+        csharp: BubbleCsharp(s700);
     }
 
     bench n800 {
-        before go: bubbleGo(s800)
-        before ts: bubbleTs(s800)
-        before rust: bubble_rust(&s800);
-        before python: bubble_python(s800)
         go: bubbleGo(s800)
         ts: bubbleTs(s800)
         rust: bubble_rust(&s800)
         python: bubble_python(s800)
+        csharp: BubbleCsharp(s800);
     }
 
     bench n900 {
-        before go: bubbleGo(s900)
-        before ts: bubbleTs(s900)
-        before rust: bubble_rust(&s900);
-        before python: bubble_python(s900)
         go: bubbleGo(s900)
         ts: bubbleTs(s900)
         rust: bubble_rust(&s900)
         python: bubble_python(s900)
+        csharp: BubbleCsharp(s900);
     }
 
     bench n1000 {
-        before go: bubbleGo(s1000)
-        before ts: bubbleTs(s1000)
-        before rust: bubble_rust(&s1000);
-        before python: bubble_python(s1000)
         go: bubbleGo(s1000)
         ts: bubbleTs(s1000)
         rust: bubble_rust(&s1000)
         python: bubble_python(s1000)
+        csharp: BubbleCsharp(s1000);
     }
 
     after {
@@ -356,6 +337,11 @@ declare suite bubbleN performance timeBased sameDataset: true {
             showErrorBars: true,
             showRegression: true,
             regressionModel: "auto",
+        )
+        charting.drawSpeedupChart(
+            title: "String Concatenation - O(n²)",
+            description: "Naive string concat s += 'x' - quadratic complexity",
+            output: "cbubble-bar-speed.svg",
         )
     }
 }

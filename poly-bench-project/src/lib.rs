@@ -37,6 +37,7 @@ pub const RUNTIME_ENV_TS: &str = "ts";
 /// Rust runtime env subdir (Cargo.toml, Cargo.lock, generated bench code)
 pub const RUNTIME_ENV_RUST: &str = "rust";
 pub const RUNTIME_ENV_PYTHON: &str = "python";
+pub const RUNTIME_ENV_CSHARP: &str = "csharp";
 
 /// Path to the Go runtime env for a project (where go.mod and deps live)
 pub fn runtime_env_go(project_root: &Path) -> PathBuf {
@@ -56,6 +57,11 @@ pub fn runtime_env_rust(project_root: &Path) -> PathBuf {
 /// Path to the Python runtime env for a project
 pub fn runtime_env_python(project_root: &Path) -> PathBuf {
     project_root.join(RUNTIME_ENV_DIR).join(RUNTIME_ENV_PYTHON)
+}
+
+/// Path to the C# runtime env for a project
+pub fn runtime_env_csharp(project_root: &Path) -> PathBuf {
+    project_root.join(RUNTIME_ENV_DIR).join(RUNTIME_ENV_CSHARP)
 }
 
 /// True if path looks like a runtime-env root (e.g. .../runtime-env/go)

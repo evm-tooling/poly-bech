@@ -39,6 +39,7 @@ pub enum Lang {
     TypeScript,
     Rust,
     Python,
+    CSharp,
 }
 
 impl Lang {
@@ -48,6 +49,7 @@ impl Lang {
             "ts" | "typescript" => Some(Lang::TypeScript),
             "rust" | "rs" => Some(Lang::Rust),
             "python" | "py" => Some(Lang::Python),
+            "csharp" | "cs" => Some(Lang::CSharp),
             _ => None,
         }
     }
@@ -58,6 +60,7 @@ impl Lang {
             Lang::TypeScript => "ts",
             Lang::Rust => "rust",
             Lang::Python => "python",
+            Lang::CSharp => "csharp",
         }
     }
 }

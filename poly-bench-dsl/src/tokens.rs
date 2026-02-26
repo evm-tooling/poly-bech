@@ -77,6 +77,7 @@ pub enum TokenKind {
     TypeScript,
     Rust,
     Python,
+    CSharp,
 
     // Boolean literals
     True,  // true
@@ -167,7 +168,8 @@ impl TokenKind {
                 TokenKind::Ts |
                 TokenKind::TypeScript |
                 TokenKind::Rust |
-                TokenKind::Python
+                TokenKind::Python |
+                TokenKind::CSharp
         )
     }
 
@@ -278,6 +280,7 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         "typescript" => Some(TokenKind::TypeScript),
         "rust" => Some(TokenKind::Rust),
         "python" => Some(TokenKind::Python),
+        "csharp" | "cs" => Some(TokenKind::CSharp),
 
         // Boolean literals
         "true" => Some(TokenKind::True),

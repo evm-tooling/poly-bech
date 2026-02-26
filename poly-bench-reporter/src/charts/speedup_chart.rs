@@ -753,8 +753,12 @@ fn svg_header(width: i32, height: i32, theme: &ThemeColors) -> String {
     <stop offset=\"100%\" stop-color=\"#B7410E\" stop-opacity=\"0.8\"/>\n\
   </linearGradient>\n\
   <linearGradient id=\"pythonGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
-    <stop offset=\"100%\" stop-color=\"#FFD43B\" stop-opacity=\"0.8\"/>\n\
+    <stop offset=\"0%\" stop-color=\"#D8BD4A\" stop-opacity=\"1\"/>\n\
+    <stop offset=\"100%\" stop-color=\"#EEDB7A\" stop-opacity=\"1\"/>\n\
+  </linearGradient>\n\
+  <linearGradient id=\"csharpGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
+    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"1\"/>\n\
+    <stop offset=\"100%\" stop-color=\"#7C3AED\" stop-opacity=\"1\"/>\n\
   </linearGradient>\n\
   <filter id=\"barShadow\" x=\"-5%\" y=\"-15%\" width=\"110%\" height=\"140%\">\n\
     <feDropShadow dx=\"0\" dy=\"2\" stdDeviation=\"2\" flood-opacity=\"0.25\"/>\n\
@@ -767,7 +771,7 @@ fn svg_header(width: i32, height: i32, theme: &ThemeColors) -> String {
         width, height, theme.bg_color,
         ACCENT_COLOR, ACCENT_GLOW,
         GO_COLOR, TS_COLOR, RUST_COLOR,
-        lang_color(Lang::Python),
+        lang_color(Lang::CSharp),
         ACCENT_COLOR
     )
 }

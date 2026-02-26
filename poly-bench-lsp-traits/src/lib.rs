@@ -33,5 +33,6 @@ pub fn syntax_lang_to_dsl(l: poly_bench_syntax::Lang) -> poly_bench_dsl::Lang {
         poly_bench_syntax::Lang::TypeScript => poly_bench_dsl::Lang::TypeScript,
         poly_bench_syntax::Lang::Rust => poly_bench_dsl::Lang::Rust,
         poly_bench_syntax::Lang::Python => poly_bench_dsl::Lang::Python,
+        poly_bench_syntax::Lang::CSharp => poly_bench_dsl::Lang::CSharp,
     }
 }

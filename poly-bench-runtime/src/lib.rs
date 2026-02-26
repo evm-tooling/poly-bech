@@ -24,6 +24,10 @@ pub mod measurement;
 pub mod python {
     pub use runtimes_python::PythonRuntime;
 }
+/// Re-export C# runtime from runtimes-csharp for backward compatibility
+pub mod csharp {
+    pub use runtimes_csharp::CSharpRuntime;
+}
 pub mod registry;
 pub mod traits;
 

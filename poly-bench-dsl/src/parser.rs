@@ -947,7 +947,8 @@ impl Parser {
             TokenKind::Ts |
             TokenKind::TypeScript |
             TokenKind::Rust |
-            TokenKind::Python => {
+            TokenKind::Python |
+            TokenKind::CSharp => {
                 let lang = self.expect_lang()?;
                 self.expect(TokenKind::Colon)?;
                 let code = self.parse_inline_or_block_code()?;
@@ -1193,7 +1194,8 @@ impl Parser {
             TokenKind::Ts |
             TokenKind::TypeScript |
             TokenKind::Rust |
-            TokenKind::Python => {
+            TokenKind::Python |
+            TokenKind::CSharp => {
                 let lang = self.expect_lang()?;
                 self.expect(TokenKind::Colon)?;
                 let code = self.parse_inline_or_block_code()?;
@@ -1268,7 +1270,8 @@ impl Parser {
                         TokenKind::Ts |
                         TokenKind::TypeScript |
                         TokenKind::Rust |
-                        TokenKind::Python
+                        TokenKind::Python |
+                        TokenKind::CSharp
                 ) {
                     break;
                 }
@@ -1374,6 +1377,7 @@ impl Parser {
                         TokenKind::TypeScript |
                         TokenKind::Rust |
                         TokenKind::Python |
+                        TokenKind::CSharp |
                         TokenKind::Description |
                         TokenKind::Iterations |
                         TokenKind::Warmup |
@@ -1507,7 +1511,8 @@ impl Parser {
             TokenKind::Ts |
             TokenKind::TypeScript |
             TokenKind::Rust |
-            TokenKind::Python => true,
+            TokenKind::Python |
+            TokenKind::CSharp => true,
             TokenKind::Identifier(s) => Lang::from_str(s).is_some(),
             _ => false,
         }
@@ -1579,6 +1584,7 @@ impl Parser {
             TokenKind::Ts | TokenKind::TypeScript => Some(Lang::TypeScript),
             TokenKind::Rust => Some(Lang::Rust),
             TokenKind::Python => Some(Lang::Python),
+            TokenKind::CSharp => Some(Lang::CSharp),
             TokenKind::Identifier(s) => Lang::from_str(s),
             _ => None,
         };

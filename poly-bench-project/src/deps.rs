@@ -1,8 +1,8 @@
 //! Dependency management for poly-bench projects
 
 use crate::{
-    error::ProjectError, manifest, runtime_env_go, runtime_env_python, runtime_env_rust,
-    runtime_env_ts, templates, terminal,
+    error::ProjectError, manifest, runtime_env_csharp, runtime_env_go, runtime_env_python,
+    runtime_env_rust, runtime_env_ts, templates, terminal,
 };
 use miette::Result;
 use std::{
@@ -45,6 +45,16 @@ fn resolve_python_root(project_root: &Path) -> std::path::PathBuf {
     let env_python = runtime_env_python(project_root);
     if env_python.exists() {
         env_python
+    } else {
+        project_root.to_path_buf()
+    }
+}
+
+/// Resolve the directory used for C# (runtime-env if present, else project root)
+fn resolve_csharp_root(project_root: &Path) -> std::path::PathBuf {
+    let env_csharp = runtime_env_csharp(project_root);
+    if env_csharp.exists() {
+        env_csharp
     } else {
         project_root.to_path_buf()
     }
@@ -641,6 +651,108 @@ pub fn remove_python_dependency(package: &str) -> Result<()> {
     Ok(())
 }
 
+/// Add a C# dependency to the project
+pub fn add_csharp_dependency(spec: &str) -> Result<()> {
+    let current_dir = std::env::current_dir()
+        .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+
+    let project_root = crate::find_project_root(&current_dir)
+        .ok_or_else(|| miette::miette!("Not in a poly-bench project"))?;
+
+    let mut manifest = crate::load_manifest(&project_root)?;
+
+    if !manifest.has_csharp() {
+        return Err(miette::miette!("C# is not enabled in this project"));
+    }
+
+    let (package, version) = parse_dep_spec(spec);
+    manifest.add_csharp_dependency(&package, &version)?;
+    crate::save_manifest(&project_root, &manifest)?;
+
+    let csharp_root = resolve_csharp_root(&project_root);
+    std::fs::create_dir_all(&csharp_root)
+        .map_err(|e| miette::miette!("Failed to create C# env dir: {}", e))?;
+
+    let csproj_path = csharp_root.join("polybench.csproj");
+    if !csproj_path.exists() {
+        let tfm = manifest.csharp.as_ref().map(|c| c.target_framework.as_str()).unwrap_or("net8.0");
+        std::fs::write(&csproj_path, templates::csharp_csproj(tfm))
+            .map_err(|e| miette::miette!("Failed to write polybench.csproj: {}", e))?;
+    }
+
+    let spinner = terminal::step_spinner(&format!("Installing {}...", spec));
+    let output = terminal::run_command_with_spinner(
+        &spinner,
+        Command::new("dotnet")
+            .args(["add", "polybench.csproj", "package", &package, "--version", &version])
+            .current_dir(&csharp_root),
+    )
+    .map_err(|e| miette::miette!("Failed to run dotnet add package: {}", e))?;
+
+    if !output.status.success() {
+        terminal::finish_failure(&spinner, "dotnet add package failed");
+        terminal::print_stderr_excerpt(&output.stderr, 8);
+        return Err(command_failure(
+            &format!("dotnet add package {} --version {}", package, version),
+            &csharp_root,
+            &output,
+            "Verify package/version exists on NuGet.",
+        ));
+    }
+
+    terminal::finish_success(&spinner, &format!("Added {}@{} to polybench.toml", package, version));
+    Ok(())
+}
+
+/// Remove a C# dependency from the project
+pub fn remove_csharp_dependency(package: &str) -> Result<()> {
+    let current_dir = std::env::current_dir()
+        .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+
+    let project_root = crate::find_project_root(&current_dir)
+        .ok_or_else(|| miette::miette!("Not in a poly-bench project"))?;
+
+    let mut manifest = crate::load_manifest(&project_root)?;
+
+    if !manifest.has_csharp() {
+        return Err(miette::miette!("C# is not enabled in this project"));
+    }
+
+    if !manifest.csharp.as_ref().unwrap().dependencies.contains_key(package) {
+        return Err(miette::miette!(
+            "Dependency '{}' is not installed. Check polybench.toml for installed C# dependencies.",
+            package
+        ));
+    }
+
+    manifest.remove_csharp_dependency(package)?;
+    crate::save_manifest(&project_root, &manifest)?;
+
+    let csharp_root = resolve_csharp_root(&project_root);
+    let spinner = terminal::step_spinner(&format!("Removing {}...", package));
+    let output = terminal::run_command_with_spinner(
+        &spinner,
+        Command::new("dotnet")
+            .args(["remove", "polybench.csproj", "package", package])
+            .current_dir(&csharp_root),
+    )
+    .map_err(|e| miette::miette!("Failed to run dotnet remove package: {}", e))?;
+
+    if !output.status.success() {
+        terminal::finish_failure(&spinner, "dotnet remove package failed");
+        terminal::print_stderr_excerpt(&output.stderr, 8);
+        return Err(command_failure(
+            &format!("dotnet remove package {}", package),
+            &csharp_root,
+            &output,
+            "Ensure package exists in project and .csproj is valid.",
+        ));
+    }
+
+    terminal::finish_success(&spinner, &format!("Removed {} from polybench.toml", package));
+    Ok(())
+}
+
 /// Read a dependency version from Cargo.toml
 fn read_cargo_dep_version(rust_root: &Path, crate_name: &str) -> Option<String> {
     let cargo_toml_path = rust_root.join("Cargo.toml");
@@ -730,6 +842,10 @@ pub fn install_all() -> Result<()> {
     // Install Python dependencies
     if let Some(ref python_config) = manifest.python {
         install_python_deps(&project_root, python_config)?;
+    }
+
+    if let Some(ref csharp_config) = manifest.csharp {
+        install_csharp_deps(&project_root, csharp_config)?;
     }
 
     println!();
@@ -963,6 +1079,64 @@ fn install_python_deps(project_root: &Path, python_config: &manifest::PythonConf
         ));
     }
 
+    Ok(())
+}
+
+/// Install C# dependencies from manifest
+fn install_csharp_deps(project_root: &Path, csharp_config: &manifest::CSharpConfig) -> Result<()> {
+    terminal::section("C# dependencies");
+
+    let csharp_root = runtime_env_csharp(project_root);
+    std::fs::create_dir_all(&csharp_root)
+        .map_err(|e| miette::miette!("Failed to create C# env dir: {}", e))?;
+
+    let csproj_path = csharp_root.join("polybench.csproj");
+    if !csproj_path.exists() {
+        std::fs::write(&csproj_path, templates::csharp_csproj(&csharp_config.target_framework))
+            .map_err(|e| miette::miette!("Failed to write polybench.csproj: {}", e))?;
+        terminal::success_indented("Created polybench.csproj");
+    }
+
+    for (package, version) in &csharp_config.dependencies {
+        let spinner = terminal::indented_spinner(&format!("Adding {}...", package));
+        let output = terminal::run_command_with_spinner(
+            &spinner,
+            Command::new("dotnet")
+                .args(["add", "polybench.csproj", "package", package, "--version", version])
+                .current_dir(&csharp_root),
+        )
+        .map_err(|e| miette::miette!("Failed to run dotnet add package: {}", e))?;
+        if !output.status.success() {
+            terminal::finish_failure_indented(&spinner, &format!("Failed to add {}", package));
+            terminal::print_stderr_excerpt(&output.stderr, 6);
+            return Err(command_failure(
+                &format!("dotnet add package {} --version {}", package, version),
+                &csharp_root,
+                &output,
+                "Fix package/version or NuGet connectivity issues.",
+            ));
+        }
+        terminal::finish_success_indented(&spinner, package);
+    }
+
+    let spinner = terminal::indented_spinner("Running dotnet restore...");
+    let output = terminal::run_command_with_spinner(
+        &spinner,
+        Command::new("dotnet").args(["restore", "polybench.csproj"]).current_dir(&csharp_root),
+    )
+    .map_err(|e| miette::miette!("Failed to run dotnet restore: {}", e))?;
+    if output.status.success() {
+        terminal::finish_success_indented(&spinner, "C# dependencies ready");
+    } else {
+        terminal::finish_failure_indented(&spinner, "dotnet restore failed");
+        terminal::print_stderr_excerpt(&output.stderr, 6);
+        return Err(command_failure(
+            "dotnet restore polybench.csproj",
+            &csharp_root,
+            &output,
+            "Resolve NuGet restore errors before running C# benchmarks.",
+        ));
+    }
     Ok(())
 }
 
