@@ -94,11 +94,10 @@ pub const BENCH_HARNESS_PERF: &str = r#"
 
     // Run a benchmark with auto-calibration (time-based, like Go's testing.B)
     // Total benchmark time is approximately targetTimeMs
+    // Uses batch-average samples (like C) instead of per-iteration timing to avoid GC/V8 variance.
     function runBenchmarkAuto(fn, targetTimeMs, useSink = true, trackMemory = false, warmupCount = 100) {
         const targetNanos = targetTimeMs * 1e6;
         let lastResult;
-        
-        // Brief warmup to warm JIT
         for (let i = 0; i < warmupCount; i++) {
             if (useSink) {
                 lastResult = fn();
@@ -107,15 +106,11 @@ pub const BENCH_HARNESS_PERF: &str = r#"
                 fn();
             }
         }
-        
-        // Adaptive measurement phase (like Go's testing.B)
-        // Run batches, scale up N, stop when total elapsed >= targetTime
         let iterations = 1;
         let totalIterations = 0;
         let totalNanos = 0;
-        
+        const samples = [];
         while (totalNanos < targetNanos) {
-            // Run batch without per-iteration timing (fast)
             const batchStart = now();
             for (let i = 0; i < iterations; i++) {
                 if (useSink) {
@@ -126,28 +121,21 @@ pub const BENCH_HARNESS_PERF: &str = r#"
                 }
             }
             const batchElapsed = now() - batchStart;
-            
             totalIterations += iterations;
             totalNanos += batchElapsed;
-            
+            samples.push(batchElapsed / (iterations || 1));
             if (totalNanos >= targetNanos) {
                 break;
             }
-            
-            // Scale up for next batch (matching Go's conservative approach)
             if (batchElapsed > 0) {
                 const remainingNanos = targetNanos - totalNanos;
                 const predicted = Math.floor(iterations * (remainingNanos / batchElapsed));
-                
                 let newIters;
                 if (remainingNanos < batchElapsed) {
-                    // Close to target - use predicted or less
                     newIters = Math.max(1, predicted);
                 } else if (remainingNanos < targetNanos / 5) {
-                    // Within 20% of target - scale down slightly to avoid overshoot
                     newIters = Math.max(1, Math.floor(predicted * 0.9));
                 } else {
-                    // Far from target - scale up conservatively
                     newIters = Math.floor(predicted * 1.1);
                     if (newIters <= iterations) {
                         newIters = iterations * 2;
@@ -161,25 +149,8 @@ pub const BENCH_HARNESS_PERF: &str = r#"
                 iterations *= 10;
             }
         }
-        
         const nanosPerOp = totalNanos / totalIterations;
         const opsPerSec = 1e9 / nanosPerOp;
-        
-        // Generate representative samples for statistics (sample small subset)
-        // Run a few more iterations with per-iteration timing for variance
-        const sampleCount = Math.min(1000, totalIterations);
-        const samples = new Array(sampleCount);
-        for (let i = 0; i < sampleCount; i++) {
-            const start = now();
-            if (useSink) {
-                lastResult = fn();
-                globalThis.__polybench_sink = lastResult;
-            } else {
-                fn();
-            }
-            samples[i] = now() - start;
-        }
-        
         return {
             iterations: totalIterations,
             totalNanos: totalNanos,
@@ -633,6 +604,7 @@ pub const BENCH_HARNESS_MEMORY: &str = r#"
         }
         const memBefore = getMemorySnapshot();
         let iterations = 1, totalIterations = 0, totalNanos = 0;
+        const samples = [];
         while (totalNanos < targetNanos) {
             const batchStart = now();
             for (let i = 0; i < iterations; i++) {
@@ -641,6 +613,7 @@ pub const BENCH_HARNESS_MEMORY: &str = r#"
             const batchElapsed = now() - batchStart;
             totalIterations += iterations;
             totalNanos += batchElapsed;
+            samples.push(batchElapsed / (iterations || 1));
             if (totalNanos >= targetNanos) break;
             if (batchElapsed > 0) {
                 const remainingNanos = targetNanos - totalNanos;
@@ -652,13 +625,6 @@ pub const BENCH_HARNESS_MEMORY: &str = r#"
         const memAfter = getMemorySnapshot();
         const bytesPerOp = bytesPerOpFromSnapshots(memBefore, memAfter, totalIterations);
         const nanosPerOp = totalNanos / totalIterations;
-        const sampleCount = Math.min(1000, totalIterations);
-        const samples = new Array(sampleCount);
-        for (let i = 0; i < sampleCount; i++) {
-            const start = now();
-            if (useSink) { lastResult = fn(); globalThis.__polybench_sink = lastResult; } else { fn(); }
-            samples[i] = now() - start;
-        }
         return { iterations: totalIterations, totalNanos, nanosPerOp, opsPerSec: 1e9 / nanosPerOp, bytesPerOp, samples, rawResult: normalizeRawResult(lastResult) };
     }
 
