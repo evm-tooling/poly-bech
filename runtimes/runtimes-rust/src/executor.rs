@@ -11,6 +11,7 @@ use std::{
     collections::HashSet,
     path::{Path, PathBuf},
     process::Stdio,
+    time::Instant,
 };
 
 /// Ensure alloc_tracker is in Cargo.toml when running memory benchmarks in runtime-env.
@@ -74,11 +75,18 @@ pub struct RustRuntime {
     anvil_rpc_url: Option<String>,
     /// Cached compiled binary path and source hash for reuse across runs
     cached_binary: Option<(PathBuf, u64)>,
+    /// Duration of last precompile in nanoseconds (for accurate reporting)
+    last_precompile_nanos: Option<u64>,
 }
 
 impl RustRuntime {
     pub fn new() -> Self {
-        Self { project_root: None, anvil_rpc_url: None, cached_binary: None }
+        Self {
+            project_root: None,
+            anvil_rpc_url: None,
+            cached_binary: None,
+            last_precompile_nanos: None,
+        }
     }
 
     /// Set the Rust project root directory where Cargo.toml is located
@@ -125,6 +133,10 @@ impl Runtime for RustRuntime {
 
     fn lang(&self) -> Lang {
         Lang::Rust
+    }
+
+    fn last_precompile_nanos(&self) -> Option<u64> {
+        self.last_precompile_nanos
     }
 
     async fn initialize(&mut self, _suite: &SuiteIR) -> Result<()> {
@@ -249,34 +261,7 @@ impl Runtime for RustRuntime {
         Ok(())
     }
 
-    async fn run_benchmark(
-        &mut self,
-        spec: &BenchmarkSpec,
-        suite: &SuiteIR,
-    ) -> Result<Measurement> {
-        self.run_via_subprocess(spec, suite).await
-    }
-
-    async fn shutdown(&mut self) -> Result<()> {
-        Ok(())
-    }
-}
-
-impl RustRuntime {
-    /// Compute a hash of the source code for cache invalidation
-    fn hash_source(source: &str) -> u64 {
-        use std::{
-            collections::hash_map::DefaultHasher,
-            hash::{Hash, Hasher},
-        };
-        let mut hasher = DefaultHasher::new();
-        source.hash(&mut hasher);
-        hasher.finish()
-    }
-
-    /// Pre-compile the benchmark binary without running it.
-    /// This allows compilation to happen before timing starts.
-    pub async fn precompile(&mut self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<()> {
+    async fn precompile(&mut self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<()> {
         let source = generate_standalone_benchmark(spec, suite)?;
         let source_hash = Self::hash_source(&source);
 
@@ -284,9 +269,12 @@ impl RustRuntime {
         if let Some((ref binary_path, cached_hash)) = self.cached_binary {
             if cached_hash == source_hash && binary_path.exists() {
                 // Already compiled, nothing to do
+                self.last_precompile_nanos = Some(0);
                 return Ok(());
             }
         }
+
+        let pc_start = Instant::now();
 
         // Need to compile - set up directories and source
         let (src_path, working_dir) = if let Some(ref project_root) = self.project_root {
@@ -388,8 +376,34 @@ impl RustRuntime {
 
         // Cache the binary path and source hash for reuse
         self.cached_binary = Some((binary_path, source_hash));
+        self.last_precompile_nanos = Some(pc_start.elapsed().as_nanos() as u64);
 
         Ok(())
+    }
+
+    async fn run_benchmark(
+        &mut self,
+        spec: &BenchmarkSpec,
+        suite: &SuiteIR,
+    ) -> Result<Measurement> {
+        self.run_via_subprocess(spec, suite).await
+    }
+
+    async fn shutdown(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+impl RustRuntime {
+    /// Compute a hash of the source code for cache invalidation
+    fn hash_source(source: &str) -> u64 {
+        use std::{
+            collections::hash_map::DefaultHasher,
+            hash::{Hash, Hasher},
+        };
+        let mut hasher = DefaultHasher::new();
+        source.hash(&mut hasher);
+        hasher.finish()
     }
 
     /// Run benchmark via cargo subprocess

@@ -5,6 +5,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
     baseline: "go"
     warmupIterations: 100
     targetTime: 500ms
+    fairness: "strict"
     cvThreshold: 5
     count: 3
 

@@ -11,7 +11,7 @@ use poly_bench_dsl::{AsyncSamplingPolicy, BenchMode, BenchmarkKind, Lang};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use poly_bench_runtime_traits::{ErrorMapper, Measurement, Runtime, RuntimeConfig, RuntimeFactory};
 use poly_bench_stdlib as stdlib;
-use std::{path::PathBuf, process::Stdio};
+use std::{path::PathBuf, process::Stdio, time::Instant};
 use tempfile::TempDir;
 
 /// JavaScript runtime using Node.js subprocess
@@ -28,6 +28,8 @@ pub struct JsRuntime {
     anvil_rpc_url: Option<String>,
     /// Cached script path and source hash for reuse across runs
     cached_script: Option<(PathBuf, PathBuf, u64)>,
+    /// Duration of last precompile in nanoseconds (for accurate reporting)
+    last_precompile_nanos: Option<u64>,
 }
 
 impl JsRuntime {
@@ -42,6 +44,7 @@ impl JsRuntime {
             project_root: None,
             anvil_rpc_url: None,
             cached_script: None,
+            last_precompile_nanos: None,
         })
     }
 
@@ -64,63 +67,6 @@ impl JsRuntime {
         let mut hasher = DefaultHasher::new();
         source.hash(&mut hasher);
         hasher.finish()
-    }
-
-    /// Pre-compile/prepare the benchmark script without running it.
-    /// For TypeScript/Node.js, this writes the script to disk and optionally
-    /// does a syntax check to ensure the script is valid before timing starts.
-    pub async fn precompile(&mut self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<()> {
-        let script = generate_standalone_script(spec, suite)?;
-        let source_hash = Self::hash_source(&script);
-
-        // Check if we already have a cached script with matching source hash
-        if let Some((ref script_path, _, cached_hash)) = self.cached_script {
-            if cached_hash == source_hash && script_path.exists() {
-                // Already prepared, nothing to do
-                return Ok(());
-            }
-        }
-
-        // Determine where to write the script
-        let (script_path, working_dir) = if let Some(ref project_root) = self.project_root {
-            let is_runtime_env = project_root.as_os_str().to_string_lossy().contains("runtime-env");
-            let script_path = if is_runtime_env {
-                project_root.join("bench.mjs")
-            } else {
-                let bench_dir = project_root.join(".polybench");
-                std::fs::create_dir_all(&bench_dir)
-                    .map_err(|e| miette!("Failed to create .polybench directory: {}", e))?;
-                bench_dir.join("bench.mjs")
-            };
-            (script_path, project_root.clone())
-        } else {
-            let temp_dir =
-                self.temp_dir.as_ref().ok_or_else(|| miette!("Runtime not initialized"))?;
-
-            let script_path = temp_dir.path().join("bench.js");
-            (script_path, temp_dir.path().to_path_buf())
-        };
-
-        std::fs::write(&script_path, &script)
-            .map_err(|e| miette!("Failed to write benchmark script: {}", e))?;
-
-        // Optionally do a syntax check (--check flag just parses without executing)
-        let check_output = tokio::process::Command::new(&self.node_binary)
-            .args(["--check", script_path.to_str().unwrap()])
-            .current_dir(&working_dir)
-            .output()
-            .await
-            .map_err(|e| miette!("Failed to check TypeScript benchmark: {}", e))?;
-
-        if !check_output.status.success() {
-            let stderr = String::from_utf8_lossy(&check_output.stderr);
-            return Err(miette!("TypeScript benchmark syntax check failed:\n{}", stderr));
-        }
-
-        // Cache the script path and source hash for reuse
-        self.cached_script = Some((script_path, working_dir, source_hash));
-
-        Ok(())
     }
 
     /// Helper to write script to disk and update cache
@@ -191,6 +137,10 @@ impl Runtime for JsRuntime {
 
     fn lang(&self) -> Lang {
         Lang::TypeScript
+    }
+
+    fn last_precompile_nanos(&self) -> Option<u64> {
+        self.last_precompile_nanos
     }
 
     async fn initialize(&mut self, suite: &SuiteIR) -> Result<()> {
@@ -320,6 +270,64 @@ impl Runtime for JsRuntime {
                 return Err(miette!("JavaScript syntax check failed:\n{}", remapped));
             }
         }
+
+        Ok(())
+    }
+
+    async fn precompile(&mut self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<()> {
+        let script = generate_standalone_script(spec, suite)?;
+        let source_hash = Self::hash_source(&script);
+
+        // Check if we already have a cached script with matching source hash
+        if let Some((ref script_path, _, cached_hash)) = self.cached_script {
+            if cached_hash == source_hash && script_path.exists() {
+                // Already prepared, nothing to do
+                self.last_precompile_nanos = Some(0);
+                return Ok(());
+            }
+        }
+
+        let pc_start = Instant::now();
+
+        // Determine where to write the script
+        let (script_path, working_dir) = if let Some(ref project_root) = self.project_root {
+            let is_runtime_env = project_root.as_os_str().to_string_lossy().contains("runtime-env");
+            let script_path = if is_runtime_env {
+                project_root.join("bench.mjs")
+            } else {
+                let bench_dir = project_root.join(".polybench");
+                std::fs::create_dir_all(&bench_dir)
+                    .map_err(|e| miette!("Failed to create .polybench directory: {}", e))?;
+                bench_dir.join("bench.mjs")
+            };
+            (script_path, project_root.clone())
+        } else {
+            let temp_dir =
+                self.temp_dir.as_ref().ok_or_else(|| miette!("Runtime not initialized"))?;
+
+            let script_path = temp_dir.path().join("bench.js");
+            (script_path, temp_dir.path().to_path_buf())
+        };
+
+        std::fs::write(&script_path, &script)
+            .map_err(|e| miette!("Failed to write benchmark script: {}", e))?;
+
+        // Optionally do a syntax check (--check flag just parses without executing)
+        let check_output = tokio::process::Command::new(&self.node_binary)
+            .args(["--check", script_path.to_str().unwrap()])
+            .current_dir(&working_dir)
+            .output()
+            .await
+            .map_err(|e| miette!("Failed to check TypeScript benchmark: {}", e))?;
+
+        if !check_output.status.success() {
+            let stderr = String::from_utf8_lossy(&check_output.stderr);
+            return Err(miette!("TypeScript benchmark syntax check failed:\n{}", stderr));
+        }
+
+        // Cache the script path and source hash for reuse
+        self.cached_script = Some((script_path, working_dir, source_hash));
+        self.last_precompile_nanos = Some(pc_start.elapsed().as_nanos() as u64);
 
         Ok(())
     }

@@ -19,6 +19,8 @@ pub struct PythonRuntime {
     project_root: Option<PathBuf>,
     anvil_rpc_url: Option<String>,
     cached_script: Option<(PathBuf, PathBuf, u64)>,
+    /// Duration of last precompile in nanoseconds (for accurate reporting)
+    last_precompile_nanos: Option<u64>,
 }
 
 impl PythonRuntime {
@@ -33,6 +35,7 @@ impl PythonRuntime {
             project_root: None,
             anvil_rpc_url: None,
             cached_script: None,
+            last_precompile_nanos: None,
         })
     }
 
@@ -133,6 +136,10 @@ impl Runtime for PythonRuntime {
         Lang::Python
     }
 
+    fn last_precompile_nanos(&self) -> Option<u64> {
+        self.last_precompile_nanos
+    }
+
     fn set_anvil_rpc_url(&mut self, url: String) {
         self.anvil_rpc_url = Some(url);
     }
@@ -209,11 +216,29 @@ impl Runtime for PythonRuntime {
 
         if let Some((ref cached_path, _, cached_hash)) = self.cached_script {
             if cached_hash == source_hash && cached_path.exists() {
+                self.last_precompile_nanos = Some(0);
                 return Ok(());
             }
         }
 
-        self.write_script_and_cache(&script, source_hash)?;
+        let pc_start = std::time::Instant::now();
+        let (script_path, working_dir) = self.write_script_and_cache(&script, source_hash)?;
+
+        // Compile to bytecode (.pyc) - this is what Python does on first import
+        // Using py_compile ensures syntax is valid and generates cached bytecode
+        let output = tokio::process::Command::new(&self.python_binary)
+            .args(["-m", "py_compile", script_path.to_str().unwrap()])
+            .current_dir(&working_dir)
+            .output()
+            .await
+            .map_err(|e| miette!("Failed to run Python bytecode compilation: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(miette!("Python bytecode compilation failed:\n{}", stderr));
+        }
+
+        self.last_precompile_nanos = Some(pc_start.elapsed().as_nanos() as u64);
         Ok(())
     }
 

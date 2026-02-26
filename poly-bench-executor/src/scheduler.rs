@@ -479,6 +479,7 @@ pub async fn run(
             }
 
             let mut measurements: HashMap<Lang, Measurement> = HashMap::new();
+            let mut precompile_nanos: HashMap<Lang, u64> = HashMap::new();
             let strict_fairness = spec_clone.fairness_mode == FairnessMode::Strict;
             let bench_wall_elapsed: Option<f64>;
 
@@ -488,6 +489,7 @@ pub async fn run(
                 for lang in langs {
                     if spec.has_lang(*lang) {
                         if let Some(ref mut rt) = runtimes.get_mut(lang) {
+                            let pc_start = Instant::now();
                             rt.precompile(&spec_clone, suite).await.map_err(|e| {
                                 miette!(
                                     "{} pre-compilation failed ({}): {}",
@@ -496,6 +498,10 @@ pub async fn run(
                                     e
                                 )
                             })?;
+                            let wall_nanos = pc_start.elapsed().as_nanos() as u64;
+                            let rt_nanos = rt.last_precompile_nanos().unwrap_or(0);
+                            let nanos = std::cmp::max(wall_nanos, rt_nanos);
+                            precompile_nanos.insert(*lang, nanos);
                         }
                     }
                 }
@@ -588,7 +594,10 @@ pub async fn run(
                             e
                         )
                     })?;
-                    let _precompile_elapsed = precompile_start.elapsed();
+                    let wall_nanos = precompile_start.elapsed().as_nanos() as u64;
+                    let rt_nanos = rt.last_precompile_nanos().unwrap_or(0);
+                    let nanos = std::cmp::max(wall_nanos, rt_nanos);
+                    precompile_nanos.insert(*lang, nanos);
 
                     let timer_color = poly_bench_runtime::lang_display(*lang).terminal_color;
                     let lang_label_str = lang_label(*lang);
@@ -700,8 +709,14 @@ pub async fn run(
             println!("  ▸ {} {:.2}s", spec.name.bold(), total_elapsed);
 
             println!(
-                "    {:<8} {:<16} {:<24} {:>12} {:>16} {:>10}",
-                "lang", "ns/op", "speedup/baseline", "runtime (ms)", "warmupTime (ms)", "spawn(ms)"
+                "    {:<8} {:<16} {:<24} {:>12} {:>16} {:>10} {:>12}",
+                "lang",
+                "ns/op",
+                "speedup/baseline",
+                "runtime (ms)",
+                "warmupTime (ms)",
+                "spawn(ms)",
+                "precompile"
             );
             for lang in langs {
                 if let Some(m) = measurements.get(&lang) {
@@ -718,14 +733,58 @@ pub async fn run(
                         .spawn_nanos
                         .map(|n| format!("{:.2}", n as f64 / 1e6))
                         .unwrap_or_else(|| "-".to_string());
+                    let precompile_str = precompile_nanos
+                        .get(&lang)
+                        .map(|n| {
+                            let ms = *n as f64 / 1e6;
+                            if ms >= 0.01 {
+                                format!("{:.2}", ms)
+                            } else if *n > 0 {
+                                format!("{:.0}µ", *n as f64 / 1e3)
+                            } else {
+                                "0".to_string()
+                            }
+                        })
+                        .unwrap_or_else(|| "-".to_string());
                     let padded_label = format!("{:<7}", format!("{}:", lang_label(*lang)));
                     let colored_label = colorize_lang_label(&padded_label, *lang);
                     println!(
-                        "    {} {:<16} {:<24} {:>12.2}s {:>16} {:>10}",
-                        colored_label, metric, rel, runtime_secs, warmup_str, spawn_str
+                        "    {} {:<16} {:<24} {:>12.2}s {:>16} {:>10} {:>12}",
+                        colored_label,
+                        metric,
+                        rel,
+                        runtime_secs,
+                        warmup_str,
+                        spawn_str,
+                        precompile_str
                     );
                 }
             }
+
+            // Reconciliation: sum of components vs header total
+            let sum_runtime_s =
+                measurements.values().map(|m| m.total_nanos).sum::<u64>() as f64 / 1e9;
+            let sum_warmup_s =
+                measurements.values().filter_map(|m| m.warmup_nanos).sum::<u64>() as f64 / 1e9;
+            let sum_spawn_s =
+                measurements.values().filter_map(|m| m.spawn_nanos).sum::<u64>() as f64 / 1e9;
+            let sum_precompile_s = precompile_nanos.values().sum::<u64>() as f64 / 1e9;
+            let sum_all = sum_runtime_s + sum_warmup_s + sum_spawn_s + sum_precompile_s;
+            let gap = (total_elapsed - sum_all).abs();
+            let eq_sign = if gap < 0.05 { "=" } else { "≈" };
+            println!(
+                "    {}",
+                format!(
+                    "sum: runtime {:.2}s + warmup {:.3}s + spawn {:.3}s + precompile {:.3}s {} {:.2}s",
+                    sum_runtime_s,
+                    sum_warmup_s,
+                    sum_spawn_s,
+                    sum_precompile_s,
+                    eq_sign,
+                    total_elapsed,
+                )
+                .dimmed()
+            );
             println!();
 
             benchmark_results.push(BenchmarkResult::new(

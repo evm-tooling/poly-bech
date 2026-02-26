@@ -16,13 +16,34 @@ pub struct CSharpRuntime {
     dotnet_binary: PathBuf,
     project_root: Option<PathBuf>,
     anvil_rpc_url: Option<String>,
+    /// Cached compiled DLL path and source hash for reuse across runs
+    cached_binary: Option<(PathBuf, u64)>,
+    /// Duration of last precompile in nanoseconds (for accurate reporting)
+    last_precompile_nanos: Option<u64>,
 }
 
 impl CSharpRuntime {
     pub fn new() -> Result<Self> {
         let dotnet_binary =
             which::which("dotnet").map_err(|_| miette!("dotnet not found in PATH"))?;
-        Ok(Self { dotnet_binary, project_root: None, anvil_rpc_url: None })
+        Ok(Self {
+            dotnet_binary,
+            project_root: None,
+            anvil_rpc_url: None,
+            cached_binary: None,
+            last_precompile_nanos: None,
+        })
+    }
+
+    /// Compute a hash of the source code for cache invalidation
+    fn hash_source(source: &str) -> u64 {
+        use std::{
+            collections::hash_map::DefaultHasher,
+            hash::{Hash, Hasher},
+        };
+        let mut hasher = DefaultHasher::new();
+        source.hash(&mut hasher);
+        hasher.finish()
     }
 
     pub fn set_project_root(&mut self, path: Option<PathBuf>) {
@@ -155,6 +176,66 @@ impl CSharpRuntime {
         let _ = std::fs::remove_dir_all(work_dir.join("bin"));
         let _ = std::fs::remove_dir_all(work_dir.join(".polybench-build"));
     }
+
+    /// Build the DLL and cache it for reuse
+    async fn build_dll(
+        &mut self,
+        _spec: &BenchmarkSpec,
+        _suite: &SuiteIR,
+        work_dir: &Path,
+        source: &str,
+        source_hash: u64,
+    ) -> Result<PathBuf> {
+        let project_path = self.ensure_project_files(work_dir)?;
+        let target_framework = Self::parse_target_framework(&project_path)?;
+        Self::ensure_global_json(work_dir, &target_framework)?;
+        Self::cleanup_local_build_artifacts(work_dir);
+        let build_root = Self::unique_build_root(work_dir)?;
+        let obj_path = build_root.join("obj");
+        let bin_path = build_root.join("bin");
+
+        std::fs::write(work_dir.join("Program.cs"), source)
+            .map_err(|e| miette!("Failed to write Program.cs: {}", e))?;
+
+        let build = tokio::process::Command::new(&self.dotnet_binary)
+            .args([
+                "build",
+                "-nologo",
+                "-c",
+                "Release",
+                "-f",
+                &target_framework,
+                "-p:UseAppHost=false",
+                &format!("-p:BaseIntermediateOutputPath={}/", obj_path.to_string_lossy()),
+                &format!("-p:BaseOutputPath={}/", bin_path.to_string_lossy()),
+                project_path.to_string_lossy().as_ref(),
+            ])
+            .current_dir(work_dir)
+            .output()
+            .await
+            .map_err(|e| miette!("Failed to run dotnet build: {}", e))?;
+
+        if !build.status.success() {
+            return Err(miette!(
+                "C# build failed:\n{}\n{}",
+                String::from_utf8_lossy(&build.stdout),
+                String::from_utf8_lossy(&build.stderr)
+            ));
+        }
+
+        let dll_path = bin_path.join("Release").join(&target_framework).join("polybench.dll");
+        if !dll_path.exists() {
+            return Err(miette!(
+                "C# build succeeded but output DLL not found at {}",
+                dll_path.display()
+            ));
+        }
+
+        // Cache the DLL path and source hash for reuse
+        self.cached_binary = Some((dll_path.clone(), source_hash));
+
+        Ok(dll_path)
+    }
 }
 
 impl Default for CSharpRuntime {
@@ -194,6 +275,10 @@ impl Runtime for CSharpRuntime {
 
     fn set_anvil_rpc_url(&mut self, url: String) {
         self.anvil_rpc_url = Some(url);
+    }
+
+    fn last_precompile_nanos(&self) -> Option<u64> {
+        self.last_precompile_nanos
     }
 
     async fn initialize(&mut self, _suite: &SuiteIR) -> Result<()> {
@@ -245,11 +330,21 @@ impl Runtime for CSharpRuntime {
         Ok(())
     }
 
-    async fn run_benchmark(
-        &mut self,
-        spec: &BenchmarkSpec,
-        suite: &SuiteIR,
-    ) -> Result<Measurement> {
+    async fn precompile(&mut self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<()> {
+        let source = generate_csharp_source(spec, suite, false)?;
+        let source_hash = Self::hash_source(&source);
+
+        // Check if we already have a cached binary with matching source hash
+        if let Some((ref dll_path, cached_hash)) = self.cached_binary {
+            if cached_hash == source_hash && dll_path.exists() {
+                // Already compiled, nothing to do
+                self.last_precompile_nanos = Some(0);
+                return Ok(());
+            }
+        }
+
+        let pc_start = std::time::Instant::now();
+
         let work_dir = self.resolve_work_dir()?;
         let project_path = self.ensure_project_files(&work_dir)?;
         let target_framework = Self::parse_target_framework(&project_path)?;
@@ -258,8 +353,8 @@ impl Runtime for CSharpRuntime {
         let build_root = Self::unique_build_root(&work_dir)?;
         let obj_path = build_root.join("obj");
         let bin_path = build_root.join("bin");
-        let source = generate_csharp_source(spec, suite, false)?;
-        std::fs::write(work_dir.join("Program.cs"), source)
+
+        std::fs::write(work_dir.join("Program.cs"), &source)
             .map_err(|e| miette!("Failed to write Program.cs: {}", e))?;
 
         let build = tokio::process::Command::new(&self.dotnet_binary)
@@ -279,6 +374,7 @@ impl Runtime for CSharpRuntime {
             .output()
             .await
             .map_err(|e| miette!("Failed to run dotnet build: {}", e))?;
+
         if !build.status.success() {
             return Err(miette!(
                 "C# build failed:\n{}\n{}",
@@ -294,6 +390,36 @@ impl Runtime for CSharpRuntime {
                 dll_path.display()
             ));
         }
+
+        // Cache the DLL path and source hash for reuse
+        self.cached_binary = Some((dll_path, source_hash));
+        self.last_precompile_nanos = Some(pc_start.elapsed().as_nanos() as u64);
+
+        Ok(())
+    }
+
+    async fn run_benchmark(
+        &mut self,
+        spec: &BenchmarkSpec,
+        suite: &SuiteIR,
+    ) -> Result<Measurement> {
+        let source = generate_csharp_source(spec, suite, false)?;
+        let source_hash = Self::hash_source(&source);
+        let work_dir = self.resolve_work_dir()?;
+
+        // Check if we have a cached DLL with matching source hash
+        let dll_path = if let Some((ref cached_path, cached_hash)) = self.cached_binary {
+            if cached_hash == source_hash && cached_path.exists() {
+                // Reuse cached DLL
+                cached_path.clone()
+            } else {
+                // Cache miss - need to rebuild
+                self.build_dll(spec, suite, &work_dir, &source, source_hash).await?
+            }
+        } else {
+            // No cache - need to build
+            self.build_dll(spec, suite, &work_dir, &source, source_hash).await?
+        };
 
         let mut cmd = tokio::process::Command::new(&self.dotnet_binary);
         cmd.arg(dll_path.to_string_lossy().as_ref())
