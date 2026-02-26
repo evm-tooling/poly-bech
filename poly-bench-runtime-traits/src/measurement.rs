@@ -7,8 +7,14 @@ use serde::{Deserialize, Serialize};
 pub struct Measurement {
     /// Number of iterations executed
     pub iterations: u64,
-    /// Total time in nanoseconds
+    /// Total time in nanoseconds (timed execution phase only)
     pub total_nanos: u64,
+    /// Warmup phase duration in nanoseconds (if reported by runtime)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warmup_nanos: Option<u64>,
+    /// Spawn/process startup time in nanoseconds (if measured)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spawn_nanos: Option<u64>,
     /// Nanoseconds per operation
     pub nanos_per_op: f64,
     /// Operations per second
@@ -168,6 +174,8 @@ impl Measurement {
         Self {
             iterations,
             total_nanos,
+            warmup_nanos: None,
+            spawn_nanos: None,
             nanos_per_op,
             ops_per_sec,
             min_nanos,
@@ -211,6 +219,8 @@ impl Measurement {
         Self {
             iterations,
             total_nanos,
+            warmup_nanos: None,
+            spawn_nanos: None,
             nanos_per_op,
             ops_per_sec,
             min_nanos: None,
@@ -244,6 +254,71 @@ impl Measurement {
             timed_out: Some(false),
             run_nanos_per_op: None,
         }
+    }
+
+    /// Create a measurement from aggregate data (totalNanos/iterations) with sample-based stats.
+    /// Primary metric (nanos_per_op) always comes from the benchmark loop aggregate, matching
+    /// Go's testing.B approach. Samples are used only for: cv_percent, outliers_removed,
+    /// is_stable, min_nanos, max_nanos, percentiles.
+    pub fn from_aggregate_with_sample_stats(
+        iterations: u64,
+        total_nanos: u64,
+        raw_samples: Vec<u64>,
+        remove_outliers: bool,
+        cv_threshold: f64,
+    ) -> Self {
+        let mut m = Self::from_aggregate(iterations, total_nanos);
+        let original_count = raw_samples.len();
+
+        if raw_samples.is_empty() {
+            return m;
+        }
+
+        let mut sorted = raw_samples.clone();
+        sorted.sort_unstable();
+
+        let (filtered_samples, outliers_removed) = if remove_outliers && sorted.len() >= 4 {
+            let filtered = remove_outliers_iqr(&sorted);
+            let removed = original_count.saturating_sub(filtered.len()) as u64;
+            (filtered, removed)
+        } else {
+            (sorted.clone(), 0)
+        };
+
+        let samples_for_stats =
+            if filtered_samples.is_empty() { &sorted } else { &filtered_samples };
+
+        m.min_nanos = samples_for_stats.first().copied();
+        m.max_nanos = samples_for_stats.last().copied();
+        m.p50_nanos = percentile(samples_for_stats, 50);
+        m.p75_nanos = percentile(samples_for_stats, 75);
+        m.p99_nanos = percentile(samples_for_stats, 99);
+        m.p995_nanos = percentile_f(samples_for_stats, 99.5);
+        m.outliers_removed = Some(outliers_removed);
+        m.samples = Some(raw_samples.len() as u64);
+        m.raw_samples = Some(raw_samples);
+
+        if samples_for_stats.len() > 1 {
+            let sample_mean: f64 = samples_for_stats.iter().map(|&x| x as f64).sum::<f64>() /
+                samples_for_stats.len() as f64;
+            let variance: f64 =
+                samples_for_stats.iter().map(|&x| (x as f64 - sample_mean).powi(2)).sum::<f64>() /
+                    (samples_for_stats.len() - 1) as f64;
+            let std_dev = variance.sqrt();
+            let std_error = std_dev / (samples_for_stats.len() as f64).sqrt();
+            m.rme_percent = Some((std_error / sample_mean) * 100.0 * 1.96);
+            m.cv_percent =
+                Some(if sample_mean > 0.0 { (std_dev / sample_mean) * 100.0 } else { 0.0 });
+            m.is_stable = m.cv_percent.map(|cv| cv <= cv_threshold);
+            m.std_dev_nanos = Some(std_dev);
+        }
+
+        m.estimator_source = Some(
+            if remove_outliers { "aggregate+filtered-stats" } else { "aggregate+raw-stats" }
+                .to_string(),
+        );
+
+        m
     }
 
     /// Set memory allocation data (for Go)
@@ -328,6 +403,8 @@ impl Measurement {
         // Aggregate totals across runs
         let total_iterations: u64 = runs.iter().map(|r| r.iterations).sum();
         let total_nanos: u64 = runs.iter().map(|r| r.total_nanos).sum();
+        let total_warmup_nanos: u64 = runs.iter().filter_map(|r| r.warmup_nanos).sum();
+        let total_spawn_nanos: u64 = runs.iter().filter_map(|r| r.spawn_nanos).sum();
 
         // Use min/max across all runs
         let min_nanos = runs.iter().filter_map(|r| r.min_nanos).min();
@@ -407,6 +484,8 @@ impl Measurement {
         Self {
             iterations: total_iterations,
             total_nanos,
+            warmup_nanos: if total_warmup_nanos > 0 { Some(total_warmup_nanos) } else { None },
+            spawn_nanos: if total_spawn_nanos > 0 { Some(total_spawn_nanos) } else { None },
             nanos_per_op: median, // Use median as primary value
             ops_per_sec: if median > 0.0 { 1_000_000_000.0 / median } else { 0.0 },
             min_nanos,
@@ -488,6 +567,8 @@ impl Measurement {
         // Aggregate totals across runs
         let total_iterations: u64 = runs.iter().map(|r| r.iterations).sum();
         let total_nanos: u64 = runs.iter().map(|r| r.total_nanos).sum();
+        let total_warmup_nanos: u64 = runs.iter().filter_map(|r| r.warmup_nanos).sum();
+        let total_spawn_nanos: u64 = runs.iter().filter_map(|r| r.spawn_nanos).sum();
 
         // Use min/max across all runs
         let min_nanos = runs.iter().filter_map(|r| r.min_nanos).min();
@@ -554,6 +635,8 @@ impl Measurement {
         Self {
             iterations: total_iterations,
             total_nanos,
+            warmup_nanos: if total_warmup_nanos > 0 { Some(total_warmup_nanos) } else { None },
+            spawn_nanos: if total_spawn_nanos > 0 { Some(total_spawn_nanos) } else { None },
             nanos_per_op: median,
             ops_per_sec: if median > 0.0 { 1_000_000_000.0 / median } else { 0.0 },
             min_nanos,
@@ -607,6 +690,8 @@ impl Measurement {
         Self {
             iterations: 0,
             total_nanos: 0,
+            warmup_nanos: None,
+            spawn_nanos: None,
             nanos_per_op: 0.0,
             ops_per_sec: 0.0,
             min_nanos: None,

@@ -237,6 +237,7 @@ impl Runtime for CRuntime {
         }
         cmd.kill_on_drop(true);
 
+        let run_start = std::time::Instant::now();
         let child = cmd.spawn().map_err(|e| miette!("Failed to run C benchmark: {}", e))?;
         let output = if let Some(timeout_ms) = spec.timeout {
             match tokio::time::timeout(
@@ -259,8 +260,16 @@ impl Runtime for CRuntime {
             return Err(miette!("C benchmark failed:\n{}", String::from_utf8_lossy(&output.stderr)));
         }
 
+        let run_wall_nanos = run_start.elapsed().as_nanos() as u64;
         let stdout = String::from_utf8_lossy(&output.stdout);
-        parse_benchmark_result(&stdout, spec.outlier_detection, spec.cv_threshold)
+        let mut m = parse_benchmark_result(&stdout, spec.outlier_detection, spec.cv_threshold)?;
+        let spawn = if let Some(w) = m.warmup_nanos {
+            run_wall_nanos.saturating_sub(w).saturating_sub(m.total_nanos)
+        } else {
+            run_wall_nanos.saturating_sub(m.total_nanos)
+        };
+        m.spawn_nanos = Some(spawn);
+        Ok(m)
     }
 
     async fn shutdown(&mut self) -> Result<()> {
@@ -399,14 +408,28 @@ fn generate_c_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) ->
     }
     src.push_str(&emit_hook(spec.before_hooks.get(&Lang::C), "    "));
 
-    src.push_str(&format!("    for (uint64_t i = 0; i < {}; i++) {{\n", spec.warmup));
-    src.push_str(&emit_hook(spec.each_hooks.get(&Lang::C), "        "));
-    if spec.use_sink {
-        src.push_str("        __polybench_sink = __polybench_bench();\n");
-    } else {
-        src.push_str("        __polybench_bench();\n");
+    // Warmup (warmup_time_ms takes precedence over warmup_iterations)
+    if spec.warmup_time_ms > 0 {
+        src.push_str(&format!(
+            "    uint64_t __warmup_start = __polybench_nanos_now();\n    uint64_t __warmup_limit = (uint64_t)({} * 1e6);\n    while ((__polybench_nanos_now() - __warmup_start) < __warmup_limit) {{\n",
+            spec.warmup_time_ms
+        ));
+    } else if spec.warmup_iterations > 0 {
+        src.push_str(&format!("    uint64_t __warmup_start = __polybench_nanos_now();\n    for (uint64_t i = 0; i < {}; i++) {{\n", spec.warmup_iterations));
     }
-    src.push_str("    }\n\n");
+    if spec.warmup_time_ms > 0 || spec.warmup_iterations > 0 {
+        src.push_str(&emit_hook(spec.each_hooks.get(&Lang::C), "        "));
+        if spec.use_sink {
+            src.push_str("        __polybench_sink = __polybench_bench();\n");
+        } else {
+            src.push_str("        __polybench_bench();\n");
+        }
+        src.push_str(
+            "    }\n    uint64_t __warmup_nanos = __polybench_nanos_now() - __warmup_start;\n\n",
+        );
+    } else {
+        src.push_str("    uint64_t __warmup_nanos = 0;\n");
+    }
 
     if spec.mode == BenchMode::Auto {
         src.push_str(&format!(
@@ -435,7 +458,7 @@ fn generate_c_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) ->
             "    double nanosPerOp = totalNs / (double)(totalIterations ? totalIterations : 1);\n    double opsPerSec = 1000000000.0 / (nanosPerOp > 0.0 ? nanosPerOp : 1.0);\n",
         );
         src.push_str(&emit_hook(spec.after_hooks.get(&Lang::C), "    "));
-        src.push_str("    printf(\"{\\\"iterations\\\":%llu,\\\"totalNanos\\\":%.0f,\\\"nanosPerOp\\\":%.6f,\\\"opsPerSec\\\":%.6f,\\\"samples\\\":[\", (unsigned long long)totalIterations, totalNs, nanosPerOp, opsPerSec);\n");
+        src.push_str("    printf(\"{\\\"iterations\\\":%llu,\\\"totalNanos\\\":%.0f,\\\"warmupNanos\\\":%llu,\\\"nanosPerOp\\\":%.6f,\\\"opsPerSec\\\":%.6f,\\\"samples\\\":[\", (unsigned long long)totalIterations, totalNs, (unsigned long long)__warmup_nanos, nanosPerOp, opsPerSec);\n");
         src.push_str("    for (size_t i = 0; i < sampleCount; i++) {\n");
         src.push_str(
             "        if (i) printf(\",\");\n        printf(\"%.0f\", samples[i]);\n    }\n",
@@ -459,7 +482,7 @@ fn generate_c_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) ->
             "    double totalNs = 0.0;\n    for (uint64_t i = 0; i < iterations; i++) totalNs += samples[i];\n    double nanosPerOp = totalNs / (double)(iterations ? iterations : 1);\n    double opsPerSec = 1000000000.0 / (nanosPerOp > 0.0 ? nanosPerOp : 1.0);\n",
         );
         src.push_str(&emit_hook(spec.after_hooks.get(&Lang::C), "    "));
-        src.push_str("    printf(\"{\\\"iterations\\\":%llu,\\\"totalNanos\\\":%.0f,\\\"nanosPerOp\\\":%.6f,\\\"opsPerSec\\\":%.6f,\\\"samples\\\":[\", (unsigned long long)iterations, totalNs, nanosPerOp, opsPerSec);\n");
+        src.push_str("    printf(\"{\\\"iterations\\\":%llu,\\\"totalNanos\\\":%.0f,\\\"warmupNanos\\\":%llu,\\\"nanosPerOp\\\":%.6f,\\\"opsPerSec\\\":%.6f,\\\"samples\\\":[\", (unsigned long long)iterations, totalNs, (unsigned long long)__warmup_nanos, nanosPerOp, opsPerSec);\n");
         src.push_str("    for (uint64_t i = 0; i < iterations; i++) {\n");
         src.push_str(
             "        if (i) printf(\",\");\n        printf(\"%.0f\", samples[i]);\n    }\n",
@@ -478,6 +501,8 @@ struct BenchResultJson {
     iterations: u64,
     total_nanos: f64,
     #[serde(default)]
+    warmup_nanos: Option<f64>,
+    #[serde(default)]
     samples: Vec<f64>,
     #[serde(default)]
     raw_result: Option<String>,
@@ -489,15 +514,19 @@ impl BenchResultJson {
         let mut m = if sample_u64.is_empty() {
             Measurement::from_aggregate(self.iterations, self.total_nanos as u64)
         } else {
-            Measurement::from_samples_with_options(
-                sample_u64,
+            Measurement::from_aggregate_with_sample_stats(
                 self.iterations,
+                self.total_nanos as u64,
+                sample_u64,
                 outlier_detection,
                 cv_threshold,
             )
         };
         if let Some(raw) = self.raw_result {
             m.raw_result = Some(raw);
+        }
+        if let Some(w) = self.warmup_nanos {
+            m.warmup_nanos = Some(w as u64);
         }
         m
     }

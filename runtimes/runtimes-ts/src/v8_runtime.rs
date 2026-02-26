@@ -362,6 +362,7 @@ impl Runtime for JsRuntime {
 
         cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
         cmd.kill_on_drop(true);
+        let run_start = std::time::Instant::now();
         let child = cmd.spawn().map_err(|e| miette!("Failed to run Node.js: {}", e))?;
         let output = if let Some(timeout_ms) = spec.timeout {
             match tokio::time::timeout(
@@ -384,8 +385,16 @@ impl Runtime for JsRuntime {
             return Err(miette!("JavaScript benchmark failed:\n{}", stderr));
         }
 
+        let run_wall_nanos = run_start.elapsed().as_nanos() as u64;
         let stdout = String::from_utf8_lossy(&output.stdout);
-        parse_benchmark_result(&stdout, spec.outlier_detection, spec.cv_threshold)
+        let mut m = parse_benchmark_result(&stdout, spec.outlier_detection, spec.cv_threshold)?;
+        // spawn = wall - warmup - exec (remainder after subtracting in-process phases)
+        if let Some(warmup) = m.warmup_nanos {
+            let exec = m.total_nanos;
+            let spawn = run_wall_nanos.saturating_sub(warmup).saturating_sub(exec);
+            m.spawn_nanos = Some(spawn);
+        }
+        Ok(m)
     }
 
     async fn shutdown(&mut self) -> Result<()> {
@@ -557,9 +566,10 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         script.push_str(";\n");
         script.push_str("    },\n");
         script.push_str(&format!(
-            "    {}, {}, {}, {}, {}, {}, \"{}\"\n",
+            "    {}, {}, {}, {}, {}, {}, {}, \"{}\"\n",
             spec.iterations,
-            spec.warmup,
+            spec.warmup_iterations,
+            spec.warmup_time_ms,
             use_sink,
             track_memory,
             spec.async_sample_cap,
@@ -568,29 +578,39 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         ));
         script.push_str(");\n");
     } else if use_auto_mode {
-        // Auto-calibration mode: only uses targetTime (no min/max iteration caps)
-        // V8/JIT needs at least 100 warmup iterations for stable optimization
-        let warmup = spec.warmup.max(100);
+        // Auto-calibration mode: warmupTimeMs takes precedence over warmupIterations
         if impl_is_async {
             script.push_str(
                 "const __result = await __polybench.runBenchmarkAutoAsync(async function() {\n",
             );
+            script.push_str("    return (");
+            script.push_str(impl_code);
+            script.push_str(");\n");
+            script.push_str(&format!(
+                "}}, {}, {}, {}, {}, {}, {}, {}, \"{}\");\n",
+                spec.target_time_ms,
+                use_sink,
+                track_memory,
+                spec.warmup_iterations,
+                spec.warmup_time_ms,
+                spec.async_sample_cap,
+                spec.async_warmup_cap,
+                async_sampling_policy
+            ));
         } else {
             script.push_str("const __result = __polybench.runBenchmarkAuto(function() {\n");
+            script.push_str("    return (");
+            script.push_str(impl_code);
+            script.push_str(");\n");
+            script.push_str(&format!(
+                "}}, {}, {}, {}, {}, {});\n",
+                spec.target_time_ms,
+                use_sink,
+                track_memory,
+                spec.warmup_iterations,
+                spec.warmup_time_ms
+            ));
         }
-        script.push_str("    return (");
-        script.push_str(impl_code);
-        script.push_str(");\n");
-        script.push_str(&format!(
-            "}}, {}, {}, {}, {}, {}, {}, \"{}\");\n",
-            spec.target_time_ms,
-            use_sink,
-            track_memory,
-            warmup,
-            spec.async_sample_cap,
-            spec.async_warmup_cap,
-            async_sampling_policy
-        ));
     } else {
         // Fixed iteration mode
         if impl_is_async {
@@ -605,9 +625,10 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         script.push_str(");\n");
         if impl_is_async {
             script.push_str(&format!(
-                "}}, {}, {}, {}, {}, {}, {}, \"{}\");\n",
+                "}}, {}, {}, {}, {}, {}, {}, {}, \"{}\");\n",
                 spec.iterations,
-                spec.warmup,
+                spec.warmup_iterations,
+                spec.warmup_time_ms,
                 use_sink,
                 track_memory,
                 spec.async_sample_cap,
@@ -616,8 +637,12 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
             ));
         } else {
             script.push_str(&format!(
-                "}}, {}, {}, {}, {});\n",
-                spec.iterations, spec.warmup, use_sink, track_memory
+                "}}, {}, {}, {}, {}, {});\n",
+                spec.iterations,
+                spec.warmup_iterations,
+                spec.warmup_time_ms,
+                use_sink,
+                track_memory
             ));
         }
     }
@@ -719,6 +744,9 @@ pub fn extract_generated_snippet(raw: &str, context: usize) -> Option<Vec<String
 struct BenchResultJson {
     iterations: u64,
     total_nanos: f64,
+    /// Warmup phase duration in nanoseconds (if reported by harness)
+    #[serde(default)]
+    warmup_nanos: Option<f64>,
     nanos_per_op: f64,
     ops_per_sec: f64,
     #[serde(default)]
@@ -747,37 +775,27 @@ impl BenchResultJson {
         let samples: Vec<u64> = self.samples.iter().map(|&s| s as u64).collect();
 
         let mut m = if samples.is_empty() {
-            let mut m = Measurement::from_aggregate(self.iterations, self.total_nanos as u64);
-            m.raw_result = self.raw_result.as_ref().map(|v| v.to_string());
-            if !self.successful_results.is_empty() {
-                m.successful_results =
-                    Some(self.successful_results.iter().map(|v| v.to_string()).collect());
-            }
-            m.async_success_count = self.successful_count;
-            m.async_error_count = self.error_count;
-            if !self.error_samples.is_empty() {
-                m.async_error_samples = Some(self.error_samples);
-            }
-            m
+            Measurement::from_aggregate(self.iterations, self.total_nanos as u64)
         } else {
-            let mut m = Measurement::from_samples_with_options(
-                samples,
+            Measurement::from_aggregate_with_sample_stats(
                 self.iterations,
+                self.total_nanos as u64,
+                samples,
                 outlier_detection,
                 cv_threshold,
-            );
-            m.raw_result = self.raw_result.as_ref().map(|v| v.to_string());
-            if !self.successful_results.is_empty() {
-                m.successful_results =
-                    Some(self.successful_results.iter().map(|v| v.to_string()).collect());
-            }
-            m.async_success_count = self.successful_count;
-            m.async_error_count = self.error_count;
-            if !self.error_samples.is_empty() {
-                m.async_error_samples = Some(self.error_samples);
-            }
-            m
+            )
         };
+        m.raw_result = self.raw_result.as_ref().map(|v| v.to_string());
+        m.warmup_nanos = self.warmup_nanos.map(|n| n as u64);
+        if !self.successful_results.is_empty() {
+            m.successful_results =
+                Some(self.successful_results.iter().map(|v| v.to_string()).collect());
+        }
+        m.async_success_count = self.successful_count;
+        m.async_error_count = self.error_count;
+        if !self.error_samples.is_empty() {
+            m.async_error_samples = Some(self.error_samples);
+        }
 
         // Apply memory stats from JS (total_allocated_bytes or heapUsed fallback); allocs_per_op
         // not available in Node

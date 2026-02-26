@@ -45,7 +45,7 @@ fn strict_order(
 #[test]
 fn test_strict_mode_interleaving_order_is_per_run() {
     let suite = SuiteIR::new("suite".to_string());
-    let mut spec = BenchmarkSpec::new("bench".to_string(), "suite", 100, 10);
+    let mut spec = BenchmarkSpec::new("bench".to_string(), "suite", 100, 10, 0);
     spec.fairness_mode = FairnessMode::Strict;
     spec.fairness_seed = Some(99);
 
@@ -80,14 +80,14 @@ fn test_legacy_mode_metadata_is_legacy() {
 #[tokio::test]
 async fn test_scheduler_emits_strict_and_legacy_modes() {
     let mut strict_suite = SuiteIR::new("strict_suite".to_string());
-    let mut strict_bench = BenchmarkSpec::new("bench".to_string(), "strict_suite", 1, 0);
+    let mut strict_bench = BenchmarkSpec::new("bench".to_string(), "strict_suite", 1, 0, 0);
     strict_bench.kind = BenchmarkKind::Sync;
     strict_bench.fairness_mode = FairnessMode::Strict;
     strict_bench.fairness_seed = Some(5);
     strict_suite.benchmarks.push(strict_bench);
 
     let mut legacy_suite = SuiteIR::new("legacy_suite".to_string());
-    let mut legacy_bench = BenchmarkSpec::new("bench".to_string(), "legacy_suite", 1, 0);
+    let mut legacy_bench = BenchmarkSpec::new("bench".to_string(), "legacy_suite", 1, 0, 0);
     legacy_bench.kind = BenchmarkKind::Sync;
     legacy_bench.fairness_mode = FairnessMode::Legacy;
     legacy_suite.benchmarks.push(legacy_bench);

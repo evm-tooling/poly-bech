@@ -306,6 +306,7 @@ impl Runtime for CSharpRuntime {
         }
         cmd.kill_on_drop(true);
 
+        let run_start = std::time::Instant::now();
         let child = cmd.spawn().map_err(|e| miette!("Failed to run C# benchmark: {}", e))?;
         let output = if let Some(timeout_ms) = spec.timeout {
             match tokio::time::timeout(
@@ -331,8 +332,16 @@ impl Runtime for CSharpRuntime {
             ));
         }
 
+        let run_wall_nanos = run_start.elapsed().as_nanos() as u64;
         let stdout = String::from_utf8_lossy(&output.stdout);
-        parse_benchmark_result(&stdout, spec.outlier_detection, spec.cv_threshold)
+        let mut m = parse_benchmark_result(&stdout, spec.outlier_detection, spec.cv_threshold)?;
+        let spawn = if let Some(w) = m.warmup_nanos {
+            run_wall_nanos.saturating_sub(w).saturating_sub(m.total_nanos)
+        } else {
+            run_wall_nanos.saturating_sub(m.total_nanos)
+        };
+        m.spawn_nanos = Some(spawn);
+        Ok(m)
     }
 
     async fn shutdown(&mut self) -> Result<()> {
@@ -451,14 +460,25 @@ fn generate_csharp_source(
         }
     }
     src.push_str("        var samples = new List<double>();\n");
-    src.push_str(&format!("        for (int i = 0; i < {}; i++) {{\n", spec.warmup));
-    src.push_str(&CSharpRuntime::emit_hook(spec.each_hooks.get(&Lang::CSharp), "            "));
-    if spec.use_sink {
-        src.push_str("            __polybench_sink = __polybench_bench();\n");
-    } else {
-        src.push_str("            __polybench_bench();\n");
+    src.push_str("        long warmupNanos = 0;\n");
+    // Warmup (warmup_time_ms takes precedence over warmup_iterations)
+    if spec.warmup_time_ms > 0 {
+        src.push_str(&format!(
+            "        var warmupStart = Stopwatch.GetTimestamp();\n        var warmupLimitNs = (double){} * 1_000_000;\n        while ((Stopwatch.GetTimestamp() - warmupStart) * (1_000_000_000.0 / Stopwatch.Frequency) < warmupLimitNs) {{\n",
+            spec.warmup_time_ms
+        ));
+    } else if spec.warmup_iterations > 0 {
+        src.push_str(&format!("        var warmupStart = Stopwatch.GetTimestamp();\n        for (int i = 0; i < {}; i++) {{\n", spec.warmup_iterations));
     }
-    src.push_str("        }\n\n");
+    if spec.warmup_time_ms > 0 || spec.warmup_iterations > 0 {
+        src.push_str(&CSharpRuntime::emit_hook(spec.each_hooks.get(&Lang::CSharp), "            "));
+        if spec.use_sink {
+            src.push_str("            __polybench_sink = __polybench_bench();\n");
+        } else {
+            src.push_str("            __polybench_bench();\n");
+        }
+        src.push_str("        }\n        warmupNanos = (long)((Stopwatch.GetTimestamp() - warmupStart) * (1_000_000_000.0 / Stopwatch.Frequency));\n\n");
+    }
 
     src.push_str(&CSharpRuntime::emit_hook(spec.before_hooks.get(&Lang::CSharp), "        "));
 
@@ -492,6 +512,7 @@ fn generate_csharp_source(
         src.push_str("        var result = new Dictionary<string, object?> {\n");
         src.push_str("            [\"iterations\"] = totalIterations,\n");
         src.push_str("            [\"totalNanos\"] = totalNs,\n");
+        src.push_str("            [\"warmupNanos\"] = warmupNanos,\n");
         src.push_str("            [\"nanosPerOp\"] = nanosPerOp,\n");
         src.push_str("            [\"opsPerSec\"] = opsPerSec,\n");
         src.push_str("            [\"samples\"] = samples,\n");
@@ -523,6 +544,7 @@ fn generate_csharp_source(
         src.push_str("        var result = new Dictionary<string, object?> {\n");
         src.push_str("            [\"iterations\"] = iterations,\n");
         src.push_str("            [\"totalNanos\"] = totalNs,\n");
+        src.push_str("            [\"warmupNanos\"] = warmupNanos,\n");
         src.push_str("            [\"nanosPerOp\"] = nanosPerOp,\n");
         src.push_str("            [\"opsPerSec\"] = opsPerSec,\n");
         src.push_str("            [\"samples\"] = samples,\n");
@@ -543,6 +565,8 @@ struct BenchResultJson {
     iterations: u64,
     total_nanos: f64,
     #[serde(default)]
+    warmup_nanos: Option<f64>,
+    #[serde(default)]
     samples: Vec<f64>,
     #[serde(default)]
     raw_result: Option<String>,
@@ -554,15 +578,19 @@ impl BenchResultJson {
         let mut m = if sample_u64.is_empty() {
             Measurement::from_aggregate(self.iterations, self.total_nanos as u64)
         } else {
-            Measurement::from_samples_with_options(
-                sample_u64,
+            Measurement::from_aggregate_with_sample_stats(
                 self.iterations,
+                self.total_nanos as u64,
+                sample_u64,
                 outlier_detection,
                 cv_threshold,
             )
         };
         if let Some(raw) = self.raw_result {
             m.raw_result = Some(raw);
+        }
+        if let Some(w) = self.warmup_nanos {
+            m.warmup_nanos = Some(w as u64);
         }
         m
     }

@@ -126,8 +126,10 @@ pub struct SuiteIR {
     pub description: Option<String>,
     /// Default iterations for benchmarks
     pub default_iterations: u64,
-    /// Default warmup iterations
-    pub default_warmup: u64,
+    /// Default warmup iterations (0 = skip)
+    pub default_warmup_iterations: u64,
+    /// Default warmup duration in ms (0 = skip; takes precedence over iterations when both > 0)
+    pub default_warmup_time_ms: u64,
 
     // Phase 4: Suite-level configuration
     /// Suite-level timeout in milliseconds
@@ -213,7 +215,8 @@ impl SuiteIR {
             name,
             description: None,
             default_iterations: 1000,
-            default_warmup: 1000, // Increased from 100 for better JIT optimization
+            default_warmup_iterations: 0,
+            default_warmup_time_ms: 0,
             timeout: None,
             requires: Vec::new(),
             order: ExecutionOrder::Sequential,
@@ -363,8 +366,10 @@ pub struct BenchmarkSpec {
     pub description: Option<String>,
     /// Number of iterations to run (for fixed mode)
     pub iterations: u64,
-    /// Number of warmup iterations
-    pub warmup: u64,
+    /// Number of warmup iterations (0 = skip when warmup_time_ms is 0)
+    pub warmup_iterations: u64,
+    /// Warmup duration in ms (takes precedence over warmup_iterations when > 0)
+    pub warmup_time_ms: u64,
 
     // Phase 2: Benchmark configuration
     /// Timeout in milliseconds
@@ -421,14 +426,21 @@ pub struct BenchmarkSpec {
 }
 
 impl BenchmarkSpec {
-    pub fn new(name: String, suite_name: &str, iterations: u64, warmup: u64) -> Self {
+    pub fn new(
+        name: String,
+        suite_name: &str,
+        iterations: u64,
+        warmup_iterations: u64,
+        warmup_time_ms: u64,
+    ) -> Self {
         Self {
             full_name: format!("{}_{}", suite_name, name),
             name,
             kind: BenchmarkKind::Sync,
             description: None,
             iterations,
-            warmup,
+            warmup_iterations,
+            warmup_time_ms,
             timeout: None,
             tags: Vec::new(),
             skip_conditions: HashMap::new(),

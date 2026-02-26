@@ -311,11 +311,17 @@ impl Parser {
                 let value = self.expect_number()?;
                 suite.iterations = Some(value);
             }
-            TokenKind::Warmup => {
+            TokenKind::Warmup | TokenKind::WarmupIterations => {
                 self.advance();
                 self.expect(TokenKind::Colon)?;
                 let value = self.expect_number()?;
-                suite.warmup = Some(value);
+                suite.warmup_iterations = Some(value);
+            }
+            TokenKind::WarmupTime => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_duration()?;
+                suite.warmup_time_ms = Some(value);
             }
             // Phase 4: Suite-level configuration
             TokenKind::Timeout => {
@@ -1055,11 +1061,17 @@ impl Parser {
                 benchmark.iterations = Some(value);
             }
             // Phase 2: Benchmark configuration
-            TokenKind::Warmup => {
+            TokenKind::Warmup | TokenKind::WarmupIterations => {
                 self.advance();
                 self.expect(TokenKind::Colon)?;
                 let value = self.expect_number()?;
-                benchmark.warmup = Some(value);
+                benchmark.warmup_iterations = Some(value);
+            }
+            TokenKind::WarmupTime => {
+                self.advance();
+                self.expect(TokenKind::Colon)?;
+                let value = self.expect_duration()?;
+                benchmark.warmup_time_ms = Some(value);
             }
             TokenKind::Timeout => {
                 self.advance();
@@ -2126,7 +2138,7 @@ suite test {
         let bench = &file.suites[0].benchmarks[0];
 
         assert_eq!(bench.iterations, Some(100));
-        assert_eq!(bench.warmup, Some(10));
+        assert_eq!(bench.warmup_iterations, Some(10));
         assert_eq!(bench.timeout, Some(30000)); // 30s in ms
         assert_eq!(bench.tags, vec!["performance", "critical"]);
         assert!(bench.before.contains_key(&Lang::Go));

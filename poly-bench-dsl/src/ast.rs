@@ -689,8 +689,10 @@ pub struct Suite {
     pub description: Option<String>,
     /// Default iterations for benchmarks in this suite
     pub iterations: Option<u64>,
-    /// Warmup iterations
-    pub warmup: Option<u64>,
+    /// Warmup iterations (legacy: also set by "warmup")
+    pub warmup_iterations: Option<u64>,
+    /// Warmup duration in ms (takes precedence over warmup_iterations when both set)
+    pub warmup_time_ms: Option<u64>,
 
     // Phase 4: Suite configuration
     /// Suite-level timeout in milliseconds
@@ -757,7 +759,8 @@ impl Suite {
             span,
             description: None,
             iterations: None,
-            warmup: None,
+            warmup_iterations: None,
+            warmup_time_ms: None,
             timeout: None,
             requires: Vec::new(),
             order: None,
@@ -861,8 +864,10 @@ pub struct Benchmark {
     pub iterations: Option<u64>,
 
     // Phase 2: Benchmark configuration
-    /// Override warmup iterations for this benchmark
-    pub warmup: Option<u64>,
+    /// Override warmup iterations for this benchmark (legacy: also set by "warmup")
+    pub warmup_iterations: Option<u64>,
+    /// Override warmup duration in ms (takes precedence over warmup_iterations)
+    pub warmup_time_ms: Option<u64>,
     /// Timeout in milliseconds for this benchmark
     pub timeout: Option<u64>,
     /// Tags for filtering/grouping
@@ -911,7 +916,8 @@ impl Benchmark {
             span,
             description: None,
             iterations: None,
-            warmup: None,
+            warmup_iterations: None,
+            warmup_time_ms: None,
             timeout: None,
             tags: Vec::new(),
             skip: HashMap::new(),
