@@ -1,0 +1,3 @@
+    if manifest.has_csharp() {
+        build_csharp_env(&project_root, manifest.csharp.as_ref().unwrap(), options)?;
+    }

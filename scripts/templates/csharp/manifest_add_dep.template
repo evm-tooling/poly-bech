@@ -1,0 +1,9 @@
+    /// Add a C# dependency
+    pub fn add_csharp_dependency(&mut self, package: &str, version: &str) -> Result<()> {
+        let csharp = self
+            .csharp
+            .as_mut()
+            .ok_or_else(|| miette::miette!("C# is not enabled in this project"))?;
+        csharp.dependencies.insert(package.to_string(), version.to_string());
+        Ok(())
+    }

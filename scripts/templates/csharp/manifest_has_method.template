@@ -1,0 +1,4 @@
+    /// Check if C# is enabled
+    pub fn has_csharp(&self) -> bool {
+        self.csharp.is_some()
+    }

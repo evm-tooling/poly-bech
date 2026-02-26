@@ -32,6 +32,7 @@ impl Default for Span {
     }
 }
 
+// BEGIN-GENERATED: Lang enum (do not edit)
 /// Supported programming languages
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Lang {
@@ -64,6 +65,7 @@ impl Lang {
         }
     }
 }
+// END-GENERATED: Lang enum
 
 impl std::fmt::Display for Lang {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

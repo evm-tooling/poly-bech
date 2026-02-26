@@ -1,0 +1,15 @@
+/// C#-specific configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CSharpConfig {
+    /// Target .NET framework (e.g., net8.0)
+    #[serde(default = "default_csharp_target_framework")]
+    pub target_framework: String,
+
+    /// NuGet dependencies (package -> version)
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub dependencies: HashMap<String, String>,
+}
+
+fn default_csharp_target_framework() -> String {
+    "net8.0".to_string()
+}

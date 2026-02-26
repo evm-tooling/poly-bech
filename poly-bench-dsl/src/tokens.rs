@@ -71,13 +71,14 @@ pub enum TokenKind {
     // Global setup keywords
     GlobalSetup, // globalSetup
 
-    // Language keywords
+    // Language keywords (BEGIN-GENERATED: TokenKind lang variants)
     Go,
     Ts,
     TypeScript,
     Rust,
     Python,
     CSharp,
+    // END-GENERATED: TokenKind lang variants
 
     // Boolean literals
     True,  // true
@@ -274,13 +275,13 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         // Global setup keywords
         "globalSetup" => Some(TokenKind::GlobalSetup),
 
-        // Language keywords
+        // Language keywords (BEGIN-GENERATED: keyword_from_str lang)
         "go" => Some(TokenKind::Go),
-        "ts" => Some(TokenKind::Ts),
-        "typescript" => Some(TokenKind::TypeScript),
-        "rust" => Some(TokenKind::Rust),
-        "python" => Some(TokenKind::Python),
+        "ts" | "typescript" => Some(TokenKind::Ts),
+        "rust" | "rs" => Some(TokenKind::Rust),
+        "python" | "py" => Some(TokenKind::Python),
         "csharp" | "cs" => Some(TokenKind::CSharp),
+        // END-GENERATED: keyword_from_str lang
 
         // Boolean literals
         "true" => Some(TokenKind::True),

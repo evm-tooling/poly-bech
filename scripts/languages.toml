@@ -1,0 +1,45 @@
+# Single source of truth for supported languages.
+# Used by scripts/add-lang.py to generate boilerplate.
+
+[languages.go]
+aliases = ["go"]
+rust_enum = "Go"
+token_kinds = ["Go"]
+vscode_scope = "go"
+tree_sitter_injection = "go"
+# Go uses paren for import: import ( )
+import_style = "paren"
+
+[languages.typescript]
+aliases = ["ts", "typescript"]
+rust_enum = "TypeScript"
+token_kinds = ["Ts", "TypeScript"]
+vscode_scope = "ts"
+tree_sitter_injection = "typescript"
+# VS Code embedded language ID (ts -> typescript)
+embedded_lang = "typescript"
+# TypeScript uses node_root in RuntimeConfig
+config_field = "node_root"
+
+[languages.rust]
+aliases = ["rust", "rs"]
+rust_enum = "Rust"
+token_kinds = ["Rust"]
+vscode_scope = "rust"
+tree_sitter_injection = "rust"
+
+[languages.python]
+aliases = ["python", "py"]
+rust_enum = "Python"
+token_kinds = ["Python"]
+vscode_scope = "python"
+tree_sitter_injection = "python"
+
+[languages.csharp]
+aliases = ["csharp", "cs"]
+rust_enum = "CSharp"
+token_kinds = ["CSharp"]
+vscode_scope = "cs"
+tree_sitter_injection = "c_sharp"
+# VS Code embedded language ID (cs -> csharp)
+embedded_lang = "csharp"

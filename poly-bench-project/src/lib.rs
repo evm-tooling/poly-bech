@@ -30,23 +30,28 @@ pub const BENCHMARKS_DIR: &str = "benchmarks";
 
 /// Directory under .polybench for per-runtime env (go.mod, package.json, deps, harness)
 pub const RUNTIME_ENV_DIR: &str = ".polybench/runtime-env";
+// BEGIN-GENERATED: RUNTIME_ENV constants (do not edit)
 /// Go runtime env subdir (go.mod, go.sum, generated bench code)
 pub const RUNTIME_ENV_GO: &str = "go";
 /// TypeScript/Node runtime env subdir (package.json, node_modules, generated bench code)
-pub const RUNTIME_ENV_TS: &str = "ts";
+pub const RUNTIME_ENV_TYPESCRIPT: &str = "ts";
 /// Rust runtime env subdir (Cargo.toml, Cargo.lock, generated bench code)
 pub const RUNTIME_ENV_RUST: &str = "rust";
+/// Python runtime env subdir
 pub const RUNTIME_ENV_PYTHON: &str = "python";
+/// C# runtime env subdir (polybench.csproj, Program.cs, generated bench code)
 pub const RUNTIME_ENV_CSHARP: &str = "csharp";
+// END-GENERATED: RUNTIME_ENV constants
 
-/// Path to the Go runtime env for a project (where go.mod and deps live)
+// BEGIN-GENERATED: runtime_env functions (do not edit)
+/// Path to the Go runtime env for a project
 pub fn runtime_env_go(project_root: &Path) -> PathBuf {
     project_root.join(RUNTIME_ENV_DIR).join(RUNTIME_ENV_GO)
 }
 
 /// Path to the TypeScript runtime env for a project
 pub fn runtime_env_ts(project_root: &Path) -> PathBuf {
-    project_root.join(RUNTIME_ENV_DIR).join(RUNTIME_ENV_TS)
+    project_root.join(RUNTIME_ENV_DIR).join(RUNTIME_ENV_TYPESCRIPT)
 }
 
 /// Path to the Rust runtime env for a project
@@ -59,10 +64,11 @@ pub fn runtime_env_python(project_root: &Path) -> PathBuf {
     project_root.join(RUNTIME_ENV_DIR).join(RUNTIME_ENV_PYTHON)
 }
 
-/// Path to the C# runtime env for a project
+/// Path to the CSharp runtime env for a project
 pub fn runtime_env_csharp(project_root: &Path) -> PathBuf {
     project_root.join(RUNTIME_ENV_DIR).join(RUNTIME_ENV_CSHARP)
 }
+// END-GENERATED: runtime_env functions
 
 /// True if path looks like a runtime-env root (e.g. .../runtime-env/go)
 pub fn is_runtime_env_root(path: &Path) -> bool {

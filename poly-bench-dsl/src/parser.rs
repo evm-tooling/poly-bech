@@ -2,6 +2,19 @@
 //!
 //! Parses a stream of tokens into an AST.
 
+// BEGIN-GENERATED: lang_tokens macro (do not edit)
+macro_rules! lang_tokens {
+    () => {
+        TokenKind::Go |
+        TokenKind::Ts |
+        TokenKind::TypeScript |
+        TokenKind::Rust |
+        TokenKind::Python |
+        TokenKind::CSharp
+    };
+}
+// END-GENERATED: lang_tokens macro
+
 use crate::{
     ast::{HookStyle, *},
     chart_params::validate_param,
@@ -943,12 +956,7 @@ impl Parser {
                 fixture.shape = Some(shape_code.code);
             }
             // Language-specific implementation
-            TokenKind::Go |
-            TokenKind::Ts |
-            TokenKind::TypeScript |
-            TokenKind::Rust |
-            TokenKind::Python |
-            TokenKind::CSharp => {
+            lang_tokens!() => {
                 let lang = self.expect_lang()?;
                 self.expect(TokenKind::Colon)?;
                 let code = self.parse_inline_or_block_code()?;
@@ -1190,12 +1198,7 @@ impl Parser {
                 }
             }
             // Language-specific implementation
-            TokenKind::Go |
-            TokenKind::Ts |
-            TokenKind::TypeScript |
-            TokenKind::Rust |
-            TokenKind::Python |
-            TokenKind::CSharp => {
+            lang_tokens!() => {
                 let lang = self.expect_lang()?;
                 self.expect(TokenKind::Colon)?;
                 let code = self.parse_inline_or_block_code()?;
@@ -1266,12 +1269,7 @@ impl Parser {
                 if matches!(
                     token.kind,
                     TokenKind::RBrace |
-                        TokenKind::Go |
-                        TokenKind::Ts |
-                        TokenKind::TypeScript |
-                        TokenKind::Rust |
-                        TokenKind::Python |
-                        TokenKind::CSharp
+                        lang_tokens!()
                 ) {
                     break;
                 }
@@ -1372,12 +1370,7 @@ impl Parser {
                 if matches!(
                     token.kind,
                     TokenKind::RBrace |
-                        TokenKind::Go |
-                        TokenKind::Ts |
-                        TokenKind::TypeScript |
-                        TokenKind::Rust |
-                        TokenKind::Python |
-                        TokenKind::CSharp |
+                        lang_tokens!() |
                         TokenKind::Description |
                         TokenKind::Iterations |
                         TokenKind::Warmup |
@@ -1507,12 +1500,7 @@ impl Parser {
         }
         let token = self.peek();
         match &token.kind {
-            TokenKind::Go |
-            TokenKind::Ts |
-            TokenKind::TypeScript |
-            TokenKind::Rust |
-            TokenKind::Python |
-            TokenKind::CSharp => true,
+            lang_tokens!() => true,
             TokenKind::Identifier(s) => Lang::from_str(s).is_some(),
             _ => false,
         }
@@ -1580,11 +1568,13 @@ impl Parser {
     fn expect_lang(&mut self) -> Result<Lang> {
         let token = self.peek().clone();
         let lang = match &token.kind {
+            // BEGIN-GENERATED: token_to_lang (do not edit)
             TokenKind::Go => Some(Lang::Go),
             TokenKind::Ts | TokenKind::TypeScript => Some(Lang::TypeScript),
             TokenKind::Rust => Some(Lang::Rust),
             TokenKind::Python => Some(Lang::Python),
             TokenKind::CSharp => Some(Lang::CSharp),
+            // END-GENERATED: token_to_lang
             TokenKind::Identifier(s) => Lang::from_str(s),
             _ => None,
         };

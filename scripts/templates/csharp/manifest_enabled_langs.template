@@ -1,0 +1,3 @@
+        if self.has_csharp() {
+            langs.push("csharp".to_string());
+        }

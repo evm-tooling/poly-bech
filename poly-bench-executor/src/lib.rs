@@ -16,6 +16,7 @@ pub use workspace::{format_size, CompileWorkspace};
 /// Project roots for different languages
 #[derive(Debug, Clone, Default)]
 pub struct ProjectRoots {
+    // BEGIN-GENERATED: ProjectRoots fields (do not edit)
     /// Go module root (directory containing go.mod)
     pub go_root: Option<PathBuf>,
     /// Node.js project root (directory containing package.json or node_modules)
@@ -26,6 +27,7 @@ pub struct ProjectRoots {
     pub python_root: Option<PathBuf>,
     /// C# project root (directory containing .csproj/.sln)
     pub csharp_root: Option<PathBuf>,
+    // END-GENERATED: ProjectRoots fields
 }
 
 pub use comparison::{BenchmarkResult, BenchmarkResults, SuiteResults};

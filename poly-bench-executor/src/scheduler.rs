@@ -439,11 +439,13 @@ pub async fn run(
 
         // Initialize runtimes via registry
         let config = RuntimeConfig {
+            // BEGIN-GENERATED: RuntimeConfig mapping (do not edit)
             go_root: project_roots.go_root.clone(),
             node_root: project_roots.node_root.clone(),
             rust_root: project_roots.rust_root.clone(),
             python_root: project_roots.python_root.clone(),
             csharp_root: project_roots.csharp_root.clone(),
+            // END-GENERATED: RuntimeConfig mapping
         };
         let mut runtimes = create_runtimes(langs, &config)
             .map_err(|e| miette!("Runtime initialization failed: {}", e))?;

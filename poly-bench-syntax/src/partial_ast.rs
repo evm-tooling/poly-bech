@@ -152,7 +152,7 @@ impl Lang {
         match s.to_lowercase().as_str() {
             "go" => Some(Lang::Go),
             "ts" | "typescript" => Some(Lang::TypeScript),
-            "rust" => Some(Lang::Rust),
+            "rust" | "rs" => Some(Lang::Rust),
             "python" | "py" => Some(Lang::Python),
             "csharp" | "cs" => Some(Lang::CSharp),
             _ => None,

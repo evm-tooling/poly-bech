@@ -1,0 +1,9 @@
+    /// Remove a C# dependency
+    pub fn remove_csharp_dependency(&mut self, package: &str) -> Result<()> {
+        let csharp = self
+            .csharp
+            .as_mut()
+            .ok_or_else(|| miette::miette!("C# is not enabled in this project"))?;
+        csharp.dependencies.remove(package);
+        Ok(())
+    }

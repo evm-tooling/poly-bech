@@ -1,0 +1,1 @@
+        let has_csharp = languages.iter().any(|l| l == "csharp" || l == "cs");
