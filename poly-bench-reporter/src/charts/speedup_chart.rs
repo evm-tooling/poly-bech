@@ -6,7 +6,9 @@
 use poly_bench_dsl::{BenchmarkKind, Lang};
 use poly_bench_executor::comparison::BenchmarkResult;
 use poly_bench_ir::ChartDirectiveIR;
-use poly_bench_runtime::{lang_color, lang_full_name, lang_gradient_id, lang_label};
+use poly_bench_runtime::{
+    lang_color, lang_display, lang_full_name, lang_gradient_id, lang_label, supported_languages,
+};
 
 use super::{escape_xml, filter_benchmarks, format_duration, sort_benchmarks};
 
@@ -27,10 +29,6 @@ const MIN_CARD_WIDTH: i32 = 260;
 const MAX_GRID_COLUMNS: i32 = 4;
 const TARGET_COMBINED_GRID_HEIGHT: i32 = 420;
 
-// Language colors (same for both themes)
-const GO_COLOR: &str = "#00ADD8";
-const TS_COLOR: &str = "#3178C6";
-const RUST_COLOR: &str = "#DEA584";
 
 // Accent colors (same for both themes)
 const ACCENT_COLOR: &str = "#FF8A00";
@@ -730,49 +728,54 @@ fn empty_chart(message: &str, theme: &ThemeColors) -> String {
     )
 }
 
-/// SVG header with gradients and filters
+/// SVG header with gradients and filters.
+/// Gradient defs are generated dynamically from supported languages.
 fn svg_header(width: i32, height: i32, theme: &ThemeColors) -> String {
-    format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\" fill=\"none\">\n\
-<rect width=\"{}\" height=\"{}\" fill=\"{}\"/>\n\
-<defs>\n\
+    let mut defs = format!(
+        "<defs>\n\
   <radialGradient id=\"accentGrad\" cx=\"0.5\" cy=\"0.5\" r=\"0.8\">\n\
     <stop stop-color=\"{}\"/>\n\
     <stop offset=\"1\" stop-color=\"{}\"/>\n\
-  </radialGradient>\n\
-  <linearGradient id=\"goGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
+  </radialGradient>\n",
+        ACCENT_COLOR, ACCENT_GLOW
+    );
+
+    for lang in supported_languages() {
+        let info = lang_display(*lang);
+        defs.push_str(&format!(
+            "  <linearGradient id=\"{}\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
     <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
-    <stop offset=\"100%\" stop-color=\"#0891B2\" stop-opacity=\"0.8\"/>\n\
-  </linearGradient>\n\
-  <linearGradient id=\"tsGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
-    <stop offset=\"100%\" stop-color=\"#1D4ED8\" stop-opacity=\"0.8\"/>\n\
-  </linearGradient>\n\
-  <linearGradient id=\"rustGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
-    <stop offset=\"100%\" stop-color=\"#B7410E\" stop-opacity=\"0.8\"/>\n\
-  </linearGradient>\n\
-  <linearGradient id=\"pythonGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-    <stop offset=\"0%\" stop-color=\"#D8BD4A\" stop-opacity=\"1\"/>\n\
-    <stop offset=\"100%\" stop-color=\"#EEDB7A\" stop-opacity=\"1\"/>\n\
-  </linearGradient>\n\
-  <linearGradient id=\"csharpGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"1\"/>\n\
-    <stop offset=\"100%\" stop-color=\"#7C3AED\" stop-opacity=\"1\"/>\n\
-  </linearGradient>\n\
-  <filter id=\"barShadow\" x=\"-5%\" y=\"-15%\" width=\"110%\" height=\"140%\">\n\
+    <stop offset=\"100%\" stop-color=\"{}\" stop-opacity=\"0.8\"/>\n\
+  </linearGradient>\n",
+            info.gradient_id,
+            info.color,
+            info.gradient_end
+        ));
+    }
+
+    defs.push_str(&format!(
+        "  <filter id=\"barShadow\" x=\"-5%\" y=\"-15%\" width=\"110%\" height=\"140%\">\n\
     <feDropShadow dx=\"0\" dy=\"2\" stdDeviation=\"2\" flood-opacity=\"0.25\"/>\n\
   </filter>\n\
   <filter id=\"accentGlow\" x=\"-150%\" y=\"-10%\" width=\"400%\" height=\"120%\">\n\
     <feDropShadow dx=\"0\" dy=\"0\" stdDeviation=\"4\" flood-color=\"{}\" flood-opacity=\"0.7\"/>\n\
   </filter>\n\
 </defs>\n",
-        width, height, width, height,
-        width, height, theme.bg_color,
-        ACCENT_COLOR, ACCENT_GLOW,
-        GO_COLOR, TS_COLOR, RUST_COLOR,
-        lang_color(Lang::CSharp),
         ACCENT_COLOR
+    ));
+
+    format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\" fill=\"none\">\n\
+<rect width=\"{}\" height=\"{}\" fill=\"{}\"/>\n\
+{}\n",
+        width,
+        height,
+        width,
+        height,
+        width,
+        height,
+        theme.bg_color,
+        defs
     )
 }
 

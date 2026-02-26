@@ -1601,11 +1601,23 @@
         },
         {
           "type": "STRING",
+          "value": "rs"
+        },
+        {
+          "type": "STRING",
           "value": "python"
         },
         {
           "type": "STRING",
+          "value": "py"
+        },
+        {
+          "type": "STRING",
           "value": "csharp"
+        },
+        {
+          "type": "STRING",
+          "value": "cs"
         }
       ]
     },

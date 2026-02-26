@@ -1,0 +1,3 @@
+// std::anvil - Anvil RPC URL from poly-bench (managed by scheduler)
+// The Anvil node is automatically started by poly-bench before benchmarks run.
+var ANVIL_RPC_URL = Environment.GetEnvironmentVariable("ANVIL_RPC_URL") ?? string.Empty;

@@ -140,24 +140,49 @@ impl BenchmarkResult {
         measurements: &HashMap<Lang, Measurement>,
         suite_type: SuiteType,
     ) -> Option<Comparison> {
-        // Compare Go vs TypeScript if both are present
-        let go_measurement = measurements.get(&Lang::Go)?;
-        let ts_measurement = measurements.get(&Lang::TypeScript)?;
+        // Use first two languages from supported_languages() that have measurements
+        let (first_lang, second_lang) = {
+            let langs: Vec<Lang> = supported_languages()
+                .iter()
+                .copied()
+                .filter(|l| measurements.contains_key(l))
+                .take(2)
+                .collect();
+            if langs.len() < 2 {
+                return None;
+            }
+            (langs[0], langs[1])
+        };
+
+        let first_measurement = measurements.get(&first_lang)?;
+        let second_measurement = measurements.get(&second_lang)?;
 
         let use_memory = suite_type == SuiteType::Memory;
-        let (go_val, ts_val) = if use_memory {
-            match (go_measurement.bytes_per_op, ts_measurement.bytes_per_op) {
-                (Some(go_b), Some(ts_b)) => (go_b as f64, ts_b as f64),
-                _ => (go_measurement.nanos_per_op, ts_measurement.nanos_per_op),
+        let (first_val, second_val) = if use_memory {
+            match (
+                first_measurement.bytes_per_op,
+                second_measurement.bytes_per_op,
+            ) {
+                (Some(a), Some(b)) => (a as f64, b as f64),
+                _ => (
+                    first_measurement.nanos_per_op,
+                    second_measurement.nanos_per_op,
+                ),
             }
         } else {
-            (go_measurement.nanos_per_op, ts_measurement.nanos_per_op)
+            (
+                first_measurement.nanos_per_op,
+                second_measurement.nanos_per_op,
+            )
         };
 
         let ratio_ci_95 = if !use_memory {
-            match (&go_measurement.run_nanos_per_op, &ts_measurement.run_nanos_per_op) {
-                (Some(go_runs), Some(ts_runs)) => {
-                    Measurement::paired_ratio_ci(go_runs, ts_runs).map(|(_, lo, hi)| (lo, hi))
+            match (
+                &first_measurement.run_nanos_per_op,
+                &second_measurement.run_nanos_per_op,
+            ) {
+                (Some(a), Some(b)) => {
+                    Measurement::paired_ratio_ci(a, b).map(|(_, lo, hi)| (lo, hi))
                 }
                 _ => None,
             }
@@ -165,14 +190,17 @@ impl BenchmarkResult {
             None
         };
 
+        let first_name = poly_bench_runtime::lang_full_name(first_lang).to_string();
+        let second_name = poly_bench_runtime::lang_full_name(second_lang).to_string();
+
         Some(Comparison::new_with_metric(
             String::new(),
-            go_measurement.clone(),
-            "Go".to_string(),
-            ts_measurement.clone(),
-            "TypeScript".to_string(),
-            go_val,
-            ts_val,
+            first_measurement.clone(),
+            first_name,
+            second_measurement.clone(),
+            second_name,
+            first_val,
+            second_val,
             ratio_ci_95,
         ))
     }
@@ -289,25 +317,12 @@ impl SuiteSummary {
                 }
             };
 
-            let go_val = bench.measurements.get(&Lang::Go).and_then(metric);
-            let ts_val = bench.measurements.get(&Lang::TypeScript).and_then(metric);
-            let rust_val = bench.measurements.get(&Lang::Rust).and_then(metric);
-            let python_val = bench.measurements.get(&Lang::Python).and_then(metric);
-
-            // Find the best language (lowest value wins for both time and memory)
-            let mut values: Vec<(Lang, f64)> = vec![];
-            if let Some(v) = go_val {
-                values.push((Lang::Go, v));
-            }
-            if let Some(v) = ts_val {
-                values.push((Lang::TypeScript, v));
-            }
-            if let Some(v) = rust_val {
-                values.push((Lang::Rust, v));
-            }
-            if let Some(v) = python_val {
-                values.push((Lang::Python, v));
-            }
+            // Collect values from all measurements (dynamic - no hardcoded langs)
+            let mut values: Vec<(Lang, f64)> = bench
+                .measurements
+                .iter()
+                .filter_map(|(lang, m)| metric(m).map(|v| (*lang, v)))
+                .collect();
 
             if values.len() >= 2 {
                 // Sort by value (lowest first)
@@ -323,11 +338,9 @@ impl SuiteSummary {
                     lang_wins.entry(best_lang).and_modify(|c| *c += 1).or_insert(1);
                 }
 
-                // For geometric mean: use Go vs TS comparison if both present
-                if let (Some(go), Some(ts)) = (go_val, ts_val) {
-                    if go > 0.0 && ts > 0.0 {
-                        log_speedups.push((ts / go).ln());
-                    }
+                // For geometric mean: use best vs second comparison
+                if best_val > 0.0 && second_val > 0.0 {
+                    log_speedups.push((second_val / best_val).ln());
                 }
             }
         }
@@ -406,13 +419,28 @@ impl OverallSummary {
             unstable_count += suite.summary.unstable_count;
             total_outliers_removed += suite.summary.total_outliers_removed;
 
-            // For geometric mean, use Go vs TS comparison if both present
+            // For geometric mean, use best vs second comparison per benchmark
+            let use_memory = suite.suite_type == SuiteType::Memory;
+            let metric = |m: &Measurement| -> Option<f64> {
+                if use_memory {
+                    m.bytes_per_op.map(|b| b as f64)
+                } else {
+                    Some(m.nanos_per_op)
+                }
+            };
             for bench in &suite.benchmarks {
-                let go_ns = bench.measurements.get(&Lang::Go).map(|m| m.nanos_per_op);
-                let ts_ns = bench.measurements.get(&Lang::TypeScript).map(|m| m.nanos_per_op);
-                if let (Some(go), Some(ts)) = (go_ns, ts_ns) {
-                    if go > 0.0 && ts > 0.0 {
-                        log_speedups.push((ts / go).ln());
+                let mut vals: Vec<f64> = bench
+                    .measurements
+                    .values()
+                    .filter_map(metric)
+                    .filter(|&v| v > 0.0)
+                    .collect();
+                vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                if vals.len() >= 2 {
+                    let best = vals[0];
+                    let second = vals[1];
+                    if best > 0.0 && second > 0.0 {
+                        log_speedups.push((second / best).ln());
                     }
                 }
             }
@@ -437,17 +465,12 @@ impl OverallSummary {
             } else {
                 let win_lang = winners[0];
                 let wins = lang_wins.get(&win_lang).copied().unwrap_or(0);
-                let desc = match win_lang {
-                    Lang::Go => format!("Go is {:.2}x faster overall", geo_mean_speedup),
-                    Lang::TypeScript => {
-                        format!("TypeScript is {:.2}x faster overall", 1.0 / geo_mean_speedup)
-                    }
-                    _ => format!(
-                        "{} wins {} benchmarks",
-                        poly_bench_runtime::lang_full_name(win_lang),
-                        wins
-                    ),
-                };
+                let desc = format!(
+                    "{} is {:.2}x faster overall ({} wins)",
+                    poly_bench_runtime::lang_full_name(win_lang),
+                    geo_mean_speedup,
+                    wins
+                );
                 (Some(win_lang), desc)
             }
         };

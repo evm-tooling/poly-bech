@@ -18,6 +18,7 @@ Regenerated files:
   - poly-bench-project: lib.rs, manifest/build/deps/templates (C# templates)
   - poly-bench-executor: lib.rs, validation.rs, scheduler.rs
   - extensions/vscode: syntaxes/polybench.tmLanguage.json, package.json
+  - poly-bench-stdlib: anvil.rs (from scripts/templates/anvil/*.template)
 
 Validation workflow (adding a new language, e.g. after reverting C#):
   1. Run: ./scripts/add-lang csharp
@@ -683,6 +684,120 @@ def regenerate_tmlanguage(languages: dict) -> None:
     path.write_text(json.dumps(data, indent=2) + "\n")
 
 
+def regenerate_stdlib_anvil(languages: dict) -> None:
+    """Regenerate poly-bench-stdlib anvil.rs from templates.
+    Each language gets its anvil code from scripts/templates/anvil/{name}.template.
+    Add anvil_template = "ts" to languages.toml if the template name differs from aliases[0].
+    Add anvil_imports = ['"os"'] for languages that need extra imports (e.g. Go)."""
+    templates_dir = SCRIPTS_DIR / "templates" / "anvil"
+    path = REPO_ROOT / "poly-bench-stdlib" / "src" / "anvil.rs"
+
+    consts = []
+    get_imports_arms = []
+    get_code_arms = []
+    test_cases = []
+
+    for lang_id, cfg in languages.items():
+        template_name = cfg.get("anvil_template", cfg["aliases"][0])
+        template_path = templates_dir / f"{template_name}.template"
+        if not template_path.exists():
+            raise FileNotFoundError(
+                f"Anvil template not found for {lang_id}: {template_path}. "
+                f"Create it or set anvil_template in languages.toml."
+            )
+        code = template_path.read_text().strip()
+
+        rust_enum = cfg["rust_enum"]
+        const_name = f"{rust_enum.upper()}_ANVIL"
+        consts.append(f'const {const_name}: &str = r#"\n{code}\n"#;')
+
+        imports = cfg.get("anvil_imports", [])
+        if imports:
+            imports_rust = ", ".join(
+                f'"{s.replace(chr(34), chr(92) + chr(34))}"' for s in imports
+            )
+            get_imports_arms.append(f"        Lang::{rust_enum} => vec![{imports_rust}],")
+        else:
+            get_imports_arms.append(f"        Lang::{rust_enum} => vec![],")
+
+        get_code_arms.append(f"        Lang::{rust_enum} => {const_name}.to_string(),")
+
+        test_name = f"test_{template_name}_anvil_contains_rpc_url"
+        test_check = "os.Getenv" if lang_id == "go" else "process.env" if lang_id == "typescript" else "std::env::var" if lang_id == "rust" else "os.environ" if lang_id == "python" else "Environment.GetEnvironmentVariable"
+        test_cases.append(
+            f'''    #[test]
+    fn {test_name}() {{
+        let code = get_code(Lang::{rust_enum});
+        assert!(code.contains("ANVIL_RPC_URL"));
+        assert!(code.contains("{test_check}"));
+    }}'''
+        )
+
+    content = f'''//! Anvil module - Anvil RPC URL accessor for EVM benchmarks
+//!
+//! When `use std::anvil` is specified along with `globalSetup {{ spawnAnvil() }}`,
+//! poly-bench spawns a local Anvil Ethereum node and makes the RPC URL available
+//! via the `ANVIL_RPC_URL` variable.
+//!
+//! ## Available Variables
+//!
+//! - `ANVIL_RPC_URL` - The RPC endpoint URL (e.g., "http://127.0.0.1:8545")
+//!
+//! ## Usage
+//!
+//! ```bench
+//! use std::anvil
+//!
+//! globalSetup {{
+//!     spawnAnvil()                           // Basic spawn
+//!     // spawnAnvil(fork: "https://...")     // With chain forking
+//! }}
+//!
+//! suite evmBench {{
+//!     setup go {{
+//!         import ("net/http")
+//!         
+//!         helpers {{
+//!             func callRpc() {{
+//!                 http.Post(ANVIL_RPC_URL, "application/json", ...)
+//!             }}
+//!         }}
+//!     }}
+//!     
+//!     bench rpcTest {{
+//!         go: callRpc()
+//!     }}
+//! }}
+//! ```
+
+use poly_bench_dsl::Lang;
+
+/// Get the language-specific imports for the anvil module
+pub fn get_imports(lang: Lang) -> Vec<&'static str> {{
+    match lang {{
+{chr(10).join(get_imports_arms)}
+    }}
+}}
+
+/// Get the language-specific code for the anvil module
+pub fn get_code(lang: Lang) -> String {{
+    match lang {{
+{chr(10).join(get_code_arms)}
+    }}
+}}
+
+{chr(10).join(consts)}
+
+#[cfg(test)]
+mod tests {{
+    use super::*;
+
+{chr(10).join(test_cases)}
+}}
+'''
+    path.write_text(content)
+
+
 def regenerate_package_json(languages: dict) -> None:
     """Regenerate embeddedLanguages in package.json."""
     path = REPO_ROOT / "extensions" / "vscode" / "package.json"
@@ -1072,6 +1187,7 @@ def main() -> int:
     regenerate_injections_scm(all_languages)
     regenerate_parser_rs(all_languages)
     regenerate_tmlanguage(all_languages)
+    regenerate_stdlib_anvil(all_languages)
     regenerate_package_json(all_languages)
     regenerate_project_lib(all_languages)
     regenerate_executor_lib(all_languages)

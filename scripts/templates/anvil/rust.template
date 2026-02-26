@@ -1,0 +1,5 @@
+// std::anvil - Anvil RPC URL from poly-bench (managed by scheduler)
+// The Anvil node is automatically started by poly-bench before benchmarks run.
+lazy_static::lazy_static! {
+    static ref ANVIL_RPC_URL: String = std::env::var("ANVIL_RPC_URL").unwrap_or_default();
+}

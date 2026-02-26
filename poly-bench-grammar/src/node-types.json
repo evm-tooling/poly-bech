@@ -1315,6 +1315,10 @@
     "named": false
   },
   {
+    "type": "cs",
+    "named": false
+  },
+  {
     "type": "csharp",
     "named": false
   },
@@ -1495,6 +1499,10 @@
     "named": false
   },
   {
+    "type": "py",
+    "named": false
+  },
+  {
     "type": "python",
     "named": false
   },
@@ -1508,6 +1516,10 @@
   },
   {
     "type": "rowCount",
+    "named": false
+  },
+  {
+    "type": "rs",
     "named": false
   },
   {

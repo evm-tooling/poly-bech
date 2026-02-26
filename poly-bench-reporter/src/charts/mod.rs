@@ -11,6 +11,7 @@ pub mod table;
 use poly_bench_dsl::{BenchmarkKind, Lang};
 use poly_bench_executor::comparison::BenchmarkResult;
 use poly_bench_ir::ChartDirectiveIR;
+use poly_bench_runtime::supported_languages;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum YAxisScale {
@@ -265,11 +266,7 @@ pub const DEFAULT_MARGIN_BOTTOM: i32 = 44;
 pub const DEFAULT_MARGIN_LEFT: i32 = 20;
 pub const DEFAULT_MARGIN_RIGHT: i32 = 20;
 
-// Default colors
-pub const GO_COLOR: &str = "#00ADD8";
-pub const TS_COLOR: &str = "#3178C6";
-pub const RUST_COLOR: &str = "#DEA584"; // Rust's official logo color (orange-ish)
-pub const PYTHON_COLOR: &str = "#3776AB";
+// Default colors (TIE_COLOR and theme colors; lang colors come from poly-bench-runtime)
 pub const TIE_COLOR: &str = "#9CA3AF";
 pub const BG_COLOR: &str = "#FAFAFA";
 pub const BORDER_COLOR: &str = "#E5E7EB";
@@ -277,10 +274,6 @@ pub const TEXT_COLOR: &str = "#111827";
 pub const TEXT_SECONDARY: &str = "#6B7280";
 pub const TEXT_TERTIARY: &str = "#4B5563";
 pub const TEXT_MUTED: &str = "#9CA3AF";
-pub const GO_GRADIENT_END: &str = "#0891B2";
-pub const TS_GRADIENT_END: &str = "#1D4ED8";
-pub const RUST_GRADIENT_END: &str = "#B7410E"; // Darker rust color
-pub const PYTHON_GRADIENT_END: &str = "#FFD43B";
 
 /// Escape XML special characters
 pub fn escape_xml(s: &str) -> String {
@@ -357,38 +350,40 @@ pub fn format_duration(nanos: f64) -> String {
     }
 }
 
-/// Generate SVG header with common styles
+/// Generate SVG header with common styles.
+/// Gradient defs are generated dynamically from supported languages.
 pub fn svg_header(width: i32, height: i32) -> String {
+    let mut defs = String::from("<defs>\n");
+    for lang in supported_languages() {
+        let info = poly_bench_runtime::lang_display(*lang);
+        defs.push_str(&format!(
+            "  <linearGradient id=\"{}\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
+    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
+    <stop offset=\"100%\" stop-color=\"{}\" stop-opacity=\"0.85\"/>\n\
+  </linearGradient>\n",
+            info.gradient_id,
+            info.color,
+            info.gradient_end
+        ));
+    }
+    defs.push_str("</defs>\n");
+
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">\n\
-<defs>\n\
-  <linearGradient id=\"goGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
-    <stop offset=\"100%\" stop-color=\"{}\" stop-opacity=\"0.85\"/>\n\
-  </linearGradient>\n\
-  <linearGradient id=\"tsGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
-    <stop offset=\"100%\" stop-color=\"{}\" stop-opacity=\"0.85\"/>\n\
-  </linearGradient>\n\
-  <linearGradient id=\"rustGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
-    <stop offset=\"100%\" stop-color=\"{}\" stop-opacity=\"0.85\"/>\n\
-  </linearGradient>\n\
-  <linearGradient id=\"pythonGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
-    <stop offset=\"100%\" stop-color=\"{}\" stop-opacity=\"0.85\"/>\n\
-  </linearGradient>\n\
-</defs>\n\
+{}\
 <rect width=\"{}\" height=\"{}\" fill=\"{}\" rx=\"12\"/>\n\
 <rect x=\".5\" y=\".5\" width=\"{}\" height=\"{}\" fill=\"none\" stroke=\"{}\" rx=\"12\"/>\n",
-        width, height, width, height,
-        GO_COLOR, GO_GRADIENT_END,
-        TS_COLOR, TS_GRADIENT_END,
-        RUST_COLOR, RUST_GRADIENT_END,
-        poly_bench_runtime::lang_color(Lang::Python),
-        PYTHON_GRADIENT_END,
-        width, height, BG_COLOR,
-        width - 1, height - 1, BORDER_COLOR
+        width,
+        height,
+        width,
+        height,
+        defs,
+        width,
+        height,
+        BG_COLOR,
+        width - 1,
+        height - 1,
+        BORDER_COLOR
     )
 }
 
@@ -507,14 +502,9 @@ pub fn filter_benchmarks<'a>(
                             .fold(f64::MAX, f64::min);
                         let speedup = second_best / best_val.max(1e-9);
                         let is_tie = speedup < 1.05;
+                        // filterWinner accepts any valid lang alias (e.g. "go", "ts", "typescript", "rs", "rust")
                         let winner_matches =
-                            poly_bench_runtime::supported_languages().iter().any(|lang| {
-                                *lang == winner_lang &&
-                                    (wf == lang.as_str() ||
-                                        (*lang == Lang::TypeScript && wf == "typescript") ||
-                                        (*lang == Lang::Rust && wf == "rs") ||
-                                        (*lang == Lang::Python && wf == "py"))
-                            });
+                            Lang::from_str(&wf).map_or(false, |filter_lang| filter_lang == winner_lang);
                         if !is_tie && !winner_matches {
                             return false;
                         }
