@@ -12,6 +12,7 @@ members = [
     "runtimes/runtimes-python",
     "runtimes/runtimes-c",
     "runtimes/runtimes-csharp",
+    "runtimes/runtimes-zig",
 ]
 
 [workspace.package]

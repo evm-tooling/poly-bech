@@ -32,6 +32,10 @@ pub mod c {
 pub mod csharp {
     pub use runtimes_csharp::CSharpRuntime;
 }
+/// Re-export Zig runtime from runtimes-zig for backward compatibility
+pub mod zig {
+    pub use runtimes_zig::ZigRuntime;
+}
 pub mod registry;
 pub mod traits;
 

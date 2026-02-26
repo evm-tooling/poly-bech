@@ -1072,6 +1072,9 @@ fn format_single_param(directive: &ChartDirective, name: &str, indent: &str) -> 
         "showRegression" => {
             Some(format!("{}showRegression: {}", indent, directive.show_regression))
         }
+        "showStatsTable" => {
+            Some(format!("{}showStatsTable: {}", indent, directive.show_stats_table))
+        }
 
         // Array parameters
         "includeBenchmarks" => {
@@ -1196,6 +1199,9 @@ fn format_params_default_order(directive: &ChartDirective, inner2: &str) -> Vec<
     }
     if !directive.show_regression {
         params.push(format!("{}showRegression: false", inner2));
+    }
+    if !directive.show_stats_table {
+        params.push(format!("{}showStatsTable: false", inner2));
     }
 
     params

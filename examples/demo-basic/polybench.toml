@@ -12,6 +12,7 @@ languages = [
     "python",
     "csharp",
     "c",
+    "zig",
 ]
 
 [go]
@@ -66,6 +67,9 @@ standard = "c11"
 
 [csharp]
 target_framework = "net8.0"
+
+[zig]
+version = "0.13"
 
 [output]
 report_formats = []

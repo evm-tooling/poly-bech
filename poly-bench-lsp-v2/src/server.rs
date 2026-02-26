@@ -590,6 +590,7 @@ fn to_syntax_lang(l: poly_bench_dsl::Lang) -> SyntaxLang {
         poly_bench_dsl::Lang::Python => SyntaxLang::Python,
         poly_bench_dsl::Lang::C => SyntaxLang::C,
         poly_bench_dsl::Lang::CSharp => SyntaxLang::CSharp,
+        poly_bench_dsl::Lang::Zig => SyntaxLang::Zig,
     }
 }
 

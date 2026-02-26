@@ -2,7 +2,7 @@
   "name": "polybench-lsp",
   "displayName": "Poly Bench",
   "description": "Language support for .bench files with embedded Go, TypeScript, Rust, Python, and C# - powered by poly-bench LSP",
-  "version": "0.1.201",
+  "version": "0.1.203",
   "publisher": "evm-tooling",
   "repository": {
     "type": "git",
@@ -87,7 +87,8 @@
           "source.python.embedded.bench": "python",
           "source.c.embedded.bench": "c",
           "source.cs.embedded.bench": "csharp",
-          "source.csharp.embedded.bench": "csharp"
+          "source.csharp.embedded.bench": "csharp",
+          "source.zig.embedded.bench": "zig"
         }
       }
     ]

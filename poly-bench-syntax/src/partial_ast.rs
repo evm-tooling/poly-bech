@@ -146,6 +146,7 @@ pub enum Lang {
     Python,
     C,
     CSharp,
+    Zig,
 }
 
 impl Lang {
@@ -157,6 +158,7 @@ impl Lang {
             "python" | "py" => Some(Lang::Python),
             "c" => Some(Lang::C),
             "csharp" | "cs" => Some(Lang::CSharp),
+            "zig" | "z" => Some(Lang::Zig),
             _ => None,
         }
     }
@@ -169,6 +171,7 @@ impl Lang {
             Lang::Python => "python",
             Lang::C => "c",
             Lang::CSharp => "csharp",
+            Lang::Zig => "zig",
         }
     }
 }

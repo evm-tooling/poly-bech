@@ -432,6 +432,7 @@ fn lower_chart_directive(directive: &ChartDirective, suite_name: Option<&str>) -
     ir.show_regression = directive.show_regression;
     ir.regression_model = directive.regression_model.clone();
     ir.y_scale = directive.y_scale.clone();
+    ir.show_stats_table = directive.show_stats_table;
 
     ir
 }

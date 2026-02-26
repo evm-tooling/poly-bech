@@ -8,7 +8,7 @@ use super::{
     extract_numeric_value, filter_benchmarks, generate_y_ticks, inverse_transform_y, lang_color,
     make_y_to_px,
     regression::{self, SelectedModel},
-    sort_benchmarks, split_gap_bounds, y_upper_with_headroom, YAxisScale,
+    sort_benchmarks, split_gap_bounds, svg_gradient_defs, y_upper_with_headroom, YAxisScale,
 };
 
 const MARGIN_LEFT: f64 = 90.0;
@@ -104,14 +104,21 @@ pub fn generate(
 
     let theme = Theme::from_name(directive.theme.as_deref());
     let width = (directive.width.unwrap_or(980) as f64).max(560.0).max(min_chart_w);
-    let height = directive.height.unwrap_or(680).max(620) as f64;
     let plot_w = (width - MARGIN_LEFT - MARGIN_RIGHT).max(120.0);
-    let (_, _, stats_box_height) = stats_layout(langs.len(), plot_w);
+    let (_, _, stats_box_height) =
+        if directive.show_stats_table { stats_layout(langs.len(), plot_w) } else { (1, 0, 0.0) };
+    let default_height = if directive.show_stats_table { 680 } else { 554 };
+    let height = directive.height.unwrap_or(default_height).max(if directive.show_stats_table {
+        620
+    } else {
+        400
+    }) as f64;
+    let stats_top_gap = if directive.show_stats_table { STATS_TOP_GAP } else { 0.0 };
     let plot_h = (height -
         MARGIN_TOP -
         MARGIN_BOTTOM -
         X_AXIS_LABEL_OFFSET -
-        STATS_TOP_GAP -
+        stats_top_gap -
         stats_box_height)
         .max(120.0);
 
@@ -180,33 +187,10 @@ pub fn generate(
         height - 1.0,
         theme.stroke
     ));
+    svg.push_str("<defs>\n");
+    svg.push_str(&svg_gradient_defs());
     svg.push_str(
-        "<defs>\n\
-<linearGradient id=\"goGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-  <stop offset=\"0%\" stop-color=\"#00ADD8\" stop-opacity=\"0.95\"/>\n\
-  <stop offset=\"100%\" stop-color=\"#0891B2\" stop-opacity=\"0.8\"/>\n\
-</linearGradient>\n\
-<linearGradient id=\"tsGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-  <stop offset=\"0%\" stop-color=\"#3178C6\" stop-opacity=\"0.95\"/>\n\
-  <stop offset=\"100%\" stop-color=\"#1D4ED8\" stop-opacity=\"0.8\"/>\n\
-</linearGradient>\n\
-<linearGradient id=\"rustGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-  <stop offset=\"0%\" stop-color=\"#DEA584\" stop-opacity=\"0.95\"/>\n\
-  <stop offset=\"100%\" stop-color=\"#B7410E\" stop-opacity=\"0.8\"/>\n\
-</linearGradient>\n\
-<linearGradient id=\"pythonGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-  <stop offset=\"0%\" stop-color=\"#D8BD4A\" stop-opacity=\"1\"/>\n\
-  <stop offset=\"100%\" stop-color=\"#EEDB7A\" stop-opacity=\"1\"/>\n\
-</linearGradient>\n\
-<linearGradient id=\"cGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-  <stop offset=\"0%\" stop-color=\"#2563EB\" stop-opacity=\"0.95\"/>\n\
-  <stop offset=\"100%\" stop-color=\"#3B82F6\" stop-opacity=\"0.8\"/>\n\
-</linearGradient>\n\
-<linearGradient id=\"csharpGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-  <stop offset=\"0%\" stop-color=\"#512BD4\" stop-opacity=\"1\"/>\n\
-  <stop offset=\"100%\" stop-color=\"#7C3AED\" stop-opacity=\"1\"/>\n\
-</linearGradient>\n\
-<filter id=\"barShadow\" x=\"-5%\" y=\"-15%\" width=\"110%\" height=\"140%\">\n\
+        "<filter id=\"barShadow\" x=\"-5%\" y=\"-15%\" width=\"110%\" height=\"140%\">\n\
   <feDropShadow dx=\"0\" dy=\"2\" stdDeviation=\"2\" flood-opacity=\"0.25\"/>\n\
 </filter>\n\
 </defs>\n",
@@ -546,15 +530,17 @@ pub fn generate(
         theme.detail_box_stroke,
         theme.bg,
     ));
-    svg.push_str(&stats_panel(
-        &stats,
-        MARGIN_LEFT,
-        MARGIN_TOP + plot_h + X_AXIS_LABEL_OFFSET + STATS_TOP_GAP,
-        plot_w,
-        stats_box_height,
-        is_memory,
-        theme,
-    ));
+    if directive.show_stats_table {
+        svg.push_str(&stats_panel(
+            &stats,
+            MARGIN_LEFT,
+            MARGIN_TOP + plot_h + X_AXIS_LABEL_OFFSET + stats_top_gap,
+            plot_w,
+            stats_box_height,
+            is_memory,
+            theme,
+        ));
+    }
     svg.push_str(&format!(
         "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"1.6\"/>\n",
         MARGIN_LEFT,

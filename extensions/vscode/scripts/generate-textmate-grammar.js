@@ -78,6 +78,17 @@ const LANGS = [
     importParenStyle: false,
     includeContentNameInSetupSections: true,
   },
+  {
+    id: "zig",
+    aliases: ["zig"],
+    setupRegex: "zig",
+    blockRegex: "zig",
+    lineRegex: "zig",
+    sourceScope: "source.zig",
+    embeddedScope: "source.zig.embedded.bench",
+    importParenStyle: false,
+    includeContentNameInSetupSections: true,
+  },
 ];
 
 function escapeRegex(text) {

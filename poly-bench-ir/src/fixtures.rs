@@ -169,17 +169,42 @@ fn select_json_value<'a>(root: &'a Value, selector: Option<&str>) -> Result<&'a 
     Ok(current)
 }
 
+/// Returns true if the byte is an identifier-continuation (alphanumeric or underscore).
+fn is_ident_byte(b: u8) -> bool {
+    matches!(b, b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z' | b'_')
+}
+
 /// Extract fixture references from code
 ///
-/// Looks for identifiers that match known fixture names
+/// Looks for identifiers that match known fixture names. Uses whole-word matching
+/// so that "s100" does not match inside "s1000".
 pub fn extract_fixture_refs(code: &str, known_fixtures: &[String]) -> Vec<String> {
     let mut refs = Vec::new();
+    let bytes = code.as_bytes();
 
     for fixture in known_fixtures {
-        // Simple check: if the fixture name appears in the code
-        // A more sophisticated version would parse the code
-        if code.contains(fixture.as_str()) {
-            refs.push(fixture.clone());
+        let name = fixture.as_str();
+        if name.is_empty() {
+            continue;
+        }
+        let mut start = 0;
+        while let Some(pos) = code[start..].find(name) {
+            let abs_pos = start + pos;
+            let end = abs_pos + name.len();
+
+            // Must not be preceded by an identifier character
+            let prev_ok = abs_pos == 0 || !is_ident_byte(bytes[abs_pos - 1]);
+
+            // Must not be followed by an identifier character
+            let next_ok = end >= bytes.len() || !is_ident_byte(bytes[end]);
+
+            if prev_ok && next_ok {
+                if !refs.contains(fixture) {
+                    refs.push(fixture.clone());
+                }
+                break; // One match per fixture is enough
+            }
+            start = abs_pos + 1;
         }
     }
 
@@ -234,5 +259,15 @@ mod tests {
 
         let refs = extract_fixture_refs(code, &fixtures);
         assert_eq!(refs, vec!["short_data"]);
+    }
+
+    #[test]
+    fn test_extract_fixture_refs_no_substring_match() {
+        // "s100" must not match inside "s1000" - whole-word matching
+        let code = "bubbleZig(s1000[0..])";
+        let fixtures = vec!["s100".to_string(), "s200".to_string(), "s1000".to_string()];
+
+        let refs = extract_fixture_refs(code, &fixtures);
+        assert_eq!(refs, vec!["s1000"]);
     }
 }

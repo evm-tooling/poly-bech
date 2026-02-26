@@ -327,6 +327,63 @@
   (#set! injection.language "c_sharp"))
 
 ; ============================================================
+; Zig injections
+; ============================================================
+
+; Setup block with Zig language
+(setup_block
+  language: (language_tag) @_lang
+  (setup_body
+    (import_section
+      (code_block
+        (embedded_code) @injection.content)))
+  (#any-of? @_lang "zig" "z")
+  (#set! injection.language "zig"))
+
+(setup_block
+  language: (language_tag) @_lang
+  (setup_body
+    (declare_section
+      (code_block
+        (embedded_code) @injection.content)))
+  (#any-of? @_lang "zig" "z")
+  (#set! injection.language "zig"))
+
+(setup_block
+  language: (language_tag) @_lang
+  (setup_body
+    (init_section
+      (code_block
+        (embedded_code) @injection.content)))
+  (#any-of? @_lang "zig" "z")
+  (#set! injection.language "zig"))
+
+(setup_block
+  language: (language_tag) @_lang
+  (setup_body
+    (helpers_section
+      (code_block
+        (embedded_code) @injection.content)))
+  (#any-of? @_lang "zig" "z")
+  (#set! injection.language "zig"))
+
+; Language implementation with Zig
+(language_implementation
+  language: (language_tag) @_lang
+  (code_block
+    (embedded_code) @injection.content)
+  (#any-of? @_lang "zig" "z")
+  (#set! injection.language "zig"))
+
+; Hook with Zig
+(hook_flat
+  language: (language_tag) @_lang
+  (code_block
+    (embedded_code) @injection.content)
+  (#any-of? @_lang "zig" "z")
+  (#set! injection.language "zig"))
+
+; ============================================================
 ; Inline code injections (single-line expressions)
 ; ============================================================
 
@@ -371,6 +428,13 @@
   (inline_code) @injection.content
   (#any-of? @_lang "csharp" "cs")
   (#set! injection.language "c_sharp"))
+
+; Zig inline code
+(language_implementation
+  language: (language_tag) @_lang
+  (inline_code) @injection.content
+  (#any-of? @_lang "zig" "z")
+  (#set! injection.language "zig"))
 
 ; Set injection language for Go blocks (fallback)
 ((embedded_code) @injection.content

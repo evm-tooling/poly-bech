@@ -101,6 +101,7 @@ fn lang_colorize(s: &str, lang: Lang) -> colored::ColoredString {
         Lang::Python => s.bright_blue(),
         Lang::C => s.blue(),
         Lang::CSharp => s.magenta(),
+        Lang::Zig => s.bright_yellow(),
     }
 }
 

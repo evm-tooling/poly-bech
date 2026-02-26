@@ -42,6 +42,10 @@ pub struct Manifest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub csharp: Option<CSharpConfig>,
 
+    /// Zig-specific configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zig: Option<ZigConfig>,
+
     /// Output configuration
     #[serde(default)]
     pub output: OutputConfig,
@@ -193,6 +197,18 @@ pub struct CSharpConfig {
 
 fn default_csharp_target_framework() -> String {
     "net8.0".to_string()
+}
+
+/// Zig-specific configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ZigConfig {
+    /// Zig version (e.g., "0.13", "0.14")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+
+    /// Zig dependencies (build.zig.zon format)
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub dependencies: HashMap<String, String>,
 }
 
 fn default_python_version() -> String {
@@ -355,6 +371,11 @@ impl Manifest {
             } else {
                 None
             },
+            zig: if has_lang(&enabled, Lang::Zig) {
+                Some(ZigConfig { version: None, dependencies: HashMap::new() })
+            } else {
+                None
+            },
             output: OutputConfig::default(),
         }
     }
@@ -368,6 +389,7 @@ impl Manifest {
             Lang::Python => self.python.is_some(),
             Lang::C => self.c.is_some(),
             Lang::CSharp => self.csharp.is_some(),
+            Lang::Zig => self.zig.is_some(),
         }
     }
 
@@ -513,6 +535,26 @@ impl Manifest {
             .as_mut()
             .ok_or_else(|| miette::miette!("C# is not enabled in this project"))?;
         csharp.dependencies.remove(package);
+        Ok(())
+    }
+
+    /// Add a Zig dependency
+    pub fn add_zig_dependency(&mut self, package: &str, version: &str) -> Result<()> {
+        let zig = self
+            .zig
+            .as_mut()
+            .ok_or_else(|| miette::miette!("Zig is not enabled in this project"))?;
+        zig.dependencies.insert(package.to_string(), version.to_string());
+        Ok(())
+    }
+
+    /// Remove a Zig dependency
+    pub fn remove_zig_dependency(&mut self, package: &str) -> Result<()> {
+        let zig = self
+            .zig
+            .as_mut()
+            .ok_or_else(|| miette::miette!("Zig is not enabled in this project"))?;
+        zig.dependencies.remove(package);
         Ok(())
     }
 }

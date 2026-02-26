@@ -190,6 +190,9 @@
           "include": "#setup-c-block"
         },
         {
+          "include": "#setup-zig-block"
+        },
+        {
           "include": "#fixture-block"
         },
         {
@@ -1121,6 +1124,9 @@
           "include": "#fixture-c-block"
         },
         {
+          "include": "#fixture-zig-block"
+        },
+        {
           "name": "string.quoted.double.bench",
           "begin": "\"",
           "end": "\"",
@@ -1190,6 +1196,9 @@
           "include": "#bench-c-block"
         },
         {
+          "include": "#bench-zig-block"
+        },
+        {
           "include": "#bench-go-line"
         },
         {
@@ -1206,6 +1215,9 @@
         },
         {
           "include": "#bench-c-line"
+        },
+        {
+          "include": "#bench-zig-line"
         }
       ]
     },
@@ -1840,6 +1852,183 @@
       "patterns": [
         {
           "include": "source.c"
+        }
+      ]
+    },
+    "setup-zig-block": {
+      "name": "meta.block.setup.zig.bench",
+      "begin": "^(\\s*)(setup)\\s+(zig)\\s*\\{\\s*$",
+      "end": "^\\1\\}\\s*$",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.bench"
+        },
+        "3": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#setup-import-zig-block"
+        },
+        {
+          "include": "#setup-declare-zig-block"
+        },
+        {
+          "include": "#setup-init-zig-block"
+        },
+        {
+          "include": "#setup-helpers-zig-block"
+        },
+        {
+          "include": "#comment"
+        }
+      ]
+    },
+    "setup-import-zig-block": {
+      "name": "meta.block.import.zig.bench",
+      "begin": "^(\\s*)(import)\\s*\\{",
+      "end": "^\\1\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.zig"
+        }
+      ],
+      "contentName": "source.zig.embedded.bench"
+    },
+    "setup-declare-zig-block": {
+      "name": "meta.block.declare.zig.bench",
+      "begin": "^(\\s*)(declare)\\s*\\{",
+      "end": "^\\1\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.zig"
+        }
+      ],
+      "contentName": "source.zig.embedded.bench"
+    },
+    "setup-init-zig-block": {
+      "name": "meta.block.init.zig.bench",
+      "begin": "^(\\s*)(init)\\s*\\{",
+      "end": "^\\1\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.zig"
+        }
+      ],
+      "contentName": "source.zig.embedded.bench"
+    },
+    "setup-helpers-zig-block": {
+      "name": "meta.block.helpers.zig.bench",
+      "begin": "^(\\s*)(helpers)\\s*\\{",
+      "end": "^\\1\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.zig"
+        }
+      ],
+      "contentName": "source.zig.embedded.bench"
+    },
+    "fixture-zig-block": {
+      "name": "meta.block.fixture.zig.bench",
+      "begin": "\\b(zig)\\s*:\\s*\\{\\s*$",
+      "end": "^\\s{0,12}\\}\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "contentName": "source.zig.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.zig"
+        }
+      ]
+    },
+    "bench-zig-block": {
+      "name": "meta.block.bench.zig.bench",
+      "begin": "\\b(zig)\\s*:\\s*\\{\\s*$",
+      "end": "^\\s{0,12}\\}\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "contentName": "source.zig.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.zig"
+        }
+      ]
+    },
+    "bench-zig-line": {
+      "name": "meta.expression.zig.bench",
+      "begin": "\\b(zig)\\s*:\\s*",
+      "end": "$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "contentName": "source.zig.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.zig"
         }
       ]
     }

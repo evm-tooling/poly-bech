@@ -206,6 +206,10 @@ enum Commands {
         #[arg(long)]
         cs: Option<String>,
 
+        /// Zig package (e.g., "package@0.1.0")
+        #[arg(long)]
+        zig: Option<String>,
+
         /// Rust crate features (comma-separated, e.g., "keccak,sha3")
         #[arg(long, value_delimiter = ',')]
         features: Option<Vec<String>>,
@@ -243,6 +247,10 @@ enum Commands {
         /// C# package to remove (e.g., "Newtonsoft.Json")
         #[arg(long)]
         cs: Option<String>,
+
+        /// Zig package to remove
+        #[arg(long)]
+        zig: Option<String>,
     },
 
     /// Install dependencies from polybench.toml
@@ -344,14 +352,14 @@ async fn main() -> Result<()> {
         Commands::New { name } => {
             cmd_new(&name)?;
         }
-        Commands::Add { go, ts, rs, py, c, cs, features } => {
-            cmd_add(go, ts, rs, py, c, cs, features)?;
+        Commands::Add { go, ts, rs, py, c, cs, zig, features } => {
+            cmd_add(go, ts, rs, py, c, cs, zig, features)?;
         }
         Commands::AddRuntime { runtime } => {
             cmd_add_runtime(&runtime)?;
         }
-        Commands::Remove { go, ts, rs, py, c, cs } => {
-            cmd_remove(go, ts, rs, py, c, cs)?;
+        Commands::Remove { go, ts, rs, py, c, cs, zig } => {
+            cmd_remove(go, ts, rs, py, c, cs, zig)?;
         }
         Commands::Install => {
             cmd_install()?;
@@ -1241,11 +1249,19 @@ fn cmd_add(
     py: Option<String>,
     c: Option<String>,
     cs: Option<String>,
+    zig: Option<String>,
     features: Option<Vec<String>>,
 ) -> Result<()> {
-    if go.is_none() && ts.is_none() && rs.is_none() && py.is_none() && c.is_none() && cs.is_none() {
+    if go.is_none() &&
+        ts.is_none() &&
+        rs.is_none() &&
+        py.is_none() &&
+        c.is_none() &&
+        cs.is_none() &&
+        zig.is_none()
+    {
         return Err(miette::miette!(
-            "No dependency specified. Use --go, --ts, --rs, --py, --c, or --cs to add a dependency."
+            "No dependency specified. Use --go, --ts, --rs, --py, --c, --cs, or --zig to add a dependency."
         ));
     }
 
@@ -1273,6 +1289,10 @@ fn cmd_add(
         project::deps::add_csharp_dependency(spec)?;
     }
 
+    if let Some(ref spec) = zig {
+        project::deps::add_zig_dependency(spec)?;
+    }
+
     Ok(())
 }
 
@@ -1283,10 +1303,18 @@ fn cmd_remove(
     py: Option<String>,
     c: Option<String>,
     cs: Option<String>,
+    zig: Option<String>,
 ) -> Result<()> {
-    if go.is_none() && ts.is_none() && rs.is_none() && py.is_none() && c.is_none() && cs.is_none() {
+    if go.is_none() &&
+        ts.is_none() &&
+        rs.is_none() &&
+        py.is_none() &&
+        c.is_none() &&
+        cs.is_none() &&
+        zig.is_none()
+    {
         return Err(miette::miette!(
-            "No dependency specified. Use --go, --ts, --rs, --py, --c, or --cs to remove a dependency."
+            "No dependency specified. Use --go, --ts, --rs, --py, --c, --cs, or --zig to remove a dependency."
         ));
     }
 
@@ -1312,6 +1340,10 @@ fn cmd_remove(
 
     if let Some(ref package) = cs {
         project::deps::remove_csharp_dependency(package)?;
+    }
+
+    if let Some(ref package) = zig {
+        project::deps::remove_zig_dependency(package)?;
     }
 
     Ok(())
@@ -1394,6 +1426,12 @@ fn cmd_add_runtime(runtime: &str) -> Result<()> {
         Lang::CSharp => {
             manifest.csharp = Some(project::manifest::CSharpConfig {
                 target_framework: "net8.0".to_string(),
+                dependencies: std::collections::HashMap::new(),
+            });
+        }
+        Lang::Zig => {
+            manifest.zig = Some(project::manifest::ZigConfig {
+                version: Some("0.13".to_string()),
                 dependencies: std::collections::HashMap::new(),
             });
         }

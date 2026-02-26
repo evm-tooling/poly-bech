@@ -39,6 +39,9 @@ pub enum ChartParam {
     ShowRegression,
     RegressionModel,
     YScale,
+
+    // Line/bar chart stats table
+    ShowStatsTable,
 }
 
 impl ChartParam {
@@ -65,6 +68,7 @@ impl ChartParam {
             ChartParam::ShowRegression => "showRegression",
             ChartParam::RegressionModel => "regressionModel",
             ChartParam::YScale => "yScale",
+            ChartParam::ShowStatsTable => "showStatsTable",
         }
     }
 
@@ -91,6 +95,7 @@ impl ChartParam {
             "showRegression" => Some(ChartParam::ShowRegression),
             "regressionModel" => Some(ChartParam::RegressionModel),
             "yScale" => Some(ChartParam::YScale),
+            "showStatsTable" => Some(ChartParam::ShowStatsTable),
             _ => None,
         }
     }
@@ -149,6 +154,7 @@ pub fn get_valid_params(chart_type: ChartType) -> HashSet<ChartParam> {
             params.insert(ChartParam::ShowRegression);
             params.insert(ChartParam::RegressionModel);
             params.insert(ChartParam::YScale);
+            params.insert(ChartParam::ShowStatsTable);
         }
     }
 
