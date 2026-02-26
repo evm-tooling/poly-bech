@@ -81,13 +81,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     // Create example benchmark
     if !options.no_example {
         let example_path = benchmarks_dir.join("example.bench");
-        let example_content = templates::example_bench(
-            manifest.has_runtime(Lang::Go),
-            manifest.has_runtime(Lang::TypeScript),
-            manifest.has_runtime(Lang::Rust),
-            manifest.has_runtime(Lang::Python),
-            manifest.has_runtime(Lang::CSharp),
-        );
+        let example_content = templates::example_bench_for_langs(&enabled_langs);
         std::fs::write(&example_path, example_content)
             .map_err(|e| miette::miette!("Failed to write example.bench: {}", e))?;
         if !options.quiet {
@@ -130,14 +124,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     // Create README.md
     let readme_path = project_dir.join("README.md");
     if !readme_path.exists() {
-        let readme_content = templates::readme(
-            &project_name,
-            manifest.has_runtime(Lang::Go),
-            manifest.has_runtime(Lang::TypeScript),
-            manifest.has_runtime(Lang::Rust),
-            manifest.has_runtime(Lang::Python),
-            manifest.has_runtime(Lang::CSharp),
-        );
+        let readme_content = templates::readme_for_langs(&project_name, &enabled_langs);
         std::fs::write(&readme_path, readme_content)
             .map_err(|e| miette::miette!("Failed to write README.md: {}", e))?;
         if !options.quiet {
@@ -258,6 +245,16 @@ fn init_runtime_env_for_lang(
                 .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
             if !quiet {
                 terminal::success("Created .polybench/runtime-env/python/ (requirements.txt)");
+            }
+        }
+        Lang::C => {
+            let c_env = runtime_env(project_dir, Lang::C);
+            std::fs::create_dir_all(&c_env)
+                .map_err(|e| miette::miette!("Failed to create {}: {}", c_env.display(), e))?;
+            std::fs::write(c_env.join("main.c"), "int main(void) {\n    return 0;\n}\n")
+                .map_err(|e| miette::miette!("Failed to write main.c: {}", e))?;
+            if !quiet {
+                terminal::success("Created .polybench/runtime-env/c/ (main.c)");
             }
         }
         Lang::CSharp => {

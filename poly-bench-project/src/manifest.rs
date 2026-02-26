@@ -34,6 +34,10 @@ pub struct Manifest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub python: Option<PythonConfig>,
 
+    /// C-specific configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub c: Option<CConfig>,
+
     /// C#-specific configuration
     #[serde(skip_serializing_if = "Option::is_none")]
     pub csharp: Option<CSharpConfig>,
@@ -157,6 +161,22 @@ pub struct PythonConfig {
     /// Python dependencies (package -> version, for requirements.txt)
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub dependencies: HashMap<String, String>,
+}
+
+/// C-specific configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CConfig {
+    /// C language standard (e.g. c11, c17, c23)
+    #[serde(default = "default_c_standard")]
+    pub standard: String,
+
+    /// C dependencies (library -> version or locator)
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub dependencies: HashMap<String, String>,
+}
+
+fn default_c_standard() -> String {
+    "c11".to_string()
 }
 
 /// C#-specific configuration
@@ -287,7 +307,6 @@ impl Manifest {
     /// Create a new manifest with the given project name and languages
     pub fn new(name: &str, languages: &[String]) -> Self {
         let enabled = parse_enabled_languages(languages);
-        let has_lang = |lang: Lang| enabled.contains(&lang);
 
         Self {
             project: ProjectConfig {
@@ -296,7 +315,7 @@ impl Manifest {
                 description: None,
             },
             defaults: DefaultsConfig { languages: languages.to_vec(), ..Default::default() },
-            go: if has_lang(Lang::Go) {
+            go: if has_lang(&enabled, Lang::Go) {
                 Some(GoConfig {
                     module: name.to_string(),
                     version: Some("1.21".to_string()),
@@ -305,17 +324,17 @@ impl Manifest {
             } else {
                 None
             },
-            ts: if has_lang(Lang::TypeScript) {
+            ts: if has_lang(&enabled, Lang::TypeScript) {
                 Some(TsConfig { runtime: default_ts_runtime(), dependencies: HashMap::new() })
             } else {
                 None
             },
-            rust: if has_lang(Lang::Rust) {
+            rust: if has_lang(&enabled, Lang::Rust) {
                 Some(RustConfig { edition: default_rust_edition(), dependencies: HashMap::new() })
             } else {
                 None
             },
-            python: if has_lang(Lang::Python) {
+            python: if has_lang(&enabled, Lang::Python) {
                 Some(PythonConfig {
                     version: Some(default_python_version()),
                     dependencies: HashMap::new(),
@@ -323,7 +342,12 @@ impl Manifest {
             } else {
                 None
             },
-            csharp: if has_lang(Lang::CSharp) {
+            c: if has_lang(&enabled, Lang::C) {
+                Some(CConfig { standard: default_c_standard(), dependencies: HashMap::new() })
+            } else {
+                None
+            },
+            csharp: if has_lang(&enabled, Lang::CSharp) {
                 Some(CSharpConfig {
                     target_framework: default_csharp_target_framework(),
                     dependencies: HashMap::new(),
@@ -342,6 +366,7 @@ impl Manifest {
             Lang::TypeScript => self.ts.is_some(),
             Lang::Rust => self.rust.is_some(),
             Lang::Python => self.python.is_some(),
+            Lang::C => self.c.is_some(),
             Lang::CSharp => self.csharp.is_some(),
         }
     }
@@ -455,6 +480,22 @@ impl Manifest {
         Ok(())
     }
 
+    /// Add a C dependency
+    pub fn add_c_dependency(&mut self, library: &str, version: &str) -> Result<()> {
+        let c =
+            self.c.as_mut().ok_or_else(|| miette::miette!("C is not enabled in this project"))?;
+        c.dependencies.insert(library.to_string(), version.to_string());
+        Ok(())
+    }
+
+    /// Remove a C dependency
+    pub fn remove_c_dependency(&mut self, library: &str) -> Result<()> {
+        let c =
+            self.c.as_mut().ok_or_else(|| miette::miette!("C is not enabled in this project"))?;
+        c.dependencies.remove(library);
+        Ok(())
+    }
+
     /// Add a C# dependency
     pub fn add_csharp_dependency(&mut self, package: &str, version: &str) -> Result<()> {
         let csharp = self
@@ -478,6 +519,10 @@ impl Manifest {
 
 fn parse_enabled_languages(languages: &[String]) -> HashSet<Lang> {
     languages.iter().filter_map(|l| Lang::from_str(l.trim())).collect()
+}
+
+fn has_lang(enabled: &HashSet<Lang>, lang: Lang) -> bool {
+    enabled.contains(&lang)
 }
 
 /// Load a manifest from a file

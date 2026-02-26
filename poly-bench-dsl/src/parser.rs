@@ -943,12 +943,7 @@ impl Parser {
                 fixture.shape = Some(shape_code.code);
             }
             // Language-specific implementation
-            TokenKind::Go |
-            TokenKind::Ts |
-            TokenKind::TypeScript |
-            TokenKind::Rust |
-            TokenKind::Python |
-            TokenKind::CSharp => {
+            kind if kind.is_lang() => {
                 let lang = self.expect_lang()?;
                 self.expect(TokenKind::Colon)?;
                 let code = self.parse_inline_or_block_code()?;
@@ -1190,12 +1185,7 @@ impl Parser {
                 }
             }
             // Language-specific implementation
-            TokenKind::Go |
-            TokenKind::Ts |
-            TokenKind::TypeScript |
-            TokenKind::Rust |
-            TokenKind::Python |
-            TokenKind::CSharp => {
+            kind if kind.is_lang() => {
                 let lang = self.expect_lang()?;
                 self.expect(TokenKind::Colon)?;
                 let code = self.parse_inline_or_block_code()?;
@@ -1263,16 +1253,7 @@ impl Parser {
                 let token = self.peek();
 
                 // Stop conditions for inline code in a map
-                if matches!(
-                    token.kind,
-                    TokenKind::RBrace |
-                        TokenKind::Go |
-                        TokenKind::Ts |
-                        TokenKind::TypeScript |
-                        TokenKind::Rust |
-                        TokenKind::Python |
-                        TokenKind::CSharp
-                ) {
+                if matches!(token.kind, TokenKind::RBrace) || token.kind.is_lang() {
                     break;
                 }
 
@@ -1372,12 +1353,6 @@ impl Parser {
                 if matches!(
                     token.kind,
                     TokenKind::RBrace |
-                        TokenKind::Go |
-                        TokenKind::Ts |
-                        TokenKind::TypeScript |
-                        TokenKind::Rust |
-                        TokenKind::Python |
-                        TokenKind::CSharp |
                         TokenKind::Description |
                         TokenKind::Iterations |
                         TokenKind::Warmup |
@@ -1406,7 +1381,8 @@ impl Parser {
                         TokenKind::BenchAsync |
                         TokenKind::Setup |
                         TokenKind::Fixture
-                ) {
+                ) || token.kind.is_lang()
+                {
                     break;
                 }
 
@@ -1500,19 +1476,14 @@ impl Parser {
         matches!(&self.peek().kind, TokenKind::Identifier(s) if s == name)
     }
 
-    /// Check if current token is a language keyword (go, ts, typescript, rust, python)
+    /// Check if current token represents a language.
     fn peek_is_lang(&self) -> bool {
         if self.is_at_end() {
             return false;
         }
         let token = self.peek();
         match &token.kind {
-            TokenKind::Go |
-            TokenKind::Ts |
-            TokenKind::TypeScript |
-            TokenKind::Rust |
-            TokenKind::Python |
-            TokenKind::CSharp => true,
+            kind if kind.is_lang() => true,
             TokenKind::Identifier(s) => Lang::from_str(s).is_some(),
             _ => false,
         }
@@ -1580,11 +1551,7 @@ impl Parser {
     fn expect_lang(&mut self) -> Result<Lang> {
         let token = self.peek().clone();
         let lang = match &token.kind {
-            TokenKind::Go => Some(Lang::Go),
-            TokenKind::Ts | TokenKind::TypeScript => Some(Lang::TypeScript),
-            TokenKind::Rust => Some(Lang::Rust),
-            TokenKind::Python => Some(Lang::Python),
-            TokenKind::CSharp => Some(Lang::CSharp),
+            kind if kind.is_lang() => Lang::from_str(&token.lexeme),
             TokenKind::Identifier(s) => Lang::from_str(s),
             _ => None,
         };

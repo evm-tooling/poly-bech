@@ -96,6 +96,7 @@ fn build_runtime_env_for_lang(
         ),
         Lang::Rust => build_rust_env(project_root, manifest.rust.as_ref().unwrap(), options),
         Lang::Python => build_python_env(project_root, manifest.python.as_ref().unwrap(), options),
+        Lang::C => build_c_env(project_root, manifest.c.as_ref().unwrap(), options),
         Lang::CSharp => build_csharp_env(project_root, manifest.csharp.as_ref().unwrap(), options),
     }
 }
@@ -577,6 +578,39 @@ fn build_csharp_env(
     }
 
     terminal::success_indented("C# environment ready");
+    Ok(())
+}
+
+fn build_c_env(
+    project_root: &Path,
+    c_config: &manifest::CConfig,
+    _options: &BuildOptions,
+) -> Result<()> {
+    terminal::section("C environment");
+
+    let c_env = runtime_env(project_root, Lang::C);
+    std::fs::create_dir_all(&c_env)
+        .map_err(|e| miette::miette!("Failed to create {}: {}", c_env.display(), e))?;
+
+    let main_c_path = c_env.join("main.c");
+    if !main_c_path.exists() {
+        std::fs::write(&main_c_path, "int main(void) {\n    return 0;\n}\n")
+            .map_err(|e| miette::miette!("Failed to write main.c: {}", e))?;
+        terminal::success_indented("Created main.c");
+    } else {
+        terminal::info_indented("main.c exists");
+    }
+
+    if c_config.dependencies.is_empty() {
+        terminal::info_indented("No C dependencies declared");
+    } else {
+        terminal::info_indented(&format!(
+            "C dependencies recorded in manifest: {}",
+            c_config.dependencies.len()
+        ));
+    }
+
+    terminal::success_indented("C environment ready");
     Ok(())
 }
 

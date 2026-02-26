@@ -56,7 +56,7 @@ pub enum ParseError {
     #[error("Unknown language '{lang}'")]
     #[diagnostic(
         code(poly_bench::parse::unknown_lang),
-        help("supported languages: go, ts, typescript, rust, python")
+        help("supported languages: go, ts, typescript, rust, python, c, csharp")
     )]
     UnknownLang {
         lang: String,

@@ -65,7 +65,7 @@
       (code_block
         (embedded_code) @injection.content)))
   (#any-of? @_lang "ts" "typescript")
-  (#set! injection.language "typescript"))
+  (#set! injection.language "ts"))
 
 (setup_block
   language: (language_tag) @_lang
@@ -74,7 +74,7 @@
       (code_block
         (embedded_code) @injection.content)))
   (#any-of? @_lang "ts" "typescript")
-  (#set! injection.language "typescript"))
+  (#set! injection.language "ts"))
 
 (setup_block
   language: (language_tag) @_lang
@@ -83,7 +83,7 @@
       (code_block
         (embedded_code) @injection.content)))
   (#any-of? @_lang "ts" "typescript")
-  (#set! injection.language "typescript"))
+  (#set! injection.language "ts"))
 
 (setup_block
   language: (language_tag) @_lang
@@ -92,7 +92,7 @@
       (code_block
         (embedded_code) @injection.content)))
   (#any-of? @_lang "ts" "typescript")
-  (#set! injection.language "typescript"))
+  (#set! injection.language "ts"))
 
 ; Language implementation with TypeScript
 (language_implementation
@@ -100,7 +100,7 @@
   (code_block
     (embedded_code) @injection.content)
   (#any-of? @_lang "ts" "typescript")
-  (#set! injection.language "typescript"))
+  (#set! injection.language "ts"))
 
 ; Hook with TypeScript
 (hook_flat
@@ -108,7 +108,7 @@
   (code_block
     (embedded_code) @injection.content)
   (#any-of? @_lang "ts" "typescript")
-  (#set! injection.language "typescript"))
+  (#set! injection.language "ts"))
 
 ; ============================================================
 ; Rust injections
@@ -219,6 +219,57 @@
   (#set! injection.language "python"))
 
 ; ============================================================
+; C injections
+; ============================================================
+
+; Setup block with C language
+(setup_block
+  language: (language_tag) @_lang
+  (setup_body
+    (import_section
+      (code_block
+        (embedded_code) @injection.content)))
+  (#eq? @_lang "c"))
+
+(setup_block
+  language: (language_tag) @_lang
+  (setup_body
+    (declare_section
+      (code_block
+        (embedded_code) @injection.content)))
+  (#eq? @_lang "c"))
+
+(setup_block
+  language: (language_tag) @_lang
+  (setup_body
+    (init_section
+      (code_block
+        (embedded_code) @injection.content)))
+  (#eq? @_lang "c"))
+
+(setup_block
+  language: (language_tag) @_lang
+  (setup_body
+    (helpers_section
+      (code_block
+        (embedded_code) @injection.content)))
+  (#eq? @_lang "c"))
+
+; Language implementation with C
+(language_implementation
+  language: (language_tag) @_lang
+  (code_block
+    (embedded_code) @injection.content)
+  (#eq? @_lang "c"))
+
+; Hook with C
+(hook_flat
+  language: (language_tag) @_lang
+  (code_block
+    (embedded_code) @injection.content)
+  (#eq? @_lang "c"))
+
+; ============================================================
 ; C# injections
 ; ============================================================
 
@@ -291,7 +342,7 @@
   language: (language_tag) @_lang
   (inline_code) @injection.content
   (#any-of? @_lang "ts" "typescript")
-  (#set! injection.language "typescript"))
+  (#set! injection.language "ts"))
 
 ; Rust inline code
 (language_implementation
@@ -306,6 +357,13 @@
   (inline_code) @injection.content
   (#any-of? @_lang "python" "py")
   (#set! injection.language "python"))
+
+; C inline code
+(language_implementation
+  language: (language_tag) @_lang
+  (inline_code) @injection.content
+  (#eq? @_lang "c")
+  (#set! injection.language "c"))
 
 ; C# inline code
 (language_implementation

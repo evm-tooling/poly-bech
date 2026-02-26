@@ -10,6 +10,7 @@ members = [
     "runtimes/runtimes-ts",
     "runtimes/runtimes-rust",
     "runtimes/runtimes-python",
+    "runtimes/runtimes-c",
     "runtimes/runtimes-csharp",
 ]
 

@@ -39,16 +39,25 @@ pub enum Lang {
     TypeScript,
     Rust,
     Python,
+    C,
     CSharp,
 }
 
 impl Lang {
+    pub const ALL: [Lang; 6] =
+        [Lang::Go, Lang::TypeScript, Lang::Rust, Lang::Python, Lang::C, Lang::CSharp];
+
+    pub fn all() -> &'static [Lang] {
+        &Self::ALL
+    }
+
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "go" => Some(Lang::Go),
             "ts" | "typescript" => Some(Lang::TypeScript),
             "rust" | "rs" => Some(Lang::Rust),
             "python" | "py" => Some(Lang::Python),
+            "c" => Some(Lang::C),
             "csharp" | "cs" => Some(Lang::CSharp),
             _ => None,
         }
@@ -60,8 +69,46 @@ impl Lang {
             Lang::TypeScript => "ts",
             Lang::Rust => "rust",
             Lang::Python => "python",
+            Lang::C => "c",
             Lang::CSharp => "csharp",
         }
+    }
+
+    /// Language tags accepted in grammar language positions.
+    pub fn aliases(&self) -> &'static [&'static str] {
+        match self {
+            Lang::Go => &["go"],
+            Lang::TypeScript => &["ts", "typescript"],
+            Lang::Rust => &["rust"],
+            Lang::Python => &["python", "py"],
+            Lang::C => &["c"],
+            Lang::CSharp => &["csharp", "cs"],
+        }
+    }
+
+    /// Display name used in generated grammar comments.
+    pub fn grammar_display_name(&self) -> &'static str {
+        match self {
+            Lang::Go => "Go",
+            Lang::TypeScript => "TypeScript",
+            Lang::Rust => "Rust",
+            Lang::Python => "Python",
+            Lang::C => "C",
+            Lang::CSharp => "C#",
+        }
+    }
+
+    /// Tree-sitter injection language identifier.
+    pub fn tree_sitter_injection_name(&self) -> &'static str {
+        match self {
+            Lang::CSharp => "c_sharp",
+            _ => self.as_str(),
+        }
+    }
+
+    /// Import sections use paren blocks for Go only.
+    pub fn uses_paren_import_block(&self) -> bool {
+        matches!(self, Lang::Go)
     }
 }
 

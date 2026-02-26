@@ -95,7 +95,7 @@ enum Commands {
         #[arg(value_name = "FILE")]
         file: Option<PathBuf>,
 
-        /// Check only benchmarks for a specific language (go, ts, rust, python, csharp)
+        /// Check only benchmarks for a specific language (go, ts, rust, python, c, csharp)
         #[arg(long, value_name = "LANG")]
         lang: Option<String>,
 
@@ -120,7 +120,7 @@ enum Commands {
         #[arg(value_name = "FILE")]
         file: Option<PathBuf>,
 
-        /// Run only benchmarks for a specific language (go, ts, rust, python, csharp)
+        /// Run only benchmarks for a specific language (go, ts, rust, python, c, csharp)
         #[arg(long, value_name = "LANG")]
         lang: Option<String>,
 
@@ -163,9 +163,9 @@ enum Commands {
         #[arg(value_name = "NAME")]
         name: Option<String>,
 
-        /// Languages to include (comma-separated: go,ts,rust,python); used only when NAME is
-        /// provided
-        #[arg(long, short, value_delimiter = ',', default_value = "go,ts")]
+        /// Languages to include (comma-separated: go,ts,rust,python,c,csharp); used only when NAME
+        /// is provided
+        #[arg(long, short, value_delimiter = ',', default_value = "go,ts,c")]
         languages: Vec<String>,
 
         /// Skip generating example benchmark
@@ -198,6 +198,10 @@ enum Commands {
         #[arg(long)]
         py: Option<String>,
 
+        /// C package/library tag (e.g., "openssl@3.2")
+        #[arg(long)]
+        c: Option<String>,
+
         /// C# package (e.g., "Newtonsoft.Json@13.0.3")
         #[arg(long)]
         cs: Option<String>,
@@ -209,7 +213,7 @@ enum Commands {
 
     /// Add a runtime to the project (adds to polybench.toml and builds .polybench)
     AddRuntime {
-        /// Runtime to add (go, ts, rust, python, csharp)
+        /// Runtime to add (go, ts, rust, python, c, csharp)
         #[arg(value_name = "RUNTIME")]
         runtime: String,
     },
@@ -231,6 +235,10 @@ enum Commands {
         /// Python package to remove (e.g., "numpy")
         #[arg(long)]
         py: Option<String>,
+
+        /// C package/library tag to remove (e.g., "openssl")
+        #[arg(long)]
+        c: Option<String>,
 
         /// C# package to remove (e.g., "Newtonsoft.Json")
         #[arg(long)]
@@ -336,14 +344,14 @@ async fn main() -> Result<()> {
         Commands::New { name } => {
             cmd_new(&name)?;
         }
-        Commands::Add { go, ts, rs, py, cs, features } => {
-            cmd_add(go, ts, rs, py, cs, features)?;
+        Commands::Add { go, ts, rs, py, c, cs, features } => {
+            cmd_add(go, ts, rs, py, c, cs, features)?;
         }
         Commands::AddRuntime { runtime } => {
             cmd_add_runtime(&runtime)?;
         }
-        Commands::Remove { go, ts, rs, py, cs } => {
-            cmd_remove(go, ts, rs, py, cs)?;
+        Commands::Remove { go, ts, rs, py, c, cs } => {
+            cmd_remove(go, ts, rs, py, c, cs)?;
         }
         Commands::Install => {
             cmd_install()?;
@@ -1231,12 +1239,13 @@ fn cmd_add(
     ts: Option<String>,
     rs: Option<String>,
     py: Option<String>,
+    c: Option<String>,
     cs: Option<String>,
     features: Option<Vec<String>>,
 ) -> Result<()> {
-    if go.is_none() && ts.is_none() && rs.is_none() && py.is_none() && cs.is_none() {
+    if go.is_none() && ts.is_none() && rs.is_none() && py.is_none() && c.is_none() && cs.is_none() {
         return Err(miette::miette!(
-            "No dependency specified. Use --go, --ts, --rs, --py, or --cs to add a dependency."
+            "No dependency specified. Use --go, --ts, --rs, --py, --c, or --cs to add a dependency."
         ));
     }
 
@@ -1256,6 +1265,10 @@ fn cmd_add(
         project::deps::add_python_dependency(spec)?;
     }
 
+    if let Some(ref spec) = c {
+        project::deps::add_c_dependency(spec)?;
+    }
+
     if let Some(ref spec) = cs {
         project::deps::add_csharp_dependency(spec)?;
     }
@@ -1268,11 +1281,12 @@ fn cmd_remove(
     ts: Option<String>,
     rs: Option<String>,
     py: Option<String>,
+    c: Option<String>,
     cs: Option<String>,
 ) -> Result<()> {
-    if go.is_none() && ts.is_none() && rs.is_none() && py.is_none() && cs.is_none() {
+    if go.is_none() && ts.is_none() && rs.is_none() && py.is_none() && c.is_none() && cs.is_none() {
         return Err(miette::miette!(
-            "No dependency specified. Use --go, --ts, --rs, --py, or --cs to remove a dependency."
+            "No dependency specified. Use --go, --ts, --rs, --py, --c, or --cs to remove a dependency."
         ));
     }
 
@@ -1290,6 +1304,10 @@ fn cmd_remove(
 
     if let Some(ref package) = py {
         project::deps::remove_python_dependency(package)?;
+    }
+
+    if let Some(ref package) = c {
+        project::deps::remove_c_dependency(package)?;
     }
 
     if let Some(ref package) = cs {
@@ -1364,6 +1382,12 @@ fn cmd_add_runtime(runtime: &str) -> Result<()> {
         Lang::Python => {
             manifest.python = Some(project::manifest::PythonConfig {
                 version: Some("3.11".to_string()),
+                dependencies: std::collections::HashMap::new(),
+            });
+        }
+        Lang::C => {
+            manifest.c = Some(project::manifest::CConfig {
+                standard: "c11".to_string(),
                 dependencies: std::collections::HashMap::new(),
             });
         }

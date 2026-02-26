@@ -99,6 +99,7 @@ fn lang_colorize(s: &str, lang: Lang) -> colored::ColoredString {
         Lang::TypeScript => s.cyan(),
         Lang::Rust => s.yellow(),
         Lang::Python => s.bright_blue(),
+        Lang::C => s.blue(),
         Lang::CSharp => s.magenta(),
     }
 }
@@ -233,11 +234,7 @@ pub fn report_with_options(results: &BenchmarkResults, options: &ReportOptions) 
 }
 
 fn print_suite_with_options(suite: &SuiteResults, options: &ReportOptions) {
-    let icon = match suite.summary.winner {
-        Some(Lang::Go) => "✓",
-        Some(Lang::TypeScript) => "✓",
-        _ => "✓",
-    };
+    let icon = "✓";
 
     // Suite header
     if let Some(ref desc) = suite.description {
