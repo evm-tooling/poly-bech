@@ -47,6 +47,13 @@ pub fn is_valid_project_root_for_lang(path: &Path, lang: poly_bench_dsl::Lang) -
         return false;
     }
 
+    // Runtime envs are scaffolded by poly-bench and should be accepted as canonical roots.
+    // C runtime env uses a minimal main.c scaffold as its marker.
+    if lang == poly_bench_dsl::Lang::C && is_runtime_env_root(path) && path.join("main.c").exists()
+    {
+        return true;
+    }
+
     if let Some(detector) = get_detector(lang) {
         if detector.marker_files().iter().any(|marker| marker_matches(path, marker)) {
             return true;

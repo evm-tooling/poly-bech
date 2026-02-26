@@ -569,6 +569,8 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         script.push_str(");\n");
     } else if use_auto_mode {
         // Auto-calibration mode: only uses targetTime (no min/max iteration caps)
+        // V8/JIT needs at least 100 warmup iterations for stable optimization
+        let warmup = spec.warmup.max(100);
         if impl_is_async {
             script.push_str(
                 "const __result = await __polybench.runBenchmarkAutoAsync(async function() {\n",
@@ -584,7 +586,7 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
             spec.target_time_ms,
             use_sink,
             track_memory,
-            spec.warmup,
+            warmup,
             spec.async_sample_cap,
             spec.async_warmup_cap,
             async_sampling_policy

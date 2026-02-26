@@ -4,9 +4,9 @@ declare suite bubbleN performance timeBased sameDataset: true {
     description: "O(n^2) bubble sort on int32 array"
     baseline: "go"
     warmup: 20
-    targetTime: 5000ms
+    targetTime: 500ms
     cvThreshold: 5
-    count: 5
+    count: 3
 
     setup go {
         import (
@@ -158,16 +158,24 @@ declare suite bubbleN performance timeBased sameDataset: true {
 
             static void bubble_c(unsigned char* data, size_t len) {
                 size_t n = len / 4;
+                int32_t* arr = (int32_t*)malloc(n * sizeof(int32_t));
+                if (!arr) return;
+                for (size_t i = 0; i < n; i++) {
+                    arr[i] = read_i32_be(data + i * 4);
+                }
                 for (size_t i = 0; i < n; i++) {
                     for (size_t j = 0; j + 1 < n - i; j++) {
-                        int32_t a = read_i32_be(data + j * 4);
-                        int32_t b = read_i32_be(data + (j + 1) * 4);
-                        if (a > b) {
-                            write_i32_be(data + j * 4, b);
-                            write_i32_be(data + (j + 1) * 4, a);
+                        if (arr[j] > arr[j + 1]) {
+                            int32_t tmp = arr[j];
+                            arr[j] = arr[j + 1];
+                            arr[j + 1] = tmp;
                         }
                     }
                 }
+                for (size_t i = 0; i < n; i++) {
+                    write_i32_be(data + i * 4, arr[i]);
+                }
+                free(arr);
             }
         }
     }
