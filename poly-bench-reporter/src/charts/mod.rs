@@ -504,9 +504,7 @@ pub fn filter_benchmarks<'a>(
                             poly_bench_runtime::supported_languages().iter().any(|lang| {
                                 *lang == winner_lang &&
                                     (wf == lang.as_str() ||
-                                        (*lang == Lang::TypeScript && wf == "typescript") ||
-                                        (*lang == Lang::Rust && wf == "rs") ||
-                                        (*lang == Lang::Python && wf == "py"))
+                                        lang.aliases().iter().any(|a| wf == *a))
                             });
                         if !is_tie && !winner_matches {
                             return false;

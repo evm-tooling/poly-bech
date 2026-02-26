@@ -3,10 +3,10 @@ use std::charting
 declare suite bubbleN performance timeBased sameDataset: true {
     description: "O(n^2) bubble sort on int32 array"
     baseline: "go"
-    warmup: 5
-    targetTime: 300ms
+    warmup: 20
+    targetTime: 5000ms
     cvThreshold: 5
-    count: 3
+    count: 5
 
     setup go {
         import (
@@ -103,7 +103,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
             }
         }
     }
-
+    
     setup csharp {
         import {
             using System;
@@ -133,6 +133,41 @@ declare suite bubbleN performance timeBased sameDataset: true {
                     BinaryPrimitives.WriteInt32BigEndian(new Span<byte>(outBytes, j, 4), arr[i]);
                 }
                 return outBytes;
+            }
+        }
+    }
+
+    setup c {
+        helpers {
+            static int32_t read_i32_be(const unsigned char* p) {
+                return (int32_t)(
+                    ((uint32_t)p[0] << 24) |
+                    ((uint32_t)p[1] << 16) |
+                    ((uint32_t)p[2] << 8) |
+                    (uint32_t)p[3]
+                );
+            }
+
+            static void write_i32_be(unsigned char* p, int32_t v) {
+                uint32_t u = (uint32_t)v;
+                p[0] = (unsigned char)((u >> 24) & 0xFF);
+                p[1] = (unsigned char)((u >> 16) & 0xFF);
+                p[2] = (unsigned char)((u >> 8) & 0xFF);
+                p[3] = (unsigned char)(u & 0xFF);
+            }
+
+            static void bubble_c(unsigned char* data, size_t len) {
+                size_t n = len / 4;
+                for (size_t i = 0; i < n; i++) {
+                    for (size_t j = 0; j + 1 < n - i; j++) {
+                        int32_t a = read_i32_be(data + j * 4);
+                        int32_t b = read_i32_be(data + (j + 1) * 4);
+                        if (a > b) {
+                            write_i32_be(data + j * 4, b);
+                            write_i32_be(data + (j + 1) * 4, a);
+                        }
+                    }
+                }
             }
         }
     }
@@ -183,6 +218,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s100)
         python: bubble_python(s100)
         csharp: BubbleCsharp(s100);
+        c: bubble_c(s100, sizeof(s100))
     }
 
     bench n200 {
@@ -191,6 +227,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s200)
         python: bubble_python(s200)
         csharp: BubbleCsharp(s200);
+        c: bubble_c(s200, sizeof(s200))
     }
 
     bench n300 {
@@ -199,6 +236,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s300)
         python: bubble_python(s300)
         csharp: BubbleCsharp(s300);
+        c: bubble_c(s300, sizeof(s300))
     }
 
     bench n400 {
@@ -207,6 +245,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s400)
         python: bubble_python(s400)
         csharp: BubbleCsharp(s400);
+        c: bubble_c(s400, sizeof(s400))
     }
 
     bench n500 {
@@ -215,6 +254,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s500)
         python: bubble_python(s500)
         csharp: BubbleCsharp(s500);
+        c: bubble_c(s500, sizeof(s500))
     }
 
     bench n600 {
@@ -223,6 +263,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s600)
         python: bubble_python(s600)
         csharp: BubbleCsharp(s600);
+        c: bubble_c(s600, sizeof(s600))
     }
 
     bench n700 {
@@ -231,6 +272,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s700)
         python: bubble_python(s700)
         csharp: BubbleCsharp(s700);
+        c: bubble_c(s700, sizeof(s700))
     }
 
     bench n800 {
@@ -239,6 +281,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s800)
         python: bubble_python(s800)
         csharp: BubbleCsharp(s800);
+        c: bubble_c(s800, sizeof(s800))
     }
 
     bench n900 {
@@ -247,6 +290,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s900)
         python: bubble_python(s900)
         csharp: BubbleCsharp(s900);
+        c: bubble_c(s900, sizeof(s900))
     }
 
     bench n1000 {
@@ -255,6 +299,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s1000)
         python: bubble_python(s1000)
         csharp: BubbleCsharp(s1000);
+        c: bubble_c(s1000, sizeof(s1000))
     }
 
     after {

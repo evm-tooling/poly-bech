@@ -198,6 +198,10 @@ pub fn generate(
   <stop offset=\"0%\" stop-color=\"#D8BD4A\" stop-opacity=\"1\"/>\n\
   <stop offset=\"100%\" stop-color=\"#EEDB7A\" stop-opacity=\"1\"/>\n\
 </linearGradient>\n\
+<linearGradient id=\"cGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
+  <stop offset=\"0%\" stop-color=\"#2563EB\" stop-opacity=\"0.95\"/>\n\
+  <stop offset=\"100%\" stop-color=\"#3B82F6\" stop-opacity=\"0.8\"/>\n\
+</linearGradient>\n\
 <linearGradient id=\"csharpGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
   <stop offset=\"0%\" stop-color=\"#512BD4\" stop-opacity=\"1\"/>\n\
   <stop offset=\"100%\" stop-color=\"#7C3AED\" stop-opacity=\"1\"/>\n\
@@ -850,18 +854,11 @@ fn lang_label(lang: Lang) -> &'static str {
 }
 
 fn series_color(lang: Lang) -> &'static str {
-    match lang {
-        Lang::Python => "#D8BD4A",
-        _ => lang_color(lang),
-    }
+    lang_color(lang)
 }
 
 fn badge_color(lang: Lang) -> &'static str {
-    match lang {
-        Lang::Python => "#C6A73B",
-        Lang::CSharp => "#6B32D6",
-        _ => series_color(lang),
-    }
+    lang_color(lang)
 }
 
 fn stats_layout(count: usize, width: f64) -> (usize, usize, f64) {

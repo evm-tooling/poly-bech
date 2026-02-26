@@ -85,6 +85,7 @@
           "source.ts.embedded.bench": "typescript",
           "source.rust.embedded.bench": "rust",
           "source.python.embedded.bench": "python",
+          "source.c.embedded.bench": "c",
           "source.cs.embedded.bench": "csharp",
           "source.csharp.embedded.bench": "csharp"
         }
@@ -95,6 +96,7 @@
     "compile": "tsc -p .",
     "watch": "tsc -p . -w",
     "lint": "eslint src --ext ts",
+    "grammar:generate": "node ./scripts/generate-textmate-grammar.js",
     "version:update": "npx ts-node ./scripts/update-version.ts",
     "publish:dev": "npx ts-node ./scripts/publish-dev.ts",
     "publish:ci": "npx ts-node ./scripts/publish-ci.ts"

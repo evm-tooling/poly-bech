@@ -567,6 +567,56 @@ pub fn add_python_dependency(spec: &str) -> Result<()> {
     Ok(())
 }
 
+/// Add a C dependency to the project
+pub fn add_c_dependency(spec: &str) -> Result<()> {
+    let current_dir = std::env::current_dir()
+        .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+
+    let project_root = crate::find_project_root(&current_dir)
+        .ok_or_else(|| miette::miette!("Not in a poly-bench project"))?;
+
+    let mut manifest = crate::load_manifest(&project_root)?;
+
+    if !manifest.has_runtime(Lang::C) {
+        return Err(miette::miette!("C is not enabled in this project"));
+    }
+
+    let (library, version) = parse_dep_spec(spec);
+    manifest.add_c_dependency(&library, &version)?;
+    crate::save_manifest(&project_root, &manifest)?;
+
+    terminal::success(&format!("Added {}@{} to polybench.toml", library, version));
+    Ok(())
+}
+
+/// Remove a C dependency from the project
+pub fn remove_c_dependency(library: &str) -> Result<()> {
+    let current_dir = std::env::current_dir()
+        .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+
+    let project_root = crate::find_project_root(&current_dir)
+        .ok_or_else(|| miette::miette!("Not in a poly-bench project"))?;
+
+    let mut manifest = crate::load_manifest(&project_root)?;
+
+    if !manifest.has_runtime(Lang::C) {
+        return Err(miette::miette!("C is not enabled in this project"));
+    }
+
+    if !manifest.c.as_ref().unwrap().dependencies.contains_key(library) {
+        return Err(miette::miette!(
+            "Dependency '{}' is not installed. Check polybench.toml for installed C dependencies.",
+            library
+        ));
+    }
+
+    manifest.remove_c_dependency(library)?;
+    crate::save_manifest(&project_root, &manifest)?;
+
+    terminal::success(&format!("Removed {} from polybench.toml", library));
+    Ok(())
+}
+
 /// Remove a Python dependency from the project
 pub fn remove_python_dependency(package: &str) -> Result<()> {
     let current_dir = std::env::current_dir()
@@ -808,6 +858,7 @@ fn install_runtime_deps_for_lang(
             install_rust_deps(project_root, manifest.rust.as_ref().unwrap(), &manifest.project.name)
         }
         Lang::Python => install_python_deps(project_root, manifest.python.as_ref().unwrap()),
+        Lang::C => install_c_deps(project_root, manifest.c.as_ref().unwrap()),
         Lang::CSharp => install_csharp_deps(project_root, manifest.csharp.as_ref().unwrap()),
     }
 }
@@ -1037,6 +1088,26 @@ fn install_python_deps(project_root: &Path, python_config: &manifest::PythonConf
         ));
     }
 
+    Ok(())
+}
+
+/// Install C dependencies from manifest
+fn install_c_deps(project_root: &Path, c_config: &manifest::CConfig) -> Result<()> {
+    terminal::section("C dependencies");
+
+    let c_root = runtime_env(project_root, Lang::C);
+    std::fs::create_dir_all(&c_root)
+        .map_err(|e| miette::miette!("Failed to create C env dir: {}", e))?;
+
+    if c_config.dependencies.is_empty() {
+        terminal::success_indented("No C dependencies to install");
+        return Ok(());
+    }
+
+    terminal::success_indented(&format!(
+        "C dependencies recorded in manifest: {}",
+        c_config.dependencies.len()
+    ));
     Ok(())
 }
 

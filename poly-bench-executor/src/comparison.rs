@@ -140,24 +140,32 @@ impl BenchmarkResult {
         measurements: &HashMap<Lang, Measurement>,
         suite_type: SuiteType,
     ) -> Option<Comparison> {
-        // Compare Go vs TypeScript if both are present
-        let go_measurement = measurements.get(&Lang::Go)?;
-        let ts_measurement = measurements.get(&Lang::TypeScript)?;
+        // Pick the first two available languages in registry order for comparison display.
+        let mut available: Vec<(Lang, &Measurement)> = supported_languages()
+            .iter()
+            .filter_map(|lang| measurements.get(lang).map(|m| (*lang, m)))
+            .collect();
+        if available.len() < 2 {
+            return None;
+        }
+        available.truncate(2);
+        let (first_lang, first_measurement) = available[0];
+        let (second_lang, second_measurement) = available[1];
 
         let use_memory = suite_type == SuiteType::Memory;
-        let (go_val, ts_val) = if use_memory {
-            match (go_measurement.bytes_per_op, ts_measurement.bytes_per_op) {
-                (Some(go_b), Some(ts_b)) => (go_b as f64, ts_b as f64),
-                _ => (go_measurement.nanos_per_op, ts_measurement.nanos_per_op),
+        let (first_val, second_val) = if use_memory {
+            match (first_measurement.bytes_per_op, second_measurement.bytes_per_op) {
+                (Some(a), Some(b)) => (a as f64, b as f64),
+                _ => (first_measurement.nanos_per_op, second_measurement.nanos_per_op),
             }
         } else {
-            (go_measurement.nanos_per_op, ts_measurement.nanos_per_op)
+            (first_measurement.nanos_per_op, second_measurement.nanos_per_op)
         };
 
         let ratio_ci_95 = if !use_memory {
-            match (&go_measurement.run_nanos_per_op, &ts_measurement.run_nanos_per_op) {
-                (Some(go_runs), Some(ts_runs)) => {
-                    Measurement::paired_ratio_ci(go_runs, ts_runs).map(|(_, lo, hi)| (lo, hi))
+            match (&first_measurement.run_nanos_per_op, &second_measurement.run_nanos_per_op) {
+                (Some(a_runs), Some(b_runs)) => {
+                    Measurement::paired_ratio_ci(a_runs, b_runs).map(|(_, lo, hi)| (lo, hi))
                 }
                 _ => None,
             }
@@ -167,12 +175,12 @@ impl BenchmarkResult {
 
         Some(Comparison::new_with_metric(
             String::new(),
-            go_measurement.clone(),
-            "Go".to_string(),
-            ts_measurement.clone(),
-            "TypeScript".to_string(),
-            go_val,
-            ts_val,
+            first_measurement.clone(),
+            poly_bench_runtime::lang_full_name(first_lang).to_string(),
+            second_measurement.clone(),
+            poly_bench_runtime::lang_full_name(second_lang).to_string(),
+            first_val,
+            second_val,
             ratio_ci_95,
         ))
     }
@@ -293,6 +301,7 @@ impl SuiteSummary {
             let ts_val = bench.measurements.get(&Lang::TypeScript).and_then(metric);
             let rust_val = bench.measurements.get(&Lang::Rust).and_then(metric);
             let python_val = bench.measurements.get(&Lang::Python).and_then(metric);
+            let c_val = bench.measurements.get(&Lang::C).and_then(metric);
 
             // Find the best language (lowest value wins for both time and memory)
             let mut values: Vec<(Lang, f64)> = vec![];
@@ -307,6 +316,9 @@ impl SuiteSummary {
             }
             if let Some(v) = python_val {
                 values.push((Lang::Python, v));
+            }
+            if let Some(v) = c_val {
+                values.push((Lang::C, v));
             }
 
             if values.len() >= 2 {

@@ -12,11 +12,10 @@ When adding a new runtime, you must modify these files:
 
 | # | File | Change |
 |---|------|--------|
-| 1 | `poly-bench-dsl/src/ast.rs` | Add variant to `Lang` enum; update `from_str` and `as_str` |
+| 1 | `poly-bench-dsl/src/ast.rs` | Add variant to `Lang` enum; update `from_str`, `as_str`, and language metadata helpers (`aliases`, `grammar_display_name`, `tree_sitter_injection_name`, `uses_paren_import_block`) |
 | 2 | `poly-bench-syntax/src/partial_ast.rs` | Add same variant to `Lang`; update `from_str` and `as_str` |
 | 3 | `poly-bench-runtime/Cargo.toml` | Add `runtimes-<lang> = { path = "../runtimes/runtimes-<lang>" }` |
 | 4 | Root `Cargo.toml` | Add `"runtimes/runtimes-<lang>"` to workspace `members` |
-| 5 | `poly-bench-grammar/bindings/rust/build.rs` | Add entry to `languages` array for tree-sitter injections |
 
 Optional (backward compatibility only):
 
@@ -24,7 +23,7 @@ Optional (backward compatibility only):
 |---|------|--------|
 | 6 | `poly-bench-runtime/src/lib.rs` | Add `pub mod <lang> { ... }` re-export only if you keep per-language backward-compat re-exports |
 
-**No longer required when adding a runtime:** `poly-bench-lsp-traits`, `poly-bench-runtime/registry.rs`, `poly-bench-runtime-traits/src/config.rs`, `poly-bench-executor` language wiring, `cli/main.rs` language switch wiring, `runtime_env_<lang>` helpers, `has_<lang>()` call-site plumbing, and manual edits to `poly-bench-grammar/queries/injections.scm`.
+**No longer required when adding a runtime:** `poly-bench-lsp-traits`, `poly-bench-runtime/registry.rs`, `poly-bench-runtime-traits/src/config.rs`, `poly-bench-executor` language wiring, `cli/main.rs` language switch wiring, `runtime_env_<lang>` helpers, `has_<lang>()` call-site plumbing, edits to `poly-bench-grammar/bindings/rust/build.rs`, and manual edits to `poly-bench-grammar/queries/injections.scm`.
 
 ## Runtime Integration Interface
 
@@ -45,7 +44,7 @@ The following components form the end-to-end interface. Core orchestration uses 
 | `runtime_env(project_root, lang)` | poly-bench-project | Single function; no per-language helpers |
 | `--project-dir LANG:DIR` | CLI | Generic; no per-language flags |
 | `has_runtime(lang)` | poly-bench-project/manifest | Single method; no per-language has_* |
-| Grammar injections | poly-bench-grammar | Generated from `languages` array in build.rs |
+| Grammar injections | poly-bench-grammar | Generated from `poly_bench_dsl::Lang` metadata in `build.rs` |
 
 ## Overview
 
@@ -89,13 +88,15 @@ flowchart TB
 - `poly-bench-syntax/src/partial_ast.rs`: Add the same variant to `Lang`
 - Update `from_str` and `as_str` to match poly-bench-dsl
 
-### 3. poly-bench-grammar: Add to injections
+### 3. poly-bench-grammar: No direct wiring required
 
-- `poly-bench-grammar/bindings/rust/build.rs`: Add entry to the `languages` array:
-  ```rust
-  ("Java", &["java", "jvm"], "java", false),  // (display_name, tags, tree_sitter_name, use_paren_code_block)
-  ```
-- Use `true` for `use_paren_code_block` only if the language uses `(paren_code_block)` for import sections (Go does; others use `(code_block)`)
+- `poly-bench-grammar/bindings/rust/build.rs` now iterates `Lang::all()`
+- Injection aliases and names come from `Lang` metadata in `poly-bench-dsl/src/ast.rs`
+- To affect injections, update DSL `Lang` metadata methods:
+  - `aliases()`
+  - `grammar_display_name()`
+  - `tree_sitter_injection_name()`
+  - `uses_paren_import_block()` (`true` only for languages that use `(paren_code_block)` imports, like Go)
 
 ### 4. runtimes/: Create the runtime crate
 
@@ -191,7 +192,7 @@ If your runtime needs a `[project.<lang>]` section in `polybench.toml`:
 |-----------|-----------------|-----------------|
 | DSL | - | `poly-bench-dsl/src/ast.rs` |
 | Syntax | - | `poly-bench-syntax/src/partial_ast.rs` |
-| Grammar | - | `poly-bench-grammar/bindings/rust/build.rs` |
+| Grammar | - | *(none; generated from DSL `Lang` metadata)* |
 | Runtime | `runtimes/runtimes-<lang>/` | `poly-bench-runtime/Cargo.toml`, root `Cargo.toml` |
 | Manifest (optional) | - | `poly-bench-project/src/manifest.rs` |
 | IR | `runtimes-<lang>/import_extractor.rs` | `RuntimePlugin::import_extractor()` |
@@ -203,7 +204,7 @@ If your runtime needs a `[project.<lang>]` section in `polybench.toml`:
 | LSP hover | `runtimes-<lang>/hover.rs` | `RuntimePlugin::embedded_hover_provider()` |
 | LSP client | `runtimes-<lang>/<server>_client.rs` | `RuntimePlugin::embedded_lsp_client_init/get()` |
 
-**Not in the list:** `poly-bench-lsp-traits` (uses `Lang::from_str`), `poly-bench-runtime/registry.rs` (linkme), `poly-bench-runtime-traits/config.rs` (HashMap), `poly-bench-executor` (HashMap), `cli/main.rs` (generic `--project-dir`).
+**Not in the list:** `poly-bench-lsp-traits` (uses `Lang::from_str`), `poly-bench-runtime/registry.rs` (linkme), `poly-bench-runtime-traits/config.rs` (HashMap), `poly-bench-executor` (HashMap), `cli/main.rs` (generic `--project-dir`), `poly-bench-grammar/bindings/rust/build.rs` (uses DSL metadata), and `poly-bench-grammar/queries/injections.scm` (generated output).
 
 ## LSP Support Requirements
 

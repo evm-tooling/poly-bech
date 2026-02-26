@@ -187,6 +187,9 @@
           "include": "#setup-csharp-block"
         },
         {
+          "include": "#setup-c-block"
+        },
+        {
           "include": "#fixture-block"
         },
         {
@@ -875,7 +878,6 @@
     },
     "setup-import-python-block": {
       "name": "meta.block.import.python.bench",
-      "contentName": "source.python.embedded.bench",
       "begin": "^(\\s*)(import)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -892,11 +894,11 @@
         {
           "include": "source.python"
         }
-      ]
+      ],
+      "contentName": "source.python.embedded.bench"
     },
     "setup-declare-python-block": {
       "name": "meta.block.declare.python.bench",
-      "contentName": "source.python.embedded.bench",
       "begin": "^(\\s*)(declare)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -913,11 +915,11 @@
         {
           "include": "source.python"
         }
-      ]
+      ],
+      "contentName": "source.python.embedded.bench"
     },
     "setup-init-python-block": {
       "name": "meta.block.init.python.bench",
-      "contentName": "source.python.embedded.bench",
       "begin": "^(\\s*)(init)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -934,11 +936,11 @@
         {
           "include": "source.python"
         }
-      ]
+      ],
+      "contentName": "source.python.embedded.bench"
     },
     "setup-helpers-python-block": {
       "name": "meta.block.helpers.python.bench",
-      "contentName": "source.python.embedded.bench",
       "begin": "^(\\s*)(helpers)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -955,7 +957,8 @@
         {
           "include": "source.python"
         }
-      ]
+      ],
+      "contentName": "source.python.embedded.bench"
     },
     "setup-csharp-block": {
       "name": "meta.block.setup.csharp.bench",
@@ -994,7 +997,6 @@
     },
     "setup-import-csharp-block": {
       "name": "meta.block.import.csharp.bench",
-      "contentName": "source.csharp.embedded.bench",
       "begin": "^(\\s*)(import)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -1011,11 +1013,11 @@
         {
           "include": "source.cs"
         }
-      ]
+      ],
+      "contentName": "source.csharp.embedded.bench"
     },
     "setup-declare-csharp-block": {
       "name": "meta.block.declare.csharp.bench",
-      "contentName": "source.csharp.embedded.bench",
       "begin": "^(\\s*)(declare)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -1032,11 +1034,11 @@
         {
           "include": "source.cs"
         }
-      ]
+      ],
+      "contentName": "source.csharp.embedded.bench"
     },
     "setup-init-csharp-block": {
       "name": "meta.block.init.csharp.bench",
-      "contentName": "source.csharp.embedded.bench",
       "begin": "^(\\s*)(init)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -1053,11 +1055,11 @@
         {
           "include": "source.cs"
         }
-      ]
+      ],
+      "contentName": "source.csharp.embedded.bench"
     },
     "setup-helpers-csharp-block": {
       "name": "meta.block.helpers.csharp.bench",
-      "contentName": "source.csharp.embedded.bench",
       "begin": "^(\\s*)(helpers)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -1074,7 +1076,8 @@
         {
           "include": "source.cs"
         }
-      ]
+      ],
+      "contentName": "source.csharp.embedded.bench"
     },
     "fixture-block": {
       "begin": "\\b(fixture)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
@@ -1113,6 +1116,9 @@
         },
         {
           "include": "#fixture-csharp-block"
+        },
+        {
+          "include": "#fixture-c-block"
         },
         {
           "name": "string.quoted.double.bench",
@@ -1181,6 +1187,9 @@
           "include": "#bench-csharp-block"
         },
         {
+          "include": "#bench-c-block"
+        },
+        {
           "include": "#bench-go-line"
         },
         {
@@ -1194,6 +1203,9 @@
         },
         {
           "include": "#bench-csharp-line"
+        },
+        {
+          "include": "#bench-c-line"
         }
       ]
     },
@@ -1333,7 +1345,7 @@
     "bench-hooks": {
       "patterns": [
         {
-          "match": "\\b(skip|validate)\\s+(go|ts|rust|python|py|csharp)\\s*:",
+          "match": "\\b(skip|validate)\\s+(go|ts|rust|python|py|csharp|c)\\s*:",
           "captures": {
             "1": {
               "name": "keyword.control.hook.bench"
@@ -1344,7 +1356,7 @@
           }
         },
         {
-          "match": "\\b(before|after|each)\\s+(go|ts|rust|python|py|csharp)\\s*:",
+          "match": "\\b(before|after|each)\\s+(go|ts|rust|python|py|csharp|c)\\s*:",
           "captures": {
             "1": {
               "name": "keyword.control.hook.bench"
@@ -1651,6 +1663,183 @@
       "patterns": [
         {
           "include": "source.cs"
+        }
+      ]
+    },
+    "setup-c-block": {
+      "name": "meta.block.setup.c.bench",
+      "begin": "^(\\s*)(setup)\\s+(c)\\s*\\{\\s*$",
+      "end": "^\\1\\}\\s*$",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.bench"
+        },
+        "3": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#setup-import-c-block"
+        },
+        {
+          "include": "#setup-declare-c-block"
+        },
+        {
+          "include": "#setup-init-c-block"
+        },
+        {
+          "include": "#setup-helpers-c-block"
+        },
+        {
+          "include": "#comment"
+        }
+      ]
+    },
+    "setup-import-c-block": {
+      "name": "meta.block.import.c.bench",
+      "begin": "^(\\s*)(import)\\s*\\{",
+      "end": "^\\1\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.c"
+        }
+      ],
+      "contentName": "source.c.embedded.bench"
+    },
+    "setup-declare-c-block": {
+      "name": "meta.block.declare.c.bench",
+      "begin": "^(\\s*)(declare)\\s*\\{",
+      "end": "^\\1\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.c"
+        }
+      ],
+      "contentName": "source.c.embedded.bench"
+    },
+    "setup-init-c-block": {
+      "name": "meta.block.init.c.bench",
+      "begin": "^(\\s*)(init)\\s*\\{",
+      "end": "^\\1\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.c"
+        }
+      ],
+      "contentName": "source.c.embedded.bench"
+    },
+    "setup-helpers-c-block": {
+      "name": "meta.block.helpers.c.bench",
+      "begin": "^(\\s*)(helpers)\\s*\\{",
+      "end": "^\\1\\}",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.setup.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.c"
+        }
+      ],
+      "contentName": "source.c.embedded.bench"
+    },
+    "fixture-c-block": {
+      "name": "meta.block.fixture.c.bench",
+      "begin": "\\b(c)\\s*:\\s*\\{\\s*$",
+      "end": "^\\s{0,12}\\}\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "contentName": "source.c.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.c"
+        }
+      ]
+    },
+    "bench-c-block": {
+      "name": "meta.block.bench.c.bench",
+      "begin": "\\b(c)\\s*:\\s*\\{\\s*$",
+      "end": "^\\s{0,12}\\}\\s*$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.bench"
+        }
+      },
+      "contentName": "source.c.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.c"
+        }
+      ]
+    },
+    "bench-c-line": {
+      "name": "meta.expression.c.bench",
+      "begin": "\\b(c)\\s*:\\s*",
+      "end": "$",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.language.bench"
+        }
+      },
+      "contentName": "source.c.embedded.bench",
+      "patterns": [
+        {
+          "include": "source.c"
         }
       ]
     }

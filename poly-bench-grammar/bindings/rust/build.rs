@@ -5,6 +5,7 @@
 //!
 //! Note: The parser.c file must be generated first by running:
 //!   cd poly-bench-grammar && npm install && npm run generate
+use poly_bench_dsl::Lang;
 
 fn main() {
     generate_injections();
@@ -25,16 +26,11 @@ fn generate_injections() {
 ",
     );
 
-    // (display_name, tags, tree_sitter_injection_name, use_paren_code_block_for_import)
-    let languages: &[(&str, &[&str], &str, bool)] = &[
-        ("Go", &["go"], "go", true),
-        ("TypeScript", &["ts", "typescript"], "typescript", false),
-        ("Rust", &["rust"], "rust", false),
-        ("Python", &["python", "py"], "python", false),
-        ("C#", &["csharp", "cs"], "c_sharp", false),
-    ];
-
-    for (name, tags, tree_sitter_name, use_paren_code_block) in languages {
+    for lang in Lang::all() {
+        let name = lang.grammar_display_name();
+        let tags = lang.aliases();
+        let tree_sitter_name = lang.tree_sitter_injection_name();
+        let use_paren_code_block = lang.uses_paren_import_block();
         let tag_pred = if tags.len() == 1 {
             format!(r#"(#eq? @_lang "{}")"#, tags[0])
         } else {
@@ -42,7 +38,7 @@ fn generate_injections() {
             format!(r#"(#any-of? @_lang {})"#, quoted.join(" "))
         };
 
-        let set_injection = if *tree_sitter_name != tags[0] || tags.len() > 1 {
+        let set_injection = if tree_sitter_name != tags[0] || tags.len() > 1 {
             format!(
                 r#"
   (#set! injection.language "{}")"#,
@@ -52,7 +48,7 @@ fn generate_injections() {
             String::new()
         };
 
-        let import_block = if *use_paren_code_block {
+        let import_block = if use_paren_code_block {
             "(paren_code_block\n        (embedded_code) @injection.content)"
         } else {
             "(code_block\n        (embedded_code) @injection.content)"
@@ -138,7 +134,10 @@ fn generate_injections() {
 ",
     );
 
-    for (name, tags, tree_sitter_name, _) in languages {
+    for lang in Lang::all() {
+        let name = lang.grammar_display_name();
+        let tags = lang.aliases();
+        let tree_sitter_name = lang.tree_sitter_injection_name();
         let tag_pred = if tags.len() == 1 {
             format!(r#"(#eq? @_lang "{}")"#, tags[0])
         } else {

@@ -22,7 +22,7 @@ const INDENT: &str = "    ";
 /// Callers that have access to poly-bench-runtime should pass `supported_languages()` instead
 /// for dynamic runtime-driven order (avoids hardcoding when new runtimes are added).
 fn default_lang_order() -> &'static [Lang] {
-    &[Lang::Go, Lang::TypeScript, Lang::Rust, Lang::Python, Lang::CSharp]
+    Lang::all()
 }
 
 /// Reformat embedded code with proper indentation based on brace counting.

@@ -11,6 +11,7 @@ languages = [
     "rust",
     "python",
     "csharp",
+    "c",
 ]
 
 [go]
@@ -18,8 +19,8 @@ module = "demo-basic"
 version = "1.21"
 
 [go.dependencies]
-"github.com/ChefBingbong/viem-go" = "latest"
 "golang.org/x/crypto/sha3" = "latest"
+"github.com/ChefBingbong/viem-go" = "latest"
 
 [ts]
 runtime = "node"
@@ -31,20 +32,9 @@ viem = "latest"
 edition = "2021"
 
 [rust.dependencies]
-eyre = "0.6.12"
 regex = "1.12.3"
+eyre = "0.6.12"
 lazy_static = "1.5.0"
-
-[rust.dependencies.alloy]
-version = "1.6.3"
-features = ["full"]
-
-[rust.dependencies.tokio]
-version = "1.49.0"
-features = [
-    "rt",
-    "rt-multi-thread",
-]
 
 [rust.dependencies.tiny_keccak]
 version = "latest"
@@ -53,12 +43,26 @@ features = [
     "sha3",
 ]
 
+[rust.dependencies.tokio]
+version = "1.49.0"
+features = [
+    "rt",
+    "rt-multi-thread",
+]
+
+[rust.dependencies.alloy]
+version = "1.6.3"
+features = ["full"]
+
 [rust.dependencies.tiny-keccak]
 version = "2.0"
 features = ["keccak"]
 
 [python.dependencies]
 matplotlib = "3.10"
+
+[c]
+standard = "c11"
 
 [csharp]
 target_framework = "net8.0"

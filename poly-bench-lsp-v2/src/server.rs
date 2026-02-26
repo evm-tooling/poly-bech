@@ -253,6 +253,10 @@ impl LanguageServer for PolyBenchLanguageServer {
                     info!("Detected {} change, clearing Python caches", filename);
                     self.virtual_file_managers.clear_caches_for_lang(DslLang::Python);
                 }
+                "compile_commands.json" | "CMakeLists.txt" | "Makefile" => {
+                    info!("Detected {} change, clearing C caches", filename);
+                    self.virtual_file_managers.clear_caches_for_lang(DslLang::C);
+                }
                 ".sln" | "polybench.csproj" => {
                     info!("Detected {} change, clearing C# caches", filename);
                     self.virtual_file_managers.clear_caches_for_lang(DslLang::CSharp);
@@ -584,6 +588,7 @@ fn to_syntax_lang(l: poly_bench_dsl::Lang) -> SyntaxLang {
         poly_bench_dsl::Lang::TypeScript => SyntaxLang::TypeScript,
         poly_bench_dsl::Lang::Rust => SyntaxLang::Rust,
         poly_bench_dsl::Lang::Python => SyntaxLang::Python,
+        poly_bench_dsl::Lang::C => SyntaxLang::C,
         poly_bench_dsl::Lang::CSharp => SyntaxLang::CSharp,
     }
 }
@@ -1708,6 +1713,17 @@ fn get_suite_body_completions() -> Vec<CompletionItem> {
             ..Default::default()
         },
         CompletionItem {
+            label: "setup c".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some(
+                "setup c {\n\timport {\n\t\t#include <$1>\n\t}\n\n\thelpers {\n\t\t$0\n\t}\n}"
+                    .to_string(),
+            ),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("Define C setup block".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
             label: "setup csharp".to_string(),
             kind: Some(CompletionItemKind::KEYWORD),
             insert_text: Some(
@@ -1900,6 +1916,14 @@ fn get_benchmark_body_completions() -> Vec<CompletionItem> {
             ..Default::default()
         },
         CompletionItem {
+            label: "c".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("c: $0".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("C implementation".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
             label: "csharp".to_string(),
             kind: Some(CompletionItemKind::KEYWORD),
             insert_text: Some("csharp: $0".to_string()),
@@ -2078,6 +2102,14 @@ fn get_fixture_body_completions() -> Vec<CompletionItem> {
             insert_text: Some("python: $0".to_string()),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
             detail: Some("Python fixture implementation".to_string()),
+            ..Default::default()
+        },
+        CompletionItem {
+            label: "c".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            insert_text: Some("c: $0".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            detail: Some("C fixture implementation".to_string()),
             ..Default::default()
         },
         CompletionItem {

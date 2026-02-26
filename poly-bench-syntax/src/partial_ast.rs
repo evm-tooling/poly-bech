@@ -144,6 +144,7 @@ pub enum Lang {
     TypeScript,
     Rust,
     Python,
+    C,
     CSharp,
 }
 
@@ -154,6 +155,7 @@ impl Lang {
             "ts" | "typescript" => Some(Lang::TypeScript),
             "rust" => Some(Lang::Rust),
             "python" | "py" => Some(Lang::Python),
+            "c" => Some(Lang::C),
             "csharp" | "cs" => Some(Lang::CSharp),
             _ => None,
         }
@@ -165,6 +167,7 @@ impl Lang {
             Lang::TypeScript => "ts",
             Lang::Rust => "rust",
             Lang::Python => "python",
+            Lang::C => "c",
             Lang::CSharp => "csharp",
         }
     }
@@ -484,6 +487,7 @@ mod tests {
         assert_eq!(Lang::from_str("typescript"), Some(Lang::TypeScript));
         assert_eq!(Lang::from_str("rust"), Some(Lang::Rust));
         assert_eq!(Lang::from_str("python"), Some(Lang::Python));
+        assert_eq!(Lang::from_str("c"), Some(Lang::C));
         assert_eq!(Lang::from_str("unknown"), None);
     }
 }

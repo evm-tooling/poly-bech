@@ -1,4 +1,21 @@
 //! Template strings for generated project files
+use poly_bench_dsl::Lang;
+
+fn has_lang(enabled_langs: &[Lang], lang: Lang) -> bool {
+    enabled_langs.contains(&lang)
+}
+
+/// Generate the example.bench file content from a language list.
+pub fn example_bench_for_langs(enabled_langs: &[Lang]) -> String {
+    example_bench(
+        has_lang(enabled_langs, Lang::Go),
+        has_lang(enabled_langs, Lang::TypeScript),
+        has_lang(enabled_langs, Lang::Rust),
+        has_lang(enabled_langs, Lang::Python),
+        has_lang(enabled_langs, Lang::C),
+        has_lang(enabled_langs, Lang::CSharp),
+    )
+}
 
 /// Generate the example.bench file content
 /// Uses only standard library features - no external dependencies required
@@ -7,13 +24,18 @@ pub fn example_bench(
     has_ts: bool,
     has_rust: bool,
     has_python: bool,
+    has_c: bool,
     has_csharp: bool,
 ) -> String {
     let mut content = String::new();
 
     // Add charting import for the after block
-    let lang_count =
-        has_go as i32 + has_ts as i32 + has_rust as i32 + has_python as i32 + has_csharp as i32;
+    let lang_count = has_go as i32 +
+        has_ts as i32 +
+        has_rust as i32 +
+        has_python as i32 +
+        has_c as i32 +
+        has_csharp as i32;
     if lang_count > 1 {
         content.push_str("use std::charting\n\n");
     }
@@ -110,6 +132,32 @@ pub fn example_bench(
         content.push('\n');
     }
 
+    if has_c {
+        content.push_str("    setup c {\n");
+        content.push_str("        import {\n");
+        content.push_str("            #include <stdint.h>\n");
+        content.push_str("        }\n");
+        content.push_str("        helpers {\n");
+        content.push_str("            static unsigned char* fib_c(unsigned char* data) {\n");
+        content.push_str("                int n = data[0];\n");
+        content.push_str("                if (n <= 1) {\n");
+        content.push_str("                    data[0] = (unsigned char)n;\n");
+        content.push_str("                    return data;\n");
+        content.push_str("                }\n");
+        content.push_str("                int a = 0, b = 1;\n");
+        content.push_str("                for (int i = 2; i <= n; i++) {\n");
+        content.push_str("                    int next = a + b;\n");
+        content.push_str("                    a = b;\n");
+        content.push_str("                    b = next;\n");
+        content.push_str("                }\n");
+        content.push_str("                data[0] = (unsigned char)(b & 0xFF);\n");
+        content.push_str("                return data;\n");
+        content.push_str("            }\n");
+        content.push_str("        }\n");
+        content.push_str("    }\n");
+        content.push('\n');
+    }
+
     if has_csharp {
         content.push_str("    setup csharp {\n");
         content.push_str("        import {\n");
@@ -172,6 +220,9 @@ pub fn example_bench(
     if has_python {
         content.push_str("        python: fib_python(n20)\n");
     }
+    if has_c {
+        content.push_str("        c: fib_c(n20)\n");
+    }
     if has_csharp {
         content.push_str("        csharp: fib_csharp(n20)\n");
     }
@@ -190,6 +241,9 @@ pub fn example_bench(
     }
     if has_python {
         content.push_str("        python: fib_python(n30)\n");
+    }
+    if has_c {
+        content.push_str("        c: fib_c(n30)\n");
     }
     if has_csharp {
         content.push_str("        csharp: fib_csharp(n30)\n");
@@ -210,6 +264,9 @@ pub fn example_bench(
     if has_python {
         content.push_str("        python: fib_python(n40)\n");
     }
+    if has_c {
+        content.push_str("        c: fib_c(n40)\n");
+    }
     if has_csharp {
         content.push_str("        csharp: fib_csharp(n40)\n");
     }
@@ -228,6 +285,9 @@ pub fn example_bench(
     }
     if has_python {
         content.push_str("        python: fib_python(n50)\n");
+    }
+    if has_c {
+        content.push_str("        c: fib_c(n50)\n");
     }
     if has_csharp {
         content.push_str("        csharp: fib_csharp(n50)\n");
@@ -248,6 +308,9 @@ pub fn example_bench(
     if has_python {
         content.push_str("        python: fib_python(n60)\n");
     }
+    if has_c {
+        content.push_str("        c: fib_c(n60)\n");
+    }
     if has_csharp {
         content.push_str("        csharp: fib_csharp(n60)\n");
     }
@@ -266,6 +329,9 @@ pub fn example_bench(
     }
     if has_python {
         content.push_str("        python: fib_python(n70)\n");
+    }
+    if has_c {
+        content.push_str("        c: fib_c(n70)\n");
     }
     if has_csharp {
         content.push_str("        csharp: fib_csharp(n70)\n");
@@ -585,12 +651,26 @@ Thumbs.db
 }
 
 /// Generate README.md content
+pub fn readme_for_langs(name: &str, enabled_langs: &[Lang]) -> String {
+    readme(
+        name,
+        has_lang(enabled_langs, Lang::Go),
+        has_lang(enabled_langs, Lang::TypeScript),
+        has_lang(enabled_langs, Lang::Rust),
+        has_lang(enabled_langs, Lang::Python),
+        has_lang(enabled_langs, Lang::C),
+        has_lang(enabled_langs, Lang::CSharp),
+    )
+}
+
+/// Generate README.md content
 pub fn readme(
     name: &str,
     has_go: bool,
     has_ts: bool,
     has_rust: bool,
     has_python: bool,
+    has_c: bool,
     has_csharp: bool,
 ) -> String {
     let mut content = String::new();
@@ -634,6 +714,9 @@ pub fn readme(
     if has_python {
         content.push_str("        └── python/       # requirements.txt, generated bench code\n");
     }
+    if has_c {
+        content.push_str("        └── c/            # Makefile, bench.c, generated bench code\n");
+    }
     if has_csharp {
         content.push_str(
             "        └── csharp/       # polybench.csproj, Program.cs, generated bench code\n",
@@ -668,6 +751,13 @@ pub fn readme(
         content.push_str("### Python\n\n");
         content.push_str("```bash\n");
         content.push_str("poly-bench add --py \"numpy==1.0\"\n");
+        content.push_str("```\n\n");
+    }
+
+    if has_c {
+        content.push_str("### C\n\n");
+        content.push_str("```bash\n");
+        content.push_str("poly-bench add --c \"openssl@3.2\"\n");
         content.push_str("```\n\n");
     }
 
@@ -737,7 +827,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_both_languages() {
-        let content = example_bench(true, true, false, false, false);
+        let content = example_bench(true, true, false, false, false, false);
         assert!(content.contains("setup go"));
         assert!(content.contains("setup ts"));
         assert!(content.contains("fibGo(n20)"));
@@ -751,7 +841,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_go_only() {
-        let content = example_bench(true, false, false, false, false);
+        let content = example_bench(true, false, false, false, false, false);
         assert!(content.contains("setup go"));
         assert!(!content.contains("setup ts"));
         assert!(!content.contains("baseline: \"go\"")); // No baseline with single language
@@ -760,7 +850,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_all_languages() {
-        let content = example_bench(true, true, true, true, false);
+        let content = example_bench(true, true, true, true, false, false);
         assert!(content.contains("setup go"));
         assert!(content.contains("setup ts"));
         assert!(content.contains("setup rust"));
@@ -776,7 +866,7 @@ mod tests {
 
     #[test]
     fn test_example_bench_rust_only() {
-        let content = example_bench(false, false, true, false, false);
+        let content = example_bench(false, false, true, false, false, false);
         assert!(!content.contains("setup go"));
         assert!(!content.contains("setup ts"));
         assert!(content.contains("setup rust"));
@@ -787,7 +877,7 @@ mod tests {
     #[test]
     fn test_example_bench_no_external_deps() {
         // Verify no external dependencies are required
-        let content = example_bench(true, true, true, true, false);
+        let content = example_bench(true, true, true, true, false, false);
         assert!(!content.contains("sha2"));
         assert!(!content.contains("crypto/sha256"));
         assert!(!content.contains("node:crypto"));
