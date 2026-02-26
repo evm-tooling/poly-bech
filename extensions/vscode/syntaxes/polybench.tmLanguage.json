@@ -474,7 +474,7 @@
     },
     "setup-go-block": {
       "name": "meta.block.setup.go.bench",
-      "begin": "^(\\s*)(setup)\\s+(go)\\s*\\{\\s*$",
+      "begin": "^(\\s*)(setup)\\s+(go)\\s*{\\s*$",
       "end": "^\\1\\}\\s*$",
       "beginCaptures": {
         "2": {
@@ -532,6 +532,7 @@
     },
     "setup-declare-go-block": {
       "name": "meta.block.declare.go.bench",
+      "contentName": "source.go.embedded.bench",
       "begin": "^(\\s*)(declare)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -552,6 +553,7 @@
     },
     "setup-init-go-block": {
       "name": "meta.block.init.go.bench",
+      "contentName": "source.go.embedded.bench",
       "begin": "^(\\s*)(init)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -572,6 +574,7 @@
     },
     "setup-helpers-go-block": {
       "name": "meta.block.helpers.go.bench",
+      "contentName": "source.go.embedded.bench",
       "begin": "^(\\s*)(helpers)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -592,7 +595,7 @@
     },
     "setup-ts-block": {
       "name": "meta.block.setup.ts.bench",
-      "begin": "^(\\s*)(setup)\\s+(ts)\\s*\\{\\s*$",
+      "begin": "^(\\s*)(setup)\\s+(ts|typescript)\\s*{\\s*$",
       "end": "^\\1\\}\\s*$",
       "beginCaptures": {
         "2": {
@@ -627,6 +630,7 @@
     },
     "setup-import-ts-block": {
       "name": "meta.block.import.ts.bench",
+      "contentName": "source.typescript.embedded.bench",
       "begin": "^(\\s*)(import)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -647,6 +651,7 @@
     },
     "setup-declare-ts-block": {
       "name": "meta.block.declare.ts.bench",
+      "contentName": "source.typescript.embedded.bench",
       "begin": "^(\\s*)(declare)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -667,6 +672,7 @@
     },
     "setup-init-ts-block": {
       "name": "meta.block.init.ts.bench",
+      "contentName": "source.typescript.embedded.bench",
       "begin": "^(\\s*)(init)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -687,6 +693,7 @@
     },
     "setup-helpers-ts-block": {
       "name": "meta.block.helpers.ts.bench",
+      "contentName": "source.typescript.embedded.bench",
       "begin": "^(\\s*)(helpers)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -707,7 +714,7 @@
     },
     "setup-rust-block": {
       "name": "meta.block.setup.rust.bench",
-      "begin": "^(\\s*)(setup)\\s+(rust)\\s*\\{\\s*$",
+      "begin": "^(\\s*)(setup)\\s+(rust|rs)\\s*{\\s*$",
       "end": "^\\1\\}\\s*$",
       "beginCaptures": {
         "2": {
@@ -745,6 +752,7 @@
     },
     "setup-import-rust-block": {
       "name": "meta.block.import.rust.bench",
+      "contentName": "source.rust.embedded.bench",
       "begin": "^(\\s*)(import)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -765,6 +773,7 @@
     },
     "setup-declare-rust-block": {
       "name": "meta.block.declare.rust.bench",
+      "contentName": "source.rust.embedded.bench",
       "begin": "^(\\s*)(declare)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -800,6 +809,7 @@
     },
     "setup-init-rust-block": {
       "name": "meta.block.init.rust.bench",
+      "contentName": "source.rust.embedded.bench",
       "begin": "^(\\s*)(init)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -820,6 +830,7 @@
     },
     "setup-helpers-rust-block": {
       "name": "meta.block.helpers.rust.bench",
+      "contentName": "source.rust.embedded.bench",
       "begin": "^(\\s*)(helpers)\\s*\\{",
       "end": "^\\1\\}",
       "beginCaptures": {
@@ -840,7 +851,7 @@
     },
     "setup-python-block": {
       "name": "meta.block.setup.python.bench",
-      "begin": "^(\\s*)(setup)\\s+(python|py)\\s*\\{\\s*$",
+      "begin": "^(\\s*)(setup)\\s+(python|py)\\s*{\\s*$",
       "end": "^\\1\\}\\s*$",
       "beginCaptures": {
         "2": {
@@ -959,7 +970,7 @@
     },
     "setup-csharp-block": {
       "name": "meta.block.setup.csharp.bench",
-      "begin": "^(\\s*)(setup)\\s+(csharp)\\s*\\{\\s*$",
+      "begin": "^(\\s*)(setup)\\s+(csharp|cs)\\s*{\\s*$",
       "end": "^\\1\\}\\s*$",
       "beginCaptures": {
         "2": {
@@ -1333,7 +1344,7 @@
     "bench-hooks": {
       "patterns": [
         {
-          "match": "\\b(skip|validate)\\s+(go|ts|rust|python|py|csharp)\\s*:",
+          "match": "\\b(skip|validate)\\s+(go|ts|typescript|rust|rs|python|py|csharp|cs)\\s*:",
           "captures": {
             "1": {
               "name": "keyword.control.hook.bench"
@@ -1344,7 +1355,7 @@
           }
         },
         {
-          "match": "\\b(before|after|each)\\s+(go|ts|rust|python|py|csharp)\\s*:",
+          "match": "\\b(before|after|each)\\s+(go|ts|typescript|rust|rs|python|py|csharp|cs)\\s*:",
           "captures": {
             "1": {
               "name": "keyword.control.hook.bench"
@@ -1366,7 +1377,7 @@
     },
     "bench-go-block": {
       "name": "meta.block.bench.go.bench",
-      "begin": "\\b(go)\\s*:\\s*\\{\\s*$",
+      "begin": "\\b(go)\\s*:\\s*{\\s*$",
       "end": "^\\s{0,12}\\}\\s*$",
       "beginCaptures": {
         "1": {
@@ -1387,7 +1398,7 @@
     },
     "bench-ts-block": {
       "name": "meta.block.bench.ts.bench",
-      "begin": "\\b(ts)\\s*:\\s*\\{\\s*$",
+      "begin": "\\b(ts|typescript)\\s*:\\s*{\\s*$",
       "end": "^\\s{0,12}\\}\\s*$",
       "beginCaptures": {
         "1": {
@@ -1399,7 +1410,7 @@
           "name": "punctuation.definition.block.end.bench"
         }
       },
-      "contentName": "source.ts.embedded.bench",
+      "contentName": "source.typescript.embedded.bench",
       "patterns": [
         {
           "include": "source.ts"
@@ -1424,14 +1435,14 @@
     },
     "bench-ts-line": {
       "name": "meta.expression.ts.bench",
-      "begin": "\\b(ts)\\s*:\\s*",
+      "begin": "\\b(ts|typescript)\\s*:\\s*",
       "end": "$",
       "beginCaptures": {
         "1": {
           "name": "entity.name.language.bench"
         }
       },
-      "contentName": "source.ts.embedded.bench",
+      "contentName": "source.typescript.embedded.bench",
       "patterns": [
         {
           "include": "source.ts"
@@ -1440,7 +1451,7 @@
     },
     "fixture-go-block": {
       "name": "meta.block.fixture.go.bench",
-      "begin": "\\b(go)\\s*:\\s*\\{\\s*$",
+      "begin": "\\b(go)\\s*:\\s*{\\s*$",
       "end": "^\\s{0,12}\\}\\s*$",
       "beginCaptures": {
         "1": {
@@ -1461,7 +1472,7 @@
     },
     "fixture-ts-block": {
       "name": "meta.block.fixture.ts.bench",
-      "begin": "\\b(ts)\\s*:\\s*\\{\\s*$",
+      "begin": "\\b(ts|typescript)\\s*:\\s*{\\s*$",
       "end": "^\\s{0,12}\\}\\s*$",
       "beginCaptures": {
         "1": {
@@ -1473,7 +1484,7 @@
           "name": "punctuation.definition.block.end.bench"
         }
       },
-      "contentName": "source.ts.embedded.bench",
+      "contentName": "source.typescript.embedded.bench",
       "patterns": [
         {
           "include": "source.ts"
@@ -1482,7 +1493,7 @@
     },
     "fixture-rust-block": {
       "name": "meta.block.fixture.rust.bench",
-      "begin": "\\b(rust)\\s*:\\s*\\{\\s*$",
+      "begin": "\\b(rust|rs)\\s*:\\s*{\\s*$",
       "end": "^\\s{0,12}\\}\\s*$",
       "beginCaptures": {
         "1": {
@@ -1503,7 +1514,7 @@
     },
     "bench-rust-block": {
       "name": "meta.block.bench.rust.bench",
-      "begin": "\\b(rust)\\s*:\\s*\\{\\s*$",
+      "begin": "\\b(rust|rs)\\s*:\\s*{\\s*$",
       "end": "^\\s{0,12}\\}\\s*$",
       "beginCaptures": {
         "1": {
@@ -1524,7 +1535,7 @@
     },
     "bench-rust-line": {
       "name": "meta.expression.rust.bench",
-      "begin": "\\b(rust)\\s*:\\s*",
+      "begin": "\\b(rust|rs)\\s*:\\s*",
       "end": "$",
       "beginCaptures": {
         "1": {
@@ -1540,7 +1551,7 @@
     },
     "fixture-python-block": {
       "name": "meta.block.fixture.python.bench",
-      "begin": "\\b(python|py)\\s*:\\s*\\{\\s*$",
+      "begin": "\\b(python|py)\\s*:\\s*{\\s*$",
       "end": "^\\s{0,12}\\}\\s*$",
       "beginCaptures": {
         "1": {
@@ -1561,7 +1572,7 @@
     },
     "bench-python-block": {
       "name": "meta.block.bench.python.bench",
-      "begin": "\\b(python|py)\\s*:\\s*\\{\\s*$",
+      "begin": "\\b(python|py)\\s*:\\s*{\\s*$",
       "end": "^\\s{0,12}\\}\\s*$",
       "beginCaptures": {
         "1": {
@@ -1598,7 +1609,7 @@
     },
     "fixture-csharp-block": {
       "name": "meta.block.fixture.csharp.bench",
-      "begin": "\\b(csharp)\\s*:\\s*\\{\\s*$",
+      "begin": "\\b(csharp|cs)\\s*:\\s*{\\s*$",
       "end": "^\\s{0,12}\\}\\s*$",
       "beginCaptures": {
         "1": {
@@ -1619,7 +1630,7 @@
     },
     "bench-csharp-block": {
       "name": "meta.block.bench.csharp.bench",
-      "begin": "\\b(csharp)\\s*:\\s*\\{\\s*$",
+      "begin": "\\b(csharp|cs)\\s*:\\s*{\\s*$",
       "end": "^\\s{0,12}\\}\\s*$",
       "beginCaptures": {
         "1": {
@@ -1640,7 +1651,7 @@
     },
     "bench-csharp-line": {
       "name": "meta.expression.csharp.bench",
-      "begin": "\\b(csharp)\\s*:\\s*",
+      "begin": "\\b(csharp|cs)\\s*:\\s*",
       "end": "$",
       "beginCaptures": {
         "1": {

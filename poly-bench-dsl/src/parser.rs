@@ -6,11 +6,11 @@
 macro_rules! lang_tokens {
     () => {
         TokenKind::Go |
-        TokenKind::Ts |
-        TokenKind::TypeScript |
-        TokenKind::Rust |
-        TokenKind::Python |
-        TokenKind::CSharp
+            TokenKind::Ts |
+            TokenKind::TypeScript |
+            TokenKind::Rust |
+            TokenKind::Python |
+            TokenKind::CSharp
     };
 }
 // END-GENERATED: lang_tokens macro
@@ -1266,11 +1266,7 @@ impl Parser {
                 let token = self.peek();
 
                 // Stop conditions for inline code in a map
-                if matches!(
-                    token.kind,
-                    TokenKind::RBrace |
-                        lang_tokens!()
-                ) {
+                if matches!(token.kind, TokenKind::RBrace | lang_tokens!()) {
                     break;
                 }
 

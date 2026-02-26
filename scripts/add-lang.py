@@ -412,66 +412,275 @@ def regenerate_injections_scm(languages: dict) -> None:
 
 
 def get_embedded_lang(lang_id: str, cfg: dict) -> str:
-    """Get VS Code embedded language ID for a language."""
+    """Get VS Code embedded language ID for a language (used for contentName)."""
     return cfg.get("embedded_lang", cfg["vscode_scope"])
 
 
+def get_grammar_scope(cfg: dict) -> str:
+    """Get VS Code grammar scope for include (source.X). Use vscode_scope since that
+    matches the actual grammar scope registered by extensions (e.g. C# uses source.cs)."""
+    return cfg["vscode_scope"]
+
+
+def _lang_aliases_regex(aliases: list[str]) -> str:
+    """Build regex group for language aliases: (go) or (ts|typescript)."""
+    if len(aliases) == 1:
+        return f"({re.escape(aliases[0])})"
+    return "(" + "|".join(re.escape(a) for a in aliases) + ")"
+
+
+def _generate_tmlanguage_setup_blocks(lang_id: str, cfg: dict) -> dict:
+    """Generate setup-X-block and sub-blocks for a language."""
+    aliases = cfg["aliases"]
+    lang_regex = _lang_aliases_regex(aliases)
+    block_name = cfg["aliases"][0]
+    embedded_lang = get_embedded_lang(lang_id, cfg)
+    grammar_scope = get_grammar_scope(cfg)
+    content_name = f"source.{embedded_lang}.embedded.bench"
+
+    import_style = cfg.get("import_style", "brace")
+    has_use_block = lang_id == "rust"
+
+    if import_style == "paren":
+        import_block = {
+            f"setup-import-{block_name}-block": {
+                "name": f"meta.block.import.{block_name}.bench",
+                "begin": r'^(\s*)(import)\s*(\()',
+                "end": r"^\1\)",
+                "beginCaptures": {
+                    "2": {"name": "keyword.control.setup.bench"},
+                    "3": {"name": "punctuation.definition.block.begin.bench"},
+                },
+                "endCaptures": {"0": {"name": "punctuation.definition.block.end.bench"}},
+                "patterns": [{"include": f"source.{grammar_scope}"}],
+            }
+        }
+    else:
+        import_block = {
+            f"setup-import-{block_name}-block": {
+                "name": f"meta.block.import.{block_name}.bench",
+                "contentName": content_name,
+                "begin": r'^(\s*)(import)\s*\{',
+                "end": r"^\1\}",
+                "beginCaptures": {"2": {"name": "keyword.control.setup.bench"}},
+                "endCaptures": {"0": {"name": "punctuation.definition.block.end.bench"}},
+                "patterns": [{"include": f"source.{grammar_scope}"}],
+            }
+        }
+
+    sub_blocks = [
+        f"#setup-import-{block_name}-block",
+        f"#setup-declare-{block_name}-block",
+    ]
+    if has_use_block:
+        sub_blocks.append(f"#setup-use-{block_name}-block")
+    sub_blocks.extend([
+        f"#setup-init-{block_name}-block",
+        f"#setup-helpers-{block_name}-block",
+        "#comment",
+    ])
+
+    setup_block = {
+        f"setup-{block_name}-block": {
+            "name": f"meta.block.setup.{block_name}.bench",
+            "begin": rf"^(\s*)(setup)\s+{lang_regex}\s*{{\s*$",
+            "end": r"^\1\}\s*$",
+            "beginCaptures": {
+                "2": {"name": "keyword.control.bench"},
+                "3": {"name": "entity.name.language.bench"},
+            },
+            "endCaptures": {"0": {"name": "punctuation.definition.block.end.bench"}},
+            "patterns": [{"include": inc} for inc in sub_blocks],
+        }
+    }
+
+    declare_block = {
+        f"setup-declare-{block_name}-block": {
+            "name": f"meta.block.declare.{block_name}.bench",
+            "contentName": content_name,
+            "begin": r'^(\s*)(declare)\s*\{',
+            "end": r"^\1\}",
+            "beginCaptures": {"2": {"name": "keyword.control.setup.bench"}},
+            "endCaptures": {"0": {"name": "punctuation.definition.block.end.bench"}},
+            "patterns": [{"include": f"source.{grammar_scope}"}],
+        }
+    }
+
+    init_block = {
+        f"setup-init-{block_name}-block": {
+            "name": f"meta.block.init.{block_name}.bench",
+            "contentName": content_name,
+            "begin": r'^(\s*)(init)\s*\{',
+            "end": r"^\1\}",
+            "beginCaptures": {"2": {"name": "keyword.control.setup.bench"}},
+            "endCaptures": {"0": {"name": "punctuation.definition.block.end.bench"}},
+            "patterns": [{"include": f"source.{grammar_scope}"}],
+        }
+    }
+
+    helpers_block = {
+        f"setup-helpers-{block_name}-block": {
+            "name": f"meta.block.helpers.{block_name}.bench",
+            "contentName": content_name,
+            "begin": r'^(\s*)(helpers)\s*\{',
+            "end": r"^\1\}",
+            "beginCaptures": {"2": {"name": "keyword.control.setup.bench"}},
+            "endCaptures": {"0": {"name": "punctuation.definition.block.end.bench"}},
+            "patterns": [{"include": f"source.{grammar_scope}"}],
+        }
+    }
+
+    result = {**import_block, **declare_block, **init_block, **helpers_block}
+    if has_use_block:
+        use_block = {
+            f"setup-use-{block_name}-block": {
+                "name": f"meta.block.use.{block_name}.bench",
+                "begin": r'^(\s*)(use)\s+',
+                "end": ";",
+                "beginCaptures": {"2": {"name": "keyword.control.setup.bench"}},
+                "patterns": [{"include": f"source.{grammar_scope}"}],
+            }
+        }
+        result.update(use_block)
+    result.update(setup_block)
+    return result
+
+
+def _generate_tmlanguage_fixture_bench_blocks(lang_id: str, cfg: dict) -> dict:
+    """Generate fixture-X-block, bench-X-block, bench-X-line for a language."""
+    aliases = cfg["aliases"]
+    lang_regex = _lang_aliases_regex(aliases)
+    block_name = cfg["aliases"][0]
+    embedded_lang = get_embedded_lang(lang_id, cfg)
+    grammar_scope = get_grammar_scope(cfg)
+    content_name = f"source.{embedded_lang}.embedded.bench"
+
+    return {
+        f"fixture-{block_name}-block": {
+            "name": f"meta.block.fixture.{block_name}.bench",
+            "begin": rf"\b{lang_regex}\s*:\s*{{\s*$",
+            "end": r"^\s{0,12}\}\s*$",
+            "beginCaptures": {"1": {"name": "entity.name.language.bench"}},
+            "endCaptures": {"0": {"name": "punctuation.definition.block.end.bench"}},
+            "contentName": content_name,
+            "patterns": [{"include": f"source.{grammar_scope}"}],
+        },
+        f"bench-{block_name}-block": {
+            "name": f"meta.block.bench.{block_name}.bench",
+            "begin": rf"\b{lang_regex}\s*:\s*{{\s*$",
+            "end": r"^\s{0,12}\}\s*$",
+            "beginCaptures": {"1": {"name": "entity.name.language.bench"}},
+            "endCaptures": {"0": {"name": "punctuation.definition.block.end.bench"}},
+            "contentName": content_name,
+            "patterns": [{"include": f"source.{grammar_scope}"}],
+        },
+        f"bench-{block_name}-line": {
+            "name": f"meta.expression.{block_name}.bench",
+            "begin": rf"\b{lang_regex}\s*:\s*",
+            "end": "$",
+            "beginCaptures": {"1": {"name": "entity.name.language.bench"}},
+            "contentName": content_name,
+            "patterns": [{"include": f"source.{grammar_scope}"}],
+        },
+    }
+
+
 def regenerate_tmlanguage(languages: dict) -> None:
-    """Regenerate language-specific include patterns in polybench.tmLanguage.json.
-    Uses regex replacement for the setup/fixture/bench include lists."""
+    """Regenerate language-specific patterns in polybench.tmLanguage.json.
+    Updates include lists and generates setup/fixture/bench block definitions."""
     path = REPO_ROOT / "extensions" / "vscode" / "syntaxes" / "polybench.tmLanguage.json"
-    content = path.read_text()
+    with open(path) as f:
+        data = json.load(f)
 
-    # Build include lists from config (pretty-printed to match file format)
-    setup_includes = ",\n        ".join(
-        f'{{\n          "include": "#setup-{cfg["aliases"][0]}-block"\n        }}'
-        for cfg in languages.values()
-    )
-    fixture_includes = ",\n        ".join(
-        f'{{\n          "include": "#fixture-{cfg["aliases"][0]}-block"\n        }}'
-        for cfg in languages.values()
-    )
-    bench_block_includes = ",\n        ".join(
-        f'{{\n          "include": "#bench-{cfg["aliases"][0]}-block"\n        }}'
-        for cfg in languages.values()
-    )
-    bench_line_includes = ",\n        ".join(
-        f'{{\n          "include": "#bench-{cfg["aliases"][0]}-line"\n        }}'
-        for cfg in languages.values()
-    )
+    repo = data["repository"]
 
-    # Replace suite-block setup includes (match pretty-printed JSON)
-    setup_pattern = re.compile(
-        r'\{\s*"include"\s*:\s*"#setup-(?:go|ts|rust|python|csharp)-block"\s*\}'
-        r'(?:\s*,\s*\{\s*"include"\s*:\s*"#setup-(?:go|ts|rust|python|csharp)-block"\s*\})*',
-        re.DOTALL,
-    )
-    content = setup_pattern.sub(setup_includes, content)
+    # Build include lists from config
+    setup_includes = [{"include": f"#setup-{cfg['aliases'][0]}-block"} for cfg in languages.values()]
+    fixture_includes = [{"include": f"#fixture-{cfg['aliases'][0]}-block"} for cfg in languages.values()]
+    bench_block_includes = [{"include": f"#bench-{cfg['aliases'][0]}-block"} for cfg in languages.values()]
+    bench_line_includes = [{"include": f"#bench-{cfg['aliases'][0]}-line"} for cfg in languages.values()]
 
-    # Replace fixture-block includes
-    fixture_pattern = re.compile(
-        r'\{\s*"include"\s*:\s*"#fixture-(?:go|ts|rust|python|csharp)-block"\s*\}'
-        r'(?:\s*,\s*\{\s*"include"\s*:\s*"#fixture-(?:go|ts|rust|python|csharp)-block"\s*\})*',
-        re.DOTALL,
-    )
-    content = fixture_pattern.sub(fixture_includes, content)
+    # Build language alias regex for bench-hooks (skip|validate|before|after|each)
+    all_aliases = []
+    for cfg in languages.values():
+        all_aliases.extend(cfg["aliases"])
+    hooks_lang_regex = "|".join(re.escape(a) for a in all_aliases)
 
-    # Replace bench-block and bench-line includes
-    bench_block_pattern = re.compile(
-        r'\{\s*"include"\s*:\s*"#bench-(?:go|ts|rust|python|csharp)-block"\s*\}'
-        r'(?:\s*,\s*\{\s*"include"\s*:\s*"#bench-(?:go|ts|rust|python|csharp)-block"\s*\})*',
-        re.DOTALL,
-    )
-    content = bench_block_pattern.sub(bench_block_includes, content)
+    # Add/update block definitions for each language
+    for lang_id, cfg in languages.items():
+        setup_blocks = _generate_tmlanguage_setup_blocks(lang_id, cfg)
+        for k, v in setup_blocks.items():
+            repo[k] = v
+        fixture_bench = _generate_tmlanguage_fixture_bench_blocks(lang_id, cfg)
+        for k, v in fixture_bench.items():
+            repo[k] = v
 
-    bench_line_pattern = re.compile(
-        r'\{\s*"include"\s*:\s*"#bench-(?:go|ts|rust|python|csharp)-line"\s*\}'
-        r'(?:\s*,\s*\{\s*"include"\s*:\s*"#bench-(?:go|ts|rust|python|csharp)-line"\s*\})*',
-        re.DOTALL,
-    )
-    content = bench_line_pattern.sub(bench_line_includes, content)
+    # Update suite-block: replace setup-X-block includes with generated list
+    suite_block = repo.get("suite-block", {})
+    if "patterns" in suite_block:
+        patterns = suite_block["patterns"]
+        new_patterns = []
+        skip_setup_lang_blocks = False
+        for p in patterns:
+            inc = p.get("include", "") if isinstance(p, dict) else ""
+            if inc == "#suite-global-setup-block":
+                new_patterns.append(p)
+                new_patterns.extend(setup_includes)
+                skip_setup_lang_blocks = True
+                continue
+            if skip_setup_lang_blocks and inc.startswith("#setup-") and inc.endswith("-block"):
+                continue
+            if inc.startswith("#fixture-block") or inc.startswith("#bench-block"):
+                skip_setup_lang_blocks = False
+            new_patterns.append(p)
+        suite_block["patterns"] = new_patterns
 
-    path.write_text(content)
+    # Update fixture-block: replace fixture-X-block includes with generated list
+    fixture_block = repo.get("fixture-block", {})
+    if "patterns" in fixture_block:
+        patterns = fixture_block["patterns"]
+        final = []
+        for p in patterns:
+            inc = p.get("include", "") if isinstance(p, dict) else ""
+            if inc == "#fixture-attributes":
+                final.append(p)
+                final.extend(fixture_includes)
+                continue
+            if inc.startswith("#fixture-") and inc.endswith("-block") and inc != "#fixture-block":
+                continue
+            final.append(p)
+        fixture_block["patterns"] = final
+
+    # Update bench-block: replace bench-X-block and bench-X-line includes with generated list
+    bench_block = repo.get("bench-block", {})
+    if "patterns" in bench_block:
+        patterns = bench_block["patterns"]
+        final = []
+        for p in patterns:
+            inc = p.get("include", "") if isinstance(p, dict) else ""
+            if inc == "#bench-hooks":
+                final.append(p)
+                final.extend(bench_block_includes)
+                final.extend(bench_line_includes)
+                continue
+            if (inc.startswith("#bench-") and ("-block" in inc or "-line" in inc) and
+                    inc not in ("#bench-block", "#bench-attributes", "#bench-hooks")):
+                continue
+            final.append(p)
+        bench_block["patterns"] = final
+
+    # Update bench-hooks: language patterns for skip|validate and before|after|each
+    hooks = repo.get("bench-hooks", {})
+    if "patterns" in hooks:
+        for p in hooks["patterns"]:
+            if isinstance(p, dict) and "match" in p:
+                m = p["match"]
+                if "skip" in m and "validate" in m and "go" in m:
+                    p["match"] = f"\\b(skip|validate)\\s+({hooks_lang_regex})\\s*:"
+                elif "before" in m and "after" in m and "each" in m and "go" in m:
+                    p["match"] = f"\\b(before|after|each)\\s+({hooks_lang_regex})\\s*:"
+
+    path.write_text(json.dumps(data, indent=2) + "\n")
 
 
 def regenerate_package_json(languages: dict) -> None:
