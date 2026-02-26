@@ -1,39 +1,49 @@
 # Adding a New Runtime to Poly-bench
 
-This checklist describes how to add support for a new language runtime (e.g. Python, C#, Zig) to poly-bench. The architecture is modular: implement a small set of traits and register them. No changes to core orchestration logic are required.
+This checklist describes how to add support for a new language runtime (e.g. Python, C#, Zig) to poly-bench. The architecture is modular: implement a small set of traits and register them. Many components are now dynamic—they iterate over `supported_languages()` or use `Lang`-keyed maps—so you only touch a few files when adding a runtime.
 
-> **Design Reference**: For a comprehensive description of the runtime plugin architecture, the target `runtimes/` workspace structure, data flow, and migration path, see [RUNTIME_PLUGIN_ARCHITECTURE.md](./RUNTIME_PLUGIN_ARCHITECTURE.md).
+> **Design Reference**: For a comprehensive description of the runtime plugin architecture, see [RUNTIME_PLUGIN_ARCHITECTURE.md](./RUNTIME_PLUGIN_ARCHITECTURE.md).
+
+## What You Must Touch (4–5 files)
+
+When adding a new runtime, you only need to modify these files:
+
+| # | File | Change |
+|---|------|--------|
+| 1 | `poly-bench-dsl/src/ast.rs` | Add variant to `Lang` enum; update `from_str` and `as_str` |
+| 2 | `poly-bench-syntax/src/partial_ast.rs` | Add same variant to `Lang`; update `from_str` and `as_str` |
+| 3 | `poly-bench-runtime/Cargo.toml` | Add `runtimes-<lang> = { path = "../runtimes/runtimes-<lang>" }` |
+| 4 | Root `Cargo.toml` | Add `"runtimes/runtimes-<lang>"` to workspace `members` |
+| 5 | `poly-bench-grammar/bindings/rust/build.rs` | Add entry to `languages` array for tree-sitter injections |
+
+**No longer required:** registry.rs, lsp-traits, RuntimeConfig, ProjectRoots, CLI args, runtime_env_*, manifest has_* — these are now dynamic.
 
 ## Runtime Integration Interface
 
-The following components form the end-to-end interface for a runtime. All orchestration (validation, scheduler, reporter, CLI) uses these abstractions—no per-language `match` branches in core logic.
+The following components form the end-to-end interface. Core orchestration uses abstractions that iterate over `supported_languages()` or use `Lang`-keyed maps.
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| `Lang` | poly-bench-dsl | Language enum variant |
-| `RuntimeFactory` | runtimes/runtimes-*/ | Create runtime instances; registered in poly-bench-runtime |
-| `supported_languages()` | poly-bench-runtime/registry | Source of truth for which langs exist |
-| `LangDisplayInfo` | poly-bench-runtime-traits | Labels, colors, gradients; each runtime exports `*_lang_display()` |
-| `Runtime` | poly-bench-runtime-traits | compile_check, run_benchmark, precompile; implemented in runtimes-* |
-| `ImportExtractor` | poly-bench-ir | Parse setup imports |
-| `ProjectRootDetector` | poly-bench-project | Find project root |
-| `ErrorMapper` | runtimes/runtimes-*/ | Remap compiler errors to .bench lines; dispatched via get_error_mapper |
-| `VirtualFileBuilder` | runtimes/runtimes-*/ | Build virtual files for LSP; register via `RuntimePlugin::virtual_file_builder()` |
-| `EmbeddedDiagnosticProvider` | runtimes/runtimes-*/ | Lint/errors for embedded code; register via `RuntimePlugin::embedded_diagnostic_provider()` |
-| `EmbeddedDiagnosticSetup` | runtimes/runtimes-*/ | Init LSP clients, ensure config; register via `RuntimePlugin::embedded_diagnostic_setup()` |
-| `EmbeddedHoverProvider` | runtimes/runtimes-*/ | Hover, type info; register via `RuntimePlugin::embedded_hover_provider()` |
-| `EmbeddedLspClient` | runtimes/runtimes-*/ | LSP client for diagnostics/hover; register via `RuntimePlugin::embedded_lsp_client_init/get()` |
-| `HelperFunctionExtractor` | runtimes/runtimes-*/ | Optional: for LSP undefined-function diagnostics |
-| Fixture serialization | poly-bench-ir | `as_*_bytes()` for fixture data in generated code |
-| Manifest config | poly-bench-project | `[lang]` section in polybench.toml |
-| CompileWorkspace | poly-bench-executor | `init_*_workspace()`, `clean()` for .polybench/ |
-| Grammar injections | poly-bench-grammar | Tree-sitter rules for embedded code highlighting |
+| `Lang` | poly-bench-dsl | Language enum; add variant when adding runtime |
+| `RuntimeFactory` | runtimes/runtimes-*/ | Create runtime instances |
+| `supported_languages()` | poly-bench-runtime/registry | Derived from linkme-registered plugins |
+| `RuntimeConfig` | poly-bench-runtime-traits | `HashMap<Lang, Option<PathBuf>>`; no per-language fields |
+| `ProjectRoots` | poly-bench-executor | `HashMap<Lang, Option<PathBuf>>`; no per-language fields |
+| `RuntimePlugin` | runtimes/runtimes-*/ | Register via `#[distributed_slice(PLUGINS)]` |
+| `LangDisplayInfo` | poly-bench-runtime-traits | Labels, colors; each runtime exports `*_lang_display()` |
+| `Runtime` | poly-bench-runtime-traits | compile_check, run_benchmark; implemented in runtimes-* |
+| `ImportExtractor` | poly-bench-ir | Parse setup imports; register via `RuntimePlugin` |
+| `ProjectRootDetector` | poly-bench-runtime-traits | Find project root; register via `RuntimePlugin` |
+| `runtime_env(project_root, lang)` | poly-bench-project | Single function; no per-language helpers |
+| `--project-dir LANG:DIR` | CLI | Generic; no per-language flags |
+| `has_runtime(lang)` | poly-bench-project/manifest | Single method; no per-language has_* |
+| Grammar injections | poly-bench-grammar | Generated from `languages` array in build.rs |
 
 ## Overview
 
 ```mermaid
 flowchart TB
-    subgraph Crate [Crate]
+    subgraph Crate [Runtime Crate]
         Runtime[Runtime + RuntimeFactory]
         ImportExtractor[ImportExtractor]
         ProjectRootDetector[ProjectRootDetector]
@@ -44,113 +54,128 @@ flowchart TB
         EmbeddedHoverProvider[EmbeddedHoverProvider]
     end
     
-    subgraph CLI [CLI]
-        ProjectRoots[ProjectRoots]
-        resolve_project_roots[resolve_project_roots]
+    subgraph Registry [Registry - linkme]
+        PLUGINS[PLUGINS distributed slice]
     end
     
-    Runtime --> Registry
-    ImportExtractor --> extract_imports
-    ProjectRootDetector --> get_detector
-    ErrorMapper --> get_error_mapper
-    VirtualFileBuilder --> get_virtual_file_builder
-    EmbeddedDiagnosticProvider --> get_embedded_diagnostic_provider
-    EmbeddedDiagnosticSetup --> get_embedded_diagnostic_setup
-    EmbeddedHoverProvider --> get_embedded_hover_provider
+    Runtime --> PLUGINS
+    ImportExtractor --> PLUGINS
+    ProjectRootDetector --> PLUGINS
+    ErrorMapper --> PLUGINS
+    VirtualFileBuilder --> PLUGINS
+    EmbeddedDiagnosticProvider --> PLUGINS
+    EmbeddedDiagnosticSetup --> PLUGINS
+    EmbeddedHoverProvider --> PLUGINS
 ```
 
 ## Checklist
 
 ### 1. poly-bench-dsl: Add language variant
 
-Add the new language to `Lang` in `poly-bench-dsl`:
-
-- `poly-bench-dsl/src/ast.rs`: Add variant (e.g. `Python`) to `Lang` enum
-- Update `from_str` and `as_str` for the new variant
+- `poly-bench-dsl/src/ast.rs`: Add variant (e.g. `Java`) to `Lang` enum
+- Update `from_str` (e.g. `"java" | "jvm" => Some(Lang::Java)`)
+- Update `as_str` (e.g. `Lang::Java => "java"`)
 
 ### 2. poly-bench-syntax: Add language variant
 
-Add the new language to `Lang` in `poly-bench-syntax` (used by LSP):
+- `poly-bench-syntax/src/partial_ast.rs`: Add the same variant to `Lang`
+- Update `from_str` and `as_str` to match poly-bench-dsl
 
-- `poly-bench-syntax/src/partial_ast.rs`: Add variant to `Lang` enum
-- Update `from_str` and `as_str`
+### 3. poly-bench-grammar: Add to injections
 
-### 3. runtimes/: Create a new runtime crate
+- `poly-bench-grammar/bindings/rust/build.rs`: Add entry to the `languages` array:
+  ```rust
+  ("Java", &["java", "jvm"], "java", false),  // (display_name, tags, tree_sitter_name, use_paren_code_block)
+  ```
+- Use `true` for `use_paren_code_block` only if the language uses `(paren_code_block)` for import sections (Go does; others use `(code_block)`)
 
-- Create `runtimes/runtimes-<lang>/` (e.g. `runtimes/runtimes-python` for Python)
-- Add to root `Cargo.toml` workspace members
-- Implement `Runtime` trait (from poly-bench-runtime-traits): `compile_check`, `run_benchmark`, `lang`, etc.
+### 4. runtimes/: Create the runtime crate
+
+- Create `runtimes/runtimes-<lang>/` (e.g. `runtimes/runtimes-java`)
+- Add to root `Cargo.toml` workspace `members`
+- Add `runtimes-<lang>` dependency to `poly-bench-runtime/Cargo.toml`
+- **Quick start**: Copy `runtimes/runtimes-rust` as a template
+
+#### 4a. Implement Runtime and RuntimeFactory
+
+- Implement `Runtime` trait: `compile_check`, `run_benchmark`, `lang`, etc.
 - Implement `RuntimeFactory`: `create(&self, config) -> Box<dyn Runtime>`
-- Add to `RuntimeConfig` (in poly-bench-runtime-traits): e.g. `python_root: Option<PathBuf>`
-- Register in `poly-bench-runtime/src/registry.rs`: add `runtimes_<lang>::<LANG>_PLUGIN` to the `PLUGINS` array (e.g. `&GO_PLUGIN, &TS_PLUGIN, ...`). `supported_languages()` is derived from PLUGINS automatically.
-- Add `poly-bench-runtime` dependency on `runtimes-<lang>`
-- Add display metadata: export `fn <lang>_lang_display() -> LangDisplayInfo` (poly-bench-runtime `lang_display()` dispatches to it)
-- **Quick start**: Copy `runtimes/runtimes-rust` as a template—it has the full structure (codegen, executor, error_mapping, lang_display)
+- Use `config.get_root(Lang::Java)` to get the project root (RuntimeConfig is `HashMap<Lang, Option<PathBuf>>`)
 
-### 4. poly-bench-ir: Implement ImportExtractor
+#### 4b. Implement RuntimePlugin and register via linkme
 
-- In your runtime crate: Implement `ImportExtractor` trait (from poly-bench-ir-traits)
-- Register via `RuntimePlugin::import_extractor()`. `init_import_extractors()` (called at startup) collects from all plugins.
+- Implement `RuntimePlugin` trait
+- Add `#[distributed_slice(poly_bench_runtime_traits::PLUGINS)]` in your plugin module:
+  ```rust
+  #[distributed_slice(poly_bench_runtime_traits::PLUGINS)]
+  static _JAVA: &dyn RuntimePlugin = &JAVA_PLUGIN;
+  ```
+- Add `linkme = "0.3"` to your runtime crate's `Cargo.toml`
+- **No changes to poly-bench-runtime/registry.rs** — plugins self-register
 
-### 5. poly-bench-project: Implement ProjectRootDetector
+#### 4c. Add display metadata
 
-- In your runtime crate: Add `src/project.rs` and implement `ProjectRootDetector` (from poly-bench-runtime-traits)
-- Define `marker_files()` (e.g. `["requirements.txt", "pyproject.toml"]`)
+- Export `fn <lang>_lang_display() -> LangDisplayInfo`
+- poly-bench-runtime dispatches via the registry
+
+### 5. poly-bench-project: Manifest config (if using poly-bench projects)
+
+If your runtime needs a `[project.<lang>]` section in `polybench.toml`:
+
+- `poly-bench-project/src/manifest.rs`:
+  - Add `JavaConfig` struct (or equivalent)
+  - Add `java: Option<JavaConfig>` to `Manifest`
+  - Add match arm in `has_runtime()`: `Lang::Java => self.java.is_some()`
+  - Update `Manifest::new()` to handle the new language when creating from `languages` list
+
+### 6. poly-bench-ir: Implement ImportExtractor
+
+- In your runtime crate: Implement `ImportExtractor` trait
+- Register via `RuntimePlugin::import_extractor()`
+
+### 7. poly-bench-project: Implement ProjectRootDetector
+
+- In your runtime crate: Add `src/project.rs`, implement `ProjectRootDetector`
+- Define `marker_files()` (e.g. `["pom.xml", "build.gradle"]`)
 - Register via `RuntimePlugin::project_root_detector()`
-- Add `runtime_env_<lang>` in `poly-bench-project` if using poly-bench layout
+- **No `runtime_env_<lang>` needed** — use `runtime_env(project_root, lang)` which is already dynamic
 
-### 6. runtimes/runtimes-<lang>: Implement ErrorMapper
+### 8. runtimes/runtimes-<lang>: Implement ErrorMapper
 
-- In your runtime crate: Implement `ErrorMapper` (from poly-bench-runtime-traits)
-- `build_mappings(suite, generated) -> LineMappings`
-- `remap_error(error, mappings) -> String`
-- Implement `error_mapper()` in your `RuntimePlugin` to return the builder. No separate match in poly-bench-runtime.
+- Implement `ErrorMapper` trait
+- Register via `RuntimePlugin::error_mapper()`
 
-### 7. runtimes/runtimes-<lang>: Implement VirtualFileBuilder
+### 9. runtimes/runtimes-<lang>: Implement VirtualFileBuilder
 
-- In your runtime crate: Add `src/virtual_file.rs`
-- Implement `VirtualFileBuilder` trait (from poly-bench-lsp-traits)
-- Use `VirtualFileBuilderCore` for shared build logic
-- Implement `virtual_file_builder()` in your `RuntimePlugin` to return the builder
+- Add `src/virtual_file.rs`, implement `VirtualFileBuilder`
+- Use `VirtualFileBuilderCore` for shared logic
+- Register via `RuntimePlugin::virtual_file_builder()`
 
-### 8. runtimes/runtimes-<lang>: Implement EmbeddedDiagnosticProvider
+### 10. runtimes/runtimes-<lang>: Implement EmbeddedDiagnosticProvider
 
-- In your runtime crate: Add `src/embedded_diagnostics.rs`
-- Implement `EmbeddedDiagnosticProvider` trait (use `EmbeddedDiagnosticContext` for LSP clients)
-- Implement `embedded_diagnostic_provider()` in your `RuntimePlugin`
+- Add `src/embedded_diagnostics.rs`
+- Implement `EmbeddedDiagnosticProvider`
+- Register via `RuntimePlugin::embedded_diagnostic_provider()`
 
-### 9. runtimes/runtimes-<lang>: Implement EmbeddedDiagnosticSetup (if needed)
+### 11. runtimes/runtimes-<lang>: Implement EmbeddedDiagnosticSetup (if needed)
 
-- In your runtime crate: Implement `EmbeddedDiagnosticSetup` trait
-- `prepare(module_root, ctx)` typically calls `ctx.ensure_ready(self.lang(), module_root)`
-- Implement `embedded_diagnostic_setup()` in your `RuntimePlugin`
+- Implement `EmbeddedDiagnosticSetup`
+- Register via `RuntimePlugin::embedded_diagnostic_setup()`
 
-### 10. runtimes/runtimes-<lang>: Implement EmbeddedHoverProvider (required for LSP parity)
+### 12. runtimes/runtimes-<lang>: Implement EmbeddedHoverProvider (required for LSP parity)
 
-- In your runtime crate: Add `src/hover.rs`
-- Implement `EmbeddedHoverProvider` trait (use `EmbeddedHoverContext` for virtual file and LSP client via `ctx.get_lsp_client(lang, module_root)`)
-- Implement `embedded_hover_provider()` in your `RuntimePlugin`
-- Required for full embedded-language support (hover, type info). Without it, embedded code blocks will have diagnostics but no hover.
+- Add `src/hover.rs`, implement `EmbeddedHoverProvider`
+- Register via `RuntimePlugin::embedded_hover_provider()`
 
-### 10b. runtimes/runtimes-<lang>: Implement Embedded LSP client (if using LSP for diagnostics/hover)
+### 13. runtimes/runtimes-<lang>: Implement Embedded LSP client (if using LSP)
 
-- In your runtime crate: Add `src/<server>_client.rs` (e.g. `gopls_client.rs`, `pyright_client.rs`)
-- Implement `LspConfig` trait (from poly-bench-lsp-traits) for your language server
-- Use `LspClient<YourConfig>` type alias
-- Implement `embedded_lsp_client_init(workspace_root)` and `embedded_lsp_client_get()` in your `RuntimePlugin`
-- Required for full LSP parity when diagnostics/hover use an LSP server (Go, TypeScript, Rust, Python)
-- Optional: Add `HelperFunctionExtractor` for undefined-function diagnostics
+- Add `src/<server>_client.rs`
+- Implement `LspConfig`, use `LspClient<YourConfig>`
+- Implement `embedded_lsp_client_init` and `embedded_lsp_client_get` in `RuntimePlugin`
 
-### 11. CLI: Add support
+### 14. poly-bench-stdlib (if needed)
 
-- In `cli/main.rs`:
-  - Add `--lang <lang>` and `--<lang>-project` options
-  - Update `ProjectRoots` and `resolve_project_roots` for the new language
-  - Add to compile/run language filters
-
-### 12. poly-bench-stdlib: Add constants (if needed)
-
-- In `poly-bench-stdlib`: Add language-specific constants and stdlib code if the language uses `use std::*`
+- Add language-specific constants if the language uses `use std::*`
 
 ## File Summary
 
@@ -158,26 +183,29 @@ Add the new language to `Lang` in `poly-bench-syntax` (used by LSP):
 |-----------|-----------------|-----------------|
 | DSL | - | `poly-bench-dsl/src/ast.rs` |
 | Syntax | - | `poly-bench-syntax/src/partial_ast.rs` |
-| Runtime | `runtimes/runtimes-<lang>/` | `poly-bench-runtime/registry.rs`, root `Cargo.toml` |
+| Grammar | - | `poly-bench-grammar/bindings/rust/build.rs` |
+| Runtime | `runtimes/runtimes-<lang>/` | `poly-bench-runtime/Cargo.toml`, root `Cargo.toml` |
+| Manifest (optional) | - | `poly-bench-project/src/manifest.rs` |
 | IR | `runtimes-<lang>/import_extractor.rs` | `RuntimePlugin::import_extractor()` |
 | Project | `runtimes-<lang>/project.rs` | `RuntimePlugin::project_root_detector()` |
 | Error mapping | `runtimes-<lang>/error_mapping.rs` | `RuntimePlugin::error_mapper()` |
 | LSP virtual files | `runtimes-<lang>/virtual_file.rs` | `RuntimePlugin::virtual_file_builder()` |
 | LSP diagnostics | `runtimes-<lang>/embedded_diagnostics.rs` | `RuntimePlugin::embedded_diagnostic_provider()` |
-| LSP setup | `runtimes-<lang>/embedded_diagnostics.rs` | `RuntimePlugin::embedded_diagnostic_setup()` |
+| LSP setup | (same file) | `RuntimePlugin::embedded_diagnostic_setup()` |
 | LSP hover | `runtimes-<lang>/hover.rs` | `RuntimePlugin::embedded_hover_provider()` |
 | LSP client | `runtimes-<lang>/<server>_client.rs` | `RuntimePlugin::embedded_lsp_client_init/get()` |
-| CLI | - | `cli/main.rs` |
+
+**Not in the list:** `poly-bench-lsp-traits` (uses `Lang::from_str`), `poly-bench-runtime/registry.rs` (linkme), `poly-bench-runtime-traits/config.rs` (HashMap), `poly-bench-executor` (HashMap), `cli/main.rs` (generic `--project-dir`).
 
 ## LSP Support Requirements
 
-For full LSP parity with other runtimes, a new language must implement:
+For full LSP parity:
 
-- **EmbeddedDiagnosticProvider** — lint errors and type-check diagnostics for embedded code
-- **EmbeddedHoverProvider** — hover information and type details
-- Both rely on **VirtualFileBuilder** and **VirtualFileManager** for position mapping
+- **EmbeddedDiagnosticProvider** — lint/type-check for embedded code
+- **EmbeddedHoverProvider** — hover and type info
+- Both rely on **VirtualFileBuilder** for position mapping
 
-Without EmbeddedHoverProvider, embedded code will show diagnostics but no hover or completion support.
+Without EmbeddedHoverProvider, embedded code has diagnostics but no hover.
 
 ## Verification
 
@@ -186,5 +214,5 @@ After adding a runtime:
 1. `cargo build` succeeds
 2. `poly-bench run --lang <lang> <benchfile>` runs benchmarks
 3. `poly-bench compile --lang <lang>` validates
-4. LSP diagnostics appear for embedded code
-5. Hover works in embedded blocks (required for LSP parity)
+4. `poly-bench run --project-dir <lang>:<path>` works for explicit roots
+5. LSP diagnostics and hover work in embedded blocks (if implemented)

@@ -178,7 +178,7 @@ impl RuntimeFactory for JsRuntimeFactory {
     }
     fn create(&self, config: &RuntimeConfig) -> Result<Box<dyn Runtime>> {
         let mut rt = JsRuntime::new()?;
-        rt.set_project_root(config.node_root.clone());
+        rt.set_project_root(config.get_root(poly_bench_dsl::Lang::TypeScript));
         Ok(Box::new(rt))
     }
 }
@@ -431,7 +431,7 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
     script.push_str("\n\n");
 
     // Add stdlib code (e.g., ANVIL_RPC_URL for std::anvil)
-    let stdlib_code = stdlib::get_stdlib_code(&suite.stdlib_imports, Lang::TypeScript);
+    let stdlib_code = stdlib::get_stdlib_code(&suite.stdlib_imports, &crate::TS_STDLIB);
     if !stdlib_code.is_empty() {
         script.push_str("// stdlib imports\n");
         // Strip TypeScript type annotations from stdlib code

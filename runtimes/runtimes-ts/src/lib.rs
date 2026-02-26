@@ -9,6 +9,7 @@ pub mod hover;
 pub mod import_extractor;
 pub mod plugin;
 pub mod project;
+pub mod stdlib;
 pub mod transpiler;
 pub mod tsserver_client;
 pub mod v8_runtime;
@@ -18,6 +19,7 @@ pub use error_mapping::{TsErrorMapper, TS_ERROR_MAPPER};
 pub use import_extractor::TS_IMPORT_EXTRACTOR;
 pub use plugin::{TsPlugin, TS_PLUGIN};
 pub use project::TS_DETECTOR;
+pub use stdlib::{TsStdlibProvider, TS_STDLIB};
 pub use v8_runtime::{
     extract_generated_snippet, extract_runtime_error_reason, JsRuntime, JsRuntimeFactory,
 };

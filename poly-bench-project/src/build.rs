@@ -7,11 +7,9 @@
 //! Use this when the .polybench directory is deleted, corrupted, or after cloning
 //! a repo where it was gitignored.
 
-use crate::{
-    error::ProjectError, manifest, runtime_env_csharp, runtime_env_go, runtime_env_python,
-    runtime_env_rust, runtime_env_ts, templates, terminal,
-};
+use crate::{error::ProjectError, manifest, runtime_env, templates, terminal};
 use miette::Result;
+use poly_bench_dsl::Lang;
 use std::{
     path::Path,
     process::{Command, Output},
@@ -71,12 +69,12 @@ pub fn build_project(options: &BuildOptions) -> Result<()> {
     spinner.finish_and_clear();
 
     // Build Go environment
-    if manifest.has_go() {
+    if manifest.has_runtime(Lang::Go) {
         build_go_env(&project_root, manifest.go.as_ref().unwrap(), options)?;
     }
 
     // Build TypeScript environment
-    if manifest.has_ts() {
+    if manifest.has_runtime(Lang::TypeScript) {
         build_ts_env(
             &project_root,
             manifest.ts.as_ref().unwrap(),
@@ -86,16 +84,16 @@ pub fn build_project(options: &BuildOptions) -> Result<()> {
     }
 
     // Build Rust environment
-    if manifest.has_rust() {
+    if manifest.has_runtime(Lang::Rust) {
         build_rust_env(&project_root, manifest.rust.as_ref().unwrap(), options)?;
     }
 
     // Build Python environment
-    if manifest.has_python() {
+    if manifest.has_runtime(Lang::Python) {
         build_python_env(&project_root, manifest.python.as_ref().unwrap(), options)?;
     }
 
-    if manifest.has_csharp() {
+    if manifest.has_runtime(Lang::CSharp) {
         build_csharp_env(&project_root, manifest.csharp.as_ref().unwrap(), options)?;
     }
 
@@ -113,7 +111,7 @@ fn build_go_env(
 ) -> Result<()> {
     terminal::section("Go environment");
 
-    let go_env = runtime_env_go(project_root);
+    let go_env = runtime_env(project_root, Lang::Go);
 
     // Create directory
     std::fs::create_dir_all(&go_env)
@@ -183,7 +181,7 @@ fn build_ts_env(
 ) -> Result<()> {
     terminal::section("TypeScript environment");
 
-    let ts_env = runtime_env_ts(project_root);
+    let ts_env = runtime_env(project_root, Lang::TypeScript);
 
     // Create directory
     std::fs::create_dir_all(&ts_env)
@@ -283,7 +281,7 @@ fn build_rust_env(
 ) -> Result<()> {
     terminal::section("Rust environment");
 
-    let rust_env = runtime_env_rust(project_root);
+    let rust_env = runtime_env(project_root, Lang::Rust);
 
     // Create directory structure
     std::fs::create_dir_all(rust_env.join("src"))
@@ -377,7 +375,7 @@ fn build_python_env(
 ) -> Result<()> {
     terminal::section("Python environment");
 
-    let python_env = runtime_env_python(project_root);
+    let python_env = runtime_env(project_root, Lang::Python);
 
     std::fs::create_dir_all(&python_env)
         .map_err(|e| miette::miette!("Failed to create {}: {}", python_env.display(), e))?;
@@ -495,7 +493,7 @@ fn build_csharp_env(
 ) -> Result<()> {
     terminal::section("C# environment");
 
-    let csharp_env = runtime_env_csharp(project_root);
+    let csharp_env = runtime_env(project_root, Lang::CSharp);
     std::fs::create_dir_all(&csharp_env)
         .map_err(|e| miette::miette!("Failed to create {}: {}", csharp_env.display(), e))?;
 

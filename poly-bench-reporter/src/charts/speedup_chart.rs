@@ -8,7 +8,7 @@ use poly_bench_executor::comparison::BenchmarkResult;
 use poly_bench_ir::ChartDirectiveIR;
 use poly_bench_runtime::{lang_color, lang_full_name, lang_gradient_id, lang_label};
 
-use super::{escape_xml, filter_benchmarks, format_duration, sort_benchmarks};
+use super::{escape_xml, filter_benchmarks, format_duration, sort_benchmarks, svg_gradient_defs};
 
 // Bar dimensions
 const DEFAULT_BAR_HEIGHT: i32 = 48;
@@ -26,11 +26,6 @@ const CARD_TITLE_HEIGHT: i32 = 22;
 const MIN_CARD_WIDTH: i32 = 260;
 const MAX_GRID_COLUMNS: i32 = 4;
 const TARGET_COMBINED_GRID_HEIGHT: i32 = 420;
-
-// Language colors (same for both themes)
-const GO_COLOR: &str = "#00ADD8";
-const TS_COLOR: &str = "#3178C6";
-const RUST_COLOR: &str = "#DEA584";
 
 // Accent colors (same for both themes)
 const ACCENT_COLOR: &str = "#FF8A00";
@@ -730,7 +725,7 @@ fn empty_chart(message: &str, theme: &ThemeColors) -> String {
     )
 }
 
-/// SVG header with gradients and filters
+/// SVG header with gradients and filters (gradients built from registered runtimes)
 fn svg_header(width: i32, height: i32, theme: &ThemeColors) -> String {
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\" fill=\"none\">\n\
@@ -740,26 +735,7 @@ fn svg_header(width: i32, height: i32, theme: &ThemeColors) -> String {
     <stop stop-color=\"{}\"/>\n\
     <stop offset=\"1\" stop-color=\"{}\"/>\n\
   </radialGradient>\n\
-  <linearGradient id=\"goGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
-    <stop offset=\"100%\" stop-color=\"#0891B2\" stop-opacity=\"0.8\"/>\n\
-  </linearGradient>\n\
-  <linearGradient id=\"tsGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
-    <stop offset=\"100%\" stop-color=\"#1D4ED8\" stop-opacity=\"0.8\"/>\n\
-  </linearGradient>\n\
-  <linearGradient id=\"rustGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"0.95\"/>\n\
-    <stop offset=\"100%\" stop-color=\"#B7410E\" stop-opacity=\"0.8\"/>\n\
-  </linearGradient>\n\
-  <linearGradient id=\"pythonGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-    <stop offset=\"0%\" stop-color=\"#D8BD4A\" stop-opacity=\"1\"/>\n\
-    <stop offset=\"100%\" stop-color=\"#EEDB7A\" stop-opacity=\"1\"/>\n\
-  </linearGradient>\n\
-  <linearGradient id=\"csharpGrad\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\">\n\
-    <stop offset=\"0%\" stop-color=\"{}\" stop-opacity=\"1\"/>\n\
-    <stop offset=\"100%\" stop-color=\"#7C3AED\" stop-opacity=\"1\"/>\n\
-  </linearGradient>\n\
+{}\
   <filter id=\"barShadow\" x=\"-5%\" y=\"-15%\" width=\"110%\" height=\"140%\">\n\
     <feDropShadow dx=\"0\" dy=\"2\" stdDeviation=\"2\" flood-opacity=\"0.25\"/>\n\
   </filter>\n\
@@ -770,8 +746,7 @@ fn svg_header(width: i32, height: i32, theme: &ThemeColors) -> String {
         width, height, width, height,
         width, height, theme.bg_color,
         ACCENT_COLOR, ACCENT_GLOW,
-        GO_COLOR, TS_COLOR, RUST_COLOR,
-        lang_color(Lang::CSharp),
+        svg_gradient_defs(),
         ACCENT_COLOR
     )
 }

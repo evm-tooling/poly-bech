@@ -2,8 +2,13 @@
 //!
 //! Bundles all runtime interfaces (RuntimeFactory, ErrorMapper, LangDisplayInfo,
 //! ProjectRootDetector, ImportExtractor) for registration-based discovery.
+//!
+//! Plugins register themselves via the `PLUGINS` distributed slice. Each runtime
+//! crate adds its plugin with `#[distributed_slice(PLUGINS)]`.
 
 use std::sync::Arc;
+
+use linkme::distributed_slice;
 
 use poly_bench_dsl::Lang;
 use poly_bench_ir_traits::ImportExtractor;
@@ -77,3 +82,8 @@ pub trait RuntimePlugin: Send + Sync {
         None
     }
 }
+
+/// Distributed slice of all registered runtime plugins.
+/// Runtimes add themselves via `#[distributed_slice(PLUGINS)]` in their crate.
+#[distributed_slice]
+pub static PLUGINS: [&'static dyn RuntimePlugin] = [..];

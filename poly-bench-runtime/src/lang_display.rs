@@ -46,3 +46,8 @@ pub fn lang_color(lang: Lang) -> &'static str {
 pub fn lang_gradient_id(lang: Lang) -> &'static str {
     lang_display(lang).gradient_id
 }
+
+/// End color for SVG gradient (used when building gradient defs dynamically)
+pub fn lang_gradient_end(lang: Lang) -> &'static str {
+    lang_display(lang).gradient_end
+}

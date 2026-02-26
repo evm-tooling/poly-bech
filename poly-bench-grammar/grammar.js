@@ -496,14 +496,9 @@ module.exports = grammar({
       $._code_or_inline,
     ),
 
-    language_tag: $ => choice(
-      'go',
-      'ts',
-      'typescript',
-      'rust',
-      'python',
-      'csharp',
-    ),
+    // Use identifier so new runtimes work without grammar changes.
+    // Validation (Lang::from_str) happens in the convert layer.
+    language_tag: $ => $.identifier,
 
     _code_or_inline: $ => choice(
       $.code_block,

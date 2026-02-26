@@ -137,13 +137,7 @@ pub async fn validate_benchmarks(
         Arc::new(Mutex::new(std::collections::HashMap::new()));
 
     // Initialize runtimes for each language via registry
-    let config = RuntimeConfig {
-        go_root: project_roots.go_root.clone(),
-        node_root: project_roots.node_root.clone(),
-        rust_root: project_roots.rust_root.clone(),
-        python_root: project_roots.python_root.clone(),
-        csharp_root: project_roots.csharp_root.clone(),
-    };
+    let config = RuntimeConfig { roots: project_roots.roots.clone() };
     let runtimes = create_runtimes_arc(langs, &config);
 
     // Helper to add an error with deduplication
@@ -331,13 +325,7 @@ pub async fn validate_benchmarks_with_cache(
         Arc::new(Mutex::new(std::collections::HashMap::new()));
 
     // Initialize runtimes for each language via registry
-    let config = RuntimeConfig {
-        go_root: project_roots.go_root.clone(),
-        node_root: project_roots.node_root.clone(),
-        rust_root: project_roots.rust_root.clone(),
-        python_root: project_roots.python_root.clone(),
-        csharp_root: project_roots.csharp_root.clone(),
-    };
+    let config = RuntimeConfig { roots: project_roots.roots.clone() };
     let runtimes = create_runtimes_arc(langs, &config);
 
     // Helper to add an error with deduplication

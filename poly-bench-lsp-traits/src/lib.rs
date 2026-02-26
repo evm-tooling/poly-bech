@@ -28,11 +28,5 @@ pub use virtual_file_core::{VirtualFileBuilderCore, VirtualFileData};
 
 /// Convert syntax Lang to dsl Lang for registry lookups
 pub fn syntax_lang_to_dsl(l: poly_bench_syntax::Lang) -> poly_bench_dsl::Lang {
-    match l {
-        poly_bench_syntax::Lang::Go => poly_bench_dsl::Lang::Go,
-        poly_bench_syntax::Lang::TypeScript => poly_bench_dsl::Lang::TypeScript,
-        poly_bench_syntax::Lang::Rust => poly_bench_dsl::Lang::Rust,
-        poly_bench_syntax::Lang::Python => poly_bench_dsl::Lang::Python,
-        poly_bench_syntax::Lang::CSharp => poly_bench_dsl::Lang::CSharp,
-    }
+    poly_bench_dsl::Lang::from_str(l.as_str()).expect("syntax Lang and dsl Lang must stay in sync")
 }

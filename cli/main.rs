@@ -136,27 +136,10 @@ enum Commands {
         #[arg(long, short, value_name = "DIR")]
         output: Option<PathBuf>,
 
-        /// Go module root directory (where go.mod is located).
-        /// If not specified, searches parent directories of the bench file.
-        #[arg(long, value_name = "DIR")]
-        go_project: Option<PathBuf>,
-
-        /// Node.js project root directory (where package.json/node_modules is located).
-        /// If not specified, searches parent directories of the bench file.
-        #[arg(long, value_name = "DIR")]
-        ts_project: Option<PathBuf>,
-
-        /// Rust project root directory (where Cargo.toml is located).
-        #[arg(long, value_name = "DIR")]
-        rust_project: Option<PathBuf>,
-
-        /// Python project root directory (where requirements.txt or pyproject.toml is located).
-        #[arg(long, value_name = "DIR")]
-        python_project: Option<PathBuf>,
-
-        /// C# project root directory (where polybench.csproj/.sln is located).
-        #[arg(long, value_name = "DIR")]
-        csharp_project: Option<PathBuf>,
+        /// Project root for a language (repeatable). Format: LANG:DIR (e.g. go:./my-go-mod,
+        /// csharp:./src)
+        #[arg(long, value_name = "LANG:DIR")]
+        project_dir: Vec<String>,
     },
 
     /// Generate code from a DSL file without running
@@ -341,32 +324,8 @@ async fn main() -> Result<()> {
         Commands::Cache { action } => {
             cmd_cache(action).await?;
         }
-        Commands::Run {
-            file,
-            lang,
-            iterations,
-            report,
-            output,
-            go_project,
-            ts_project,
-            rust_project,
-            python_project,
-            csharp_project,
-        } => {
-            cmd_run(
-                file,
-                lang,
-                iterations,
-                &report,
-                output,
-                go_project,
-                ts_project,
-                rust_project,
-                python_project,
-                csharp_project,
-                cli.verbose,
-            )
-            .await?;
+        Commands::Run { file, lang, iterations, report, output, project_dir } => {
+            cmd_run(file, lang, iterations, &report, output, project_dir, cli.verbose).await?;
         }
         Commands::Codegen { file, lang, output } => {
             cmd_codegen(&file, &lang, &output).await?;
@@ -547,7 +506,7 @@ async fn compile_single_file_cached(
     let ir_result = ir::lower(&ast, bench_file.parent())?;
 
     let bench_count: usize = ir_result.suites.iter().map(|s| s.benchmarks.len()).sum();
-    let project_roots = resolve_project_roots(None, None, None, None, None, &bench_file)?;
+    let project_roots = resolve_project_roots(&std::collections::HashMap::new(), &bench_file)?;
 
     let (compile_errors, stats) =
         executor::validate_benchmarks_with_cache(&ir_result, &langs, &project_roots, cache).await?;
@@ -674,7 +633,7 @@ async fn compile_files_sequential_cached(
         let bench_count: usize = ir_result.suites.iter().map(|s| s.benchmarks.len()).sum();
         total_benchmarks += bench_count;
 
-        let project_roots = resolve_project_roots(None, None, None, None, None, bench_file)?;
+        let project_roots = resolve_project_roots(&std::collections::HashMap::new(), bench_file)?;
 
         let spinner = create_compiling_spinner();
         let (compile_errors, stats) =
@@ -774,11 +733,7 @@ async fn cmd_run(
     iterations: Option<u64>,
     report_format: &str,
     output: Option<PathBuf>,
-    go_project: Option<PathBuf>,
-    ts_project: Option<PathBuf>,
-    rust_project: Option<PathBuf>,
-    python_project: Option<PathBuf>,
-    csharp_project: Option<PathBuf>,
+    project_dir: Vec<String>,
     verbose: bool,
 ) -> Result<()> {
     use colored::Colorize;
@@ -849,14 +804,7 @@ async fn cmd_run(
         all_chart_directives.extend(ir.chart_directives.clone());
 
         // Resolve project roots for module resolution
-        let project_roots = resolve_project_roots(
-            go_project.clone(),
-            ts_project.clone(),
-            rust_project.clone(),
-            python_project.clone(),
-            csharp_project.clone(),
-            bench_file,
-        )?;
+        let project_roots = resolve_project_roots(&parse_project_dirs(&project_dir)?, bench_file)?;
 
         println!("▸ Compile validation");
         // Pre-run validation: compile-check all benchmarks before running
@@ -964,82 +912,56 @@ fn merge_results(mut results: Vec<BenchmarkResults>) -> BenchmarkResults {
     BenchmarkResults::new(all_suites)
 }
 
+/// Parse --project-dir LANG:DIR args into (Lang, PathBuf) pairs
+fn parse_project_dirs(specs: &[String]) -> Result<std::collections::HashMap<dsl::Lang, PathBuf>> {
+    let mut map = std::collections::HashMap::new();
+    for spec in specs {
+        let (lang_str, dir_str) = spec.split_once(':').ok_or_else(|| {
+            miette::miette!(
+                "Invalid --project-dir '{}': expected LANG:DIR (e.g. go:./my-mod)",
+                spec
+            )
+        })?;
+        let lang = dsl::Lang::from_str(lang_str.trim()).ok_or_else(|| {
+            miette::miette!("Unknown language '{}' in --project-dir", lang_str.trim())
+        })?;
+        map.insert(lang, PathBuf::from(dir_str.trim()));
+    }
+    Ok(map)
+}
+
 /// Resolve project roots for module resolution
 fn resolve_project_roots(
-    go_explicit: Option<PathBuf>,
-    ts_explicit: Option<PathBuf>,
-    rust_explicit: Option<PathBuf>,
-    python_explicit: Option<PathBuf>,
-    csharp_explicit: Option<PathBuf>,
+    explicit: &std::collections::HashMap<dsl::Lang, PathBuf>,
     bench_file: &PathBuf,
 ) -> Result<ProjectRoots> {
     let mut roots = ProjectRoots::default();
 
-    // Handle explicit Go project root
-    if let Some(ref dir) = go_explicit {
-        let canonical = dir.canonicalize().map_err(|e| {
-            miette::miette!("Cannot access Go project root {}: {}", dir.display(), e)
-        })?;
-
-        if !canonical.join("go.mod").exists() {
-            return Err(miette::miette!("No go.mod found in {}", canonical.display()));
-        }
-        roots.go_root = Some(canonical);
-    }
-
-    // Handle explicit TypeScript project root
-    if let Some(ref dir) = ts_explicit {
-        let canonical = dir.canonicalize().map_err(|e| {
-            miette::miette!("Cannot access TS project root {}: {}", dir.display(), e)
-        })?;
-
-        if !canonical.join("package.json").exists() && !canonical.join("node_modules").exists() {
+    // Handle explicit project roots from --project-dir
+    for (lang, dir) in explicit {
+        let canonical = dir
+            .canonicalize()
+            .map_err(|e| miette::miette!("Cannot access project root {}: {}", dir.display(), e))?;
+        let valid = match lang {
+            dsl::Lang::Go => canonical.join("go.mod").exists(),
+            dsl::Lang::TypeScript => {
+                canonical.join("package.json").exists() || canonical.join("node_modules").exists()
+            }
+            dsl::Lang::Rust => canonical.join("Cargo.toml").exists(),
+            dsl::Lang::Python => {
+                canonical.join("requirements.txt").exists() ||
+                    canonical.join("pyproject.toml").exists()
+            }
+            dsl::Lang::CSharp => is_csharp_project_root(&canonical),
+        };
+        if !valid {
             return Err(miette::miette!(
-                "No package.json or node_modules found in {}",
+                "Invalid project root for {}: {} does not contain expected markers",
+                lang,
                 canonical.display()
             ));
         }
-        roots.node_root = Some(canonical);
-    }
-
-    // Handle explicit Rust project root
-    if let Some(ref dir) = rust_explicit {
-        let canonical = dir.canonicalize().map_err(|e| {
-            miette::miette!("Cannot access Rust project root {}: {}", dir.display(), e)
-        })?;
-
-        if !canonical.join("Cargo.toml").exists() {
-            return Err(miette::miette!("No Cargo.toml found in {}", canonical.display()));
-        }
-        roots.rust_root = Some(canonical);
-    }
-
-    // Handle explicit Python project root
-    if let Some(ref dir) = python_explicit {
-        let canonical = dir.canonicalize().map_err(|e| {
-            miette::miette!("Cannot access Python project root {}: {}", dir.display(), e)
-        })?;
-
-        if !canonical.join("requirements.txt").exists() &&
-            !canonical.join("pyproject.toml").exists()
-        {
-            return Err(miette::miette!(
-                "No requirements.txt or pyproject.toml found in {}",
-                canonical.display()
-            ));
-        }
-        roots.python_root = Some(canonical);
-    }
-
-    // Handle explicit C# project root
-    if let Some(ref dir) = csharp_explicit {
-        let canonical = dir.canonicalize().map_err(|e| {
-            miette::miette!("Cannot access C# project root {}: {}", dir.display(), e)
-        })?;
-        if !is_csharp_project_root(&canonical) {
-            return Err(miette::miette!("No .csproj or .sln found in {}", canonical.display()));
-        }
-        roots.csharp_root = Some(canonical);
+        roots.set_root(*lang, Some(canonical));
     }
 
     // Search parent directories of the bench file for any missing roots
@@ -1047,70 +969,38 @@ fn resolve_project_roots(
     let mut current = start_dir.canonicalize().ok();
 
     while let Some(dir) = current {
-        // Inside a poly-bench project: prefer .polybench/runtime-env/go, .../ts, .../rust
-        if roots.go_root.is_none() && dir.join(project::MANIFEST_FILENAME).exists() {
-            let go_env = project::runtime_env_go(&dir);
-            if go_env.join("go.mod").exists() {
-                roots.go_root = Some(go_env);
+        // Inside a poly-bench project: prefer .polybench/runtime-env/{lang}
+        if dir.join(project::MANIFEST_FILENAME).exists() {
+            for lang in runtime::supported_languages() {
+                if roots.get_root(*lang).is_none() {
+                    let env = project::runtime_env(&dir, *lang);
+                    let found = match lang {
+                        dsl::Lang::Go => env.join("go.mod").exists(),
+                        dsl::Lang::TypeScript => {
+                            env.join("package.json").exists() || env.join("node_modules").exists()
+                        }
+                        dsl::Lang::Rust => env.join("Cargo.toml").exists(),
+                        dsl::Lang::Python => {
+                            env.join("requirements.txt").exists() ||
+                                env.join("pyproject.toml").exists()
+                        }
+                        dsl::Lang::CSharp => env.join("polybench.csproj").exists(),
+                    };
+                    if found {
+                        roots.set_root(*lang, Some(env));
+                    }
+                }
             }
         }
-        if roots.node_root.is_none() && dir.join(project::MANIFEST_FILENAME).exists() {
-            let ts_env = project::runtime_env_ts(&dir);
-            if ts_env.join("package.json").exists() || ts_env.join("node_modules").exists() {
-                roots.node_root = Some(ts_env);
+        // Fallback: classic layout via detectors
+        for lang in runtime::supported_languages() {
+            if roots.get_root(*lang).is_none() {
+                if let Some(det) = project::get_detector(*lang) {
+                    roots.set_root(*lang, det.detect(&dir));
+                }
             }
         }
-        if roots.rust_root.is_none() && dir.join(project::MANIFEST_FILENAME).exists() {
-            let rust_env = project::runtime_env_rust(&dir);
-            if rust_env.join("Cargo.toml").exists() {
-                roots.rust_root = Some(rust_env);
-            }
-        }
-        if roots.python_root.is_none() && dir.join(project::MANIFEST_FILENAME).exists() {
-            let python_env = project::runtime_env_python(&dir);
-            if python_env.join("requirements.txt").exists() ||
-                python_env.join("pyproject.toml").exists()
-            {
-                roots.python_root = Some(python_env);
-            }
-        }
-        if roots.csharp_root.is_none() && dir.join(project::MANIFEST_FILENAME).exists() {
-            let csharp_env = project::runtime_env_csharp(&dir);
-            if csharp_env.join("polybench.csproj").exists() {
-                roots.csharp_root = Some(csharp_env);
-            }
-        }
-        // Fallback: classic layout via detectors (go.mod / package.json / Cargo.toml)
-        if roots.go_root.is_none() {
-            if let Some(det) = project::get_detector(dsl::Lang::Go) {
-                roots.go_root = det.detect(&dir);
-            }
-        }
-        if roots.node_root.is_none() {
-            if let Some(det) = project::get_detector(dsl::Lang::TypeScript) {
-                roots.node_root = det.detect(&dir);
-            }
-        }
-        if roots.rust_root.is_none() {
-            if let Some(det) = project::get_detector(dsl::Lang::Rust) {
-                roots.rust_root = det.detect(&dir);
-            }
-        }
-        if roots.python_root.is_none() {
-            if let Some(det) = project::get_detector(dsl::Lang::Python) {
-                roots.python_root = det.detect(&dir);
-            }
-        }
-        if roots.csharp_root.is_none() {
-            if let Some(det) = project::get_detector(dsl::Lang::CSharp) {
-                roots.csharp_root = det.detect(&dir);
-            }
-        }
-        if roots.go_root.is_some() &&
-            roots.node_root.is_some() &&
-            roots.rust_root.is_some() &&
-            roots.csharp_root.is_some()
-        {
+        if runtime::supported_languages().iter().all(|l| roots.get_root(*l).is_some()) {
             break;
         }
         current = dir.parent().map(|p| p.to_path_buf());
@@ -1481,11 +1371,7 @@ fn cmd_add_runtime(runtime: &str) -> Result<()> {
 
     let lang_str = lang.as_str();
     let already_has = match lang {
-        Lang::Go => manifest.has_go(),
-        Lang::TypeScript => manifest.has_ts(),
-        Lang::Rust => manifest.has_rust(),
-        Lang::Python => manifest.has_python(),
-        Lang::CSharp => manifest.has_csharp(),
+        lang => manifest.has_runtime(lang),
     };
 
     if already_has {

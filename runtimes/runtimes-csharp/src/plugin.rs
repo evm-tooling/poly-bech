@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use linkme::distributed_slice;
 use poly_bench_runtime_traits::{
     ErrorMapper, LangDisplayInfo, ProjectRootDetector, RuntimeFactory, RuntimePlugin,
 };
@@ -91,3 +92,6 @@ impl RuntimePlugin for CSharpPlugin {
 }
 
 pub static CSHARP_PLUGIN: CSharpPlugin = CSharpPlugin;
+
+#[distributed_slice(poly_bench_runtime_traits::PLUGINS)]
+static _CSHARP: &dyn RuntimePlugin = &CSHARP_PLUGIN;
