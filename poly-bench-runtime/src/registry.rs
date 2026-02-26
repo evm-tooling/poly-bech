@@ -1,4 +1,7 @@
 //! Runtime registry for pluggable language runtimes
+//!
+//! Plugins register themselves via the `PLUGINS` distributed slice in
+//! poly-bench-runtime-traits. No manual registration needed here.
 
 use crate::config::RuntimeConfig;
 use miette::{miette, Result};
@@ -7,16 +10,8 @@ use poly_bench_lsp_traits::{
     EmbeddedDiagnosticProvider, EmbeddedDiagnosticSetup, EmbeddedHoverProvider, EmbeddedLspClient,
     HelperFunctionExtractor, VirtualFileBuilder,
 };
-use poly_bench_runtime_traits::{ProjectRootDetector, Runtime, RuntimePlugin};
-use runtimes_csharp::CSHARP_PLUGIN;
-use runtimes_go::GO_PLUGIN;
-use runtimes_python::PYTHON_PLUGIN;
-use runtimes_rust::RUST_PLUGIN;
-use runtimes_ts::TS_PLUGIN;
+use poly_bench_runtime_traits::{ProjectRootDetector, Runtime, PLUGINS};
 use std::{collections::HashMap, sync::Arc};
-
-static PLUGINS: &[&dyn RuntimePlugin] =
-    &[&GO_PLUGIN, &TS_PLUGIN, &RUST_PLUGIN, &PYTHON_PLUGIN, &CSHARP_PLUGIN];
 
 /// Create a runtime for the given language
 pub fn create_runtime(lang: Lang, config: &RuntimeConfig) -> Result<Box<dyn Runtime>> {

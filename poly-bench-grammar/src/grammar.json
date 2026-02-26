@@ -1581,33 +1581,8 @@
       ]
     },
     "language_tag": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "go"
-        },
-        {
-          "type": "STRING",
-          "value": "ts"
-        },
-        {
-          "type": "STRING",
-          "value": "typescript"
-        },
-        {
-          "type": "STRING",
-          "value": "rust"
-        },
-        {
-          "type": "STRING",
-          "value": "python"
-        },
-        {
-          "type": "STRING",
-          "value": "csharp"
-        }
-      ]
+      "type": "SYMBOL",
+      "name": "identifier"
     },
     "_code_or_inline": {
       "type": "CHOICE",

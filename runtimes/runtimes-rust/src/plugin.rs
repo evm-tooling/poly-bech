@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use linkme::distributed_slice;
 use poly_bench_runtime_traits::{
     ErrorMapper, LangDisplayInfo, ProjectRootDetector, RuntimeFactory, RuntimePlugin,
 };
@@ -90,3 +91,6 @@ impl RuntimePlugin for RustPlugin {
 }
 
 pub static RUST_PLUGIN: RustPlugin = RustPlugin;
+
+#[distributed_slice(poly_bench_runtime_traits::PLUGINS)]
+static _RUST: &dyn RuntimePlugin = &RUST_PLUGIN;

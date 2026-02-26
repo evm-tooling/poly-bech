@@ -23,6 +23,7 @@ use crate::{
 };
 
 use dashmap::DashMap;
+use once_cell::sync::Lazy;
 use poly_bench_stdlib::VALID_MODULES;
 use poly_bench_syntax::Node as AstNode;
 use tower_lsp::{jsonrpc::Result, lsp_types::*, Client, LanguageServer};
@@ -1406,6 +1407,16 @@ fn stdlib_module_docs(module: &str) -> &'static str {
     }
 }
 
+/// Filter winner completion values (go, ts, rust, ...) + "all" - derived from registered runtimes
+fn filter_winner_completion_values() -> &'static [&'static str] {
+    static OPTS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+        let mut v: Vec<&'static str> = supported_languages().iter().map(|l| l.as_str()).collect();
+        v.push("all");
+        v
+    });
+    &OPTS
+}
+
 /// Get completions for charting function parameters
 fn get_charting_param_completions() -> Vec<CompletionItem> {
     vec![
@@ -1422,7 +1433,7 @@ fn get_charting_param_completions() -> Vec<CompletionItem> {
         param_completion("minSpeedup", "number", "Only show benchmarks with speedup >= N"),
         enum_param_completion(
             "filterWinner",
-            &["go", "ts", "rust", "python", "csharp", "all"],
+            filter_winner_completion_values(),
             "Filter by winner language",
         ),
         array_param_completion("includeBenchmarks", "Only include these benchmark names"),

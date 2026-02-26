@@ -7,7 +7,8 @@ mod scheduler;
 mod validation;
 pub mod workspace;
 
-use std::path::PathBuf;
+use poly_bench_dsl::Lang;
+use std::{collections::HashMap, path::PathBuf};
 
 pub use anvil::{AnvilConfig, AnvilService};
 pub use compile_cache::{CacheStats, CompileCache};
@@ -16,16 +17,20 @@ pub use workspace::{format_size, CompileWorkspace};
 /// Project roots for different languages
 #[derive(Debug, Clone, Default)]
 pub struct ProjectRoots {
-    /// Go module root (directory containing go.mod)
-    pub go_root: Option<PathBuf>,
-    /// Node.js project root (directory containing package.json or node_modules)
-    pub node_root: Option<PathBuf>,
-    /// Rust project root (directory containing Cargo.toml)
-    pub rust_root: Option<PathBuf>,
-    /// Python project root (directory containing requirements.txt or pyproject.toml)
-    pub python_root: Option<PathBuf>,
-    /// C# project root (directory containing .csproj/.sln)
-    pub csharp_root: Option<PathBuf>,
+    /// Project roots per language
+    pub roots: HashMap<Lang, Option<PathBuf>>,
+}
+
+impl ProjectRoots {
+    /// Get the project root for a language
+    pub fn get_root(&self, lang: Lang) -> Option<PathBuf> {
+        self.roots.get(&lang).and_then(|o| o.clone())
+    }
+
+    /// Set the project root for a language
+    pub fn set_root(&mut self, lang: Lang, path: Option<PathBuf>) {
+        self.roots.insert(lang, path);
+    }
 }
 
 pub use comparison::{BenchmarkResult, BenchmarkResults, SuiteResults};

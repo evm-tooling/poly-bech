@@ -1,60 +1,18 @@
 //! Dependency management for poly-bench projects
 
-use crate::{
-    error::ProjectError, manifest, runtime_env_csharp, runtime_env_go, runtime_env_python,
-    runtime_env_rust, runtime_env_ts, templates, terminal,
-};
+use crate::{error::ProjectError, manifest, runtime_env, templates, terminal};
 use miette::Result;
+use poly_bench_dsl::Lang;
 use std::{
     path::Path,
     process::{Command, Output},
 };
 
-/// Resolve the directory used for Go (runtime-env if present, else project root)
-fn resolve_go_root(project_root: &Path) -> std::path::PathBuf {
-    let env_go = runtime_env_go(project_root);
-    if env_go.exists() {
-        env_go
-    } else {
-        project_root.to_path_buf()
-    }
-}
-
-/// Resolve the directory used for TypeScript (runtime-env if present, else project root)
-fn resolve_ts_root(project_root: &Path) -> std::path::PathBuf {
-    let env_ts = runtime_env_ts(project_root);
-    if env_ts.exists() {
-        env_ts
-    } else {
-        project_root.to_path_buf()
-    }
-}
-
-/// Resolve the directory used for Rust (runtime-env if present, else project root)
-fn resolve_rust_root(project_root: &Path) -> std::path::PathBuf {
-    let env_rust = runtime_env_rust(project_root);
-    if env_rust.exists() {
-        env_rust
-    } else {
-        project_root.to_path_buf()
-    }
-}
-
-/// Resolve the directory used for Python (runtime-env if present, else project root)
-fn resolve_python_root(project_root: &Path) -> std::path::PathBuf {
-    let env_python = runtime_env_python(project_root);
-    if env_python.exists() {
-        env_python
-    } else {
-        project_root.to_path_buf()
-    }
-}
-
-/// Resolve the directory used for C# (runtime-env if present, else project root)
-fn resolve_csharp_root(project_root: &Path) -> std::path::PathBuf {
-    let env_csharp = runtime_env_csharp(project_root);
-    if env_csharp.exists() {
-        env_csharp
+/// Resolve the directory used for a runtime (runtime-env if present, else project root)
+fn resolve_runtime_root(project_root: &Path, lang: Lang) -> std::path::PathBuf {
+    let env = runtime_env(project_root, lang);
+    if env.exists() {
+        env
     } else {
         project_root.to_path_buf()
     }
@@ -170,7 +128,7 @@ pub fn add_go_dependency(spec: &str) -> Result<()> {
 
     let mut manifest = crate::load_manifest(&project_root)?;
 
-    if !manifest.has_go() {
+    if !manifest.has_runtime(Lang::Go) {
         return Err(miette::miette!("Go is not enabled in this project"));
     }
 
@@ -180,7 +138,7 @@ pub fn add_go_dependency(spec: &str) -> Result<()> {
     manifest.add_go_dependency(&package, &version)?;
     crate::save_manifest(&project_root, &manifest)?;
 
-    let go_root = resolve_go_root(&project_root);
+    let go_root = resolve_runtime_root(&project_root, Lang::Go);
     ensure_go_env(&go_root, manifest.go.as_ref().unwrap())?;
 
     // Use module/...@version so Go fetches all packages and transitive deps into go.sum
@@ -223,7 +181,7 @@ pub fn add_ts_dependency(spec: &str) -> Result<()> {
 
     let mut manifest = crate::load_manifest(&project_root)?;
 
-    if !manifest.has_ts() {
+    if !manifest.has_runtime(Lang::TypeScript) {
         return Err(miette::miette!("TypeScript is not enabled in this project"));
     }
 
@@ -233,7 +191,7 @@ pub fn add_ts_dependency(spec: &str) -> Result<()> {
     manifest.add_ts_dependency(&package, &version)?;
     crate::save_manifest(&project_root, &manifest)?;
 
-    let ts_root = resolve_ts_root(&project_root);
+    let ts_root = resolve_runtime_root(&project_root, Lang::TypeScript);
     std::fs::create_dir_all(&ts_root)
         .map_err(|e| miette::miette!("Failed to create TS env dir: {}", e))?;
     if !ts_root.join("package.json").exists() {
@@ -286,13 +244,13 @@ pub fn add_rust_dependency_with_features(spec: &str, features: Option<&[String]>
 
     let mut manifest = crate::load_manifest(&project_root)?;
 
-    if !manifest.has_rust() {
+    if !manifest.has_runtime(Lang::Rust) {
         return Err(miette::miette!("Rust is not enabled in this project"));
     }
 
     let (crate_name, version) = parse_dep_spec(spec);
 
-    let rust_root = resolve_rust_root(&project_root);
+    let rust_root = resolve_runtime_root(&project_root, Lang::Rust);
     ensure_rust_env(&rust_root, manifest.rust.as_ref().unwrap(), &manifest.project.name)?;
 
     // Use cargo add for dependency installation - it resolves "latest" automatically
@@ -384,7 +342,7 @@ pub fn remove_go_dependency(package: &str) -> Result<()> {
 
     let mut manifest = crate::load_manifest(&project_root)?;
 
-    if !manifest.has_go() {
+    if !manifest.has_runtime(Lang::Go) {
         return Err(miette::miette!("Go is not enabled in this project"));
     }
 
@@ -401,7 +359,7 @@ pub fn remove_go_dependency(package: &str) -> Result<()> {
     manifest.remove_go_dependency(package)?;
     crate::save_manifest(&project_root, &manifest)?;
 
-    let go_root = resolve_go_root(&project_root);
+    let go_root = resolve_runtime_root(&project_root, Lang::Go);
 
     // Run go mod tidy to clean up go.mod and go.sum
     let spinner = terminal::step_spinner(&format!("Removing {}...", package));
@@ -438,7 +396,7 @@ pub fn remove_ts_dependency(package: &str) -> Result<()> {
 
     let mut manifest = crate::load_manifest(&project_root)?;
 
-    if !manifest.has_ts() {
+    if !manifest.has_runtime(Lang::TypeScript) {
         return Err(miette::miette!("TypeScript is not enabled in this project"));
     }
 
@@ -455,7 +413,7 @@ pub fn remove_ts_dependency(package: &str) -> Result<()> {
     manifest.remove_ts_dependency(package)?;
     crate::save_manifest(&project_root, &manifest)?;
 
-    let ts_root = resolve_ts_root(&project_root);
+    let ts_root = resolve_runtime_root(&project_root, Lang::TypeScript);
 
     // Run npm uninstall
     let spinner = terminal::step_spinner(&format!("Removing {}...", package));
@@ -492,7 +450,7 @@ pub fn remove_rust_dependency(crate_name: &str) -> Result<()> {
 
     let mut manifest = crate::load_manifest(&project_root)?;
 
-    if !manifest.has_rust() {
+    if !manifest.has_runtime(Lang::Rust) {
         return Err(miette::miette!("Rust is not enabled in this project"));
     }
 
@@ -509,7 +467,7 @@ pub fn remove_rust_dependency(crate_name: &str) -> Result<()> {
     manifest.remove_rust_dependency(crate_name)?;
     crate::save_manifest(&project_root, &manifest)?;
 
-    let rust_root = resolve_rust_root(&project_root);
+    let rust_root = resolve_runtime_root(&project_root, Lang::Rust);
 
     // Run cargo remove
     let spinner = terminal::step_spinner(&format!("Removing {}...", crate_name));
@@ -556,7 +514,7 @@ pub fn add_python_dependency(spec: &str) -> Result<()> {
 
     let mut manifest = crate::load_manifest(&project_root)?;
 
-    if !manifest.has_python() {
+    if !manifest.has_runtime(Lang::Python) {
         return Err(miette::miette!("Python is not enabled in this project"));
     }
 
@@ -565,7 +523,7 @@ pub fn add_python_dependency(spec: &str) -> Result<()> {
     manifest.add_python_dependency(&package, &version)?;
     crate::save_manifest(&project_root, &manifest)?;
 
-    let python_root = resolve_python_root(&project_root);
+    let python_root = resolve_runtime_root(&project_root, Lang::Python);
     std::fs::create_dir_all(&python_root)
         .map_err(|e| miette::miette!("Failed to create Python env dir: {}", e))?;
 
@@ -619,7 +577,7 @@ pub fn remove_python_dependency(package: &str) -> Result<()> {
 
     let mut manifest = crate::load_manifest(&project_root)?;
 
-    if !manifest.has_python() {
+    if !manifest.has_runtime(Lang::Python) {
         return Err(miette::miette!("Python is not enabled in this project"));
     }
 
@@ -633,7 +591,7 @@ pub fn remove_python_dependency(package: &str) -> Result<()> {
     manifest.remove_python_dependency(package)?;
     crate::save_manifest(&project_root, &manifest)?;
 
-    let python_root = resolve_python_root(&project_root);
+    let python_root = resolve_runtime_root(&project_root, Lang::Python);
     let deps: Vec<(String, String)> = manifest
         .python
         .as_ref()
@@ -661,7 +619,7 @@ pub fn add_csharp_dependency(spec: &str) -> Result<()> {
 
     let mut manifest = crate::load_manifest(&project_root)?;
 
-    if !manifest.has_csharp() {
+    if !manifest.has_runtime(Lang::CSharp) {
         return Err(miette::miette!("C# is not enabled in this project"));
     }
 
@@ -669,7 +627,7 @@ pub fn add_csharp_dependency(spec: &str) -> Result<()> {
     manifest.add_csharp_dependency(&package, &version)?;
     crate::save_manifest(&project_root, &manifest)?;
 
-    let csharp_root = resolve_csharp_root(&project_root);
+    let csharp_root = resolve_runtime_root(&project_root, Lang::CSharp);
     std::fs::create_dir_all(&csharp_root)
         .map_err(|e| miette::miette!("Failed to create C# env dir: {}", e))?;
 
@@ -714,7 +672,7 @@ pub fn remove_csharp_dependency(package: &str) -> Result<()> {
 
     let mut manifest = crate::load_manifest(&project_root)?;
 
-    if !manifest.has_csharp() {
+    if !manifest.has_runtime(Lang::CSharp) {
         return Err(miette::miette!("C# is not enabled in this project"));
     }
 
@@ -728,7 +686,7 @@ pub fn remove_csharp_dependency(package: &str) -> Result<()> {
     manifest.remove_csharp_dependency(package)?;
     crate::save_manifest(&project_root, &manifest)?;
 
-    let csharp_root = resolve_csharp_root(&project_root);
+    let csharp_root = resolve_runtime_root(&project_root, Lang::CSharp);
     let spinner = terminal::step_spinner(&format!("Removing {}...", package));
     let output = terminal::run_command_with_spinner(
         &spinner,
@@ -858,7 +816,7 @@ pub fn install_all() -> Result<()> {
 fn install_go_deps(project_root: &Path, go_config: &manifest::GoConfig) -> Result<()> {
     terminal::section("Go dependencies");
 
-    let go_root = resolve_go_root(project_root);
+    let go_root = resolve_runtime_root(project_root, Lang::Go);
     std::fs::create_dir_all(&go_root)
         .map_err(|e| miette::miette!("Failed to create Go env dir: {}", e))?;
 
@@ -910,7 +868,7 @@ fn install_ts_deps(
 ) -> Result<()> {
     terminal::section("TypeScript dependencies");
 
-    let ts_root = resolve_ts_root(project_root);
+    let ts_root = resolve_runtime_root(project_root, Lang::TypeScript);
     std::fs::create_dir_all(&ts_root)
         .map_err(|e| miette::miette!("Failed to create TS env dir: {}", e))?;
 
@@ -988,7 +946,7 @@ fn install_rust_deps(
 ) -> Result<()> {
     terminal::section("Rust dependencies");
 
-    let rust_root = resolve_rust_root(project_root);
+    let rust_root = resolve_runtime_root(project_root, Lang::Rust);
     std::fs::create_dir_all(&rust_root)
         .map_err(|e| miette::miette!("Failed to create Rust env dir: {}", e))?;
 
@@ -1041,7 +999,7 @@ fn install_rust_deps(
 fn install_python_deps(project_root: &Path, python_config: &manifest::PythonConfig) -> Result<()> {
     terminal::section("Python dependencies");
 
-    let python_root = runtime_env_python(project_root);
+    let python_root = runtime_env(project_root, Lang::Python);
     std::fs::create_dir_all(&python_root)
         .map_err(|e| miette::miette!("Failed to create Python env dir: {}", e))?;
 
@@ -1086,7 +1044,7 @@ fn install_python_deps(project_root: &Path, python_config: &manifest::PythonConf
 fn install_csharp_deps(project_root: &Path, csharp_config: &manifest::CSharpConfig) -> Result<()> {
     terminal::section("C# dependencies");
 
-    let csharp_root = runtime_env_csharp(project_root);
+    let csharp_root = runtime_env(project_root, Lang::CSharp);
     std::fs::create_dir_all(&csharp_root)
         .map_err(|e| miette::miette!("Failed to create C# env dir: {}", e))?;
 

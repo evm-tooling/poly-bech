@@ -802,7 +802,17 @@
   {
     "type": "language_tag",
     "named": true,
-    "fields": {}
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "paren_code_block",
@@ -1315,10 +1325,6 @@
     "named": false
   },
   {
-    "type": "csharp",
-    "named": false
-  },
-  {
     "type": "cvThreshold",
     "named": false
   },
@@ -1407,10 +1413,6 @@
     "named": false
   },
   {
-    "type": "go",
-    "named": false
-  },
-  {
     "type": "height",
     "named": false
   },
@@ -1495,10 +1497,6 @@
     "named": false
   },
   {
-    "type": "python",
-    "named": false
-  },
-  {
     "type": "regressionModel",
     "named": false
   },
@@ -1508,10 +1506,6 @@
   },
   {
     "type": "rowCount",
-    "named": false
-  },
-  {
-    "type": "rust",
     "named": false
   },
   {
@@ -1600,14 +1594,6 @@
   },
   {
     "type": "true",
-    "named": false
-  },
-  {
-    "type": "ts",
-    "named": false
-  },
-  {
-    "type": "typescript",
     "named": false
   },
   {

@@ -438,13 +438,7 @@ pub async fn run(
         let mut benchmark_results = Vec::new();
 
         // Initialize runtimes via registry
-        let config = RuntimeConfig {
-            go_root: project_roots.go_root.clone(),
-            node_root: project_roots.node_root.clone(),
-            rust_root: project_roots.rust_root.clone(),
-            python_root: project_roots.python_root.clone(),
-            csharp_root: project_roots.csharp_root.clone(),
-        };
+        let config = RuntimeConfig { roots: project_roots.roots.clone() };
         let mut runtimes = create_runtimes(langs, &config)
             .map_err(|e| miette!("Runtime initialization failed: {}", e))?;
 

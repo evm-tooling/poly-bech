@@ -2,10 +2,10 @@
 
 use crate::{
     manifest::{self, Manifest},
-    runtime_env_csharp, runtime_env_go, runtime_env_python, runtime_env_rust, runtime_env_ts,
-    templates, terminal, BENCHMARKS_DIR, MANIFEST_FILENAME,
+    runtime_env, templates, terminal, BENCHMARKS_DIR, MANIFEST_FILENAME,
 };
 use miette::Result;
+use poly_bench_dsl::Lang;
 use std::{path::PathBuf, process::Command};
 
 /// Options for initializing a project
@@ -101,7 +101,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
 
     // Create runtime-env dirs and language-specific env files (keeps root uncluttered)
     if has_go {
-        let go_env = runtime_env_go(&project_dir);
+        let go_env = runtime_env(&project_dir, Lang::Go);
         std::fs::create_dir_all(&go_env)
             .map_err(|e| miette::miette!("Failed to create {}: {}", go_env.display(), e))?;
         let go_version = manifest.go.as_ref().and_then(|g| g.version.as_deref());
@@ -116,7 +116,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     }
 
     if has_ts {
-        let ts_env = runtime_env_ts(&project_dir);
+        let ts_env = runtime_env(&project_dir, Lang::TypeScript);
         std::fs::create_dir_all(&ts_env)
             .map_err(|e| miette::miette!("Failed to create {}: {}", ts_env.display(), e))?;
         let package_json_content = templates::package_json_pretty(&project_name);
@@ -167,7 +167,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     }
 
     if has_rust {
-        let rust_env = runtime_env_rust(&project_dir);
+        let rust_env = runtime_env(&project_dir, Lang::Rust);
         std::fs::create_dir_all(&rust_env)
             .map_err(|e| miette::miette!("Failed to create {}: {}", rust_env.display(), e))?;
         let rust_edition = manifest.rust.as_ref().map(|r| r.edition.as_str()).unwrap_or("2021");
@@ -188,7 +188,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     }
 
     if has_python {
-        let python_env = runtime_env_python(&project_dir);
+        let python_env = runtime_env(&project_dir, Lang::Python);
         std::fs::create_dir_all(&python_env)
             .map_err(|e| miette::miette!("Failed to create {}: {}", python_env.display(), e))?;
         // Include pyright[nodejs] for LSP (provides pyright-langserver)
@@ -201,7 +201,7 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     }
 
     if has_csharp {
-        let csharp_env = runtime_env_csharp(&project_dir);
+        let csharp_env = runtime_env(&project_dir, Lang::CSharp);
         std::fs::create_dir_all(&csharp_env)
             .map_err(|e| miette::miette!("Failed to create {}: {}", csharp_env.display(), e))?;
         let target_framework =
@@ -334,10 +334,10 @@ mod tests {
         assert!(project_path.join(MANIFEST_FILENAME).exists());
         assert!(project_path.join(BENCHMARKS_DIR).exists());
         assert!(project_path.join(BENCHMARKS_DIR).join("example.bench").exists());
-        assert!(crate::runtime_env_go(&project_path).join("go.mod").exists());
+        assert!(crate::runtime_env(&project_path, Lang::Go).join("go.mod").exists());
         // Note: bench_standalone.go is NOT created on init - only when running benchmarks
-        assert!(crate::runtime_env_ts(&project_path).join("package.json").exists());
-        assert!(crate::runtime_env_ts(&project_path).join("tsconfig.json").exists());
+        assert!(crate::runtime_env(&project_path, Lang::TypeScript).join("package.json").exists());
+        assert!(crate::runtime_env(&project_path, Lang::TypeScript).join("tsconfig.json").exists());
         assert!(project_path.join(".gitignore").exists());
         assert!(project_path.join("README.md").exists());
     }
@@ -357,8 +357,8 @@ mod tests {
         let result = init_project(&options);
         assert!(result.is_ok());
 
-        assert!(crate::runtime_env_go(&project_path).join("go.mod").exists());
-        assert!(!crate::runtime_env_ts(&project_path).join("package.json").exists());
+        assert!(crate::runtime_env(&project_path, Lang::Go).join("go.mod").exists());
+        assert!(!crate::runtime_env(&project_path, Lang::TypeScript).join("package.json").exists());
     }
 
     #[test]

@@ -28,7 +28,7 @@ pub fn generate(ir: &BenchmarkIR) -> Result<String> {
     }
 
     // Collect stdlib imports
-    let stdlib_imports = stdlib::get_stdlib_imports(&ir.stdlib_imports, Lang::Rust);
+    let stdlib_imports = stdlib::get_stdlib_imports(&ir.stdlib_imports, &crate::RUST_STDLIB);
 
     // Check if any benchmark uses memory profiling
     let _needs_memory = ir.suites.iter().any(|suite| {
@@ -40,7 +40,7 @@ pub fn generate(ir: &BenchmarkIR) -> Result<String> {
     code.push_str(&imports.generate_use_block());
 
     // Inject stdlib code if any modules are imported
-    let stdlib_code = stdlib::get_stdlib_code(&ir.stdlib_imports, Lang::Rust);
+    let stdlib_code = stdlib::get_stdlib_code(&ir.stdlib_imports, &crate::RUST_STDLIB);
     if !stdlib_code.is_empty() {
         code.push_str(&stdlib_code);
         code.push_str("\n");

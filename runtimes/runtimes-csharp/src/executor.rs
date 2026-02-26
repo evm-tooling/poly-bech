@@ -5,6 +5,7 @@ use miette::{miette, Result};
 use poly_bench_dsl::{BenchMode, Lang};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use poly_bench_runtime_traits::{Measurement, Runtime, RuntimeConfig, RuntimeFactory};
+use regex::Regex;
 use std::{
     path::{Path, PathBuf},
     process::Stdio,
@@ -51,6 +52,52 @@ impl CSharpRuntime {
                 .map_err(|e| miette!("Failed to write project file: {}", e))?;
         }
         Ok(project_path)
+    }
+
+    /// Parse TargetFramework from csproj (e.g. "net8.0"). Falls back to "net8.0" if not found.
+    fn parse_target_framework(project_path: &Path) -> Result<String> {
+        let content = std::fs::read_to_string(project_path).map_err(|e| {
+            miette!("Failed to read project file {}: {}", project_path.display(), e)
+        })?;
+        let re = Regex::new(r"<TargetFramework>([^<]+)</TargetFramework>")
+            .map_err(|e| miette!("Invalid regex: {}", e))?;
+        if let Some(cap) = re.captures(&content) {
+            return Ok(cap.get(1).unwrap().as_str().trim().to_string());
+        }
+        // Fallback for TargetFrameworks (multi-target): take first
+        let re_multi = Regex::new(r"<TargetFrameworks>([^<]+)</TargetFrameworks>")
+            .map_err(|e| miette!("Invalid regex: {}", e))?;
+        if let Some(cap) = re_multi.captures(&content) {
+            let first = cap.get(1).unwrap().as_str().split(';').next().unwrap_or("net8.0").trim();
+            return Ok(first.to_string());
+        }
+        Ok("net8.0".to_string())
+    }
+
+    /// Create global.json to pin SDK to the version matching TargetFramework (e.g. net8.0 ->
+    /// 8.0.x). This avoids duplicate assembly attribute errors when a newer SDK (e.g. .NET 11)
+    /// builds older targets.
+    fn ensure_global_json(work_dir: &Path, target_framework: &str) -> Result<()> {
+        let sdk_version: String = match target_framework {
+            "net8.0" => "8.0.0".to_string(),
+            "net9.0" => "9.0.0".to_string(),
+            "net7.0" => "7.0.0".to_string(),
+            "net6.0" => "6.0.0".to_string(),
+            _ => {
+                let re =
+                    Regex::new(r"net(\d+)\.(\d+)").map_err(|e| miette!("Invalid regex: {}", e))?;
+                if let Some(cap) = re.captures(target_framework) {
+                    format!("{}.{}.0", cap.get(1).unwrap().as_str(), cap.get(2).unwrap().as_str())
+                } else {
+                    return Ok(());
+                }
+            }
+        };
+        let json =
+            format!(r#"{{"sdk":{{"version":"{}","rollForward":"latestFeature"}}}}"#, sdk_version);
+        let path = work_dir.join("global.json");
+        std::fs::write(&path, json).map_err(|e| miette!("Failed to write global.json: {}", e))?;
+        Ok(())
     }
 
     fn normalize_indent(code: &str) -> String {
@@ -130,7 +177,7 @@ impl RuntimeFactory for CSharpRuntimeFactory {
 
     fn create(&self, config: &RuntimeConfig) -> Result<Box<dyn Runtime>> {
         let mut rt = CSharpRuntime::new()?;
-        rt.set_project_root(config.csharp_root.clone());
+        rt.set_project_root(config.get_root(poly_bench_dsl::Lang::CSharp));
         Ok(Box::new(rt))
     }
 }
@@ -161,6 +208,8 @@ impl Runtime for CSharpRuntime {
     async fn compile_check(&self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<()> {
         let work_dir = self.resolve_work_dir()?;
         let project_path = self.ensure_project_files(&work_dir)?;
+        let target_framework = Self::parse_target_framework(&project_path)?;
+        Self::ensure_global_json(&work_dir, &target_framework)?;
         Self::cleanup_local_build_artifacts(&work_dir);
         let build_root = Self::unique_build_root(&work_dir)?;
         let obj_path = build_root.join("obj");
@@ -175,6 +224,8 @@ impl Runtime for CSharpRuntime {
                 "-nologo",
                 "-c",
                 "Release",
+                "-f",
+                &target_framework,
                 "-p:UseAppHost=false",
                 &format!("-p:BaseIntermediateOutputPath={}/", obj_path.to_string_lossy()),
                 &format!("-p:BaseOutputPath={}/", bin_path.to_string_lossy()),
@@ -201,6 +252,8 @@ impl Runtime for CSharpRuntime {
     ) -> Result<Measurement> {
         let work_dir = self.resolve_work_dir()?;
         let project_path = self.ensure_project_files(&work_dir)?;
+        let target_framework = Self::parse_target_framework(&project_path)?;
+        Self::ensure_global_json(&work_dir, &target_framework)?;
         Self::cleanup_local_build_artifacts(&work_dir);
         let build_root = Self::unique_build_root(&work_dir)?;
         let obj_path = build_root.join("obj");
@@ -215,6 +268,8 @@ impl Runtime for CSharpRuntime {
                 "-nologo",
                 "-c",
                 "Release",
+                "-f",
+                &target_framework,
                 "-p:UseAppHost=false",
                 &format!("-p:BaseIntermediateOutputPath={}/", obj_path.to_string_lossy()),
                 &format!("-p:BaseOutputPath={}/", bin_path.to_string_lossy()),
@@ -232,7 +287,7 @@ impl Runtime for CSharpRuntime {
             ));
         }
 
-        let dll_path = bin_path.join("Release").join("net8.0").join("polybench.dll");
+        let dll_path = bin_path.join("Release").join(&target_framework).join("polybench.dll");
         if !dll_path.exists() {
             return Err(miette!(
                 "C# build succeeded but output DLL not found at {}",

@@ -35,7 +35,8 @@ pub use config::RuntimeConfig;
 pub use error_mapping::get_error_mapper;
 pub use js::{extract_generated_snippet, extract_runtime_error_reason};
 pub use lang_display::{
-    lang_color, lang_display, lang_full_name, lang_gradient_id, lang_icon, lang_label,
+    lang_color, lang_display, lang_full_name, lang_gradient_end, lang_gradient_id, lang_icon,
+    lang_label,
 };
 pub use measurement::Measurement;
 pub use poly_bench_runtime_traits::{

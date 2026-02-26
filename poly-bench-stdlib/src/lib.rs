@@ -11,12 +11,10 @@
 //!
 //! This enables autocomplete: typing `anvil.` will suggest all available members.
 
-use poly_bench_dsl::Lang;
+use poly_bench_runtime_traits::StdlibProvider;
 use std::collections::HashSet;
 
-pub mod anvil;
 pub mod charting;
-pub mod constants;
 
 /// Valid stdlib module names
 pub const VALID_MODULES: &[&str] = &["anvil", "charting", "constants"];
@@ -110,13 +108,17 @@ pub static CONSTANTS_SYMBOLS: &[StdlibSymbol] = &[
     },
 ];
 
-/// Get the imports required by stdlib modules for a given language
-pub fn get_stdlib_imports(imports: &HashSet<String>, lang: Lang) -> Vec<&'static str> {
+/// Get the imports required by stdlib modules.
+/// The provider (from the runtime) supplies language-specific imports.
+pub fn get_stdlib_imports(
+    imports: &HashSet<String>,
+    provider: &dyn StdlibProvider,
+) -> Vec<&'static str> {
     let mut all_imports = Vec::new();
 
     for module in imports {
         match module.as_str() {
-            "anvil" => all_imports.extend(anvil::get_imports(lang)),
+            "anvil" => all_imports.extend(provider.anvil_imports()),
             "constants" => {} // constants module has no imports
             _ => {}           // Unknown module - validation should catch this earlier
         }
@@ -125,14 +127,23 @@ pub fn get_stdlib_imports(imports: &HashSet<String>, lang: Lang) -> Vec<&'static
     all_imports
 }
 
-/// Get the code to inject for a given set of stdlib imports and target language
-pub fn get_stdlib_code(imports: &HashSet<String>, lang: Lang) -> String {
+/// Get the code to inject for a given set of stdlib imports.
+/// The provider (from the runtime) supplies language-specific code.
+pub fn get_stdlib_code(imports: &HashSet<String>, provider: &dyn StdlibProvider) -> String {
     let mut code = String::new();
 
     for module in imports {
         match module.as_str() {
-            "anvil" => code.push_str(&anvil::get_code(lang)),
-            "constants" => code.push_str(&constants::get_code(lang)),
+            "anvil" => {
+                if let Some(c) = provider.anvil_code() {
+                    code.push_str(c);
+                }
+            }
+            "constants" => {
+                if let Some(c) = provider.constants_code() {
+                    code.push_str(c);
+                }
+            }
             _ => {} // Unknown module - validation should catch this earlier
         }
     }
@@ -156,7 +167,7 @@ mod tests {
         let mut imports = HashSet::new();
         imports.insert("constants".to_string());
 
-        let code = get_stdlib_code(&imports, Lang::Go);
+        let code = get_stdlib_code(&imports, &runtimes_go::GO_STDLIB);
         assert!(code.contains("std_PI"));
         assert!(code.contains("std_E"));
         assert!(code.contains("3.14159"));
@@ -167,7 +178,7 @@ mod tests {
         let mut imports = HashSet::new();
         imports.insert("constants".to_string());
 
-        let code = get_stdlib_code(&imports, Lang::TypeScript);
+        let code = get_stdlib_code(&imports, &runtimes_ts::TS_STDLIB);
         assert!(code.contains("std_PI"));
         assert!(code.contains("std_E"));
         assert!(code.contains("3.14159"));
@@ -176,7 +187,7 @@ mod tests {
     #[test]
     fn test_empty_imports() {
         let imports = HashSet::new();
-        let code = get_stdlib_code(&imports, Lang::Go);
+        let code = get_stdlib_code(&imports, &runtimes_go::GO_STDLIB);
         assert!(code.is_empty());
     }
 
@@ -185,7 +196,7 @@ mod tests {
         let mut imports = HashSet::new();
         imports.insert("anvil".to_string());
 
-        let code = get_stdlib_code(&imports, Lang::Go);
+        let code = get_stdlib_code(&imports, &runtimes_go::GO_STDLIB);
         assert!(code.contains("ANVIL_RPC_URL"));
         assert!(code.contains("os.Getenv"));
     }
@@ -195,7 +206,7 @@ mod tests {
         let mut imports = HashSet::new();
         imports.insert("anvil".to_string());
 
-        let code = get_stdlib_code(&imports, Lang::TypeScript);
+        let code = get_stdlib_code(&imports, &runtimes_ts::TS_STDLIB);
         assert!(code.contains("ANVIL_RPC_URL"));
         assert!(code.contains("process.env"));
     }

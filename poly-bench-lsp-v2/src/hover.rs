@@ -4,6 +4,8 @@
 //! in poly-bench files, including embedded Go code via gopls,
 //! TypeScript code via typescript-language-server, Rust code via rust-analyzer,
 //! Python code via pyright/pylsp, and C# via OmniSharp.
+use poly_bench_dsl::Lang;
+use poly_bench_runtime::lang_full_name;
 use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position, Url};
 
 use crate::{
@@ -145,14 +147,7 @@ fn get_dsl_hover(doc: &Document, position: Position, source: &str) -> Option<Hov
         "property_name" => get_property_documentation(text),
         "chart_function_name" => get_chart_function_documentation(text),
         "language_tag" => {
-            let display = match text {
-                "go" => "Go",
-                "ts" | "typescript" => "TypeScript",
-                "rust" => "Rust",
-                "python" => "Python",
-                "csharp" => "C#",
-                _ => text,
-            };
+            let display = Lang::from_str(text).map(lang_full_name).unwrap_or(text);
             format!("**Language**: `{}`\n\nEmbedded {} code block", text, display)
         }
         "identifier" => {

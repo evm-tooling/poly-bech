@@ -74,7 +74,7 @@ impl RuntimeFactory for GoRuntimeFactory {
     }
     fn create(&self, config: &RuntimeConfig) -> Result<Box<dyn Runtime>> {
         let mut rt = GoRuntime::new();
-        rt.set_module_root(config.go_root.clone());
+        rt.set_module_root(config.get_root(Lang::Go));
         Ok(Box::new(rt))
     }
 }
@@ -462,7 +462,7 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     code.push_str("package main\n\n");
 
     // Collect imports (similar to shared but with fmt for standalone)
-    let stdlib_imports = stdlib::get_stdlib_imports(&suite.stdlib_imports, Lang::Go);
+    let stdlib_imports = stdlib::get_stdlib_imports(&suite.stdlib_imports, &crate::GO_STDLIB);
     let mut all_imports: HashSet<&str> = HashSet::new();
     all_imports.insert("\"encoding/json\"");
     all_imports.insert("\"fmt\"");
@@ -493,7 +493,7 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     code.push('\n');
 
     // Inject stdlib code
-    let stdlib_code = stdlib::get_stdlib_code(&suite.stdlib_imports, Lang::Go);
+    let stdlib_code = stdlib::get_stdlib_code(&suite.stdlib_imports, &crate::GO_STDLIB);
     if !stdlib_code.is_empty() {
         code.push_str(&stdlib_code);
         code.push_str("\n");

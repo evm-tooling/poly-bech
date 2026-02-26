@@ -9,3 +9,8 @@ description = "Standard library modules for poly-bench DSL"
 
 [dependencies]
 poly-bench-dsl.workspace = true
+poly-bench-runtime-traits.workspace = true
+
+[dev-dependencies]
+runtimes-go = { path = "../runtimes/runtimes-go" }
+runtimes-ts = { path = "../runtimes/runtimes-ts" }

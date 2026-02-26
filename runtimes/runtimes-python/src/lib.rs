@@ -9,6 +9,7 @@ pub mod import_extractor;
 pub mod plugin;
 pub mod project;
 pub mod pyright_client;
+pub mod stdlib;
 pub mod virtual_file;
 
 pub use error_mapping::{PythonErrorMapper, PYTHON_ERROR_MAPPER};
@@ -16,6 +17,7 @@ pub use executor::{PythonRuntime, PythonRuntimeFactory, PYTHON_RUNTIME_FACTORY};
 pub use import_extractor::PYTHON_IMPORT_EXTRACTOR;
 pub use plugin::{PythonPlugin, PYTHON_PLUGIN};
 pub use project::PYTHON_DETECTOR;
+pub use stdlib::{PythonStdlibProvider, PYTHON_STDLIB};
 pub use virtual_file::PYTHON_VIRTUAL_FILE_BUILDER;
 
 use poly_bench_runtime_traits::LangDisplayInfo;

@@ -112,7 +112,7 @@ impl RuntimeFactory for RustRuntimeFactory {
     }
     fn create(&self, config: &RuntimeConfig) -> Result<Box<dyn Runtime>> {
         let mut rt = RustRuntime::new();
-        rt.set_project_root(config.rust_root.clone());
+        rt.set_project_root(config.get_root(poly_bench_dsl::Lang::Rust));
         Ok(Box::new(rt))
     }
 }
@@ -742,7 +742,7 @@ fn generate_standalone_benchmark(spec: &BenchmarkSpec, suite: &SuiteIR) -> Resul
     let mut code = String::new();
 
     // Collect imports
-    let stdlib_imports = stdlib::get_stdlib_imports(&suite.stdlib_imports, Lang::Rust);
+    let stdlib_imports = stdlib::get_stdlib_imports(&suite.stdlib_imports, &crate::RUST_STDLIB);
     let mut all_imports: HashSet<&str> = HashSet::new();
     all_imports.insert("use std::time::Instant;");
 
@@ -783,7 +783,7 @@ static ALLOCATOR: alloc_tracker::Allocator<std::alloc::System> = alloc_tracker::
     code.push('\n');
 
     // Inject stdlib code
-    let stdlib_code = stdlib::get_stdlib_code(&suite.stdlib_imports, Lang::Rust);
+    let stdlib_code = stdlib::get_stdlib_code(&suite.stdlib_imports, &crate::RUST_STDLIB);
     if !stdlib_code.is_empty() {
         code.push_str(&stdlib_code);
         code.push_str("\n");

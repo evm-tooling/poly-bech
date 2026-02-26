@@ -1,6 +1,7 @@
 //! Manifest parsing and serialization for polybench.toml
 
 use miette::Result;
+use poly_bench_dsl::Lang;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::Path};
 
@@ -334,50 +335,24 @@ impl Manifest {
         }
     }
 
-    /// Check if Go is enabled
-    pub fn has_go(&self) -> bool {
-        self.go.is_some()
+    /// Check if a runtime is enabled for the given language
+    pub fn has_runtime(&self, lang: Lang) -> bool {
+        match lang {
+            Lang::Go => self.go.is_some(),
+            Lang::TypeScript => self.ts.is_some(),
+            Lang::Rust => self.rust.is_some(),
+            Lang::Python => self.python.is_some(),
+            Lang::CSharp => self.csharp.is_some(),
+        }
     }
 
-    /// Check if TypeScript is enabled
-    pub fn has_ts(&self) -> bool {
-        self.ts.is_some()
-    }
-
-    /// Check if Rust is enabled
-    pub fn has_rust(&self) -> bool {
-        self.rust.is_some()
-    }
-
-    /// Check if Python is enabled
-    pub fn has_python(&self) -> bool {
-        self.python.is_some()
-    }
-
-    /// Check if C# is enabled
-    pub fn has_csharp(&self) -> bool {
-        self.csharp.is_some()
-    }
-
-    /// Get enabled languages
+    /// Get enabled languages as strings
     pub fn enabled_languages(&self) -> Vec<String> {
-        let mut langs = Vec::new();
-        if self.has_go() {
-            langs.push("go".to_string());
-        }
-        if self.has_ts() {
-            langs.push("ts".to_string());
-        }
-        if self.has_rust() {
-            langs.push("rust".to_string());
-        }
-        if self.has_python() {
-            langs.push("python".to_string());
-        }
-        if self.has_csharp() {
-            langs.push("csharp".to_string());
-        }
-        langs
+        poly_bench_runtime::supported_languages()
+            .iter()
+            .filter(|l| self.has_runtime(**l))
+            .map(|l| l.as_str().to_string())
+            .collect()
     }
 
     /// Add a Go dependency
@@ -530,9 +505,9 @@ mod tests {
         let manifest = Manifest::new("my-project", &["go".to_string(), "ts".to_string()]);
 
         assert_eq!(manifest.project.name, "my-project");
-        assert!(manifest.has_go());
-        assert!(manifest.has_ts());
-        assert!(!manifest.has_rust());
+        assert!(manifest.has_runtime(Lang::Go));
+        assert!(manifest.has_runtime(Lang::TypeScript));
+        assert!(!manifest.has_runtime(Lang::Rust));
     }
 
     #[test]
@@ -541,9 +516,9 @@ mod tests {
             Manifest::new("my-project", &["go".to_string(), "ts".to_string(), "rust".to_string()]);
 
         assert_eq!(manifest.project.name, "my-project");
-        assert!(manifest.has_go());
-        assert!(manifest.has_ts());
-        assert!(manifest.has_rust());
+        assert!(manifest.has_runtime(Lang::Go));
+        assert!(manifest.has_runtime(Lang::TypeScript));
+        assert!(manifest.has_runtime(Lang::Rust));
         assert_eq!(manifest.rust.as_ref().unwrap().edition, "2021");
     }
 
@@ -554,9 +529,9 @@ mod tests {
         let parsed: Manifest = toml::from_str(&toml_str).unwrap();
 
         assert_eq!(parsed.project.name, "test-project");
-        assert!(parsed.has_go());
-        assert!(!parsed.has_ts());
-        assert!(!parsed.has_rust());
+        assert!(parsed.has_runtime(Lang::Go));
+        assert!(!parsed.has_runtime(Lang::TypeScript));
+        assert!(!parsed.has_runtime(Lang::Rust));
     }
 
     #[test]
@@ -566,9 +541,9 @@ mod tests {
         let parsed: Manifest = toml::from_str(&toml_str).unwrap();
 
         assert_eq!(parsed.project.name, "test-project");
-        assert!(!parsed.has_go());
-        assert!(!parsed.has_ts());
-        assert!(parsed.has_rust());
+        assert!(!parsed.has_runtime(Lang::Go));
+        assert!(!parsed.has_runtime(Lang::TypeScript));
+        assert!(parsed.has_runtime(Lang::Rust));
         assert_eq!(parsed.rust.as_ref().unwrap().edition, "2021");
     }
 
@@ -580,7 +555,7 @@ mod tests {
         );
 
         assert_eq!(manifest.project.name, "my-project");
-        assert!(manifest.has_python());
+        assert!(manifest.has_runtime(Lang::Python));
         assert_eq!(manifest.python.as_ref().unwrap().version, Some("3.11".to_string()));
     }
 
@@ -613,7 +588,7 @@ mod tests {
             "my-project",
             &["go".to_string(), "ts".to_string(), "csharp".to_string()],
         );
-        assert!(manifest.has_csharp());
+        assert!(manifest.has_runtime(Lang::CSharp));
         assert_eq!(manifest.csharp.as_ref().unwrap().target_framework, "net8.0".to_string());
     }
 }

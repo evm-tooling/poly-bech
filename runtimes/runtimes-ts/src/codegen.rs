@@ -27,7 +27,7 @@ pub fn generate(ir: &BenchmarkIR) -> Result<String> {
     }
 
     // Inject stdlib code if any modules are imported
-    let stdlib_code = stdlib::get_stdlib_code(&ir.stdlib_imports, Lang::TypeScript);
+    let stdlib_code = stdlib::get_stdlib_code(&ir.stdlib_imports, &crate::TS_STDLIB);
     if !stdlib_code.is_empty() {
         code.push_str(&stdlib_code);
         code.push_str("\n");

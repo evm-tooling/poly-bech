@@ -8,6 +8,7 @@ repository.workspace = true
 description = "Rust runtime for poly-bench"
 
 [dependencies]
+linkme = "0.3"
 poly-bench-dsl = { path = "../../poly-bench-dsl" }
 poly-bench-lsp-traits = { path = "../../poly-bench-lsp-traits" }
 poly-bench-syntax = { path = "../../poly-bench-syntax" }
