@@ -95,7 +95,7 @@ pub fn generate(
     }
     let group_count = filtered.len().max(1) as f64;
     let lang_count = langs.len().max(1) as f64;
-    let target_inter_gap = TARGET_BAR_WIDTH * 0.22;
+    let target_inter_gap = TARGET_BAR_WIDTH * 0.15;
     let target_bars_w =
         (lang_count * TARGET_BAR_WIDTH) + ((lang_count - 1.0).max(0.0) * target_inter_gap);
     let target_group_gap = (target_bars_w * 0.34).max(18.0);
