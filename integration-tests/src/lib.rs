@@ -5,10 +5,12 @@
 //! LSP diagnostic output is written to `integration-tests/.lsp-test-outputs/` (persistent).
 
 use miette::Result;
-use poly_bench_project::{build::BuildOptions, init::InitOptions, runtime_env};
 use poly_bench_dsl::Lang;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use poly_bench_project::{build::BuildOptions, init::InitOptions, runtime_env};
+use std::{
+    path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
+};
 use tracing_subscriber::prelude::*;
 
 static TRACING_INIT: std::sync::Once = std::sync::Once::new();
@@ -22,16 +24,14 @@ fn lsp_test_outputs_dir() -> PathBuf {
 /// log file in `.lsp-test-outputs/{test_name}-{timestamp}.log`. Call at start of LSP tests.
 pub fn init_lsp_tracing(test_name: &str) {
     TRACING_INIT.call_once(|| {
-        let filter = std::env::var("RUST_LOG")
-            .unwrap_or_else(|_| "poly_bench_traits=trace".to_string());
+        let filter =
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "poly_bench_traits=trace".to_string());
 
         let out_dir = lsp_test_outputs_dir();
         let _ = std::fs::create_dir_all(&out_dir);
 
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
+        let timestamp =
+            SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
         let log_path = out_dir.join(format!("{}-{}.log", test_name, timestamp));
 
         if let Ok(file) = std::fs::File::create(&log_path) {
@@ -40,12 +40,10 @@ pub fn init_lsp_tracing(test_name: &str) {
             // Keep guard alive for the process lifetime so the file writer keeps working
             std::mem::forget(_guard);
 
-            let layer_stderr = tracing_subscriber::fmt::layer()
-                .with_writer(std::io::stderr)
-                .with_ansi(true);
-            let layer_file = tracing_subscriber::fmt::layer()
-                .with_writer(non_blocking)
-                .with_ansi(false);
+            let layer_stderr =
+                tracing_subscriber::fmt::layer().with_writer(std::io::stderr).with_ansi(true);
+            let layer_file =
+                tracing_subscriber::fmt::layer().with_writer(non_blocking).with_ansi(false);
 
             let _ = tracing_subscriber::registry()
                 .with(tracing_subscriber::EnvFilter::new(&filter))
@@ -117,9 +115,7 @@ where
     };
     poly_bench_project::init::init_project(&options)?;
 
-    let project_path = project_path
-        .canonicalize()
-        .unwrap_or_else(|_| project_path.clone());
+    let project_path = project_path.canonicalize().unwrap_or_else(|_| project_path.clone());
 
     eprintln!(
         "[integration-test] Building project at {} (uses real install_local_gopls, npm install, etc. - may take 1-2 min)...",
@@ -163,9 +159,7 @@ where
     };
     poly_bench_project::init::init_project(&options)?;
 
-    let project_path = project_path
-        .canonicalize()
-        .unwrap_or_else(|_| project_path.clone());
+    let project_path = project_path.canonicalize().unwrap_or_else(|_| project_path.clone());
 
     f(&project_path)
 }

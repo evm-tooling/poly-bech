@@ -1151,17 +1151,12 @@ fn cmd_init(name: Option<&str>, languages: Vec<String>, no_example: bool) -> Res
     let project_dir = project::init::init_project(&options)?;
 
     // Run build to install LSPs and initialize runtime-env
-    let project_dir = project_dir
-        .canonicalize()
-        .unwrap_or_else(|_| project_dir.clone());
+    let project_dir = project_dir.canonicalize().unwrap_or_else(|_| project_dir.clone());
     let prev_cwd = std::env::current_dir().ok();
     std::env::set_current_dir(&project_dir)
         .map_err(|e| miette::miette!("Failed to change to project directory: {}", e))?;
 
-    let build_options = project::build::BuildOptions {
-        force: false,
-        skip_install: false,
-    };
+    let build_options = project::build::BuildOptions { force: false, skip_install: false };
     if let Err(e) = project::build::build_project(&build_options) {
         if let Some(ref prev) = prev_cwd {
             let _ = std::env::set_current_dir(prev);
@@ -1176,23 +1171,20 @@ fn cmd_init(name: Option<&str>, languages: Vec<String>, no_example: bool) -> Res
     // Output summary after build
     if quiet {
         if is_current_dir {
-            let dir_name = project_dir
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or(".")
-                .to_string();
+            let dir_name =
+                project_dir.file_name().and_then(|s| s.to_str()).unwrap_or(".").to_string();
             init_t3::print_init_success_block_current_dir(&dir_name);
         } else {
             init_t3::print_init_success_block(&options.name);
         }
     } else {
-        let project_name = project_dir
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or(&options.name)
-            .to_string();
+        let project_name =
+            project_dir.file_name().and_then(|s| s.to_str()).unwrap_or(&options.name).to_string();
         println!();
-        project::terminal::success(&format!("Project '{}' initialized successfully!", project_name));
+        project::terminal::success(&format!(
+            "Project '{}' initialized successfully!",
+            project_name
+        ));
         println!();
         println!("Next steps:");
         if options.name != "." {

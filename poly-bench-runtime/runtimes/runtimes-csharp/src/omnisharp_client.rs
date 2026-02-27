@@ -68,7 +68,8 @@ impl LspConfig for CSharpLsConfig {
             }
         }
 
-        // 2. Prefer dotnet tool run when dotnet-tools.json has csharp-ls (local install, correct paths)
+        // 2. Prefer dotnet tool run when dotnet-tools.json has csharp-ls (local install, correct
+        //    paths)
         // dotnet new tool-manifest creates .config/dotnet-tools.json, not dotnet-tools.json in cwd
         let dotnet_tools = workspace.join(".config").join("dotnet-tools.json");
         let dotnet_tools = if dotnet_tools.exists() {
@@ -103,7 +104,12 @@ impl LspConfig for CSharpLsConfig {
             Some(vec!["--stdio".to_string(), "--autoLoadProjects".to_string()])
         } else if path.ends_with("dotnet") || path.ends_with("dotnet.exe") {
             // dotnet tool run csharp-ls (from dotnet-tools.json)
-            Some(vec!["tool".to_string(), "run".to_string(), "csharp-ls".to_string(), "--".to_string()])
+            Some(vec![
+                "tool".to_string(),
+                "run".to_string(),
+                "csharp-ls".to_string(),
+                "--".to_string(),
+            ])
         } else {
             Some(vec![])
         }
@@ -143,10 +149,7 @@ mod tests {
             CSharpLsConfig::server_args_for_path("/tmp/.csharp-ls/roslyn-language-server"),
             Some(vec!["--stdio".to_string(), "--autoLoadProjects".to_string()])
         );
-        assert_eq!(
-            CSharpLsConfig::server_args_for_path("/tmp/.csharp-ls/csharp-ls"),
-            Some(vec![])
-        );
+        assert_eq!(CSharpLsConfig::server_args_for_path("/tmp/.csharp-ls/csharp-ls"), Some(vec![]));
     }
 
     #[test]
@@ -163,7 +166,8 @@ mod tests {
         let tool_dir = base.join(".csharp-ls");
         std::fs::create_dir_all(&tool_dir).expect("create test tool dir");
         let tool_path = tool_dir.join("roslyn-language-server");
-        std::fs::write(&tool_path, b"#!/bin/sh\nexit 0\n").expect("write fake roslyn-language-server");
+        std::fs::write(&tool_path, b"#!/bin/sh\nexit 0\n")
+            .expect("write fake roslyn-language-server");
 
         let found = CSharpLsConfig::find_executable_in_workspace(base.to_string_lossy().as_ref());
         assert_eq!(found, Some(tool_path.to_string_lossy().to_string()));

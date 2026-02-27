@@ -586,7 +586,9 @@ fn build_csharp_env(
         std::fs::write(&nuget_config_path, templates::csharp_nuget_config())
             .map_err(|e| miette::miette!("Failed to write NuGet.config: {}", e))?;
         if nuget_config_path.exists() && options.force {
-            terminal::info_indented("Regenerated NuGet.config (vs-impl feed for roslyn-language-server)");
+            terminal::info_indented(
+                "Regenerated NuGet.config (vs-impl feed for roslyn-language-server)",
+            );
         }
     }
 
@@ -860,11 +862,7 @@ fn install_local_rust_analyzer(rust_env: &Path, options: &BuildOptions) -> Resul
     std::fs::create_dir_all(&bin_dir)
         .map_err(|e| miette::miette!("Failed to create bin directory: {}", e))?;
 
-    let ra_name = if cfg!(windows) {
-        "rust-analyzer.exe"
-    } else {
-        "rust-analyzer"
-    };
+    let ra_name = if cfg!(windows) { "rust-analyzer.exe" } else { "rust-analyzer" };
     let ra_path = bin_dir.join(ra_name);
 
     if ra_path.exists() && !options.force {
@@ -904,10 +902,7 @@ fn install_local_rust_analyzer(rust_env: &Path, options: &BuildOptions) -> Resul
     ));
 
     let response = ureq::get(&url).call().map_err(|e| {
-        miette::miette!(
-            "Failed to download rust-analyzer: {}. Ensure you have network access.",
-            e
-        )
+        miette::miette!("Failed to download rust-analyzer: {}. Ensure you have network access.", e)
     })?;
 
     let mut body = Vec::new();
@@ -922,8 +917,8 @@ fn install_local_rust_analyzer(rust_env: &Path, options: &BuildOptions) -> Resul
     if is_zip {
         // Windows: extract from zip (contains rust-analyzer.exe)
         let cursor = std::io::Cursor::new(&body);
-        let mut archive =
-            zip::ZipArchive::new(cursor).map_err(|e| miette::miette!("Invalid zip archive: {}", e))?;
+        let mut archive = zip::ZipArchive::new(cursor)
+            .map_err(|e| miette::miette!("Invalid zip archive: {}", e))?;
 
         // Find index of rust-analyzer.exe or rust-analyzer
         let idx = (0..archive.len())
@@ -993,8 +988,8 @@ fn rust_analyzer_platform() -> (&'static str, &'static str) {
 
 /// Roslyn Language Server version (pinned for reproducibility)
 const ROSLYN_LANGUAGE_SERVER_VERSION: &str = "5.5.0-2.26103.6";
-/// csharp-ls version (fallback when roslyn-language-server has DotnetToolSettings.xml packaging issues).
-/// Pinned to 0.16.0 for .NET 8 compatibility; 0.20+ requires .NET 10.
+/// csharp-ls version (fallback when roslyn-language-server has DotnetToolSettings.xml packaging
+/// issues). Pinned to 0.16.0 for .NET 8 compatibility; 0.20+ requires .NET 10.
 const CSHARP_LS_VERSION: &str = "0.16.0";
 
 /// dnceng dotnet-tools feed (https://github.com/dotnet/roslyn#nuget-feeds) - may have
@@ -1004,7 +999,8 @@ const ROSLYN_DOTNET_TOOLS_FEED: &str =
 
 /// Install C# LSP locally. Tries roslyn-language-server first, falls back to csharp-ls when
 /// roslyn-language-server has packaging issues (e.g. DotnetToolSettings.xml).
-/// Uses `dotnet tool install --tool-path` so the LSP is self-contained and version-matched to the SDK.
+/// Uses `dotnet tool install --tool-path` so the LSP is self-contained and version-matched to the
+/// SDK.
 fn install_local_roslyn_language_server(csharp_env: &Path, options: &BuildOptions) -> Result<()> {
     let local_dir = csharp_env.join(".csharp-ls");
     std::fs::create_dir_all(&local_dir)
@@ -1029,7 +1025,8 @@ fn install_local_roslyn_language_server(csharp_env: &Path, options: &BuildOption
     }
 
     // Prefer POLYBENCH_CSHARP_LSP_BIN or roslyn-language-server in PATH (copy works)
-    // Don't copy csharp-ls from PATH - the shim has path resolution issues; use local install instead
+    // Don't copy csharp-ls from PATH - the shim has path resolution issues; use local install
+    // instead
     let src = std::env::var("POLYBENCH_CSHARP_LSP_BIN")
         .ok()
         .map(|v| v.trim().to_string())
@@ -1062,11 +1059,7 @@ fn install_local_roslyn_language_server(csharp_env: &Path, options: &BuildOption
                 .permissions();
             perms.set_mode(0o755);
             std::fs::set_permissions(&dest_path, perms).map_err(|e| {
-                miette::miette!(
-                    "Failed to set executable bit on {}: {}",
-                    dest_path.display(),
-                    e
-                )
+                miette::miette!("Failed to set executable bit on {}: {}", dest_path.display(), e)
             })?;
         }
         terminal::success_indented(&format!(
@@ -1142,13 +1135,7 @@ fn install_local_roslyn_language_server(csharp_env: &Path, options: &BuildOption
     let output2 = terminal::run_command_with_spinner(
         &spinner2,
         Command::new(&dotnet)
-            .args([
-                "tool",
-                "install",
-                "csharp-ls",
-                "--version",
-                CSHARP_LS_VERSION,
-            ])
+            .args(["tool", "install", "csharp-ls", "--version", CSHARP_LS_VERSION])
             .current_dir(csharp_env),
     )
     .map_err(|e| miette::miette!("Failed to run dotnet tool install: {}", e))?;

@@ -13,13 +13,10 @@ fn lsp_pyright() -> Result<()> {
         let workspace_root = runtime_env(project_path, poly_bench_dsl::Lang::Python);
         let workspace_root_str = workspace_root.to_string_lossy();
 
-        let client =
-            runtimes_python::pyright_client::PyrightClient::new(&workspace_root_str)
-                .map_err(|e| miette::miette!("PyrightClient::new failed: {}", e))?;
+        let client = runtimes_python::pyright_client::PyrightClient::new(&workspace_root_str)
+            .map_err(|e| miette::miette!("PyrightClient::new failed: {}", e))?;
 
-        client
-            .initialize()
-            .map_err(|e| miette::miette!("initialize failed: {}", e))?;
+        client.initialize().map_err(|e| miette::miette!("initialize failed: {}", e))?;
 
         let test_file = workspace_root.join("test.py");
         let content = "def foo(x: int) -> int:\n    return x\n";
@@ -27,9 +24,7 @@ fn lsp_pyright() -> Result<()> {
             .map_err(|e| miette::miette!("Failed to write test.py: {}", e))?;
 
         let uri = path_to_file_uri(&test_file);
-        client
-            .did_open(&uri, content, 1)
-            .map_err(|e| miette::miette!("did_open failed: {}", e))?;
+        client.did_open(&uri, content, 1).map_err(|e| miette::miette!("did_open failed: {}", e))?;
 
         let hover_result = client.hover(&uri, 0, 4);
         hover_result.map_err(|e| miette::miette!("hover failed: {}", e))?;
