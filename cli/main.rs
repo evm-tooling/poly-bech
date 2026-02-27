@@ -11,7 +11,10 @@ use clap::{
 };
 use indicatif::ProgressBar;
 use miette::Result;
-use std::{io::Read, path::PathBuf};
+use std::{
+    io::{IsTerminal, Read},
+    path::PathBuf,
+};
 
 use poly_bench_dsl as dsl;
 use poly_bench_executor as executor;
@@ -220,6 +223,10 @@ enum Commands {
         /// Runtime to add (go, ts, rust, python, c, csharp)
         #[arg(value_name = "RUNTIME")]
         runtime: String,
+
+        /// Install to ~/.local/bin (user-local) instead of /usr/local/bin (default, requires sudo)
+        #[arg(long)]
+        user_local: bool,
     },
 
     /// Remove a dependency
@@ -355,8 +362,8 @@ async fn main() -> Result<()> {
         Commands::Add { go, ts, rs, py, c, cs, zig, features } => {
             cmd_add(go, ts, rs, py, c, cs, zig, features)?;
         }
-        Commands::AddRuntime { runtime } => {
-            cmd_add_runtime(&runtime)?;
+        Commands::AddRuntime { runtime, user_local } => {
+            cmd_add_runtime(&runtime, user_local)?;
         }
         Commands::Remove { go, ts, rs, py, c, cs, zig } => {
             cmd_remove(go, ts, rs, py, c, cs, zig)?;
@@ -1156,16 +1163,31 @@ fn cmd_init(name: Option<&str>, languages: Vec<String>, no_example: bool) -> Res
     std::env::set_current_dir(&project_dir)
         .map_err(|e| miette::miette!("Failed to change to project directory: {}", e))?;
 
+    // Prepend poly-bench runtime paths so build commands find binaries (e.g. after fresh install)
+    let paths_to_prepend: Vec<_> = options
+        .languages
+        .iter()
+        .filter_map(|r| poly_bench_dsl::Lang::from_str(r.trim()))
+        .filter_map(|l| project::runtime_installer::polybench_runtime_path(l))
+        .collect();
+    if !paths_to_prepend.is_empty() {
+        if let Ok(current) = std::env::var("PATH") {
+            let sep = if cfg!(windows) { ";" } else { ":" };
+            let prepended = paths_to_prepend
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(sep);
+            std::env::set_var("PATH", format!("{}{}{}", prepended, sep, current));
+        }
+    }
+
     let build_options = project::build::BuildOptions { force: false, skip_install: false };
     if let Err(e) = project::build::build_project(&build_options) {
         if let Some(ref prev) = prev_cwd {
             let _ = std::env::set_current_dir(prev);
         }
         return Err(e);
-    }
-
-    if let Some(ref prev) = prev_cwd {
-        let _ = std::env::set_current_dir(prev);
     }
 
     // Output summary after build
@@ -1187,19 +1209,45 @@ fn cmd_init(name: Option<&str>, languages: Vec<String>, no_example: bool) -> Res
         ));
         println!();
         println!("Next steps:");
-        if options.name != "." {
-            println!("  cd {}", project_name);
-        }
         println!("  poly-bench run        # Run benchmarks");
         println!();
     }
+
+    // Cd into project and start shell when we created a new project (not current dir)
+    if !is_current_dir && std::io::stdout().is_terminal() && std::io::stderr().is_terminal() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            println!("  Starting shell in project directory...");
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+            let err = std::process::Command::new(&shell).arg("-i").current_dir(&project_dir).exec();
+            eprintln!("Failed to start shell: {}", err);
+            std::process::exit(1);
+        }
+        #[cfg(not(unix))]
+        {
+            println!("  cd {}", project_dir.display());
+        }
+    }
+    if let Some(ref prev) = prev_cwd {
+        let _ = std::env::set_current_dir(prev);
+    }
+
     Ok(())
+}
+
+/// User choice when a runtime is not installed
+enum InstallChoice {
+    Install,
+    Skip,
 }
 
 /// Interactive init: T3-style menu flow with │ ◇ prompts and blocky logo.
 fn init_interactive() -> Result<(String, Vec<String>)> {
+    use colored::Colorize;
     use dialoguer::{Input, MultiSelect};
     use miette::miette;
+    use poly_bench_dsl::Lang;
     use std::{thread, time::Duration};
 
     init_t3::print_init_logo();
@@ -1260,7 +1308,7 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
             supported.get(i - 1).map(|l| l.as_str().to_string())
         }
     };
-    let languages: Vec<String> = if selected.contains(&0) {
+    let mut languages: Vec<String> = if selected.contains(&0) {
         let individual_langs: Vec<String> =
             selected.iter().filter_map(|&i| lang_to_str(i)).collect();
         if individual_langs.is_empty() {
@@ -1272,7 +1320,79 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
         selected.into_iter().filter_map(lang_to_str).collect()
     };
 
+    // For each selected language, check if runtime is installed. If not, prompt install or skip.
+    let mut to_remove = Vec::new();
+    for (i, raw) in languages.iter().enumerate() {
+        let Some(lang) = Lang::from_str(raw.trim()) else { continue };
+        if project::runtime_check::is_lang_installed(lang) {
+            continue;
+        }
+        let label = poly_bench_runtime::lang_label(lang);
+        let choice = prompt_install_or_skip(&theme, lang, &label)?;
+        match choice {
+            InstallChoice::Install => {
+                if project::runtime_installer::can_auto_install(lang) {
+                    if let Err(e) = project::runtime_installer::install_lang(
+                        lang,
+                        project::runtime_installer::InstallLocation::System,
+                    ) {
+                        eprintln!("{} Failed to install {}: {}", "✗".red(), label, e);
+                        to_remove.push(i);
+                        print_runtime_skip_warning(lang, &label);
+                    }
+                } else {
+                    println!("{} {} requires manual install.", "⚠".yellow(), label);
+                    println!("  {}", project::runtime_check::install_hint(lang));
+                    to_remove.push(i);
+                }
+            }
+            InstallChoice::Skip => {
+                to_remove.push(i);
+                print_runtime_skip_warning(lang, &label);
+            }
+        }
+    }
+    // Remove in reverse order to preserve indices
+    for i in to_remove.into_iter().rev() {
+        languages.remove(i);
+    }
+    if languages.is_empty() {
+        return Err(miette!(
+            "No languages with installed runtimes. Install at least one runtime manually and run 'poly-bench add-runtime <lang>' later."
+        ));
+    }
+
     Ok((name, languages))
+}
+
+fn prompt_install_or_skip(
+    theme: &init_t3::T3StyleTheme,
+    _lang: poly_bench_dsl::Lang,
+    label: &str,
+) -> Result<InstallChoice> {
+    use dialoguer::Select;
+    use miette::miette;
+
+    let choices = [
+        format!("Install now (poly-bench will download and configure {})", label),
+        format!("Skip (install manually later, add via poly-bench add-runtime {})", label),
+    ];
+    let selected = Select::with_theme(theme)
+        .with_prompt(&format!("{} is not installed. What would you like to do?", label))
+        .items(&choices)
+        .default(0)
+        .interact()
+        .map_err(|e| miette!("Prompt failed: {}", e))?;
+    Ok(if selected == 0 { InstallChoice::Install } else { InstallChoice::Skip })
+}
+
+fn print_runtime_skip_warning(lang: poly_bench_dsl::Lang, label: &str) {
+    use colored::Colorize;
+    println!();
+    println!("{} {} is not installed.", "⚠".yellow(), label);
+    println!("  Install manually and run 'poly-bench add-runtime {}' later.", lang.as_str());
+    println!("  {}", project::runtime_check::install_hint(lang));
+    println!();
 }
 
 fn cmd_new(name: &str) -> Result<()> {
@@ -1387,7 +1507,7 @@ fn cmd_remove(
     Ok(())
 }
 
-fn cmd_add_runtime(runtime: &str) -> Result<()> {
+fn cmd_add_runtime(runtime: &str, user_local: bool) -> Result<()> {
     use colored::Colorize;
     use poly_bench_dsl::Lang;
 
@@ -1400,6 +1520,54 @@ fn cmd_add_runtime(runtime: &str) -> Result<()> {
             runtime,
             supported.iter().map(|l| l.as_str()).collect::<Vec<_>>().join(", ")
         ));
+    }
+
+    // If runtime not installed, prompt install or exit
+    let did_install = if !project::runtime_check::is_lang_installed(lang) {
+        let label = poly_bench_runtime::lang_label(lang);
+        let theme = init_t3::T3StyleTheme::new();
+        let choice = prompt_install_or_skip(&theme, lang, &label)?;
+        match choice {
+            InstallChoice::Install => {
+                if project::runtime_installer::can_auto_install(lang) {
+                    let loc = if user_local {
+                        project::runtime_installer::InstallLocation::UserLocal
+                    } else {
+                        project::runtime_installer::InstallLocation::System
+                    };
+                    project::runtime_installer::install_lang(lang, loc)?;
+                    true
+                } else {
+                    println!("{} {} requires manual install.", "⚠".yellow(), label);
+                    println!("  {}", project::runtime_check::install_hint(lang));
+                    return Err(miette::miette!(
+                        "Cannot add {} without runtime. Install manually and run 'poly-bench add-runtime {}' again.",
+                        label,
+                        lang.as_str()
+                    ));
+                }
+            }
+            InstallChoice::Skip => {
+                print_runtime_skip_warning(lang, &label);
+                return Err(miette::miette!(
+                    "Cannot add {} without runtime. Install manually and run 'poly-bench add-runtime {}' again.",
+                    label,
+                    lang.as_str()
+                ));
+            }
+        }
+    } else {
+        false
+    };
+
+    // If we just installed, add to current process PATH so build can find the binary
+    if did_install {
+        if let Some(path) = project::runtime_installer::polybench_runtime_path(lang) {
+            if let Ok(current) = std::env::var("PATH") {
+                let sep = if cfg!(windows) { ";" } else { ":" };
+                std::env::set_var("PATH", format!("{}{}{}", path.display(), sep, current));
+            }
+        }
     }
 
     let current_dir = std::env::current_dir()

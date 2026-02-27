@@ -12,6 +12,8 @@ pub mod detectors;
 pub mod error;
 pub mod init;
 pub mod manifest;
+pub mod runtime_check;
+pub mod runtime_installer;
 pub mod templates;
 pub mod terminal;
 

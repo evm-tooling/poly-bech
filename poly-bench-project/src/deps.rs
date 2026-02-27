@@ -120,6 +120,9 @@ fn go_get_spec_for_transitives(package: &str, version: &str) -> String {
 
 /// Add a Go dependency to the project
 pub fn add_go_dependency(spec: &str) -> Result<()> {
+    if !crate::runtime_check::is_lang_installed(Lang::Go) {
+        return Err(crate::runtime_check::not_installed_error(Lang::Go));
+    }
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
 
@@ -173,6 +176,9 @@ pub fn add_go_dependency(spec: &str) -> Result<()> {
 
 /// Add a TypeScript dependency to the project
 pub fn add_ts_dependency(spec: &str) -> Result<()> {
+    if !crate::runtime_check::is_lang_installed(Lang::TypeScript) {
+        return Err(crate::runtime_check::not_installed_error(Lang::TypeScript));
+    }
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
 
@@ -236,6 +242,9 @@ pub fn add_rust_dependency(spec: &str) -> Result<()> {
 
 /// Add a Rust dependency with optional features to the project
 pub fn add_rust_dependency_with_features(spec: &str, features: Option<&[String]>) -> Result<()> {
+    if !crate::runtime_check::is_lang_installed(Lang::Rust) {
+        return Err(crate::runtime_check::not_installed_error(Lang::Rust));
+    }
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
 
@@ -506,6 +515,9 @@ fn parse_python_dep_spec(spec: &str) -> (String, String) {
 
 /// Add a Python dependency to the project
 pub fn add_python_dependency(spec: &str) -> Result<()> {
+    if !crate::runtime_check::is_lang_installed(Lang::Python) {
+        return Err(crate::runtime_check::not_installed_error(Lang::Python));
+    }
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
 
@@ -661,6 +673,9 @@ pub fn remove_python_dependency(package: &str) -> Result<()> {
 
 /// Add a C# dependency to the project
 pub fn add_csharp_dependency(spec: &str) -> Result<()> {
+    if !crate::runtime_check::is_lang_installed(Lang::CSharp) {
+        return Err(crate::runtime_check::not_installed_error(Lang::CSharp));
+    }
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
 
@@ -920,6 +935,9 @@ fn install_runtime_deps_for_lang(
 
 /// Install Go dependencies
 fn install_go_deps(project_root: &Path, go_config: &manifest::GoConfig) -> Result<()> {
+    if !crate::runtime_check::is_lang_installed(Lang::Go) {
+        return Err(crate::runtime_check::not_installed_error(Lang::Go));
+    }
     terminal::section("Go dependencies");
 
     let go_root = resolve_runtime_root(project_root, Lang::Go);
@@ -972,6 +990,9 @@ fn install_ts_deps(
     ts_config: &manifest::TsConfig,
     project_name: &str,
 ) -> Result<()> {
+    if !crate::runtime_check::is_lang_installed(Lang::TypeScript) {
+        return Err(crate::runtime_check::not_installed_error(Lang::TypeScript));
+    }
     terminal::section("TypeScript dependencies");
 
     let ts_root = resolve_runtime_root(project_root, Lang::TypeScript);
@@ -1050,6 +1071,9 @@ fn install_rust_deps(
     rust_config: &manifest::RustConfig,
     project_name: &str,
 ) -> Result<()> {
+    if !crate::runtime_check::is_lang_installed(Lang::Rust) {
+        return Err(crate::runtime_check::not_installed_error(Lang::Rust));
+    }
     terminal::section("Rust dependencies");
 
     let rust_root = resolve_runtime_root(project_root, Lang::Rust);
@@ -1103,6 +1127,9 @@ fn install_rust_deps(
 
 /// Install Python dependencies from manifest
 fn install_python_deps(project_root: &Path, python_config: &manifest::PythonConfig) -> Result<()> {
+    if !crate::runtime_check::is_lang_installed(Lang::Python) {
+        return Err(crate::runtime_check::not_installed_error(Lang::Python));
+    }
     terminal::section("Python dependencies");
 
     let python_root = runtime_env(project_root, Lang::Python);
@@ -1148,6 +1175,9 @@ fn install_python_deps(project_root: &Path, python_config: &manifest::PythonConf
 
 /// Install C dependencies from manifest
 fn install_c_deps(project_root: &Path, c_config: &manifest::CConfig) -> Result<()> {
+    if !crate::runtime_check::is_lang_installed(Lang::C) {
+        return Err(crate::runtime_check::not_installed_error(Lang::C));
+    }
     terminal::section("C dependencies");
 
     let c_root = runtime_env(project_root, Lang::C);
@@ -1168,6 +1198,9 @@ fn install_c_deps(project_root: &Path, c_config: &manifest::CConfig) -> Result<(
 
 /// Install C# dependencies from manifest
 fn install_csharp_deps(project_root: &Path, csharp_config: &manifest::CSharpConfig) -> Result<()> {
+    if !crate::runtime_check::is_lang_installed(Lang::CSharp) {
+        return Err(crate::runtime_check::not_installed_error(Lang::CSharp));
+    }
     terminal::section("C# dependencies");
 
     let csharp_root = runtime_env(project_root, Lang::CSharp);
@@ -1226,6 +1259,9 @@ fn install_csharp_deps(project_root: &Path, csharp_config: &manifest::CSharpConf
 
 /// Install Zig dependencies from manifest
 fn install_zig_deps(project_root: &Path, zig_config: &manifest::ZigConfig) -> Result<()> {
+    if !crate::runtime_check::is_lang_installed(Lang::Zig) {
+        return Err(crate::runtime_check::not_installed_error(Lang::Zig));
+    }
     terminal::section("Zig dependencies");
 
     let zig_root = runtime_env(project_root, Lang::Zig);

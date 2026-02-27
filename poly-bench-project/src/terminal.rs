@@ -105,6 +105,11 @@ pub fn info_indented(msg: &str) {
     println!("  {} {}", "·".dimmed(), msg);
 }
 
+/// Print install step progress (e.g. "[1/4] Downloading...")
+pub fn install_step(current: u32, total: u32, msg: &str) {
+    println!("  {} [{}/{}] {}", "·".dimmed(), current, total, msg);
+}
+
 /// Print a section header
 pub fn section(msg: &str) {
     println!();
