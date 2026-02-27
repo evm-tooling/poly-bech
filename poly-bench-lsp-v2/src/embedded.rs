@@ -3,11 +3,11 @@
 //! This module extracts embedded code blocks (Go, TypeScript, Rust, Python) from
 //! the partial AST and provides utilities for working with them.
 
-pub use poly_bench_lsp_traits::{BlockType, EmbeddedBlock};
 use poly_bench_syntax::{
     CodeBlock, Lang, Node, PartialBenchmark, PartialFile, PartialFixture, PartialSuite, Span,
     StructuredSetup,
 };
+pub use poly_bench_traits::{BlockType, EmbeddedBlock};
 use std::collections::HashMap;
 
 /// Configuration for embedded language checking

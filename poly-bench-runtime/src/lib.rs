@@ -47,7 +47,7 @@ pub use lang_display::{
     lang_label,
 };
 pub use measurement::Measurement;
-pub use poly_bench_runtime_traits::{
+pub use poly_bench_traits::{
     detect_from_markers, ErrorMapper, LangDisplayInfo, LineMapping, LineMappings,
     ProjectRootDetector, RuntimeFactory,
 };

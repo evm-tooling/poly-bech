@@ -1,16 +1,15 @@
 //! Runtime registry for pluggable language runtimes
 //!
 //! Plugins register themselves via the `PLUGINS` distributed slice in
-//! poly-bench-runtime-traits. No manual registration needed here.
+//! poly-bench-traits. No manual registration needed here.
 
 use crate::config::RuntimeConfig;
 use miette::{miette, Result};
 use poly_bench_dsl::Lang;
-use poly_bench_lsp_traits::{
+use poly_bench_traits::{
     EmbeddedDiagnosticProvider, EmbeddedDiagnosticSetup, EmbeddedHoverProvider, EmbeddedLspClient,
-    HelperFunctionExtractor, VirtualFileBuilder,
+    HelperFunctionExtractor, ProjectRootDetector, Runtime, VirtualFileBuilder, PLUGINS,
 };
-use poly_bench_runtime_traits::{ProjectRootDetector, Runtime, PLUGINS};
 use std::{collections::HashMap, sync::Arc};
 
 /// Create a runtime for the given language

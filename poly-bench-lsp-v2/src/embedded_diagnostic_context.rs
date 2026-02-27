@@ -5,11 +5,11 @@
 
 use std::sync::Arc;
 
-use poly_bench_lsp_traits::{EmbeddedDiagnosticContext, EmbeddedLspClient};
 use poly_bench_runtime::{
     get_embedded_diagnostic_setup, get_embedded_lsp_client, init_embedded_lsp_client,
 };
 use poly_bench_syntax::Lang;
+use poly_bench_traits::{EmbeddedDiagnosticContext, EmbeddedLspClient};
 
 /// LSP implementation of EmbeddedDiagnosticContext
 pub struct LspEmbeddedDiagnosticContext {
@@ -58,7 +58,7 @@ impl EmbeddedDiagnosticContext for LspEmbeddedDiagnosticContext {
         if module_root != self.module_root {
             return;
         }
-        let dsl_lang = poly_bench_lsp_traits::syntax_lang_to_dsl(lang);
+        let dsl_lang = poly_bench_traits::syntax_lang_to_dsl(lang);
         let _ = init_embedded_lsp_client(dsl_lang, module_root);
         if let Some(setup) = get_embedded_diagnostic_setup(dsl_lang) {
             setup.prepare_environment(module_root);

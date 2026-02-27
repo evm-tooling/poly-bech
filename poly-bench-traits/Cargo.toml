@@ -1,0 +1,22 @@
+[package]
+name = "poly-bench-traits"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Traits and types for poly-bench (LSP integration, runtimes)"
+
+[dependencies]
+linkme = "0.3"
+poly-bench-dsl.workspace = true
+poly-bench-syntax.workspace = true
+poly-bench-ir.workspace = true
+poly-bench-ir-traits.workspace = true
+miette.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+tower-lsp.workspace = true
+dashmap.workspace = true
+tracing = "0.1"

@@ -247,6 +247,8 @@ mod tests {
             Measurement {
                 iterations: 100,
                 total_nanos: 100_000,
+                warmup_nanos: None,
+                spawn_nanos: None,
                 nanos_per_op: 1000.0,
                 ops_per_sec: 1_000_000.0,
                 min_nanos: None,
@@ -285,6 +287,8 @@ mod tests {
             Measurement {
                 iterations: 100,
                 total_nanos: 130_000,
+                warmup_nanos: None,
+                spawn_nanos: None,
                 nanos_per_op: 1300.0,
                 ops_per_sec: 769_230.0,
                 min_nanos: None,

@@ -5,9 +5,9 @@
 
 use std::sync::Arc;
 
-use poly_bench_lsp_traits::{EmbeddedHoverContext, EmbeddedLspClient, VirtualFile};
 use poly_bench_runtime::{get_embedded_lsp_client, init_embedded_lsp_client};
 use poly_bench_syntax::Lang;
+use poly_bench_traits::{EmbeddedHoverContext, EmbeddedLspClient, VirtualFile};
 
 use crate::{
     document::Document, embedded::blocks_for_language, virtual_files::VirtualFileManagers,

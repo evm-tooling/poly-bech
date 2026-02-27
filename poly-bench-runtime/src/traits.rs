@@ -1,3 +1,3 @@
-//! Runtime trait definition - re-export from poly-bench-runtime-traits
+//! Runtime trait definition - re-export from poly-bench-traits
 
-pub use poly_bench_runtime_traits::Runtime;
+pub use poly_bench_traits::Runtime;
