@@ -25,9 +25,7 @@ fn lsp_csharp() -> Result<()> {
             .map_err(|e| miette::miette!("OmniSharpClient::new failed: {}", e))?;
         eprintln!("[lsp_csharp] Client created, calling initialize()...");
 
-        client
-            .initialize()
-            .map_err(|e| miette::miette!("initialize failed: {}", e))?;
+        client.initialize().map_err(|e| miette::miette!("initialize failed: {}", e))?;
         eprintln!("[lsp_csharp] initialize() OK, writing Test.cs...");
 
         // File must be inside workspace so Roslyn can resolve project (polybench.csproj)
@@ -36,23 +34,15 @@ fn lsp_csharp() -> Result<()> {
 "#;
         std::fs::write(&test_file, content)
             .map_err(|e| miette::miette!("Failed to write Test.cs: {}", e))?;
-        eprintln!(
-            "[lsp_csharp] Test.cs written at {}, calling did_open()...",
-            test_file.display()
-        );
+        eprintln!("[lsp_csharp] Test.cs written at {}, calling did_open()...", test_file.display());
 
         let uri = path_to_file_uri(&test_file);
-        client
-            .did_open(&uri, content, 1)
-            .map_err(|e| miette::miette!("did_open failed: {}", e))?;
+        client.did_open(&uri, content, 1).map_err(|e| miette::miette!("did_open failed: {}", e))?;
         eprintln!("[lsp_csharp] did_open() OK, calling hover()...");
 
         // Hover on "Foo" at line 0, char ~25
         let hover_result = client.hover(&uri, 0, 25);
-        eprintln!(
-            "[lsp_csharp] hover() returned: {:?}",
-            hover_result.as_ref().map(|_| "Ok")
-        );
+        eprintln!("[lsp_csharp] hover() returned: {:?}", hover_result.as_ref().map(|_| "Ok"));
         hover_result.map_err(|e| miette::miette!("hover failed: {}", e))?;
 
         eprintln!("[lsp_csharp] test passed");

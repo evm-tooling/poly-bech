@@ -16,9 +16,7 @@ fn lsp_zls() -> Result<()> {
         let client = runtimes_zig::zls_client::ZlsClient::new(&workspace_root_str)
             .map_err(|e| miette::miette!("ZlsClient::new failed: {}", e))?;
 
-        client
-            .initialize()
-            .map_err(|e| miette::miette!("initialize failed: {}", e))?;
+        client.initialize().map_err(|e| miette::miette!("initialize failed: {}", e))?;
 
         let test_file = workspace_root.join("src").join("test.zig");
         let content = "fn foo(x: i32) i32 { return x }\n";
@@ -26,9 +24,7 @@ fn lsp_zls() -> Result<()> {
             .map_err(|e| miette::miette!("Failed to write test.zig: {}", e))?;
 
         let uri = path_to_file_uri(&test_file);
-        client
-            .did_open(&uri, content, 1)
-            .map_err(|e| miette::miette!("did_open failed: {}", e))?;
+        client.did_open(&uri, content, 1).map_err(|e| miette::miette!("did_open failed: {}", e))?;
 
         let hover_result = client.hover(&uri, 0, 3);
         hover_result.map_err(|e| miette::miette!("hover failed: {}", e))?;

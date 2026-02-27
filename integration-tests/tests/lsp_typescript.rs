@@ -1,5 +1,5 @@
-//! TypeScript LSP integration test: build, start typescript-language-server, initialize, did_open, hover.
-//! Run with: cargo test -p integration-tests lsp_typescript -- --ignored --nocapture
+//! TypeScript LSP integration test: build, start typescript-language-server, initialize, did_open,
+//! hover. Run with: cargo test -p integration-tests lsp_typescript -- --ignored --nocapture
 
 use integration_tests::{init_lsp_tracing, path_to_file_uri, with_temp_project_build};
 use miette::Result;
@@ -13,13 +13,10 @@ fn lsp_typescript() -> Result<()> {
         let workspace_root = runtime_env(project_path, poly_bench_dsl::Lang::TypeScript);
         let workspace_root_str = workspace_root.to_string_lossy();
 
-        let client =
-            runtimes_ts::tsserver_client::TsServerClient::new(&workspace_root_str)
-                .map_err(|e| miette::miette!("TsServerClient::new failed: {}", e))?;
+        let client = runtimes_ts::tsserver_client::TsServerClient::new(&workspace_root_str)
+            .map_err(|e| miette::miette!("TsServerClient::new failed: {}", e))?;
 
-        client
-            .initialize()
-            .map_err(|e| miette::miette!("initialize failed: {}", e))?;
+        client.initialize().map_err(|e| miette::miette!("initialize failed: {}", e))?;
 
         let test_file = workspace_root.join("test.ts");
         let content = "function foo(x: number): number { return x }\n";
@@ -27,9 +24,7 @@ fn lsp_typescript() -> Result<()> {
             .map_err(|e| miette::miette!("Failed to write test.ts: {}", e))?;
 
         let uri = path_to_file_uri(&test_file);
-        client
-            .did_open(&uri, content, 1)
-            .map_err(|e| miette::miette!("did_open failed: {}", e))?;
+        client.did_open(&uri, content, 1).map_err(|e| miette::miette!("did_open failed: {}", e))?;
 
         let hover_result = client.hover(&uri, 0, 9);
         hover_result.map_err(|e| miette::miette!("hover failed: {}", e))?;

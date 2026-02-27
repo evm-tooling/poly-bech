@@ -18,7 +18,8 @@ pub struct InitOptions {
     pub no_example: bool,
     /// When true, skip all success messages and final "Next steps" (caller prints T3-style output)
     pub quiet: bool,
-    /// When true, skip the final success/next-steps message (caller will print after running build)
+    /// When true, skip the final success/next-steps message (caller will print after running
+    /// build)
     pub defer_final_message: bool,
 }
 
@@ -32,8 +33,8 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     };
 
     // Get the actual project name for the manifest (used in go.mod, package.json, etc.).
-    // When given a path, use the directory component so we get a valid module name (e.g. "lsp-test-go"
-    // not "/full/path/lsp-test-go" which would be invalid for Go).
+    // When given a path, use the directory component so we get a valid module name (e.g.
+    // "lsp-test-go" not "/full/path/lsp-test-go" which would be invalid for Go).
     let project_name = if options.name == "." {
         project_dir.file_name().and_then(|s| s.to_str()).unwrap_or("my-project").to_string()
     } else {
@@ -282,11 +283,8 @@ fn init_runtime_env_for_lang(
                 "public static class Program { public static void Main() {} }\n",
             )
             .map_err(|e| miette::miette!("Failed to write Program.cs: {}", e))?;
-            std::fs::write(
-                csharp_env.join("NuGet.config"),
-                templates::csharp_nuget_config(),
-            )
-            .map_err(|e| miette::miette!("Failed to write NuGet.config: {}", e))?;
+            std::fs::write(csharp_env.join("NuGet.config"), templates::csharp_nuget_config())
+                .map_err(|e| miette::miette!("Failed to write NuGet.config: {}", e))?;
             if !quiet {
                 terminal::success(
                     "Created .polybench/runtime-env/csharp/ (polybench.csproj, Program.cs, NuGet.config)",
