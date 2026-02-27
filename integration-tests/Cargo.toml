@@ -1,0 +1,24 @@
+[package]
+name = "integration-tests"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Integration tests for poly-bench (init, LSP build and request flow)"
+
+[dependencies]
+poly-bench-project.workspace = true
+poly-bench-dsl.workspace = true
+runtimes-go = { path = "../poly-bench-runtime/runtimes/runtimes-go" }
+runtimes-rust = { path = "../poly-bench-runtime/runtimes/runtimes-rust" }
+runtimes-ts = { path = "../poly-bench-runtime/runtimes/runtimes-ts" }
+runtimes-python = { path = "../poly-bench-runtime/runtimes/runtimes-python" }
+runtimes-zig = { path = "../poly-bench-runtime/runtimes/runtimes-zig" }
+runtimes-csharp = { path = "../poly-bench-runtime/runtimes/runtimes-csharp" }
+tempfile.workspace = true
+miette.workspace = true
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+ctrlc = "3"

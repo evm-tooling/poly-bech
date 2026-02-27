@@ -1,4 +1,7 @@
-//! csharp-ls client for embedded C# code.
+//! Roslyn Language Server client for embedded C# code.
+//!
+//! Uses Microsoft's official roslyn-language-server (from dotnet/roslyn) via `dotnet tool install`.
+//! Avoids csharp-ls version/SDK compatibility issues.
 
 use std::{env, path::Path, sync::Arc};
 
@@ -13,11 +16,11 @@ pub fn init_omnisharp_client(workspace_root: &str) -> Option<Arc<OmniSharpClient
         Ok(client) => Some(client.clone()),
         Err(e) => {
             eprintln!(
-                "[poly-bench:csharp-lsp] failed to initialize csharp-ls client at workspace '{}': {}",
+                "[poly-bench:csharp-lsp] failed to initialize Roslyn Language Server at workspace '{}': {}",
                 workspace_root, e
             );
             tracing::error!(
-                "[csharp-lsp] failed to initialize csharp-ls client at workspace '{}': {}",
+                "[csharp-lsp] failed to initialize Roslyn Language Server at workspace '{}': {}",
                 workspace_root,
                 e
             );
@@ -33,7 +36,7 @@ pub fn get_omnisharp_client() -> Option<Arc<OmniSharpClient>> {
 pub struct CSharpLsConfig;
 
 impl LspConfig for CSharpLsConfig {
-    const SERVER_NAME: &'static str = "csharp-ls";
+    const SERVER_NAME: &'static str = "C# LSP";
     const LANGUAGE_ID: &'static str = "csharp";
 
     fn find_executable() -> Option<String> {
@@ -43,25 +46,67 @@ impl LspConfig for CSharpLsConfig {
                 return Some(trimmed.to_string());
             }
         }
-        which::which("csharp-ls").ok().map(|p| p.to_string_lossy().to_string())
+        which::which("roslyn-language-server")
+            .ok()
+            .or_else(|| which::which("csharp-ls").ok())
+            .map(|p| p.to_string_lossy().to_string())
     }
 
     fn find_executable_in_workspace(workspace_root: &str) -> Option<String> {
         let workspace = Path::new(workspace_root);
-        let candidates = [
-            workspace.join(".csharp-ls").join("csharp-ls"),
-            workspace.join(".csharp-ls").join("csharp-ls.cmd"),
-            workspace.join(".csharp-ls").join("csharp-ls.exe"),
-        ];
-        candidates.iter().find(|p| p.exists()).map(|p| p.to_string_lossy().to_string())
+        let dot_csharp_ls = workspace.join(".csharp-ls");
+
+        // 1. Prefer roslyn-language-server in .csharp-ls (tool-path install)
+        if dot_csharp_ls.is_dir() {
+            let candidates = [
+                dot_csharp_ls.join("roslyn-language-server"),
+                dot_csharp_ls.join("roslyn-language-server.exe"),
+                dot_csharp_ls.join("roslyn-language-server.cmd"),
+            ];
+            if let Some(p) = candidates.iter().find(|p| p.exists()) {
+                return Some(p.to_string_lossy().to_string());
+            }
+        }
+
+        // 2. Prefer dotnet tool run when dotnet-tools.json has csharp-ls (local install, correct paths)
+        // dotnet new tool-manifest creates .config/dotnet-tools.json, not dotnet-tools.json in cwd
+        let dotnet_tools = workspace.join(".config").join("dotnet-tools.json");
+        let dotnet_tools = if dotnet_tools.exists() {
+            Some(dotnet_tools)
+        } else {
+            let fallback = workspace.join("dotnet-tools.json");
+            if fallback.exists() {
+                Some(fallback)
+            } else {
+                None
+            }
+        };
+        if let Some(dotnet_tools) = dotnet_tools {
+            if let Ok(content) = std::fs::read_to_string(&dotnet_tools) {
+                if content.contains("csharp-ls") {
+                    if let Some(dotnet) = which::which("dotnet").ok() {
+                        return Some(dotnet.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     fn server_args() -> Vec<String> {
-        vec![]
+        vec!["--stdio".to_string(), "--autoLoadProjects".to_string()]
     }
 
-    fn server_args_for_path(_path: &str) -> Option<Vec<String>> {
-        Some(vec![])
+    fn server_args_for_path(path: &str) -> Option<Vec<String>> {
+        if path.contains("roslyn-language-server") {
+            Some(vec!["--stdio".to_string(), "--autoLoadProjects".to_string()])
+        } else if path.ends_with("dotnet") || path.ends_with("dotnet.exe") {
+            // dotnet tool run csharp-ls (from dotnet-tools.json)
+            Some(vec!["tool".to_string(), "run".to_string(), "csharp-ls".to_string(), "--".to_string()])
+        } else {
+            Some(vec![])
+        }
     }
 
     fn current_dir(workspace_root: &str) -> Option<std::path::PathBuf> {
@@ -92,19 +137,22 @@ mod tests {
     use tower_lsp::lsp_types::HoverContents;
 
     #[test]
-    fn test_csharp_ls_args_are_empty() {
+    fn test_csharp_lsp_args() {
         let _ = CSharpLsConfig::find_executable();
-        assert_eq!(CSharpLsConfig::server_args(), Vec::<String>::new());
         assert_eq!(
-            CSharpLsConfig::server_args_for_path("/tmp/csharp-ls"),
-            Some(Vec::<String>::new())
+            CSharpLsConfig::server_args_for_path("/tmp/.csharp-ls/roslyn-language-server"),
+            Some(vec!["--stdio".to_string(), "--autoLoadProjects".to_string()])
+        );
+        assert_eq!(
+            CSharpLsConfig::server_args_for_path("/tmp/.csharp-ls/csharp-ls"),
+            Some(vec![])
         );
     }
 
     #[test]
-    fn test_workspace_lookup_is_disabled() {
+    fn test_workspace_lookup() {
         let unique = format!(
-            "polybench-csharp-ls-test-{}-{}",
+            "polybench-csharp-lsp-test-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -114,8 +162,8 @@ mod tests {
         let base = std::env::temp_dir().join(unique);
         let tool_dir = base.join(".csharp-ls");
         std::fs::create_dir_all(&tool_dir).expect("create test tool dir");
-        let tool_path = tool_dir.join("csharp-ls");
-        std::fs::write(&tool_path, b"#!/bin/sh\nexit 0\n").expect("write fake csharp-ls");
+        let tool_path = tool_dir.join("roslyn-language-server");
+        std::fs::write(&tool_path, b"#!/bin/sh\nexit 0\n").expect("write fake roslyn-language-server");
 
         let found = CSharpLsConfig::find_executable_in_workspace(base.to_string_lossy().as_ref());
         assert_eq!(found, Some(tool_path.to_string_lossy().to_string()));
