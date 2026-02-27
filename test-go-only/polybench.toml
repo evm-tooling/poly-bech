@@ -1,0 +1,17 @@
+[project]
+name = "test-go-only"
+version = "0.0.1"
+
+[defaults]
+iterations = 1000
+warmup = 100
+languages = ["go"]
+
+[go]
+module = "test-go-only"
+version = "1.21"
+
+[output]
+report_formats = []
+output_dir = "out"
+auto_save_results = true

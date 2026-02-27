@@ -434,6 +434,7 @@ module.exports = grammar({
       'showRegression',
       'regressionModel',
       'yScale',
+      'showStatsTable',
     ),
 
     _chart_value: $ => choice(

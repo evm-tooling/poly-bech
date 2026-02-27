@@ -440,7 +440,6 @@ declare suite bubbleN performance timeBased sameDataset: true {
             showErrorBars: true,
             showRegression: true,
             regressionModel: "auto",
-            showStatsTable: false
         )
         charting.drawBarChart(
             title: "Bubble Sort - Grouped Bars",
@@ -451,7 +450,6 @@ declare suite bubbleN performance timeBased sameDataset: true {
             showErrorBars: true,
             showRegression: true,
             regressionModel: "auto",
-            showStatsTable: false
         )
         charting.drawLineChart(
             title: "Bubble Sort - O(n²)",

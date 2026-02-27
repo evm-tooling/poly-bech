@@ -1392,6 +1392,10 @@
         {
           "type": "STRING",
           "value": "yScale"
+        },
+        {
+          "type": "STRING",
+          "value": "showStatsTable"
         }
       ]
     },

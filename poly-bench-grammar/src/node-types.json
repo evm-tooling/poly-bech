@@ -1537,6 +1537,10 @@
     "named": false
   },
   {
+    "type": "showStatsTable",
+    "named": false
+  },
+  {
     "type": "showStdDev",
     "named": false
   },

@@ -7,6 +7,7 @@ use poly_bench_traits::HelperFunctionExtractor;
 static C_BUILTINS: &[&str] = &[
     "printf", "fprintf", "snprintf", "puts", "malloc", "calloc", "realloc", "free", "memcpy",
     "memset", "memcmp", "strlen", "strcmp", "strncmp", "atoi", "atol", "strtol", "strtod",
+    "sizeof", // C built-in operator, not a function
 ];
 
 pub(crate) struct CHelperFunctionExtractor;

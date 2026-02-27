@@ -80,9 +80,22 @@ fn compute_c_path(bench_path: &str, c_root: &str) -> (String, String) {
     (uri, path_str)
 }
 
+/// Standard C headers injected so clangd can resolve int32_t, size_t, malloc, memcpy, etc.
+const C_VIRTUAL_HEADERS: &str = r#"#include <stdint.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
+"#;
+
 fn build_c(core: &mut VirtualFileBuilderCore, blocks: &[&EmbeddedBlock], fixture_names: &[String]) {
     let (imports, declares, helpers, inits, other) =
         VirtualFileBuilderCore::categorize_blocks(blocks);
+
+    // Inject standard headers so clangd resolves int32_t, size_t, malloc, memcpy, etc.
+    for line in C_VIRTUAL_HEADERS.lines() {
+        core.write_line(line);
+    }
+    core.write_line("");
 
     for block in &imports {
         core.add_block_content_normalized(block, normalize_c_indent);
