@@ -1,8 +1,53 @@
 //! Template strings for generated project files
+use miette::Result;
 use poly_bench_dsl::Lang;
+use std::path::Path;
 
 fn has_lang(enabled_langs: &[Lang], lang: Lang) -> bool {
     enabled_langs.contains(&lang)
+}
+
+/// Embedded sort fixture hex files for the bubble benchmark
+mod bubble_fixtures {
+    macro_rules! include_sort_hex {
+        ($name:ident, $file:literal) => {
+            pub static $name: &[u8] = include_bytes!($file);
+        };
+    }
+    include_sort_hex!(SORT_100, "../fixtures/sort/sort_100.hex");
+    include_sort_hex!(SORT_200, "../fixtures/sort/sort_200.hex");
+    include_sort_hex!(SORT_300, "../fixtures/sort/sort_300.hex");
+    include_sort_hex!(SORT_400, "../fixtures/sort/sort_400.hex");
+    include_sort_hex!(SORT_500, "../fixtures/sort/sort_500.hex");
+    include_sort_hex!(SORT_600, "../fixtures/sort/sort_600.hex");
+    include_sort_hex!(SORT_700, "../fixtures/sort/sort_700.hex");
+    include_sort_hex!(SORT_800, "../fixtures/sort/sort_800.hex");
+    include_sort_hex!(SORT_900, "../fixtures/sort/sort_900.hex");
+    include_sort_hex!(SORT_1000, "../fixtures/sort/sort_1000.hex");
+}
+
+/// Write bubble sort fixture hex files to benchmarks_dir/fixtures/sort/
+pub fn write_bubble_fixtures(benchmarks_dir: &Path) -> Result<()> {
+    let fixtures_dir = benchmarks_dir.join("fixtures").join("sort");
+    std::fs::create_dir_all(&fixtures_dir)
+        .map_err(|e| miette::miette!("Failed to create fixtures/sort: {}", e))?;
+    let files = [
+        ("sort_100.hex", bubble_fixtures::SORT_100),
+        ("sort_200.hex", bubble_fixtures::SORT_200),
+        ("sort_300.hex", bubble_fixtures::SORT_300),
+        ("sort_400.hex", bubble_fixtures::SORT_400),
+        ("sort_500.hex", bubble_fixtures::SORT_500),
+        ("sort_600.hex", bubble_fixtures::SORT_600),
+        ("sort_700.hex", bubble_fixtures::SORT_700),
+        ("sort_800.hex", bubble_fixtures::SORT_800),
+        ("sort_900.hex", bubble_fixtures::SORT_900),
+        ("sort_1000.hex", bubble_fixtures::SORT_1000),
+    ];
+    for (name, data) in files {
+        std::fs::write(fixtures_dir.join(name), data)
+            .map_err(|e| miette::miette!("Failed to write {}: {}", name, e))?;
+    }
+    Ok(())
 }
 
 /// Generate the example.bench file content from a language list.
@@ -18,8 +63,8 @@ pub fn example_bench_for_langs(enabled_langs: &[Lang]) -> String {
     )
 }
 
-/// Generate the example.bench file content
-/// Uses only standard library features - no external dependencies required
+/// Generate the example.bench file content (bubble sort benchmark)
+/// Uses bubble sort on int32 arrays with @file fixtures
 pub fn example_bench(
     has_go: bool,
     has_ts: bool,
@@ -43,362 +88,369 @@ pub fn example_bench(
         content.push_str("use std::charting\n\n");
     }
 
-    content.push_str("suite example {\n");
-    content.push_str("    description: \"Fibonacci benchmark - no external dependencies\"\n");
-    content.push_str("    warmup: 10\n");
-
-    // Set baseline if more than one language
-    if lang_count > 1 {
-        if has_go {
-            content.push_str("    baseline: \"go\"\n");
-        } else if has_rust {
-            content.push_str("    baseline: \"rust\"\n");
-        }
+    content.push_str("declare suite bubbleN performance timeBased sameDataset: true {\n");
+    content.push_str("    description: \"O(n^2) bubble sort on int32 array\"\n");
+    if lang_count > 1 && has_go {
+        content.push_str("    baseline: \"go\"\n");
+    } else if lang_count > 1 && has_rust {
+        content.push_str("    baseline: \"rust\"\n");
     }
-    content.push_str("    targetTime: 2000ms\n");
-    content.push_str("    mode: \"auto\"\n");
-    content.push_str("    count: 2\n");
+    content.push_str("    warmup: 100\n");
+    content.push_str("    targetTime: 100ms\n");
+    content.push_str("    fairness: \"strict\"\n");
     content.push_str("    cvThreshold: 5\n");
+    content.push_str("    count: 1\n");
     content.push('\n');
 
-    // Setup blocks - no imports needed, just helper functions
+    // Setup blocks
     if has_go {
         content.push_str("    setup go {\n");
+        content.push_str("        import (\n");
+        content.push_str("            \"encoding/binary\"\n");
+        content.push_str("        )\n\n");
         content.push_str("        helpers {\n");
-        content.push_str("            func fibGo(data []byte) []byte {\n");
-        content.push_str("                n := int(data[0])\n");
-        content.push_str("                if n <= 1 {\n");
-        content.push_str("                    return []byte{byte(n)}\n");
+        content.push_str("            func bubbleGo(data []byte) []byte {\n");
+        content.push_str("                n := len(data) / 4\n");
+        content.push_str("                arr := make([]int32, n)\n");
+        content.push_str("                for i := 0; i < n; i++ {\n");
+        content.push_str(
+            "                    arr[i] = int32(binary.BigEndian.Uint32(data[i*4 : (i+1)*4]))\n",
+        );
         content.push_str("                }\n");
-        content.push_str("                a, b := 0, 1\n");
-        content.push_str("                for i := 2; i <= n; i++ {\n");
-        content.push_str("                    a, b = b, a+b\n");
+        content.push_str("                for i := 0; i < n; i++ {\n");
+        content.push_str("                    for j := 0; j < n-1-i; j++ {\n");
+        content.push_str("                        if arr[j] > arr[j+1] {\n");
+        content.push_str("                            tmp := arr[j]\n");
+        content.push_str("                            arr[j] = arr[j+1]\n");
+        content.push_str("                            arr[j+1] = tmp\n");
+        content.push_str("                        }\n");
+        content.push_str("                    }\n");
         content.push_str("                }\n");
-        content.push_str("                return []byte{byte(b & 0xFF)}\n");
+        content.push_str("                out := make([]byte, len(data))\n");
+        content.push_str("                for i := 0; i < n; i++ {\n");
+        content.push_str(
+            "                    binary.BigEndian.PutUint32(out[i*4:(i+1)*4], uint32(arr[i]))\n",
+        );
+        content.push_str("                }\n");
+        content.push_str("                return out\n");
         content.push_str("            }\n");
         content.push_str("        }\n");
-        content.push_str("    }\n");
-        content.push('\n');
+        content.push_str("    }\n\n");
     }
 
     if has_ts {
         content.push_str("    setup ts {\n");
         content.push_str("        helpers {\n");
-        content.push_str("            function fibTs(data: Uint8Array): Uint8Array {\n");
-        content.push_str("                const n = data[0]\n");
-        content.push_str("                if (n <= 1) return new Uint8Array([n])\n");
-        content.push_str("                let a = 0, b = 1\n");
-        content.push_str("                for (let i = 2; i <= n; i++) {\n");
-        content.push_str("                    [a, b] = [b, a + b]\n");
+        content.push_str("            function bubbleTs(data: Uint8Array): Uint8Array {\n");
+        content.push_str("                const n = data.length / 4\n");
+        content.push_str("                const arr = new Array(n)\n");
+        content.push_str("                for (let i = 0; i < n; i++) {\n");
+        content.push_str("                    arr[i] = (data[i*4]<<24) | (data[i*4+1]<<16) | (data[i*4+2]<<8) | data[i*4+3]\n");
         content.push_str("                }\n");
-        content.push_str("                return new Uint8Array([b & 0xFF])\n");
+        content.push_str("                for (let i = 0; i < n; i++) {\n");
+        content.push_str("                    for (let j = 0; j < n - 1 - i; j++) {\n");
+        content.push_str("                        if (arr[j] > arr[j+1]) {\n");
+        content.push_str("                            const tmp = arr[j]\n");
+        content.push_str("                            arr[j] = arr[j+1]\n");
+        content.push_str("                            arr[j+1] = tmp\n");
+        content.push_str("                        }\n");
+        content.push_str("                    }\n");
+        content.push_str("                }\n");
+        content.push_str("                const out = new Uint8Array(data.length)\n");
+        content.push_str("                const view = new DataView(out.buffer)\n");
+        content.push_str("                for (let i = 0; i < n; i++) {\n");
+        content.push_str("                    view.setInt32(i * 4, arr[i], false)\n");
+        content.push_str("                }\n");
+        content.push_str("                return out\n");
         content.push_str("            }\n");
         content.push_str("        }\n");
-        content.push_str("    }\n");
-        content.push('\n');
+        content.push_str("    }\n\n");
+    }
+
+    if has_python {
+        content.push_str("    setup python {\n");
+        content.push_str("        import {\n");
+        content.push_str("            import struct\n");
+        content.push_str("        }\n\n");
+        content.push_str("        helpers {\n");
+        content.push_str("            def bubble_python(data):\n");
+        content.push_str("                n = len(data) // 4\n");
+        content.push_str("                fmt = \">\" + str(n) + \"i\"\n");
+        content.push_str("                arr = list(struct.unpack(fmt, data))\n");
+        content.push_str("                for i in range(n):\n");
+        content.push_str("                    for j in range(n - 1 - i):\n");
+        content.push_str("                        if arr[j] > arr[j + 1]:\n");
+        content.push_str("                            tmp = arr[j]\n");
+        content.push_str("                            arr[j] = arr[j + 1]\n");
+        content.push_str("                            arr[j + 1] = tmp\n");
+        content.push_str("                out = struct.pack(fmt, *arr)\n");
+        content.push_str("                return out\n");
+        content.push_str("        }\n");
+        content.push_str("    }\n\n");
     }
 
     if has_rust {
         content.push_str("    setup rust {\n");
         content.push_str("        helpers {\n");
-        content.push_str("            fn fib_rust(data: &[u8]) -> Vec<u8> {\n");
-        content.push_str("                let n = data[0] as usize;\n");
-        content.push_str("                if n <= 1 {\n");
-        content.push_str("                    return vec![n as u8];\n");
+        content.push_str("            fn bubble_rust(data: &[u8]) -> Vec<u8> {\n");
+        content.push_str("                let n = data.len() / 4;\n");
+        content.push_str("                let mut arr: Vec<i32> = (0..n).map(|i| {\n");
+        content.push_str("                    let j = i * 4;\n");
+        content.push_str(
+            "                    i32::from_be_bytes([data[j], data[j+1], data[j+2], data[j+3]])\n",
+        );
+        content.push_str("                }).collect();\n");
+        content.push_str("                for i in 0..n {\n");
+        content.push_str("                    for j in 0..n-1-i {\n");
+        content.push_str("                        if arr[j] > arr[j+1] {\n");
+        content.push_str("                            let tmp = arr[j];\n");
+        content.push_str("                            arr[j] = arr[j+1];\n");
+        content.push_str("                            arr[j+1] = tmp;\n");
+        content.push_str("                        }\n");
+        content.push_str("                    }\n");
         content.push_str("                }\n");
-        content.push_str("                let (mut a, mut b) = (0u64, 1u64);\n");
-        content.push_str("                for _ in 2..=n {\n");
-        content.push_str("                    let tmp = a + b;\n");
-        content.push_str("                    a = b;\n");
-        content.push_str("                    b = tmp;\n");
+        content.push_str("                let mut out = vec![0u8; data.len()];\n");
+        content.push_str("                for i in 0..n {\n");
+        content.push_str(
+            "                    out[i*4..(i+1)*4].copy_from_slice(&arr[i].to_be_bytes());\n",
+        );
         content.push_str("                }\n");
-        content.push_str("                vec![(b & 0xFF) as u8]\n");
+        content.push_str("                out\n");
         content.push_str("            }\n");
         content.push_str("        }\n");
-        content.push_str("    }\n");
-        content.push('\n');
-    }
-
-    if has_python {
-        content.push_str("    setup python {\n");
-        content.push_str("        helpers {\n");
-        content.push_str("            def fib_python(data: bytes) -> bytes:\n");
-        content.push_str("                n = data[0]\n");
-        content.push_str("                if n <= 1:\n");
-        content.push_str("                    return bytes([n])\n");
-        content.push_str("                a, b = 0, 1\n");
-        content.push_str("                for _ in range(2, n + 1):\n");
-        content.push_str("                    a, b = b, a + b\n");
-        content.push_str("                return bytes([b & 0xFF])\n");
-        content.push_str("        }\n");
-        content.push_str("    }\n");
-        content.push('\n');
-    }
-
-    if has_c {
-        content.push_str("    setup c {\n");
-        content.push_str("        import {\n");
-        content.push_str("            #include <stdint.h>\n");
-        content.push_str("        }\n");
-        content.push_str("        helpers {\n");
-        content.push_str("            static unsigned char* fib_c(unsigned char* data) {\n");
-        content.push_str("                int n = data[0];\n");
-        content.push_str("                if (n <= 1) {\n");
-        content.push_str("                    data[0] = (unsigned char)n;\n");
-        content.push_str("                    return data;\n");
-        content.push_str("                }\n");
-        content.push_str("                int a = 0, b = 1;\n");
-        content.push_str("                for (int i = 2; i <= n; i++) {\n");
-        content.push_str("                    int next = a + b;\n");
-        content.push_str("                    a = b;\n");
-        content.push_str("                    b = next;\n");
-        content.push_str("                }\n");
-        content.push_str("                data[0] = (unsigned char)(b & 0xFF);\n");
-        content.push_str("                return data;\n");
-        content.push_str("            }\n");
-        content.push_str("        }\n");
-        content.push_str("    }\n");
-        content.push('\n');
+        content.push_str("    }\n\n");
     }
 
     if has_csharp {
         content.push_str("    setup csharp {\n");
         content.push_str("        import {\n");
         content.push_str("            using System;\n");
-        content.push_str("        }\n");
+        content.push_str("            using System.Buffers.Binary;\n");
+        content.push_str("        }\n\n");
         content.push_str("        helpers {\n");
-        content.push_str("            static byte[] fib_csharp(byte[] data) {\n");
-        content.push_str("                int n = data[0];\n");
-        content.push_str("                if (n <= 1) return new byte[] { (byte)n };\n");
-        content.push_str("                int a = 0, b = 1;\n");
-        content.push_str("                for (int i = 2; i <= n; i++) {\n");
-        content.push_str("                    int next = a + b;\n");
-        content.push_str("                    a = b;\n");
-        content.push_str("                    b = next;\n");
+        content.push_str("            static byte[] BubbleCsharp(byte[] data) {\n");
+        content.push_str("                int n = data.Length / 4;\n");
+        content.push_str("                int[] arr = new int[n];\n");
+        content.push_str("                for (int i = 0; i < n; i++) {\n");
+        content.push_str("                    int j = i * 4;\n");
+        content.push_str("                    arr[i] = BinaryPrimitives.ReadInt32BigEndian(new ReadOnlySpan<byte>(data, j, 4));\n");
         content.push_str("                }\n");
-        content.push_str("                return new byte[] { (byte)(b & 0xFF) };\n");
+        content.push_str("                for (int i = 0; i < n; i++) {\n");
+        content.push_str("                    for (int j = 0; j < n - 1 - i; j++) {\n");
+        content.push_str("                        if (arr[j] > arr[j + 1]) {\n");
+        content.push_str("                            int tmp = arr[j];\n");
+        content.push_str("                            arr[j] = arr[j + 1];\n");
+        content.push_str("                            arr[j + 1] = tmp;\n");
+        content.push_str("                        }\n");
+        content.push_str("                    }\n");
+        content.push_str("                }\n");
+        content.push_str("                byte[] outBytes = new byte[data.Length];\n");
+        content.push_str("                for (int i = 0; i < n; i++) {\n");
+        content.push_str("                    int j = i * 4;\n");
+        content.push_str("                    BinaryPrimitives.WriteInt32BigEndian(new Span<byte>(outBytes, j, 4), arr[i]);\n");
+        content.push_str("                }\n");
+        content.push_str("                return outBytes;\n");
         content.push_str("            }\n");
         content.push_str("        }\n");
-        content.push_str("    }\n");
-        content.push('\n');
+        content.push_str("    }\n\n");
     }
 
     if has_zig {
         content.push_str("    setup zig {\n");
         content.push_str("        helpers {\n");
-        content.push_str("            fn fibZig(data: []const u8) u8 {\n");
-        content.push_str("                const n = data[0];\n");
-        content.push_str("                if (n <= 1) return @intCast(n);\n");
-        content.push_str("                var a: u32 = 0;\n");
-        content.push_str("                var b: u32 = 1;\n");
-        content.push_str("                for (2..n + 1) |_| {\n");
-        content.push_str("                    const next = a + b;\n");
-        content.push_str("                    a = b;\n");
-        content.push_str("                    b = next;\n");
+        content.push_str("            fn bubbleZig(data: []const u8) []u8 {\n");
+        content.push_str("                const n = data.len / 4;\n");
+        content.push_str("                const allocator = std.heap.page_allocator;\n");
+        content.push_str(
+            "                const arr = allocator.alloc(i32, n) catch @panic(\"alloc failed\");\n",
+        );
+        content.push_str("                defer allocator.free(arr);\n");
+        content.push_str("                for (0..n) |i| {\n");
+        content.push_str("                    const offset = i * 4;\n");
+        content.push_str("                    arr[i] = std.mem.readInt(i32, @ptrCast(data[offset..].ptr), .big);\n");
         content.push_str("                }\n");
-        content.push_str("                return @intCast(b & 0xFF);\n");
+        content.push_str("                for (0..n) |i| {\n");
+        content.push_str("                    for (0..n - 1 - i) |j| {\n");
+        content.push_str("                        if (arr[j] > arr[j + 1]) {\n");
+        content.push_str("                            const tmp = arr[j];\n");
+        content.push_str("                            arr[j] = arr[j + 1];\n");
+        content.push_str("                            arr[j + 1] = tmp;\n");
+        content.push_str("                        }\n");
+        content.push_str("                    }\n");
+        content.push_str("                }\n");
+        content.push_str("                const out = allocator.alloc(u8, data.len) catch @panic(\"alloc failed\");\n");
+        content.push_str("                errdefer allocator.free(out);\n");
+        content.push_str("                for (0..n) |i| {\n");
+        content.push_str("                    const offset = i * 4;\n");
+        content.push_str("                    std.mem.writeInt(i32, @ptrCast(out[offset..].ptr), arr[i], .big);\n");
+        content.push_str("                }\n");
+        content.push_str("                return out;\n");
+        content.push_str("            }\n\n");
+        content.push_str("            fn bubbleZigAndFree(data: []const u8) void {\n");
+        content.push_str("                const allocator = std.heap.page_allocator;\n");
+        content.push_str("                const result = bubbleZig(data);\n");
+        content.push_str("                allocator.free(result);\n");
         content.push_str("            }\n");
         content.push_str("        }\n");
-        content.push_str("    }\n");
-        content.push('\n');
+        content.push_str("    }\n\n");
     }
 
-    // Fixtures with different input sizes (n values encoded as single bytes)
-    content.push_str("    fixture n20 {\n");
-    content.push_str("        hex: \"14\"\n");
-    content.push_str("    }\n");
-    content.push('\n');
-    content.push_str("    fixture n30 {\n");
-    content.push_str("        hex: \"1e\"\n");
-    content.push_str("    }\n");
-    content.push('\n');
-    content.push_str("    fixture n40 {\n");
-    content.push_str("        hex: \"28\"\n");
-    content.push_str("    }\n");
-    content.push('\n');
-    content.push_str("    fixture n50 {\n");
-    content.push_str("        hex: \"32\"\n");
-    content.push_str("    }\n");
-    content.push('\n');
-    content.push_str("    fixture n60 {\n");
-    content.push_str("        hex: \"3C\"\n");
-    content.push_str("    }\n");
-    content.push('\n');
-    content.push_str("    fixture n70 {\n");
-    content.push_str("        hex: \"46\"\n");
-    content.push_str("    }\n");
-    content.push('\n');
-
-    // Benchmarks for each input size
-    content.push_str("    bench fib20 {\n");
-    if has_go {
-        content.push_str("        go: fibGo(n20)\n");
-    }
-    if has_ts {
-        content.push_str("        ts: fibTs(n20)\n");
-    }
-    if has_rust {
-        content.push_str("        rust: fib_rust(&n20)\n");
-    }
-    if has_python {
-        content.push_str("        python: fib_python(n20)\n");
-    }
     if has_c {
-        content.push_str("        c: fib_c(n20)\n");
+        content.push_str("    setup c {\n");
+        content.push_str("        helpers {\n");
+        content.push_str("            static int32_t read_i32_be(const unsigned char* p) {\n");
+        content.push_str("                return (int32_t)(\n");
+        content.push_str("                    ((uint32_t)p[0] << 24) |\n");
+        content.push_str("                    ((uint32_t)p[1] << 16) |\n");
+        content.push_str("                    ((uint32_t)p[2] << 8) |\n");
+        content.push_str("                    (uint32_t)p[3]\n");
+        content.push_str("                );\n");
+        content.push_str("            }\n\n");
+        content.push_str("            static void write_i32_be(unsigned char* p, int32_t v) {\n");
+        content.push_str("                uint32_t u = (uint32_t)v;\n");
+        content.push_str("                p[0] = (unsigned char)((u >> 24) & 0xFF);\n");
+        content.push_str("                p[1] = (unsigned char)((u >> 16) & 0xFF);\n");
+        content.push_str("                p[2] = (unsigned char)((u >> 8) & 0xFF);\n");
+        content.push_str("                p[3] = (unsigned char)(u & 0xFF);\n");
+        content.push_str("            }\n\n");
+        content.push_str("            static void bubble_c(unsigned char* data, size_t len) {\n");
+        content.push_str("                size_t n = len / 4;\n");
+        content.push_str("                int32_t* arr = (int32_t*)malloc(n * sizeof(int32_t));\n");
+        content.push_str("                if (!arr) return;\n");
+        content.push_str("                for (size_t i = 0; i < n; i++) {\n");
+        content.push_str("                    arr[i] = read_i32_be(data + i * 4);\n");
+        content.push_str("                }\n");
+        content.push_str("                for (size_t i = 0; i < n; i++) {\n");
+        content.push_str("                    for (size_t j = 0; j < n - 1 - i; j++) {\n");
+        content.push_str("                        if (arr[j] > arr[j + 1]) {\n");
+        content.push_str("                            int32_t tmp = arr[j];\n");
+        content.push_str("                            arr[j] = arr[j + 1];\n");
+        content.push_str("                            arr[j + 1] = tmp;\n");
+        content.push_str("                        }\n");
+        content.push_str("                    }\n");
+        content.push_str("                }\n");
+        content.push_str("                unsigned char* out = (unsigned char*)malloc(len);\n");
+        content.push_str("                if (!out) { free(arr); return; }\n");
+        content.push_str("                for (size_t i = 0; i < n; i++) {\n");
+        content.push_str("                    write_i32_be(out + i * 4, arr[i]);\n");
+        content.push_str("                }\n");
+        content.push_str("                memcpy(data, out, len);\n");
+        content.push_str("                free(arr);\n");
+        content.push_str("                free(out);\n");
+        content.push_str("            }\n");
+        content.push_str("        }\n");
+        content.push_str("    }\n\n");
     }
-    if has_csharp {
-        content.push_str("        csharp: fib_csharp(n20)\n");
-    }
-    if has_zig {
-        content.push_str("        zig: fibZig(n20[0..])\n");
-    }
-    content.push_str("    }\n");
-    content.push('\n');
 
-    content.push_str("    bench fib30 {\n");
-    if has_go {
-        content.push_str("        go: fibGo(n30)\n");
+    // Fixtures
+    for (name, file) in [
+        ("s100", "sort_100.hex"),
+        ("s200", "sort_200.hex"),
+        ("s300", "sort_300.hex"),
+        ("s400", "sort_400.hex"),
+        ("s500", "sort_500.hex"),
+        ("s600", "sort_600.hex"),
+        ("s700", "sort_700.hex"),
+        ("s800", "sort_800.hex"),
+        ("s900", "sort_900.hex"),
+        ("s1000", "sort_1000.hex"),
+    ] {
+        content.push_str(&format!("    fixture {} {{\n", name));
+        content.push_str(&format!("        hex: @file(\"fixtures/sort/{}\")\n", file));
+        content.push_str("    }\n\n");
     }
-    if has_ts {
-        content.push_str("        ts: fibTs(n30)\n");
-    }
-    if has_rust {
-        content.push_str("        rust: fib_rust(&n30)\n");
-    }
-    if has_python {
-        content.push_str("        python: fib_python(n30)\n");
-    }
-    if has_c {
-        content.push_str("        c: fib_c(n30)\n");
-    }
-    if has_csharp {
-        content.push_str("        csharp: fib_csharp(n30)\n");
-    }
-    if has_zig {
-        content.push_str("        zig: fibZig(n30[0..])\n");
-    }
-    content.push_str("    }\n");
-    content.push('\n');
 
-    content.push_str("    bench fib40 {\n");
-    if has_go {
-        content.push_str("        go: fibGo(n40)\n");
+    // Bench blocks
+    fn bench_block(
+        content: &mut String,
+        n: &str,
+        s: &str,
+        has_go: bool,
+        has_ts: bool,
+        has_rust: bool,
+        has_python: bool,
+        has_c: bool,
+        has_csharp: bool,
+        has_zig: bool,
+    ) {
+        content.push_str(&format!("    bench {} {{\n", n));
+        if has_go {
+            content.push_str(&format!("        go: bubbleGo({})\n", s));
+        }
+        if has_ts {
+            content.push_str(&format!("        ts: bubbleTs({})\n", s));
+        }
+        if has_rust {
+            content.push_str(&format!("        rust: bubble_rust(&{})\n", s));
+        }
+        if has_python {
+            content.push_str(&format!("        python: bubble_python({})\n", s));
+        }
+        if has_csharp {
+            content.push_str(&format!("        csharp: BubbleCsharp({});\n", s));
+        }
+        if has_zig {
+            content.push_str(&format!("        zig: bubbleZigAndFree(&{});\n", s));
+        }
+        if has_c {
+            content.push_str(&format!(
+                "        c: {{\n            unsigned char __buf[sizeof({})];\n            memcpy(__buf, {}, sizeof(__buf));\n            bubble_c(__buf, sizeof(__buf));\n        }}\n",
+                s, s
+            ));
+        }
+        content.push_str("    }\n\n");
     }
-    if has_ts {
-        content.push_str("        ts: fibTs(n40)\n");
-    }
-    if has_rust {
-        content.push_str("        rust: fib_rust(&n40)\n");
-    }
-    if has_python {
-        content.push_str("        python: fib_python(n40)\n");
-    }
-    if has_c {
-        content.push_str("        c: fib_c(n40)\n");
-    }
-    if has_csharp {
-        content.push_str("        csharp: fib_csharp(n40)\n");
-    }
-    if has_zig {
-        content.push_str("        zig: fibZig(n40[0..])\n");
-    }
-    content.push_str("    }\n");
-    content.push('\n');
 
-    content.push_str("    bench fib50 {\n");
-    if has_go {
-        content.push_str("        go: fibGo(n50)\n");
+    for (n, s) in [
+        ("n100", "s100"),
+        ("n200", "s200"),
+        ("n300", "s300"),
+        ("n400", "s400"),
+        ("n500", "s500"),
+        ("n600", "s600"),
+        ("n700", "s700"),
+        ("n800", "s800"),
+        ("n900", "s900"),
+        ("n1000", "s1000"),
+    ] {
+        bench_block(
+            &mut content,
+            n,
+            s,
+            has_go,
+            has_ts,
+            has_rust,
+            has_python,
+            has_c,
+            has_csharp,
+            has_zig,
+        );
     }
-    if has_ts {
-        content.push_str("        ts: fibTs(n50)\n");
-    }
-    if has_rust {
-        content.push_str("        rust: fib_rust(&n50)\n");
-    }
-    if has_python {
-        content.push_str("        python: fib_python(n50)\n");
-    }
-    if has_c {
-        content.push_str("        c: fib_c(n50)\n");
-    }
-    if has_csharp {
-        content.push_str("        csharp: fib_csharp(n50)\n");
-    }
-    if has_zig {
-        content.push_str("        zig: fibZig(n50[0..])\n");
-    }
-    content.push_str("    }\n");
-    content.push('\n');
 
-    content.push_str("    bench fib60 {\n");
-    if has_go {
-        content.push_str("        go: fibGo(n60)\n");
-    }
-    if has_ts {
-        content.push_str("        ts: fibTs(n60)\n");
-    }
-    if has_rust {
-        content.push_str("        rust: fib_rust(&n60)\n");
-    }
-    if has_python {
-        content.push_str("        python: fib_python(n60)\n");
-    }
-    if has_c {
-        content.push_str("        c: fib_c(n60)\n");
-    }
-    if has_csharp {
-        content.push_str("        csharp: fib_csharp(n60)\n");
-    }
-    if has_zig {
-        content.push_str("        zig: fibZig(n60[0..])\n");
-    }
-    content.push_str("    }\n");
-    content.push('\n');
-
-    content.push_str("    bench fib70 {\n");
-    if has_go {
-        content.push_str("        go: fibGo(n70)\n");
-    }
-    if has_ts {
-        content.push_str("        ts: fibTs(n70)\n");
-    }
-    if has_rust {
-        content.push_str("        rust: fib_rust(&n70)\n");
-    }
-    if has_python {
-        content.push_str("        python: fib_python(n70)\n");
-    }
-    if has_c {
-        content.push_str("        c: fib_c(n70)\n");
-    }
-    if has_csharp {
-        content.push_str("        csharp: fib_csharp(n70)\n");
-    }
-    if has_zig {
-        content.push_str("        zig: fibZig(n70[0..])\n");
-    }
-    content.push_str("    }\n");
-
-    // Charting block with all chart types
+    // After block
     if lang_count > 1 {
-        content.push('\n');
         content.push_str("    after {\n");
-        content.push_str("        charting.drawSpeedupChart(\n");
-        content.push_str("            title: \"Fibonacci Speedup\",\n");
-        content.push_str("            description: \"Relative performance vs baseline\",\n");
-        content.push_str("            output: \"fib-speedup.svg\",\n");
-        content.push_str("            baseline: \"go\",\n");
-        content.push_str("            sortBy: \"name\",\n");
-        content.push_str("            sortOrder: \"asc\",\n");
-        content.push_str("            legendPosition: \"top-left\"\n");
+        content.push_str("        charting.drawLineChart(\n");
+        content.push_str("            title: \"Bubble Sort - O(n²)\",\n");
+        content.push_str("            description: \"Classic bubble sort - quadratic trend with regression + error overlays\",\n");
+        content.push_str("            output: \"bubble-line-linear.svg\",\n");
+        content.push_str("            yScale: \"linear\",\n");
+        content.push_str("            showStdDev: true,\n");
+        content.push_str("            showErrorBars: true,\n");
+        content.push_str("            showRegression: true,\n");
+        content.push_str("            regressionModel: \"auto\",\n");
         content.push_str("        )\n");
-        content.push('\n');
+        content.push_str("        charting.drawSpeedupChart(\n");
+        content.push_str("            title: \"Bubble Sort - O(n²)\",\n");
+        content.push_str("            description: \"Relative performance vs baseline\",\n");
+        content.push_str("            output: \"bubble-bar-speed.svg\",\n");
+        content.push_str("        )\n");
         content.push_str("        charting.drawTable(\n");
-        content.push_str("            title: \"Fibonacci Results Table\",\n");
-        content.push_str("            description: \"Raw timings and winners\",\n");
-        content.push_str("            output: \"fib-table.svg\",\n");
-        content.push_str("            sortBy: \"name\",\n");
-        content.push_str("            sortOrder: \"asc\"\n");
+        content.push_str("            title: \"Sort Performance Comparison\",\n");
+        content.push_str(
+            "            description: \"Vertical grouped bars - Go vs TypeScript vs Rust\",\n",
+        );
+        content.push_str("            output: \"bubble-table-curr.svg\",\n");
         content.push_str("        )\n");
         content.push_str("    }\n");
     }
@@ -935,12 +987,11 @@ mod tests {
         let content = example_bench(true, true, false, false, false, false, false);
         assert!(content.contains("setup go"));
         assert!(content.contains("setup ts"));
-        assert!(content.contains("fibGo(n20)"));
-        assert!(content.contains("fibTs(n20)"));
+        assert!(content.contains("bubbleGo(s100)"));
+        assert!(content.contains("bubbleTs(s100)"));
         assert!(content.contains("baseline: \"go\""));
         assert!(content.contains("helpers {"));
         assert!(content.contains("charting.drawTable"));
-        assert!(content.contains("charting.drawSpeedupChart"));
         assert!(content.contains("charting.drawSpeedupChart"));
     }
 
@@ -959,12 +1010,12 @@ mod tests {
         assert!(content.contains("setup go"));
         assert!(content.contains("setup ts"));
         assert!(content.contains("setup rust"));
-        assert!(content.contains("fibGo(n20)"));
-        assert!(content.contains("fibTs(n20)"));
-        assert!(content.contains("fib_rust(&n20)"));
-        assert!(content.contains("fibGo(n70)"));
-        assert!(content.contains("fibTs(n70)"));
-        assert!(content.contains("fib_rust(&n70)"));
+        assert!(content.contains("bubbleGo(s100)"));
+        assert!(content.contains("bubbleTs(s100)"));
+        assert!(content.contains("bubble_rust(&s100)"));
+        assert!(content.contains("bubbleGo(s700)"));
+        assert!(content.contains("bubbleTs(s700)"));
+        assert!(content.contains("bubble_rust(&s700)"));
         assert!(content.contains("baseline: \"go\""));
         assert!(content.contains("use std::charting"));
     }
@@ -975,7 +1026,7 @@ mod tests {
         assert!(!content.contains("setup go"));
         assert!(!content.contains("setup ts"));
         assert!(content.contains("setup rust"));
-        assert!(content.contains("fib_rust(&n20)"));
+        assert!(content.contains("bubble_rust(&s100)"));
         assert!(!content.contains("baseline: \"go\"")); // No baseline with single language
     }
 
@@ -986,9 +1037,9 @@ mod tests {
         assert!(!content.contains("sha2"));
         assert!(!content.contains("crypto/sha256"));
         assert!(!content.contains("node:crypto"));
-        assert!(!content.contains("n10"));
-        assert!(content.contains("targetTime: 2000ms"));
-        assert!(content.contains("mode: \"auto\""));
+        assert!(!content.contains("fibGo")); // Bubble uses bubbleGo
+        assert!(content.contains("targetTime: 100ms"));
+        assert!(content.contains("declare suite bubbleN"));
     }
 
     #[test]

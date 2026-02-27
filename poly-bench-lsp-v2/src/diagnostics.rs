@@ -415,29 +415,47 @@ fn validate_suite(suite: &PartialSuite, doc: &Document, diagnostics: &mut Vec<Di
             }
         }
 
-        if let Some((_, first_set)) = bench_refs.first() {
-            for (bench_name, refs) in bench_refs.iter().skip(1) {
-                if refs != first_set {
-                    if let Some(Node::Valid(bench)) = suite.benchmarks.iter().find(|b| {
-                        if let Node::Valid(b) = b {
-                            b.name == *bench_name
-                        } else {
-                            false
+        // Scaling suites: each benchmark uses exactly one fixture, all different (n100→s100,
+        // n200→s200, etc.) Benchmark names have trailing numbers (n100, size8) indicating
+        // intentional scaling; skip the warning.
+        let has_trailing_num = |s: &str| {
+            let digits: String = s.chars().rev().take_while(|c| c.is_ascii_digit()).collect();
+            !digits.is_empty() && digits.chars().rev().collect::<String>().parse::<u32>().is_ok()
+        };
+        let is_scaling_suite = bench_refs.iter().all(|(_, refs)| refs.len() == 1) &&
+            bench_refs
+                .iter()
+                .map(|(_, refs)| refs.iter().next().unwrap().as_str())
+                .collect::<std::collections::HashSet<_>>()
+                .len() ==
+                bench_refs.len() &&
+            bench_refs.iter().all(|(bench_name, _)| has_trailing_num(bench_name));
+
+        if !is_scaling_suite {
+            if let Some((_, first_set)) = bench_refs.first() {
+                for (bench_name, refs) in bench_refs.iter().skip(1) {
+                    if refs != first_set {
+                        if let Some(Node::Valid(bench)) = suite.benchmarks.iter().find(|b| {
+                            if let Node::Valid(b) = b {
+                                b.name == *bench_name
+                            } else {
+                                false
+                            }
+                        }) {
+                            diagnostics.push(Diagnostic {
+                                range: doc.span_to_range(&bench.span),
+                                severity: Some(DiagnosticSeverity::WARNING),
+                                code: Some(NumberOrString::String(
+                                    "same-dataset-inconsistent-fixtures".to_string(),
+                                )),
+                                source: Some("poly-bench".to_string()),
+                                message: format!(
+                                    "Benchmark '{}' may use different fixtures than other benchmarks; sameDataset: true expects all benchmarks to operate on the same dataset",
+                                    bench_name
+                                ),
+                                ..Default::default()
+                            });
                         }
-                    }) {
-                        diagnostics.push(Diagnostic {
-                            range: doc.span_to_range(&bench.span),
-                            severity: Some(DiagnosticSeverity::WARNING),
-                            code: Some(NumberOrString::String(
-                                "same-dataset-inconsistent-fixtures".to_string(),
-                            )),
-                            source: Some("poly-bench".to_string()),
-                            message: format!(
-                                "Benchmark '{}' may use different fixtures than other benchmarks; sameDataset: true expects all benchmarks to operate on the same dataset",
-                                bench_name
-                            ),
-                            ..Default::default()
-                        });
                     }
                 }
             }

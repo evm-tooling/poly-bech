@@ -88,14 +88,16 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
         terminal::success(&format!("Created {}/", BENCHMARKS_DIR));
     }
 
-    // Create example benchmark
+    // Create example benchmark and fixtures
     if !options.no_example {
         let example_path = benchmarks_dir.join("example.bench");
         let example_content = templates::example_bench_for_langs(&enabled_langs);
         std::fs::write(&example_path, example_content)
             .map_err(|e| miette::miette!("Failed to write example.bench: {}", e))?;
+        templates::write_bubble_fixtures(&benchmarks_dir)?;
         if !options.quiet {
             terminal::success(&format!("Created {}/example.bench", BENCHMARKS_DIR));
+            terminal::success(&format!("Created {}/fixtures/sort/", BENCHMARKS_DIR));
         }
     }
 
