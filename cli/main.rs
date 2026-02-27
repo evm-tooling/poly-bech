@@ -1141,19 +1141,65 @@ fn cmd_init(name: Option<&str>, languages: Vec<String>, no_example: bool) -> Res
         }
     };
     let is_current_dir = name == ".";
-    let options = project::init::InitOptions { name: name.clone(), languages, no_example, quiet };
-    project::init::init_project(&options)?;
+    let options = project::init::InitOptions {
+        name: name.clone(),
+        languages,
+        no_example,
+        quiet,
+        defer_final_message: true,
+    };
+    let project_dir = project::init::init_project(&options)?;
+
+    // Run build to install LSPs and initialize runtime-env
+    let project_dir = project_dir
+        .canonicalize()
+        .unwrap_or_else(|_| project_dir.clone());
+    let prev_cwd = std::env::current_dir().ok();
+    std::env::set_current_dir(&project_dir)
+        .map_err(|e| miette::miette!("Failed to change to project directory: {}", e))?;
+
+    let build_options = project::build::BuildOptions {
+        force: false,
+        skip_install: false,
+    };
+    if let Err(e) = project::build::build_project(&build_options) {
+        if let Some(ref prev) = prev_cwd {
+            let _ = std::env::set_current_dir(prev);
+        }
+        return Err(e);
+    }
+
+    if let Some(ref prev) = prev_cwd {
+        let _ = std::env::set_current_dir(prev);
+    }
+
+    // Output summary after build
     if quiet {
         if is_current_dir {
-            // Get actual directory name for display
-            let dir_name = std::env::current_dir()
-                .ok()
-                .and_then(|p| p.file_name().map(|s| s.to_string_lossy().to_string()))
-                .unwrap_or_else(|| ".".to_string());
+            let dir_name = project_dir
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(".")
+                .to_string();
             init_t3::print_init_success_block_current_dir(&dir_name);
         } else {
             init_t3::print_init_success_block(&options.name);
         }
+    } else {
+        let project_name = project_dir
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or(&options.name)
+            .to_string();
+        println!();
+        project::terminal::success(&format!("Project '{}' initialized successfully!", project_name));
+        println!();
+        println!("Next steps:");
+        if options.name != "." {
+            println!("  cd {}", project_name);
+        }
+        println!("  poly-bench run        # Run benchmarks");
+        println!();
     }
     Ok(())
 }

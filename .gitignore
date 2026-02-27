@@ -34,4 +34,10 @@ extensions/vscode/tree-sitter/*.wasm
 *.tmp
 *.bak
 
+# Integration test temp projects (created during tests, cleaned up on drop)
+integration-tests/.tmp-test-projects/
+
+# Integration test LSP diagnostic outputs (persistent, for debugging)
+integration-tests/.lsp-test-outputs/
+
 out/

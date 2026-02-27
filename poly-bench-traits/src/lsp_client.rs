@@ -608,11 +608,10 @@ impl<C: LspConfig> LspClient<C> {
     }
 
     pub fn shutdown(&self) {
+        // Kill process immediately. Do NOT call send_request here - it would call ensure_started()
+        // which locks process, causing deadlock since we hold the lock.
         if let Ok(mut process_guard) = self.process.lock() {
             if let Some(ref mut process) = *process_guard {
-                let _ = self.send_request("shutdown", json!(null));
-                let _ = self.send_notification("exit", json!(null));
-                std::thread::sleep(std::time::Duration::from_millis(100));
                 let _ = process.kill();
             }
             *process_guard = None;

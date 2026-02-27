@@ -524,7 +524,8 @@ pub fn package_json(name: &str) -> String {
         "dependencies": {},
         "devDependencies": {
             "@types/node": "^22.0.0",
-            "typescript": "^5.0.0"
+            "typescript": "^5.0.0",
+            "typescript-language-server": "^3.0.0"
         }
     })
     .to_string()
@@ -544,7 +545,8 @@ pub fn package_json_pretty(name: &str) -> String {
         "dependencies": {},
         "devDependencies": {
             "@types/node": "^22.0.0",
-            "typescript": "^5.0.0"
+            "typescript": "^5.0.0",
+            "typescript-language-server": "^3.0.0"
         }
     }))
     .unwrap_or_else(|_| package_json(name))
@@ -596,6 +598,18 @@ pub fn tsconfig_json() -> String {
 }
 "#
     .to_string()
+}
+
+/// Generate NuGet.config for C# runtime env. Adds vs-impl feed so dotnet tool install
+/// and restore can resolve roslyn-language-server (fixes DotnetToolSettings.xml packaging issues).
+pub fn csharp_nuget_config() -> &'static str {
+    r#"<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <add key="vs-impl" value="https://pkgs.dev.azure.com/azure-public/vside/_packaging/vs-impl/nuget/v3/index.json" />
+  </packageSources>
+</configuration>
+"#
 }
 
 /// Generate C# project file content

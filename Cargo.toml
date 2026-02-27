@@ -6,6 +6,7 @@ members = [
     "poly-bench-syntax",
     "poly-bench-lsp-v2",
     "poly-bench-traits",
+    "integration-tests",
     "poly-bench-runtime/runtimes/runtimes-go",
     "poly-bench-runtime/runtimes/runtimes-ts",
     "poly-bench-runtime/runtimes/runtimes-rust",

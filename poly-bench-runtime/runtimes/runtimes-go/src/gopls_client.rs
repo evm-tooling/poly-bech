@@ -33,6 +33,16 @@ impl LspConfig for GoplsConfig {
         find_gopls()
     }
 
+    fn find_executable_in_workspace(workspace_root: &str) -> Option<String> {
+        let bin_name = if cfg!(windows) { "gopls.exe" } else { "gopls" };
+        let bin_path = std::path::Path::new(workspace_root).join("bin").join(bin_name);
+        if bin_path.exists() {
+            bin_path.to_str().map(String::from)
+        } else {
+            None
+        }
+    }
+
     fn server_args() -> Vec<String> {
         vec!["serve".to_string()]
     }

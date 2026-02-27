@@ -186,7 +186,6 @@ pub fn print_init_success_block(project_name: &str) {
     println!();
     println!("Next steps:");
     println!("  {}", format!("cd {}", project_name).cyan());
-    println!("  poly-bench install    # Install dependencies");
     println!("  poly-bench run        # Run benchmarks");
     println!();
 }
@@ -203,7 +202,6 @@ pub fn print_init_success_block_current_dir(project_name: &str) {
     println!("{}", "✔ Successfully setup boilerplate for .polybench/".green());
     println!();
     println!("Next steps:");
-    println!("  poly-bench install    # Install dependencies");
     println!("  poly-bench run        # Run benchmarks");
     println!();
 }

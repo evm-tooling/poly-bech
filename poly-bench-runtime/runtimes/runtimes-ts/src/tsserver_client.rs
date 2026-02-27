@@ -36,6 +36,25 @@ impl LspConfig for TsServerConfig {
         find_tsserver()
     }
 
+    fn find_executable_in_workspace(workspace_root: &str) -> Option<String> {
+        let bin_dir = std::path::Path::new(workspace_root).join("node_modules").join(".bin");
+        let candidates: &[&str] = if cfg!(windows) {
+            &[
+                "typescript-language-server.cmd",
+                "typescript-language-server",
+            ]
+        } else {
+            &["typescript-language-server"]
+        };
+        for name in candidates {
+            let bin_path = bin_dir.join(name);
+            if bin_path.exists() {
+                return bin_path.to_str().map(String::from);
+            }
+        }
+        None
+    }
+
     fn server_args() -> Vec<String> {
         vec!["--stdio".to_string()]
     }

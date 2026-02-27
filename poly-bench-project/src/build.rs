@@ -8,9 +8,11 @@
 //! a repo where it was gitignored.
 
 use crate::{error::ProjectError, manifest, runtime_env, templates, terminal};
+use flate2::read::GzDecoder;
 use miette::Result;
 use poly_bench_dsl::Lang;
 use std::{
+    io::{Read, Write},
     path::Path,
     process::{Command, Output},
 };
@@ -50,7 +52,8 @@ fn command_failure(command: &str, cwd: &Path, output: &Output, hint: &str) -> mi
     )
 }
 
-/// Build/regenerate the .polybench runtime environment
+/// Build/regenerate the .polybench runtime environment.
+/// Uses `find_project_root(&current_dir)` to locate the project.
 pub fn build_project(options: &BuildOptions) -> Result<()> {
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
@@ -59,7 +62,14 @@ pub fn build_project(options: &BuildOptions) -> Result<()> {
         miette::miette!("Not in a poly-bench project. Run 'poly-bench init' first.")
     })?;
 
-    let manifest = crate::load_manifest(&project_root)?;
+    build_project_at(&project_root, options)
+}
+
+/// Build/regenerate the .polybench runtime environment at a given project root.
+/// Use this when you have the project path (e.g. in tests) to avoid cwd manipulation.
+/// Calls the same install functions as `build_project` (install_local_gopls, etc.).
+pub fn build_project_at(project_root: &Path, options: &BuildOptions) -> Result<()> {
+    let manifest = crate::load_manifest(project_root)?;
 
     let spinner = terminal::step_spinner(&format!(
         "Building runtime environment for '{}'...",
@@ -70,7 +80,7 @@ pub fn build_project(options: &BuildOptions) -> Result<()> {
 
     for lang in poly_bench_runtime::supported_languages() {
         if manifest.has_runtime(*lang) {
-            build_runtime_env_for_lang(*lang, &project_root, &manifest, options)?;
+            build_runtime_env_for_lang(*lang, project_root, &manifest, options)?;
         }
     }
 
@@ -166,7 +176,56 @@ fn build_go_env(
         terminal::info_indented("Skipping go get (--skip-install)");
     }
 
+    install_local_gopls(&go_env, options)?;
+
     terminal::success_indented("Go environment ready");
+
+    Ok(())
+}
+
+/// Install gopls locally for LSP support
+fn install_local_gopls(go_env: &Path, options: &BuildOptions) -> Result<()> {
+    let bin_dir = go_env.join("bin");
+    std::fs::create_dir_all(&bin_dir)
+        .map_err(|e| miette::miette!("Failed to create bin directory: {}", e))?;
+
+    let gopls_name = if cfg!(windows) { "gopls.exe" } else { "gopls" };
+    let gopls_path = bin_dir.join(gopls_name);
+
+    if gopls_path.exists() && !options.force {
+        terminal::info_indented("gopls already installed (use --force to reinstall)");
+        return Ok(());
+    }
+
+    if options.skip_install {
+        terminal::info_indented("Skipping gopls install (--skip-install)");
+        return Ok(());
+    }
+
+    let go_binary = which::which("go").map_err(|_| {
+        miette::miette!("Go not found in PATH. Install Go to enable gopls for LSP support.")
+    })?;
+
+    let spinner = terminal::indented_spinner("Installing gopls for LSP support...");
+
+    let output = terminal::run_command_with_spinner(
+        &spinner,
+        Command::new(&go_binary)
+            .args(["install", "golang.org/x/tools/gopls@latest"])
+            .env("GOBIN", bin_dir.to_str().unwrap())
+            .current_dir(go_env),
+    )
+    .map_err(|e| miette::miette!("Failed to run go install: {}", e))?;
+
+    if output.status.success() {
+        terminal::finish_success_indented(&spinner, "gopls installed");
+    } else {
+        terminal::finish_warning_indented(
+            &spinner,
+            "gopls install failed; embedded Go hover may not work",
+        );
+        terminal::print_stderr_excerpt(&output.stderr, 6);
+    }
 
     Ok(())
 }
@@ -357,6 +416,8 @@ fn build_rust_env(
         terminal::info_indented("Skipping cargo fetch (--skip-install)");
     }
 
+    install_local_rust_analyzer(&rust_env, options)?;
+
     terminal::success_indented("Rust environment ready");
 
     Ok(())
@@ -520,7 +581,16 @@ fn build_csharp_env(
         terminal::success_indented("Created Program.cs");
     }
 
-    install_local_csharp_ls(&csharp_env, options)?;
+    let nuget_config_path = csharp_env.join("NuGet.config");
+    if !nuget_config_path.exists() || options.force {
+        std::fs::write(&nuget_config_path, templates::csharp_nuget_config())
+            .map_err(|e| miette::miette!("Failed to write NuGet.config: {}", e))?;
+        if nuget_config_path.exists() && options.force {
+            terminal::info_indented("Regenerated NuGet.config (vs-impl feed for roslyn-language-server)");
+        }
+    }
+
+    install_local_roslyn_language_server(&csharp_env, options)?;
 
     if !csharp_config.dependencies.is_empty() {
         for (package, version) in &csharp_config.dependencies {
@@ -781,66 +851,316 @@ fn zls_platform() -> (&'static str, &'static str) {
     (arch, os)
 }
 
-fn install_local_csharp_ls(csharp_env: &Path, options: &BuildOptions) -> Result<()> {
+/// rust-analyzer version to download (pinned for reproducibility)
+const RUST_ANALYZER_VERSION: &str = "2024-11-25";
+
+/// Download and install rust-analyzer locally for LSP support
+fn install_local_rust_analyzer(rust_env: &Path, options: &BuildOptions) -> Result<()> {
+    let bin_dir = rust_env.join("bin");
+    std::fs::create_dir_all(&bin_dir)
+        .map_err(|e| miette::miette!("Failed to create bin directory: {}", e))?;
+
+    let ra_name = if cfg!(windows) {
+        "rust-analyzer.exe"
+    } else {
+        "rust-analyzer"
+    };
+    let ra_path = bin_dir.join(ra_name);
+
+    if ra_path.exists() && !options.force {
+        terminal::info_indented("rust-analyzer already installed (use --force to reinstall)");
+        return Ok(());
+    }
+
+    if options.skip_install {
+        terminal::info_indented("Skipping rust-analyzer install (--skip-install)");
+        return Ok(());
+    }
+
+    let (arch, os) = rust_analyzer_platform();
+    let target = format!("{}-{}", arch, os);
+
+    let (url, is_zip) = if cfg!(windows) {
+        (
+            format!(
+                "https://github.com/rust-lang/rust-analyzer/releases/download/{}/rust-analyzer-{}.zip",
+                RUST_ANALYZER_VERSION, target
+            ),
+            true,
+        )
+    } else {
+        (
+            format!(
+                "https://github.com/rust-lang/rust-analyzer/releases/download/{}/rust-analyzer-{}.gz",
+                RUST_ANALYZER_VERSION, target
+            ),
+            false,
+        )
+    };
+
+    terminal::info_indented(&format!(
+        "Downloading rust-analyzer {} for {}...",
+        RUST_ANALYZER_VERSION, target
+    ));
+
+    let response = ureq::get(&url).call().map_err(|e| {
+        miette::miette!(
+            "Failed to download rust-analyzer: {}. Ensure you have network access.",
+            e
+        )
+    })?;
+
+    let mut body = Vec::new();
+    response
+        .into_reader()
+        .read_to_end(&mut body)
+        .map_err(|e| miette::miette!("Failed to read rust-analyzer download: {}", e))?;
+
+    let _temp_dir =
+        tempfile::tempdir().map_err(|e| miette::miette!("Failed to create temp dir: {}", e))?;
+
+    if is_zip {
+        // Windows: extract from zip (contains rust-analyzer.exe)
+        let cursor = std::io::Cursor::new(&body);
+        let mut archive =
+            zip::ZipArchive::new(cursor).map_err(|e| miette::miette!("Invalid zip archive: {}", e))?;
+
+        // Find index of rust-analyzer.exe or rust-analyzer
+        let idx = (0..archive.len())
+            .find_map(|i| {
+                let name = archive.by_index(i).ok()?.name().to_string();
+                if name.ends_with("rust-analyzer.exe") || name.ends_with("rust-analyzer") {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+
+        let mut file = archive
+            .by_index(idx)
+            .map_err(|e| miette::miette!("Failed to extract rust-analyzer from archive: {}", e))?;
+
+        let mut out = std::fs::File::create(&ra_path)
+            .map_err(|e| miette::miette!("Failed to create {}: {}", ra_path.display(), e))?;
+        std::io::copy(&mut file, &mut out)
+            .map_err(|e| miette::miette!("Failed to extract rust-analyzer: {}", e))?;
+    } else {
+        // Linux/macOS: decompress gzip
+        let mut decoder = GzDecoder::new(&body[..]);
+        let mut binary = Vec::new();
+        decoder
+            .read_to_end(&mut binary)
+            .map_err(|e| miette::miette!("Failed to decompress rust-analyzer: {}", e))?;
+
+        let mut out = std::fs::File::create(&ra_path)
+            .map_err(|e| miette::miette!("Failed to create {}: {}", ra_path.display(), e))?;
+        out.write_all(&binary)
+            .map_err(|e| miette::miette!("Failed to write rust-analyzer: {}", e))?;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&ra_path)
+            .map_err(|e| miette::miette!("Failed to read rust-analyzer metadata: {}", e))?
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&ra_path, perms)
+            .map_err(|e| miette::miette!("Failed to set rust-analyzer executable: {}", e))?;
+    }
+
+    terminal::success_indented(&format!("Installed rust-analyzer at {}", ra_path.display()));
+    Ok(())
+}
+
+fn rust_analyzer_platform() -> (&'static str, &'static str) {
+    let arch = std::env::consts::ARCH;
+    let os = std::env::consts::OS;
+    let arch = match arch {
+        "x86_64" => "x86_64",
+        "aarch64" | "arm64" => "aarch64",
+        _ => "x86_64",
+    };
+    let os = match os {
+        "macos" => "apple-darwin",
+        "linux" => "unknown-linux-gnu",
+        "windows" => "pc-windows-msvc",
+        _ => "unknown-linux-gnu",
+    };
+    (arch, os)
+}
+
+/// Roslyn Language Server version (pinned for reproducibility)
+const ROSLYN_LANGUAGE_SERVER_VERSION: &str = "5.5.0-2.26103.6";
+/// csharp-ls version (fallback when roslyn-language-server has DotnetToolSettings.xml packaging issues).
+/// Pinned to 0.16.0 for .NET 8 compatibility; 0.20+ requires .NET 10.
+const CSHARP_LS_VERSION: &str = "0.16.0";
+
+/// dnceng dotnet-tools feed (https://github.com/dotnet/roslyn#nuget-feeds) - may have
+/// builds with correct DotnetToolSettings.xml when NuGet.org package is broken.
+const ROSLYN_DOTNET_TOOLS_FEED: &str =
+    "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-tools/nuget/v3/index.json";
+
+/// Install C# LSP locally. Tries roslyn-language-server first, falls back to csharp-ls when
+/// roslyn-language-server has packaging issues (e.g. DotnetToolSettings.xml).
+/// Uses `dotnet tool install --tool-path` so the LSP is self-contained and version-matched to the SDK.
+fn install_local_roslyn_language_server(csharp_env: &Path, options: &BuildOptions) -> Result<()> {
     let local_dir = csharp_env.join(".csharp-ls");
     std::fs::create_dir_all(&local_dir)
         .map_err(|e| miette::miette!("Failed to create {}: {}", local_dir.display(), e))?;
 
-    let local_bin_name = if cfg!(windows) { "csharp-ls.cmd" } else { "csharp-ls" };
-    let local_bin_path = local_dir.join(local_bin_name);
+    let (roslyn_bin, csharp_ls_bin) = if cfg!(windows) {
+        ("roslyn-language-server.exe", "csharp-ls.cmd")
+    } else {
+        ("roslyn-language-server", "csharp-ls")
+    };
+    let roslyn_path = local_dir.join(roslyn_bin);
+    let csharp_ls_path = local_dir.join(csharp_ls_bin);
 
+    if (roslyn_path.exists() || csharp_ls_path.exists()) && !options.force {
+        terminal::info_indented("C# LSP already installed (use --force to reinstall)");
+        return Ok(());
+    }
+
+    if options.skip_install {
+        terminal::info_indented("Skipping Roslyn Language Server install (--skip-install)");
+        return Ok(());
+    }
+
+    // Prefer POLYBENCH_CSHARP_LSP_BIN or roslyn-language-server in PATH (copy works)
+    // Don't copy csharp-ls from PATH - the shim has path resolution issues; use local install instead
     let src = std::env::var("POLYBENCH_CSHARP_LSP_BIN")
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
         .map(std::path::PathBuf::from)
         .filter(|p| p.exists())
-        .or_else(|| which::which("csharp-ls").ok());
+        .or_else(|| which::which("roslyn-language-server").ok());
 
-    let Some(src_path) = src else {
-        terminal::info_indented(
-            "C# LSP not found. Install csharp-ls or set POLYBENCH_CSHARP_LSP_BIN.",
-        );
-        return Ok(());
-    };
-
-    let should_copy = options.force || !local_bin_path.exists();
-    if should_copy {
-        std::fs::copy(&src_path, &local_bin_path).map_err(|e| {
+    if let Some(src_path) = src {
+        let dest_path = local_dir.join(roslyn_bin);
+        std::fs::copy(&src_path, &dest_path).map_err(|e| {
             miette::miette!(
-                "Failed to copy csharp-ls from {} to {}: {}",
+                "Failed to copy Roslyn Language Server from {} to {}: {}",
                 src_path.display(),
-                local_bin_path.display(),
+                dest_path.display(),
                 e
             )
         })?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mut perms = std::fs::metadata(&local_bin_path)
+            let mut perms = std::fs::metadata(&dest_path)
                 .map_err(|e| {
                     miette::miette!(
-                        "Failed to read local csharp-ls metadata ({}): {}",
-                        local_bin_path.display(),
+                        "Failed to read local Roslyn Language Server metadata ({}): {}",
+                        dest_path.display(),
                         e
                     )
                 })?
                 .permissions();
             perms.set_mode(0o755);
-            std::fs::set_permissions(&local_bin_path, perms).map_err(|e| {
+            std::fs::set_permissions(&dest_path, perms).map_err(|e| {
                 miette::miette!(
                     "Failed to set executable bit on {}: {}",
-                    local_bin_path.display(),
+                    dest_path.display(),
                     e
                 )
             })?;
         }
         terminal::success_indented(&format!(
-            "Installed local csharp-ls at {}",
-            local_bin_path.display()
+            "Installed local Roslyn Language Server at {}",
+            dest_path.display()
         ));
+        return Ok(());
+    }
+
+    // Install via dotnet tool install
+    let dotnet = which::which("dotnet").map_err(|_| {
+        miette::miette!("dotnet not found in PATH. Install .NET SDK to enable C# LSP support.")
+    })?;
+
+    let spinner = terminal::indented_spinner("Installing Roslyn Language Server...");
+
+    let output = terminal::run_command_with_spinner(
+        &spinner,
+        Command::new(&dotnet)
+            .args([
+                "tool",
+                "install",
+                "roslyn-language-server",
+                "--tool-path",
+                local_dir.to_str().unwrap(),
+                "--version",
+                ROSLYN_LANGUAGE_SERVER_VERSION,
+                "--add-source",
+                ROSLYN_DOTNET_TOOLS_FEED,
+            ])
+            .current_dir(csharp_env),
+    )
+    .map_err(|e| miette::miette!("Failed to run dotnet tool install: {}", e))?;
+
+    if output.status.success() {
+        terminal::finish_success_indented(&spinner, "Roslyn Language Server installed");
+        return Ok(());
+    }
+
+    let roslyn_package_bug =
+        String::from_utf8_lossy(&output.stderr).contains("DotnetToolSettings.xml");
+    if roslyn_package_bug {
+        terminal::finish_warning_indented(
+            &spinner,
+            "roslyn-language-server has packaging issues; trying csharp-ls...",
+        );
     } else {
-        terminal::info_indented("Local csharp-ls exists (use --force to refresh)");
+        terminal::finish_warning_indented(
+            &spinner,
+            "roslyn-language-server install failed; trying csharp-ls...",
+        );
+    }
+
+    // Fallback: csharp-ls via local manifest (dotnet tool run resolves paths correctly)
+    let spinner2 = terminal::indented_spinner("Installing csharp-ls (local)...");
+    // Create manifest if missing (required for dotnet tool install --local)
+    let manifest_path = csharp_env.join("dotnet-tools.json");
+    if !manifest_path.exists() {
+        let out = Command::new(&dotnet)
+            .args(["new", "tool-manifest"])
+            .current_dir(csharp_env)
+            .output()
+            .map_err(|e| miette::miette!("Failed to create tool manifest: {}", e))?;
+        if !out.status.success() {
+            terminal::finish_warning_indented(
+                &spinner2,
+                "C# LSP install failed; could not create tool manifest",
+            );
+            terminal::print_stderr_excerpt(&out.stderr, 8);
+            return Ok(());
+        }
+    }
+    let output2 = terminal::run_command_with_spinner(
+        &spinner2,
+        Command::new(&dotnet)
+            .args([
+                "tool",
+                "install",
+                "csharp-ls",
+                "--version",
+                CSHARP_LS_VERSION,
+            ])
+            .current_dir(csharp_env),
+    )
+    .map_err(|e| miette::miette!("Failed to run dotnet tool install: {}", e))?;
+
+    if output2.status.success() {
+        terminal::finish_success_indented(&spinner2, "csharp-ls installed");
+    } else {
+        terminal::finish_warning_indented(
+            &spinner2,
+            "C# LSP install failed; C# LSP may not work (requires .NET 8+)",
+        );
+        terminal::print_stderr_excerpt(&output2.stderr, 8);
     }
 
     Ok(())
