@@ -33,3 +33,5 @@ extensions/vscode/tree-sitter/*.wasm
 # Temp files
 *.tmp
 *.bak
+
+out/
