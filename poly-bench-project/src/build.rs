@@ -96,6 +96,9 @@ fn build_runtime_env_for_lang(
     manifest: &manifest::Manifest,
     options: &BuildOptions,
 ) -> Result<()> {
+    if !crate::runtime_check::is_lang_installed(lang) {
+        return Err(crate::runtime_check::not_installed_error(lang));
+    }
     match lang {
         Lang::Go => build_go_env(project_root, manifest.go.as_ref().unwrap(), options),
         Lang::TypeScript => build_ts_env(

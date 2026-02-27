@@ -194,6 +194,9 @@ fn init_runtime_env_for_lang(
                 );
             }
 
+            if !crate::runtime_check::is_lang_installed(Lang::TypeScript) {
+                return Err(crate::runtime_check::not_installed_error(Lang::TypeScript));
+            }
             if quiet {
                 let output = Command::new("npm")
                     .arg("install")
