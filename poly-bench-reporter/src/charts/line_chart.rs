@@ -957,6 +957,8 @@ mod tests {
             Measurement {
                 iterations: 100,
                 total_nanos: (go * 100.0) as u64,
+                warmup_nanos: None,
+                spawn_nanos: None,
                 nanos_per_op: go,
                 ops_per_sec: 1_000_000_000.0 / go.max(1.0),
                 min_nanos: None,
@@ -995,6 +997,8 @@ mod tests {
             Measurement {
                 iterations: 100,
                 total_nanos: (ts * 100.0) as u64,
+                warmup_nanos: None,
+                spawn_nanos: None,
                 nanos_per_op: ts,
                 ops_per_sec: 1_000_000_000.0 / ts.max(1.0),
                 min_nanos: None,

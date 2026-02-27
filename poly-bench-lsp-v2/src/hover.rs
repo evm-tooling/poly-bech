@@ -51,7 +51,7 @@ pub fn get_hover(
 
             bench_path.as_ref().and_then(|bp| {
                 poly_bench_runtime::get_embedded_hover_provider(
-                    poly_bench_lsp_traits::syntax_lang_to_dsl(block.lang),
+                    poly_bench_traits::syntax_lang_to_dsl(block.lang),
                 )
                 .and_then(|p| {
                     let ctx = crate::embedded_hover_context::LspEmbeddedHoverContext {

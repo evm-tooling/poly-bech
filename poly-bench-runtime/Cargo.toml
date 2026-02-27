@@ -10,16 +10,15 @@ description = "Runtime execution for poly-bench benchmarks"
 [dependencies]
 poly-bench-dsl.workspace = true
 poly-bench-ir.workspace = true
-poly-bench-lsp-traits.workspace = true
-poly-bench-runtime-traits.workspace = true
+poly-bench-traits.workspace = true
 poly-bench-stdlib.workspace = true
-runtimes-go = { path = "../runtimes/runtimes-go" }
-runtimes-ts = { path = "../runtimes/runtimes-ts" }
-runtimes-rust = { path = "../runtimes/runtimes-rust" }
-runtimes-python = { path = "../runtimes/runtimes-python" }
-runtimes-c = { path = "../runtimes/runtimes-c" }
-runtimes-csharp = { path = "../runtimes/runtimes-csharp" }
-runtimes-zig = { path = "../runtimes/runtimes-zig" }
+runtimes-go = { path = "runtimes/runtimes-go" }
+runtimes-ts = { path = "runtimes/runtimes-ts" }
+runtimes-rust = { path = "runtimes/runtimes-rust" }
+runtimes-python = { path = "runtimes/runtimes-python" }
+runtimes-c = { path = "runtimes/runtimes-c" }
+runtimes-csharp = { path = "runtimes/runtimes-csharp" }
+runtimes-zig = { path = "runtimes/runtimes-zig" }
 miette.workspace = true
 serde.workspace = true
 serde_json.workspace = true

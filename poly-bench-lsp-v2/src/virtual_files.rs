@@ -10,19 +10,17 @@ use std::{path::Path, sync::Arc};
 
 use dashmap::DashMap;
 use poly_bench_dsl::Lang as DslLang;
-use poly_bench_lsp_traits::{
-    syntax_lang_to_dsl, VirtualFile, VirtualFileBuilder, VirtualFileParams,
-};
 use poly_bench_runtime::{
     get_embedded_diagnostic_setup as get_registry_setup,
     get_virtual_file_builder as get_registry_builder,
 };
 use poly_bench_syntax::Lang;
+use poly_bench_traits::{syntax_lang_to_dsl, VirtualFile, VirtualFileBuilder, VirtualFileParams};
 
 use crate::{embedded::EmbeddedBlock, embedded_diagnostic_context::LspEmbeddedDiagnosticContext};
 
 // Re-export for compatibility
-pub use poly_bench_lsp_traits::SectionMapping;
+pub use poly_bench_traits::SectionMapping;
 
 /// Get the virtual file builder for a language (syntax Lang)
 pub fn get_virtual_file_builder(lang: Lang) -> Option<&'static dyn VirtualFileBuilder> {
@@ -216,8 +214,8 @@ impl VirtualLangManager<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use poly_bench_lsp_traits::BlockType;
     use poly_bench_syntax::Span;
+    use poly_bench_traits::BlockType;
 
     fn make_block(code: &str, block_type: BlockType, start: usize) -> EmbeddedBlock {
         let end = start + code.len();

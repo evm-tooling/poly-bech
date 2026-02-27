@@ -5,14 +5,14 @@ members = [
     "poly-bench-grammar",
     "poly-bench-syntax",
     "poly-bench-lsp-v2",
-    "poly-bench-runtime-traits",
-    "runtimes/runtimes-go",
-    "runtimes/runtimes-ts",
-    "runtimes/runtimes-rust",
-    "runtimes/runtimes-python",
-    "runtimes/runtimes-c",
-    "runtimes/runtimes-csharp",
-    "runtimes/runtimes-zig",
+    "poly-bench-traits",
+    "poly-bench-runtime/runtimes/runtimes-go",
+    "poly-bench-runtime/runtimes/runtimes-ts",
+    "poly-bench-runtime/runtimes/runtimes-rust",
+    "poly-bench-runtime/runtimes/runtimes-python",
+    "poly-bench-runtime/runtimes/runtimes-c",
+    "poly-bench-runtime/runtimes/runtimes-csharp",
+    "poly-bench-runtime/runtimes/runtimes-zig",
 ]
 
 [workspace.package]
@@ -30,10 +30,9 @@ poly-bench-stdlib = { path = "poly-bench-stdlib" }
 poly-bench-ir = { path = "poly-bench-ir" }
 poly-bench-project = { path = "poly-bench-project" }
 poly-bench-runtime = { path = "poly-bench-runtime" }
-poly-bench-runtime-traits = { path = "poly-bench-runtime-traits" }
+poly-bench-traits = { path = "poly-bench-traits" }
 poly-bench-executor = { path = "poly-bench-executor" }
 poly-bench-reporter = { path = "poly-bench-reporter" }
-poly-bench-lsp-traits = { path = "poly-bench-lsp-traits" }
 poly-bench-lsp-v2 = { path = "poly-bench-lsp-v2" }
 poly-bench-syntax = { path = "poly-bench-syntax" }
 tree-sitter-polybench = { path = "poly-bench-grammar" }

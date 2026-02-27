@@ -9,16 +9,16 @@ use crate::{
     embedded::{extract_embedded_blocks, EmbeddedBlock},
     embedded_diagnostic_context::LspEmbeddedDiagnosticContext,
 };
-use poly_bench_lsp_traits::{
-    syntax_lang_to_dsl, EmbeddedDiagnosticContext, EmbeddedDiagnosticProvider,
-    EmbeddedDiagnosticSetup, VirtualFile, VirtualFileParams,
-};
 use poly_bench_project::get_detector;
 use poly_bench_runtime::{
     get_embedded_diagnostic_provider as get_registry_provider,
     get_embedded_diagnostic_setup as get_registry_setup, get_virtual_file_builder,
 };
 use poly_bench_syntax::{Lang, Node};
+use poly_bench_traits::{
+    syntax_lang_to_dsl, EmbeddedDiagnosticContext, EmbeddedDiagnosticProvider,
+    EmbeddedDiagnosticSetup, VirtualFile, VirtualFileParams,
+};
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
@@ -26,7 +26,7 @@ use std::{
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range};
 
 /// Result of checking embedded code (re-export from traits)
-pub use poly_bench_lsp_traits::EmbeddedDiagnostic;
+pub use poly_bench_traits::EmbeddedDiagnostic;
 
 fn get_embedded_diagnostic_provider(
     dsl_lang: poly_bench_dsl::Lang,

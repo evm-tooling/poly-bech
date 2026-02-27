@@ -11,7 +11,7 @@
 //!
 //! This enables autocomplete: typing `anvil.` will suggest all available members.
 
-use poly_bench_runtime_traits::StdlibProvider;
+use poly_bench_traits::StdlibProvider;
 use std::collections::HashSet;
 
 pub mod charting;

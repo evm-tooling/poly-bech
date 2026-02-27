@@ -3,7 +3,7 @@
 //! Dispatches to runtime plugins for language-specific display info.
 
 use poly_bench_dsl::Lang;
-use poly_bench_runtime_traits::LangDisplayInfo;
+use poly_bench_traits::LangDisplayInfo;
 use runtimes_c::C_PLUGIN;
 use runtimes_csharp::CSHARP_PLUGIN;
 use runtimes_go::GO_PLUGIN;
@@ -12,7 +12,7 @@ use runtimes_rust::RUST_PLUGIN;
 use runtimes_ts::TS_PLUGIN;
 use runtimes_zig::ZIG_PLUGIN;
 
-static PLUGINS: &[&dyn poly_bench_runtime_traits::RuntimePlugin] =
+static PLUGINS: &[&dyn poly_bench_traits::RuntimePlugin] =
     &[&GO_PLUGIN, &TS_PLUGIN, &RUST_PLUGIN, &PYTHON_PLUGIN, &C_PLUGIN, &CSHARP_PLUGIN, &ZIG_PLUGIN];
 
 const FALLBACK: LangDisplayInfo =

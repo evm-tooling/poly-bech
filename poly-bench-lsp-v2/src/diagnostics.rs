@@ -7,11 +7,11 @@
 //! 4. Embedded language errors (on save)
 
 use crate::document::Document;
-use poly_bench_lsp_traits::syntax_lang_to_dsl;
 use poly_bench_runtime::get_helper_function_extractor;
 use poly_bench_syntax::{
     Lang, Node, PartialBenchmark, PartialFixture, PartialSuite, PropertyValue, StructuredSetup,
 };
+use poly_bench_traits::syntax_lang_to_dsl;
 use std::collections::HashSet;
 use tower_lsp::lsp_types::*;
 

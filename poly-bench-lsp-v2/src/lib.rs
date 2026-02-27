@@ -37,7 +37,7 @@ pub async fn run_server() {
                 .add_directive("info".parse().unwrap())
                 .add_directive("poly_bench_lsp_v2=debug".parse().unwrap())
                 .add_directive("runtimes_csharp=debug".parse().unwrap())
-                .add_directive("poly_bench_lsp_traits=debug".parse().unwrap()),
+                .add_directive("poly_bench_traits=debug".parse().unwrap()),
         )
         .with_writer(std::io::stderr)
         .init();
