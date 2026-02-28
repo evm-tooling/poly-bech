@@ -115,6 +115,28 @@ impl BenchmarkIR {
     pub fn has_stdlib(&self, module: &str) -> bool {
         self.stdlib_imports.contains(module)
     }
+
+    /// Collect all languages used in setups, benchmarks, and fixtures
+    pub fn languages_used(&self) -> HashSet<Lang> {
+        let mut langs = HashSet::new();
+        for suite in &self.suites {
+            langs.extend(suite.imports.keys());
+            langs.extend(suite.declarations.keys());
+            langs.extend(suite.init_code.keys());
+            langs.extend(suite.helpers.keys());
+            langs.extend(suite.requires.iter().copied());
+            for bench in &suite.benchmarks {
+                langs.extend(bench.implementations.keys());
+                langs.extend(bench.before_hooks.keys());
+                langs.extend(bench.after_hooks.keys());
+                langs.extend(bench.each_hooks.keys());
+            }
+            for fixture in &suite.fixtures {
+                langs.extend(fixture.implementations.keys());
+            }
+        }
+        langs
+    }
 }
 
 /// A normalized benchmark suite

@@ -551,28 +551,28 @@ pub fn add_python_dependency(spec: &str) -> Result<()> {
     std::fs::write(python_root.join("requirements.txt"), requirements_content)
         .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
 
-    if version != "latest" {
-        let pip_path = ensure_python_venv_and_get_pip(&python_root)?;
-        let pip_spec = format!("{}=={}", package, version);
-        let spinner = terminal::step_spinner(&format!("Installing {}...", pip_spec));
-        let output = terminal::run_command_with_spinner(
-            &spinner,
-            Command::new(&pip_path).args(["install", &pip_spec]).current_dir(&python_root),
-        )
-        .map_err(|e| miette::miette!("Failed to run pip install: {}", e))?;
+    // Always install the package so it's immediately available (no need to run install separately)
+    let pip_path = ensure_python_venv_and_get_pip(&python_root)?;
+    let pip_spec =
+        if version == "latest" { package.clone() } else { format!("{}=={}", package, version) };
+    let spinner = terminal::step_spinner(&format!("Installing {}...", pip_spec));
+    let output = terminal::run_command_with_spinner(
+        &spinner,
+        Command::new(&pip_path).args(["install", &pip_spec]).current_dir(&python_root),
+    )
+    .map_err(|e| miette::miette!("Failed to run pip install: {}", e))?;
 
-        if !output.status.success() {
-            terminal::finish_failure(&spinner, "pip install failed");
-            terminal::print_stderr_excerpt(&output.stderr, 8);
-            return Err(command_failure(
-                &format!("pip install {}", pip_spec),
-                &python_root,
-                &output,
-                "Fix pip dependency issues.",
-            ));
-        }
-        terminal::finish_success(&spinner, &pip_spec);
+    if !output.status.success() {
+        terminal::finish_failure(&spinner, "pip install failed");
+        terminal::print_stderr_excerpt(&output.stderr, 8);
+        return Err(command_failure(
+            &format!("pip install {}", pip_spec),
+            &python_root,
+            &output,
+            "Fix pip dependency issues.",
+        ));
     }
+    terminal::finish_success(&spinner, &pip_spec);
 
     terminal::success(&format!("Added {} to polybench.toml", package));
 
@@ -776,8 +776,63 @@ pub fn remove_csharp_dependency(package: &str) -> Result<()> {
     Ok(())
 }
 
+/// Check if a Zig dependency spec looks like a URL (zig fetch requires URLs)
+fn is_zig_url(spec: &str) -> bool {
+    spec.contains("://") || spec.starts_with("git+")
+}
+
+/// Extract a Zig-safe dependency name from a URL for use in build.zig.zon
+fn zig_dep_name_from_url(url: &str) -> String {
+    // Strip fragment (#...) and query (?...)
+    let path_part = url.split(['#', '?']).next().unwrap_or(url);
+    // Get last path component (e.g. "zig-bench" from ".../Hejsil/zig-bench")
+    let last = path_part.trim_end_matches('/').rsplit('/').next().unwrap_or("dep");
+    // Zig identifiers: alphanumeric + underscore, replace - with _
+    let sanitized: String = last
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else if c == '-' {
+                '_'
+            } else {
+                '_'
+            }
+        })
+        .take(32)
+        .collect();
+    if sanitized.is_empty() {
+        "dep".to_string()
+    } else {
+        sanitized
+    }
+}
+
+/// Build the full Zig package URL from package and version (for git URLs with ref)
+fn zig_package_url(package: &str, version: &str) -> String {
+    if version.is_empty() || version == "latest" {
+        return package.to_string();
+    }
+    // For git URLs, append #version as ref (tag, branch, or commit)
+    if package.contains("github.com") ||
+        package.contains("gitlab.com") ||
+        package.starts_with("git+")
+    {
+        if package.contains('#') {
+            package.to_string()
+        } else {
+            format!("{}#{}", package, version)
+        }
+    } else {
+        package.to_string()
+    }
+}
+
 /// Add a Zig dependency to the project
 pub fn add_zig_dependency(spec: &str) -> Result<()> {
+    if !crate::runtime_check::is_lang_installed(Lang::Zig) {
+        return Err(crate::runtime_check::not_installed_error(Lang::Zig));
+    }
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
 
@@ -791,6 +846,14 @@ pub fn add_zig_dependency(spec: &str) -> Result<()> {
     }
 
     let (package, version) = parse_dep_spec(spec);
+
+    if !is_zig_url(&package) {
+        return Err(miette::miette!(
+            "Zig dependencies must be specified as URLs. Example: poly-bench add --zig \"git+https://github.com/Hejsil/zig-bench#main\"\n\
+             Or: poly-bench add --zig \"https://github.com/foo/bar/archive/refs/tags/v0.1.0.tar.gz\""
+        ));
+    }
+
     manifest.add_zig_dependency(&package, &version)?;
     crate::save_manifest(&project_root, &manifest)?;
 
@@ -798,7 +861,47 @@ pub fn add_zig_dependency(spec: &str) -> Result<()> {
     std::fs::create_dir_all(&zig_root)
         .map_err(|e| miette::miette!("Failed to create Zig env dir: {}", e))?;
 
-    terminal::success(&format!("Added {}@{} to polybench.toml", package, version));
+    ensure_zig_build_files(&zig_root)?;
+
+    let zig_url = zig_package_url(&package, &version);
+    let dep_name = zig_dep_name_from_url(&zig_url);
+
+    let spinner = terminal::step_spinner(&format!("Fetching {}...", dep_name));
+    let output = terminal::run_command_with_spinner(
+        &spinner,
+        Command::new("zig")
+            .args(["fetch", &format!("--save={}", dep_name), &zig_url])
+            .current_dir(&zig_root),
+    )
+    .map_err(|e| miette::miette!("Failed to run zig fetch: {}", e))?;
+
+    if !output.status.success() {
+        terminal::finish_failure(&spinner, "zig fetch failed");
+        terminal::print_stderr_excerpt(&output.stderr, 8);
+        return Err(command_failure(
+            &format!("zig fetch --save={} {}", dep_name, zig_url),
+            &zig_root,
+            &output,
+            "Verify the URL is valid and the package is accessible.",
+        ));
+    }
+    terminal::finish_success(&spinner, &format!("Added {} to polybench.toml", package));
+
+    Ok(())
+}
+
+/// Ensure build.zig and build.zig.zon exist in zig_root (required for zig fetch)
+fn ensure_zig_build_files(zig_root: &Path) -> Result<()> {
+    let build_zig = zig_root.join("build.zig");
+    if !build_zig.exists() {
+        std::fs::write(&build_zig, templates::build_zig())
+            .map_err(|e| miette::miette!("Failed to write build.zig: {}", e))?;
+    }
+    let build_zig_zon = zig_root.join("build.zig.zon");
+    if !build_zig_zon.exists() {
+        std::fs::write(&build_zig_zon, templates::build_zig_zon())
+            .map_err(|e| miette::miette!("Failed to write build.zig.zon: {}", e))?;
+    }
     Ok(())
 }
 
@@ -1273,10 +1376,42 @@ fn install_zig_deps(project_root: &Path, zig_config: &manifest::ZigConfig) -> Re
         return Ok(());
     }
 
-    terminal::success_indented(&format!(
-        "Zig dependencies recorded in manifest: {}",
-        zig_config.dependencies.len()
-    ));
+    ensure_zig_build_files(&zig_root)?;
+
+    for (package, version) in &zig_config.dependencies {
+        if !is_zig_url(package) {
+            terminal::info_indented(&format!(
+                "Skipping {} (Zig deps must be URLs; run 'poly-bench add --zig \"<url>\"')",
+                package
+            ));
+            continue;
+        }
+        let zig_url = zig_package_url(package, version);
+        let dep_name = zig_dep_name_from_url(&zig_url);
+        let spinner = terminal::indented_spinner(&format!("Fetching {}...", dep_name));
+        let output = terminal::run_command_with_spinner(
+            &spinner,
+            Command::new("zig")
+                .args(["fetch", &format!("--save={}", dep_name), &zig_url])
+                .current_dir(&zig_root),
+        )
+        .map_err(|e| miette::miette!("Failed to run zig fetch: {}", e))?;
+
+        if output.status.success() {
+            terminal::finish_success_indented(&spinner, &dep_name);
+        } else {
+            terminal::finish_failure_indented(&spinner, &format!("Failed to fetch {}", dep_name));
+            terminal::print_stderr_excerpt(&output.stderr, 6);
+            return Err(command_failure(
+                &format!("zig fetch --save={} {}", dep_name, zig_url),
+                &zig_root,
+                &output,
+                "Verify the URL is valid and the package is accessible.",
+            ));
+        }
+    }
+
+    terminal::success_indented("Zig dependencies ready");
     Ok(())
 }
 
