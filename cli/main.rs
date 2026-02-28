@@ -221,9 +221,9 @@ enum Commands {
         #[arg(value_name = "RUNTIME")]
         runtime: String,
 
-        /// Install to ~/.local/bin (user-local) instead of /usr/local/bin (default, requires sudo)
+        /// Install to /usr/local (system-wide, requires sudo) instead of ~/.local/share (default)
         #[arg(long)]
-        user_local: bool,
+        system: bool,
     },
 
     /// Remove a dependency
@@ -507,8 +507,8 @@ async fn main() -> Result<()> {
         Commands::Add { go, ts, rs, py, c, cs, zig, features } => {
             cmd_add(go, ts, rs, py, c, cs, zig, features)?;
         }
-        Commands::AddRuntime { runtime, user_local } => {
-            cmd_add_runtime(&runtime, user_local)?;
+        Commands::AddRuntime { runtime, system } => {
+            cmd_add_runtime(&runtime, system)?;
         }
         Commands::Remove { go, ts, rs, py, c, cs, zig } => {
             cmd_remove(go, ts, rs, py, c, cs, zig)?;
@@ -1978,7 +1978,7 @@ fn cmd_remove(
     Ok(())
 }
 
-fn cmd_add_runtime(runtime: &str, user_local: bool) -> Result<()> {
+fn cmd_add_runtime(runtime: &str, system: bool) -> Result<()> {
     use colored::Colorize;
     use poly_bench_dsl::Lang;
 
@@ -2001,10 +2001,10 @@ fn cmd_add_runtime(runtime: &str, user_local: bool) -> Result<()> {
         match choice {
             InstallChoice::Install => {
                 if project::runtime_installer::can_auto_install(lang) {
-                    let loc = if user_local {
-                        project::runtime_installer::InstallLocation::UserLocal
-                    } else {
+                    let loc = if system {
                         project::runtime_installer::InstallLocation::System
+                    } else {
+                        project::runtime_installer::InstallLocation::UserLocal
                     };
                     let version = prompt_version_select(&theme, lang, &label)?;
                     let custom_path = prompt_install_path(&theme, lang, loc, &label)?;

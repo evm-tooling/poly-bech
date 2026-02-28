@@ -4,18 +4,11 @@
 //! to mask underlying subprocess noise (go get, npm install, etc.)
 
 use colored::Colorize;
-use console::{measure_text_width, Term};
-use indicatif::{HumanBytes, ProgressBar, ProgressStyle};
-use std::{
-    process::{Command, Output, Stdio},
-    sync::atomic::{AtomicU64, Ordering},
-    time::{Duration, Instant},
-};
+use indicatif::{ProgressBar, ProgressStyle};
+use std::{process::{Command, Output, Stdio}, time::Duration};
 
 /// Minimum display time for spinners (500ms) so users can follow progress
 const MIN_DISPLAY_MS: u64 = 500;
-/// Minimum interval between progress bar redraws (preserve last frame until new one ready)
-const PROGRESS_REDRAW_MS: u64 = 80;
 const ERROR_EXCERPT_MAX_LINES: usize = 24;
 
 /// Create a spinner for a step with the [±] style prefix
@@ -103,114 +96,41 @@ pub fn failure(msg: &str) {
     eprintln!("{} {}", "✗".red().bold(), msg);
 }
 
+/// Print an indented failure message (no spinner)
+pub fn failure_indented(msg: &str) {
+    eprintln!("  {} {}", "✗".red(), msg);
+}
+
 /// Print an indented info message
 pub fn info_indented(msg: &str) {
     println!("  {} {}", "·".dimmed(), msg);
 }
 
-/// Custom download progress that builds each frame in memory and does a single atomic write.
-/// Preserves last frame until new one is ready to eliminate flicker.
-pub struct DownloadProgress {
-    msg: String,
-    total: Option<u64>,
-    pos: AtomicU64,
-    started: Instant,
-    last_draw: std::sync::Mutex<Instant>,
-    term: Term,
-    spinner_idx: std::sync::Mutex<usize>,
-}
-
-const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const BAR_WIDTH: usize = 24;
-
-impl DownloadProgress {
-    fn draw(&self, force: bool) {
-        let pos = self.pos.load(Ordering::Relaxed);
-        let now = Instant::now();
-        if !force {
-            let mut last = self.last_draw.lock().unwrap();
-            if now.duration_since(*last).as_millis() < PROGRESS_REDRAW_MS as u128 {
-                return;
-            }
-            *last = now;
-        }
-
-        let line = if let Some(total) = self.total {
-            let pct = if total > 0 { (pos as f64 / total as f64 * 100.0).min(100.0) } else { 0.0 };
-            let filled = (pct / 100.0 * BAR_WIDTH as f64) as usize;
-            let bar: String = (0..BAR_WIDTH).map(|i| if i < filled { "█" } else { "░" }).collect();
-            format!(
-                "  {} [\x1b[32m{}\x1b[0m] {}/{} ({:.0}%)",
-                self.msg,
-                bar,
-                HumanBytes(pos),
-                HumanBytes(total),
-                pct
-            )
-        } else {
-            let mut idx = self.spinner_idx.lock().unwrap();
-            let s = SPINNER[*idx % SPINNER.len()];
-            *idx = idx.wrapping_add(1);
-            format!("  \x1b[32m{}\x1b[0m {} {}", s, self.msg, HumanBytes(pos))
-        };
-
-        let (_, cols) = self.term.size();
-        let width = cols as usize;
-        let visible_len = measure_text_width(&line);
-        let pad = width.saturating_sub(visible_len);
-        let full = format!("\r{}{}", line, " ".repeat(pad));
-
-        let _ = self.term.write_str(&full);
-        let _ = self.term.flush();
-    }
-
-    pub fn inc(&self, delta: u64) {
-        self.pos.fetch_add(delta, Ordering::Relaxed);
-        self.draw(false);
-    }
-
-    pub fn elapsed(&self) -> Duration {
-        self.started.elapsed()
-    }
-
-    pub fn finish_and_clear(&self) {
-        self.draw(true);
-        let (_, cols) = self.term.size();
-        let _ = self.term.write_str(&format!("\r{}\r", " ".repeat(cols as usize)));
-        let _ = self.term.flush();
-    }
-}
-
 /// Create a progress bar for downloads with known size (shows bytes and percent).
-/// Builds each frame in memory and does a single atomic write to prevent flicker.
-pub fn download_progress_bar(total: u64, msg: &str) -> DownloadProgress {
-    let dp = DownloadProgress {
-        msg: msg.to_string(),
-        total: Some(total),
-        pos: AtomicU64::new(0),
-        started: Instant::now(),
-        last_draw: std::sync::Mutex::new(Instant::now()),
-        term: Term::stderr(),
-        spinner_idx: std::sync::Mutex::new(0),
-    };
-    dp.draw(true);
-    dp
+pub fn download_progress_bar(total: u64, msg: &str) -> ProgressBar {
+    let pb = ProgressBar::new(total);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("  {msg} [{wide_bar:.green}] {bytes}/{total_bytes} ({percent}%)")
+            .unwrap()
+            .progress_chars("█░"),
+    );
+    pb.set_message(msg.to_string());
+    pb
 }
 
 /// Create a spinner for downloads with unknown size. Call pb.inc(n) as bytes are read.
-/// Builds each frame in memory and does a single atomic write to prevent flicker.
-pub fn download_spinner(msg: &str) -> DownloadProgress {
-    let dp = DownloadProgress {
-        msg: msg.to_string(),
-        total: None,
-        pos: AtomicU64::new(0),
-        started: Instant::now(),
-        last_draw: std::sync::Mutex::new(Instant::now()),
-        term: Term::stderr(),
-        spinner_idx: std::sync::Mutex::new(0),
-    };
-    dp.draw(true);
-    dp
+pub fn download_spinner(msg: &str) -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(
+        ProgressStyle::default_spinner()
+            .template("  {spinner:.green} {msg} {bytes}")
+            .unwrap()
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
+    );
+    pb.set_message(msg.to_string());
+    pb.enable_steady_tick(Duration::from_millis(80));
+    pb
 }
 
 /// Print install step progress (e.g. "[1/4] Downloading...")
