@@ -15,6 +15,7 @@ poly-bench includes commands for validation, compilation, execution, project set
 | `poly-bench compile [file]` | Compile-check benchmarks without running |
 | `poly-bench cache <stats\|clear\|clean>` | Inspect or manage compile cache/workspace |
 | `poly-bench run [file]` | Execute benchmarks |
+| `poly-bench plot <from-file\|bar-chart\|line-chart\|speedup-chart\|table>` | Generate charts from results.json without running |
 | `poly-bench codegen <file>` | Generate runtime code without running |
 | `poly-bench fmt [files...]` | Format `.bench` files |
 | `poly-bench init [name]` | Initialize a new project |
@@ -74,6 +75,67 @@ Execute benchmarks from a `.bench` file, or run all files in `benchmarks/` when 
 <Aside type="note">
 <span>Results are also auto-saved to <code>out/results.json</code> after each run.</span>
 </Aside>
+
+---
+
+### `poly-bench plot`
+
+Generate charts from existing `out/results.json` without re-running benchmarks.
+
+<CodeGroup
+  tabs={[
+    {
+      title: "Usage",
+      language: "bash",
+      code: `poly-bench plot <SUBCOMMAND> [OPTIONS]`
+    },
+  ]}
+/>
+
+#### Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `from-file [FILE]` | Plot using chart directives from a .bench file's `after` block |
+| `bar-chart` | Generate a bar chart (requires `--output-file`) |
+| `line-chart` | Generate a line chart (requires `--output-file`) |
+| `speedup-chart` | Generate a speedup chart (requires `--output-file`) |
+| `table` | Generate a results table (requires `--output-file`) |
+
+#### Options (all subcommands)
+
+| Option | Description |
+|--------|-------------|
+| `--results <PATH>` | Path to results JSON (default: `out/results.json`) |
+| `--output <DIR>` / `-o <DIR>` | Output directory for charts (default: `out/`) |
+
+#### Direct chart options (bar-chart, line-chart, etc.)
+
+| Option | Description |
+|--------|-------------|
+| `--output-file <FILE>` | Output filename (required for direct charts) |
+| `--title <TITLE>` | Chart title |
+| `--suite <NAME>` | Filter to a specific suite |
+| `--y-scale <SCALE>` | Y-axis scale: `linear`, `log10`, `symlog`, `split` |
+| `--sort-by <KEY>` | Sort by: `speedup`, `name`, `time`, `ops` |
+| `--theme <THEME>` | Color theme: `dark` or `light` |
+
+#### Examples
+
+<CodeGroup
+  tabs={[
+    {
+      title: "From bench file",
+      language: "bash",
+      code: `poly-bench plot from-file benchmarks/bubble.bench`
+    },
+    {
+      title: "Direct bar chart",
+      language: "bash",
+      code: `poly-bench plot bar-chart --output-file results.svg --title "Performance" --y-scale log10`
+    },
+  ]}
+/>
 
 ---
 
