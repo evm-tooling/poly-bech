@@ -7,7 +7,7 @@ mod welcome;
 
 use clap::{
     builder::styling::{AnsiColor, Effects, Styles},
-    Parser, Subcommand,
+    Args, Parser, Subcommand,
 };
 use indicatif::ProgressBar;
 use miette::Result;
@@ -285,12 +285,160 @@ enum Commands {
     /// Upgrade to the latest poly-bench binary
     Upgrade,
 
+    /// Generate charts from results.json without running benchmarks
+    Plot {
+        #[command(subcommand)]
+        subcommand: PlotSubcommand,
+    },
+
     /// Start the language server (for editors, v2)
     Lsp {
         /// Accepted for editor compatibility; stdio is always used
         #[arg(long, hide = true)]
         stdio: bool,
     },
+}
+
+#[derive(Subcommand)]
+enum PlotSubcommand {
+    /// Plot using chart directives from a .bench file's after block
+    FromFile {
+        /// Path to the .bench file (optional if in a poly-bench project)
+        #[arg(value_name = "FILE")]
+        file: Option<PathBuf>,
+
+        /// Path to results JSON (default: out/results.json)
+        #[arg(long, value_name = "PATH")]
+        results: Option<PathBuf>,
+
+        /// Output directory for charts (default: out/)
+        #[arg(long, short, value_name = "DIR")]
+        output: Option<PathBuf>,
+    },
+
+    /// Generate a bar chart from results
+    BarChart {
+        #[command(flatten)]
+        params: ChartDirectParams,
+    },
+
+    /// Generate a line chart from results
+    LineChart {
+        #[command(flatten)]
+        params: ChartDirectParams,
+    },
+
+    /// Generate a speedup chart from results
+    SpeedupChart {
+        #[command(flatten)]
+        params: ChartDirectParams,
+    },
+
+    /// Generate a table from results
+    Table {
+        #[command(flatten)]
+        params: ChartDirectParams,
+    },
+}
+
+/// Shared parameters for direct chart subcommands (bar-chart, line-chart, etc.)
+#[derive(Args)]
+struct ChartDirectParams {
+    /// Path to results JSON (default: out/results.json)
+    #[arg(long, value_name = "PATH")]
+    results: Option<PathBuf>,
+
+    /// Output directory for charts (default: out/)
+    #[arg(long, short, value_name = "DIR")]
+    output: Option<PathBuf>,
+
+    /// Output filename for the chart (e.g. results.svg)
+    #[arg(long, value_name = "FILE")]
+    output_file: Option<String>,
+
+    /// Chart title
+    #[arg(long)]
+    title: Option<String>,
+
+    /// Chart description
+    #[arg(long)]
+    description: Option<String>,
+
+    /// Chart width in pixels
+    #[arg(long, value_name = "N")]
+    width: Option<i32>,
+
+    /// Chart height in pixels
+    #[arg(long, value_name = "N")]
+    height: Option<i32>,
+
+    /// Filter to a specific suite by name
+    #[arg(long, value_name = "NAME")]
+    suite: Option<String>,
+
+    /// Only show benchmarks with speedup >= N
+    #[arg(long, value_name = "N")]
+    min_speedup: Option<f64>,
+
+    /// Filter by winner: go, ts, or all
+    #[arg(long, value_name = "LANG")]
+    filter_winner: Option<String>,
+
+    /// Only include these benchmark names (comma-separated)
+    #[arg(long, value_name = "NAMES")]
+    include: Option<String>,
+
+    /// Exclude these benchmark names (comma-separated)
+    #[arg(long, value_name = "NAMES")]
+    exclude: Option<String>,
+
+    /// Max benchmarks to show
+    #[arg(long, value_name = "N")]
+    limit: Option<u32>,
+
+    /// Sort by: speedup, name, time, ops
+    #[arg(long, value_name = "KEY")]
+    sort_by: Option<String>,
+
+    /// Sort order: asc or desc
+    #[arg(long, value_name = "ORDER")]
+    sort_order: Option<String>,
+
+    /// Baseline benchmark name (speedup-chart only)
+    #[arg(long, value_name = "NAME")]
+    baseline: Option<String>,
+
+    /// Color theme: dark or light
+    #[arg(long, value_name = "THEME")]
+    theme: Option<String>,
+
+    /// Number of benchmark cards per row (speedup-chart only)
+    #[arg(long, value_name = "N")]
+    row_count: Option<u32>,
+
+    /// Show standard deviation overlays
+    #[arg(long)]
+    show_std_dev: Option<bool>,
+
+    /// Show error bars
+    #[arg(long)]
+    show_error_bars: Option<bool>,
+
+    /// Show regression trendline
+    #[arg(long)]
+    show_regression: Option<bool>,
+
+    /// Regression model: auto, linear, quadratic, etc.
+    #[arg(long, value_name = "MODEL")]
+    regression_model: Option<String>,
+
+    /// Y-axis scale: linear, log10, symlog, split
+    #[arg(long, value_name = "SCALE")]
+    y_scale: Option<String>,
+
+    /// Show stats table below chart
+    #[arg(long)]
+    show_stats_table: Option<bool>,
 }
 
 #[derive(Subcommand)]
@@ -376,6 +524,9 @@ async fn main() -> Result<()> {
         }
         Commands::Upgrade => {
             cmd_upgrade()?;
+        }
+        Commands::Plot { subcommand } => {
+            cmd_plot(subcommand).await?;
         }
         Commands::Lsp { .. } => {
             // Handled above; unreachable here
@@ -900,6 +1051,202 @@ fn merge_results(mut results: Vec<BenchmarkResults>) -> BenchmarkResults {
     }
 
     BenchmarkResults::new(all_suites)
+}
+
+const DEFAULT_RESULTS_PATH: &str = "out/results.json";
+const DEFAULT_OUTPUT_DIR: &str = "out";
+
+async fn cmd_plot(subcommand: PlotSubcommand) -> Result<()> {
+    match subcommand {
+        PlotSubcommand::FromFile { file, results, output } => {
+            cmd_plot_from_file(file, results, output).await
+        }
+        PlotSubcommand::BarChart { params } => {
+            cmd_plot_direct(dsl::ChartType::BarChart, params).await
+        }
+        PlotSubcommand::LineChart { params } => {
+            cmd_plot_direct(dsl::ChartType::LineChart, params).await
+        }
+        PlotSubcommand::SpeedupChart { params } => {
+            cmd_plot_direct(dsl::ChartType::SpeedupChart, params).await
+        }
+        PlotSubcommand::Table { params } => cmd_plot_direct(dsl::ChartType::Table, params).await,
+    }
+}
+
+async fn cmd_plot_from_file(
+    file: Option<PathBuf>,
+    results: Option<PathBuf>,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    let files = match file {
+        Some(f) => vec![f],
+        None => {
+            let current_dir = std::env::current_dir()
+                .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
+
+            let project_root = project::find_project_root(&current_dir).ok_or_else(|| {
+                miette::miette!(
+                    "No .bench file specified and not in a poly-bench project.\n\
+                    Either specify a file: poly-bench plot from-file <file.bench>\n\
+                    Or run from a project directory"
+                )
+            })?;
+
+            let bench_files = project::find_bench_files(&project_root)?;
+
+            if bench_files.is_empty() {
+                return Err(miette::miette!(
+                    "No .bench files found in {}/",
+                    project::BENCHMARKS_DIR
+                ));
+            }
+
+            bench_files
+        }
+    };
+
+    let mut all_chart_directives = Vec::new();
+    for bench_file in &files {
+        let source = std::fs::read_to_string(bench_file)
+            .map_err(|e| miette::miette!("Failed to read file {}: {}", bench_file.display(), e))?;
+
+        let filename = bench_file.file_name().and_then(|s| s.to_str()).unwrap_or("unknown");
+        let ast = dsl::parse(&source, filename)?;
+        let ir = ir::lower(&ast, bench_file.parent())?;
+        all_chart_directives.extend(ir.chart_directives);
+    }
+
+    if all_chart_directives.is_empty() {
+        return Err(miette::miette!(
+            "No chart directives found in the specified .bench file(s).\n\
+            Add charting directives in an after block, e.g.:\n\
+            after {{ charting.drawSpeedupChart(title: \"Results\", output: \"chart.svg\") }}"
+        ));
+    }
+
+    let results_path = results.unwrap_or_else(|| PathBuf::from(DEFAULT_RESULTS_PATH));
+    let json = std::fs::read_to_string(&results_path).map_err(|e| {
+        miette::miette!(
+            "Failed to read results file {}: {}.\n\
+            Run benchmarks first: poly-bench run",
+            results_path.display(),
+            e
+        )
+    })?;
+
+    let benchmark_results: BenchmarkResults = serde_json::from_str(&json).map_err(|e| {
+        miette::miette!(
+            "Failed to parse results JSON: {}. File may be from an incompatible version.",
+            e
+        )
+    })?;
+
+    let output_dir = output.unwrap_or_else(|| PathBuf::from(DEFAULT_OUTPUT_DIR));
+    let generated =
+        reporter::execute_chart_directives(&all_chart_directives, &benchmark_results, &output_dir)?;
+
+    println!("Generated {} chart(s) in {}", generated.len(), output_dir.display());
+    for chart in &generated {
+        println!("  {}", chart.path);
+    }
+
+    Ok(())
+}
+
+async fn cmd_plot_direct(chart_type: dsl::ChartType, params: ChartDirectParams) -> Result<()> {
+    let output_file = params.output_file.clone().ok_or_else(|| {
+        miette::miette!(
+            "--output-file is required for direct chart generation.\n\
+            Example: poly-bench plot bar-chart --output-file results.svg"
+        )
+    })?;
+
+    let results_path =
+        params.results.clone().unwrap_or_else(|| PathBuf::from(DEFAULT_RESULTS_PATH));
+    let json = std::fs::read_to_string(&results_path).map_err(|e| {
+        miette::miette!(
+            "Failed to read results file {}: {}.\n\
+            Run benchmarks first: poly-bench run",
+            results_path.display(),
+            e
+        )
+    })?;
+
+    let benchmark_results: BenchmarkResults = serde_json::from_str(&json).map_err(|e| {
+        miette::miette!(
+            "Failed to parse results JSON: {}. File may be from an incompatible version.",
+            e
+        )
+    })?;
+
+    let directive = chart_params_to_directive(chart_type, &output_file, &params);
+
+    let output_dir = params.output.clone().unwrap_or_else(|| PathBuf::from(DEFAULT_OUTPUT_DIR));
+    let generated =
+        reporter::execute_chart_directives(&[directive], &benchmark_results, &output_dir)?;
+
+    println!("Generated {} chart(s) in {}", generated.len(), output_dir.display());
+    for chart in &generated {
+        println!("  {}", chart.path);
+    }
+
+    Ok(())
+}
+
+fn chart_params_to_directive(
+    chart_type: dsl::ChartType,
+    output_file: &str,
+    params: &ChartDirectParams,
+) -> ir::ChartDirectiveIR {
+    use poly_bench_ir::ChartDirectiveIR;
+
+    let mut ir = ChartDirectiveIR::new(chart_type, output_file.to_string());
+
+    ir.title = params.title.clone();
+    ir.description = params.description.clone();
+    ir.suite_name = params.suite.clone();
+    ir.min_speedup = params.min_speedup;
+    ir.filter_winner = params.filter_winner.clone();
+    ir.include_benchmarks = params
+        .include
+        .as_ref()
+        .map(|s| s.split(',').map(|x| x.trim().to_string()).collect())
+        .unwrap_or_default();
+    ir.exclude_benchmarks = params
+        .exclude
+        .as_ref()
+        .map(|s| s.split(',').map(|x| x.trim().to_string()).collect())
+        .unwrap_or_default();
+    ir.limit = params.limit;
+    ir.sort_by = params.sort_by.clone();
+    ir.sort_order = params.sort_order.clone();
+    ir.width = params.width;
+    ir.row_count = params.row_count;
+    ir.height = params.height;
+    ir.baseline_benchmark = params.baseline.clone();
+    ir.theme = params.theme.clone();
+
+    if let Some(v) = params.show_std_dev {
+        ir.show_std_dev = v;
+    }
+    if let Some(v) = params.show_error_bars {
+        ir.show_error_bars = v;
+    }
+    if let Some(v) = params.show_regression {
+        ir.show_regression = v;
+    }
+    if let Some(ref v) = params.regression_model {
+        ir.regression_model = v.clone();
+    }
+    if let Some(ref v) = params.y_scale {
+        ir.y_scale = v.clone();
+    }
+    if let Some(v) = params.show_stats_table {
+        ir.show_stats_table = v;
+    }
+
+    ir
 }
 
 /// Parse --project-dir LANG:DIR args into (Lang, PathBuf) pairs
