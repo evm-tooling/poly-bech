@@ -107,7 +107,7 @@
     "web-tree-sitter": "^0.26.6"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/node": "^25.3.2",
     "@types/vscode": "^1.74.0",
     "typescript": "^5.3.0"
   }
