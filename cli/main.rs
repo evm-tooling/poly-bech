@@ -1332,21 +1332,46 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
         match choice {
             InstallChoice::Install => {
                 if project::runtime_installer::can_auto_install(lang) {
-                    if let Err(e) = project::runtime_installer::install_lang(
+                    let custom_path = prompt_install_path(
+                        &theme,
                         lang,
                         project::runtime_installer::InstallLocation::UserLocal,
+                        &label,
+                    )?;
+                    match project::runtime_installer::install_lang(
+                        lang,
+                        project::runtime_installer::InstallLocation::UserLocal,
+                        custom_path,
                     ) {
-                        eprintln!("{} Failed to install {}: {}", "✗".red(), label, e);
-                        to_remove.push(i);
-                        print_runtime_skip_warning(lang, &label);
-                    } else if let Ok(Some(config_path)) =
-                        project::runtime_installer::ensure_runtime_in_shell_config(lang)
-                    {
-                        project::terminal::info_indented(&format!(
-                            "Added to PATH in {}. Run 'source {}' or restart your terminal.",
-                            config_path.display(),
-                            config_path.display()
-                        ));
+                        Err(e) => {
+                            eprintln!("{} Failed to install {}: {}", "✗".red(), label, e);
+                            to_remove.push(i);
+                            print_runtime_skip_warning(lang, &label);
+                        }
+                        Ok(Some(custom_bin_dir)) => {
+                            if let Ok(Some(config_path)) =
+                                project::runtime_installer::ensure_path_in_shell_config(
+                                    &custom_bin_dir,
+                                )
+                            {
+                                project::terminal::info_indented(&format!(
+                                    "Added to PATH in {}. Run 'source {}' or restart your terminal.",
+                                    config_path.display(),
+                                    config_path.display()
+                                ));
+                            }
+                        }
+                        Ok(None) => {
+                            if let Ok(Some(config_path)) =
+                                project::runtime_installer::ensure_runtime_in_shell_config(lang)
+                            {
+                                project::terminal::info_indented(&format!(
+                                    "Added to PATH in {}. Run 'source {}' or restart your terminal.",
+                                    config_path.display(),
+                                    config_path.display()
+                                ));
+                            }
+                        }
                     }
                 } else {
                     println!("{} {} requires manual install.", "⚠".yellow(), label);
@@ -1392,6 +1417,46 @@ fn prompt_install_or_skip(
         .interact()
         .map_err(|e| miette!("Prompt failed: {}", e))?;
     Ok(if selected == 0 { InstallChoice::Install } else { InstallChoice::Skip })
+}
+
+/// Prompts for install path: default or custom. Returns None for default, Some(path) for custom.
+fn prompt_install_path(
+    theme: &init_t3::T3StyleTheme,
+    lang: poly_bench_dsl::Lang,
+    location: project::runtime_installer::InstallLocation,
+    label: &str,
+) -> Result<Option<PathBuf>> {
+    use dialoguer::{Input, Select};
+    use miette::miette;
+
+    let default_path = project::runtime_installer::default_install_path(lang, location)
+        .map_err(|e| miette!("Could not determine default path: {}", e))?;
+    let default_str = default_path.display().to_string();
+
+    let choices =
+        [format!("Install to default path: {}", default_str), "Install to custom path".to_string()];
+    let selected = Select::with_theme(theme)
+        .with_prompt(&format!("Where to install {}?", label))
+        .items(&choices)
+        .default(0)
+        .interact()
+        .map_err(|e| miette!("Prompt failed: {}", e))?;
+
+    if selected == 1 {
+        let path: String = Input::with_theme(theme)
+            .with_prompt("Enter install path")
+            .default(default_str)
+            .interact_text()
+            .map_err(|e| miette!("Input failed: {}", e))?;
+        let p = PathBuf::from(path.trim());
+        if p.as_os_str().is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(p))
+        }
+    } else {
+        Ok(None)
+    }
 }
 
 fn print_runtime_skip_warning(lang: poly_bench_dsl::Lang, label: &str) {
@@ -1531,7 +1596,7 @@ fn cmd_add_runtime(runtime: &str, user_local: bool) -> Result<()> {
     }
 
     // If runtime not installed, prompt install or exit
-    let did_install = if !project::runtime_check::is_lang_installed(lang) {
+    let _did_install = if !project::runtime_check::is_lang_installed(lang) {
         let label = poly_bench_runtime::lang_label(lang);
         let theme = init_t3::T3StyleTheme::new();
         let choice = prompt_install_or_skip(&theme, lang, &label)?;
@@ -1543,7 +1608,53 @@ fn cmd_add_runtime(runtime: &str, user_local: bool) -> Result<()> {
                     } else {
                         project::runtime_installer::InstallLocation::System
                     };
-                    project::runtime_installer::install_lang(lang, loc)?;
+                    let custom_path = prompt_install_path(&theme, lang, loc, &label)?;
+                    match project::runtime_installer::install_lang(lang, loc, custom_path)? {
+                        Some(custom_bin_dir) => {
+                            if let Ok(current) = std::env::var("PATH") {
+                                let sep = if cfg!(windows) { ";" } else { ":" };
+                                std::env::set_var(
+                                    "PATH",
+                                    format!("{}{}{}", custom_bin_dir.display(), sep, current),
+                                );
+                            }
+                            if let Ok(Some(config_path)) =
+                                project::runtime_installer::ensure_path_in_shell_config(
+                                    &custom_bin_dir,
+                                )
+                            {
+                                println!("  Added to PATH in {}.", config_path.display());
+                                println!(
+                                    "  Run 'source {}' or open a new terminal to use {} in future sessions.",
+                                    config_path.display(),
+                                    poly_bench_runtime::lang_label(lang)
+                                );
+                            }
+                        }
+                        None => {
+                            if let Some(path) =
+                                project::runtime_installer::polybench_runtime_path(lang)
+                            {
+                                if let Ok(current) = std::env::var("PATH") {
+                                    let sep = if cfg!(windows) { ";" } else { ":" };
+                                    std::env::set_var(
+                                        "PATH",
+                                        format!("{}{}{}", path.display(), sep, current),
+                                    );
+                                }
+                            }
+                            if let Ok(Some(config_path)) =
+                                project::runtime_installer::ensure_runtime_in_shell_config(lang)
+                            {
+                                println!("  Added to PATH in {}.", config_path.display());
+                                println!(
+                                    "  Run 'source {}' or open a new terminal to use {} in future sessions.",
+                                    config_path.display(),
+                                    poly_bench_runtime::lang_label(lang)
+                                );
+                            }
+                        }
+                    }
                     true
                 } else {
                     println!("{} {} requires manual install.", "⚠".yellow(), label);
@@ -1567,25 +1678,6 @@ fn cmd_add_runtime(runtime: &str, user_local: bool) -> Result<()> {
     } else {
         false
     };
-
-    // If we just installed, add to current process PATH so build can find the binary
-    if did_install {
-        if let Some(path) = project::runtime_installer::polybench_runtime_path(lang) {
-            if let Ok(current) = std::env::var("PATH") {
-                let sep = if cfg!(windows) { ";" } else { ":" };
-                std::env::set_var("PATH", format!("{}{}{}", path.display(), sep, current));
-            }
-        }
-        if let Ok(Some(config_path)) =
-            project::runtime_installer::ensure_runtime_in_shell_config(lang)
-        {
-            println!(
-                "  Run 'source {}' or open a new terminal to use {} in future sessions.",
-                config_path.display(),
-                poly_bench_runtime::lang_label(lang)
-            );
-        }
-    }
 
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;

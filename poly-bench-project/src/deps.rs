@@ -898,7 +898,7 @@ pub fn install_all() -> Result<()> {
         "Installing dependencies for {}...",
         manifest.project.name
     ));
-    terminal::ensure_min_display(&spinner);
+    terminal::ensure_min_display(spinner.elapsed());
     spinner.finish_and_clear();
 
     for lang in poly_bench_runtime::supported_languages() {
