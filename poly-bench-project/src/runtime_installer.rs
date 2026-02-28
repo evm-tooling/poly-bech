@@ -203,6 +203,46 @@ fn fetch_zig_versions() -> Result<Vec<String>> {
     Ok(versions)
 }
 
+/// Get Zig download URL from index.json. Zig uses different filename formats across
+/// versions (e.g. zig-macos-aarch64-0.13.0 vs zig-aarch64-macos-0.15.2), so we must
+/// use the URL from the index instead of constructing it.
+fn zig_download_url(version: &str) -> Result<String> {
+    let (arch, os) = platform();
+    let platform_key = match (os.as_str(), arch.as_str()) {
+        ("darwin", "arm64") => "aarch64-macos",
+        ("darwin", "amd64") => "x86_64-macos",
+        ("linux", "amd64") => "x86_64-linux",
+        ("linux", "arm64") => "aarch64-linux",
+        ("windows", "amd64") => "x86_64-windows",
+        ("windows", "arm64") => "aarch64-windows",
+        _ => "x86_64-linux",
+    };
+
+    let url = "https://ziglang.org/download/index.json";
+    let resp: serde_json::Value = ureq::get(url)
+        .call()
+        .map_err(|e| miette::miette!("Failed to fetch Zig index: {}", e))?
+        .body_mut()
+        .read_json()
+        .map_err(|e| miette::miette!("Failed to parse Zig index: {}", e))?;
+
+    let tarball = resp
+        .get(version)
+        .and_then(|v| v.get(platform_key))
+        .and_then(|v| v.get("tarball"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            miette::miette!(
+                "Zig {} not available for {}-{}",
+                version,
+                arch,
+                os
+            )
+        })?;
+
+    Ok(tarball.to_string())
+}
+
 fn semver_compare_zig(a: &str, b: &str) -> Option<std::cmp::Ordering> {
     let parse = |s: &str| {
         let parts: Vec<u32> = s.split('.').filter_map(|p| p.parse::<u32>().ok()).collect();
@@ -427,7 +467,7 @@ pub fn install_lang(
     terminal::section(&format!("Installing {}", poly_bench_runtime::lang_label(lang)));
 
     let label = poly_bench_runtime::lang_label(lang);
-    let pb = terminal::indented_spinner(&format!("Installing {}...", label));
+    let started = std::time::Instant::now();
 
     let result = match lang {
         Lang::Go => install_go(location, custom_path, version),
@@ -441,10 +481,9 @@ pub fn install_lang(
 
     match &result {
         Ok(_) => {
-            terminal::ensure_min_display(pb.elapsed());
-            pb.finish_and_clear();
+            terminal::ensure_min_display(started.elapsed());
         }
-        Err(_) => terminal::finish_failure_indented(&pb, "Installation failed"),
+        Err(_) => terminal::failure_indented(&format!("{} installation failed", label)),
     }
     result
 }
@@ -677,9 +716,10 @@ fn install_python(
         ("windows", "arm64") => "aarch64-pc-windows-msvc-install_only",
         _ => "x86_64-unknown-linux-gnu-install_only",
     };
-    // python-build-standalone release 20231016 has Python 3.12.0
+    // python-build-standalone: release tag from https://github.com/astral-sh/python-build-standalone/releases
+    const PYTHON_RELEASE_TAG: &str = "20231016"; // Contains Python 3.12.0
     let py_version = "3.12.0";
-    let release_tag = "20231016";
+    let release_tag = PYTHON_RELEASE_TAG;
     let filename = format!("cpython-{}+{}-{}.tar.gz", py_version, release_tag, target);
     let url = format!(
         "https://github.com/astral-sh/python-build-standalone/releases/download/{}/{}",
@@ -742,24 +782,22 @@ fn install_zig(
     custom_path: Option<PathBuf>,
     version_opt: Option<String>,
 ) -> Result<Option<PathBuf>> {
-    let (arch, os) = platform();
     let version = version_opt.unwrap_or_else(|| "0.13.0".to_string());
-    let (zig_arch, zig_os) = match (os.as_str(), arch.as_str()) {
-        ("darwin", "arm64") => ("aarch64", "macos"),
-        ("darwin", "amd64") => ("x86_64", "macos"),
-        ("linux", "amd64") => ("x86_64", "linux"),
-        ("linux", "arm64") => ("aarch64", "linux"),
-        ("windows", "amd64") => ("x86_64", "windows"),
-        ("windows", "arm64") => ("aarch64", "windows"),
-        _ => ("x86_64", "linux"),
-    };
-    // Zig format: zig-{arch}-{os}-{version}.tar.xz (e.g. zig-aarch64-macos-0.15.2.tar.xz)
-    let filename = format!("zig-{}-{}-{}.tar.xz", zig_arch, zig_os, version);
-    let url = format!("https://ziglang.org/download/{}/{}", version, filename);
+    let url = zig_download_url(&version)?;
+    let filename = url
+        .rsplit('/')
+        .next()
+        .unwrap_or("zig.tar.xz")
+        .to_string();
+    let extracted_dir_name = filename
+        .strip_suffix(".tar.xz")
+        .or_else(|| filename.strip_suffix(".zip"))
+        .unwrap_or(&filename)
+        .to_string();
 
     let install_dir =
         custom_path.clone().unwrap_or_else(|| lang_install_dir(Lang::Zig, location).unwrap());
-    let zig_extracted = install_dir.join(format!("zig-{}-{}-{}", zig_arch, zig_os, version));
+    let zig_extracted = install_dir.join(&extracted_dir_name);
     let zig_bin = zig_extracted.join("zig");
     let zig_bin_exe = zig_extracted.join("zig.exe");
     if (zig_bin.exists() || zig_bin_exe.exists()) && which::which("zig").is_err() {
@@ -817,7 +855,12 @@ fn install_dotnet(
     version_opt: Option<String>,
 ) -> Result<Option<PathBuf>> {
     let (arch, os) = platform();
-    let version = version_opt.unwrap_or_else(|| "8.0.203".to_string());
+    let version = version_opt.unwrap_or_else(|| {
+        fetch_dotnet_versions()
+            .ok()
+            .and_then(|v| v.into_iter().next())
+            .unwrap_or_else(|| "8.0.418".to_string())
+    });
     let (dotnet_arch, dotnet_os) = match (os.as_str(), arch.as_str()) {
         ("darwin", "arm64") => ("arm64", "osx"),
         ("darwin", "amd64") => ("x64", "osx"),
@@ -828,7 +871,7 @@ fn install_dotnet(
         _ => ("x64", "linux"),
     };
     let url = format!(
-        "https://dotnetcli.azureedge.net/dotnet/Sdk/{}/dotnet-sdk-{}-{}-{}.tar.gz",
+        "https://builds.dotnet.microsoft.com/dotnet/Sdk/{}/dotnet-sdk-{}-{}-{}.tar.gz",
         version, version, dotnet_os, dotnet_arch
     );
 
