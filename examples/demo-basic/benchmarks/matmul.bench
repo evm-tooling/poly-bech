@@ -1,0 +1,193 @@
+use std::charting
+
+declare suite matmulN performance timeBased sameDataset: true {
+    description: "O(n^3) naive matrix multiply n×n"
+    warmup: 30
+    baseline: "go"
+    targetTime: 500ms
+    cvThreshold: 5
+    count: 1
+
+    setup go {
+        import (
+            "encoding/binary"
+        )
+
+        helpers {
+            func matmulGo(data []byte) []byte {
+                n := int(binary.LittleEndian.Uint32(data[0:4]))
+                a := make([]float64, n*n)
+                b := make([]float64, n*n)
+                for i := 0; i < n*n; i++ { a[i] = 1.0; b[i] = 1.0 }
+                c := make([]float64, n*n)
+                for i := 0; i < n; i++ {
+                    for j := 0; j < n; j++ {
+                        sum := 0.0
+                        for k := 0; k < n; k++ {
+                            sum += a[i*n+k] * b[k*n+j]
+                        }
+                        c[i*n+j] = sum
+                    }
+                }
+                out := make([]byte, 8)
+                binary.LittleEndian.PutUint64(out, uint64(c[0]))
+                return out
+            }
+        }
+    }
+
+    setup ts {
+        helpers {
+            function matmulTs(data: Uint8Array): Uint8Array {
+                const n = new DataView(data.buffer, data.byteOffset, 4).getUint32(0, true)
+                const a = new Float64Array(n*n).fill(1)
+                const b = new Float64Array(n*n).fill(1)
+                const c = new Float64Array(n*n)
+                for (let i = 0; i < n; i++) {
+                    for (let j = 0; j < n; j++) {
+                        let sum = 0
+                        for (let k = 0; k < n; k++) sum += a[i*n+k] * b[k*n+j]
+                        c[i*n+j] = sum
+                    }
+                }
+                const out = new Uint8Array(8)
+                new DataView(out.buffer).setFloat64(0, c[0], true)
+                return out
+            }
+        }
+    }
+
+    setup rust {
+        helpers {
+            fn matmul_rust(data: &[u8]) -> Vec<u8> {
+                let n = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
+                let mut a = vec![1.0_f64; n * n];
+                let mut b = vec![1.0_f64; n * n];
+                let mut c = vec![0.0_f64; n * n];
+                for i in 0..n {
+                    for j in 0..n {
+                        let mut sum = 0.0;
+                        for k in 0..n {
+                            sum += a[i*n+k] * b[k*n+j];
+                        }
+                        c[i*n+j] = sum;
+                    }
+                }
+                c[0].to_le_bytes().to_vec()
+            }
+        }
+    }
+
+    fixture m8 {
+        hex: @file("fixtures/matmul/mat_8.hex")
+    }
+
+    fixture m16 {
+        hex: @file("fixtures/matmul/mat_16.hex")
+    }
+
+    fixture m24 {
+        hex: @file("fixtures/matmul/mat_24.hex")
+    }
+
+    fixture m32 {
+        hex: @file("fixtures/matmul/mat_32.hex")
+    }
+
+    fixture m40 {
+        hex: @file("fixtures/matmul/mat_40.hex")
+    }
+
+    fixture m48 {
+        hex: @file("fixtures/matmul/mat_48.hex")
+    }
+
+    fixture m56 {
+        hex: @file("fixtures/matmul/mat_56.hex")
+    }
+
+    fixture m64 {
+        hex: @file("fixtures/matmul/mat_64.hex")
+    }
+
+    fixture m72 {
+        hex: @file("fixtures/matmul/mat_72.hex")
+    }
+
+    fixture m80 {
+        hex: @file("fixtures/matmul/mat_80.hex")
+    }
+
+    bench size8 {
+        go: matmulGo(m8)
+        ts: matmulTs(m8)
+        rust: matmul_rust(&m8)
+    }
+
+    bench size16 {
+        go: matmulGo(m16)
+        ts: matmulTs(m16)
+        rust: matmul_rust(&m16)
+    }
+
+    bench size24 {
+        go: matmulGo(m24)
+        ts: matmulTs(m24)
+        rust: matmul_rust(&m24)
+    }
+
+    bench size32 {
+        go: matmulGo(m32)
+        ts: matmulTs(m32)
+        rust: matmul_rust(&m32)
+    }
+
+    bench size40 {
+        go: matmulGo(m40)
+        ts: matmulTs(m40)
+        rust: matmul_rust(&m40)
+    }
+
+    bench size48 {
+        go: matmulGo(m48)
+        ts: matmulTs(m48)
+        rust: matmul_rust(&m48)
+    }
+
+    bench size56 {
+        go: matmulGo(m56)
+        ts: matmulTs(m56)
+        rust: matmul_rust(&m56)
+    }
+
+    bench size64 {
+        go: matmulGo(m64)
+        ts: matmulTs(m64)
+        rust: matmul_rust(&m64)
+    }
+
+    bench size72 {
+        go: matmulGo(m72)
+        ts: matmulTs(m72)
+        rust: matmul_rust(&m72)
+    }
+
+    bench size80 {
+        go: matmulGo(m80)
+        ts: matmulTs(m80)
+        rust: matmul_rust(&m80)
+    }
+
+    after {
+        charting.drawSpeedupChart(
+            title: "Matrix Multiplication - O(n³)",
+            description: "Naive n×n matrix multiply - cubic complexity",
+            output: "matmul-line.svg",
+        )
+        charting.drawTable(
+            title: "Matrix Multiplication Comparison",
+            description: "Vertical grouped bars showing cubic growth",
+            output: "matmul-bar.svg",
+        )
+    }
+}

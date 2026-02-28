@@ -1,0 +1,15 @@
+declare suite pythonTest performance timeBased sameDataset: false {
+    targetTime: 3000
+
+    setup python {
+        helpers {
+            def add_one(x):
+                return x + 1;
+        }
+    }
+
+    bench add {
+        python: add_one(42)
+    }
+
+}

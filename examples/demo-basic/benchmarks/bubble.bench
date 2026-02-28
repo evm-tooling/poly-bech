@@ -1,0 +1,445 @@
+use std::charting
+
+declare suite bubbleN performance timeBased sameDataset: true {
+    description: "O(n^2) bubble sort on int32 array"
+    baseline: "go"
+    warmup: 100
+    targetTime: 100ms
+    fairness: "strict"
+    cvThreshold: 5
+    count: 1
+
+    setup go {
+        import (
+            "encoding/binary"
+        )
+
+        helpers {
+            func bubbleGo(data []byte) []byte {
+                n := len(data) / 4
+                arr := make([]int32, n)
+                for i := 0; i < n; i++ {
+                    arr[i] = int32(binary.BigEndian.Uint32(data[i*4 : (i+1)*4]))
+                }
+                for i := 0; i < n; i++ {
+                    for j := 0; j < n-1-i; j++ {
+                        if arr[j] > arr[j+1] {
+                            tmp := arr[j]
+                            arr[j] = arr[j+1]
+                            arr[j+1] = tmp
+                        }
+                    }
+                }
+                out := make([]byte, len(data))
+                for i := 0; i < n; i++ {
+                    binary.BigEndian.PutUint32(out[i*4:(i+1)*4], uint32(arr[i]))
+                }
+                return out
+            }
+        }
+    }
+
+    setup ts {
+        helpers {
+            function bubbleTs(data: Uint8Array): Uint8Array {
+                const n = data.length / 4
+                const arr = new Array(n)
+                for (let i = 0; i < n; i++) {
+                    arr[i] = (data[i*4]<<24) | (data[i*4+1]<<16) | (data[i*4+2]<<8) | data[i*4+3]
+                }
+                for (let i = 0; i < n; i++) {
+                    for (let j = 0; j < n - 1 - i; j++) {
+                        if (arr[j] > arr[j+1]) {
+                            const tmp = arr[j]
+                            arr[j] = arr[j+1]
+                            arr[j+1] = tmp
+                        }
+                    }
+                }
+                const out = new Uint8Array(data.length)
+                const view = new DataView(out.buffer)
+                for (let i = 0; i < n; i++) {
+                    view.setInt32(i * 4, arr[i], false)
+                }
+                return out
+            }
+        }
+    }
+
+    setup python {
+        import {
+            import struct
+        }
+
+        helpers {
+            def bubble_python(data):
+                n = len(data) // 4
+                fmt = ">" + str(n) + "i"
+                arr = list(struct.unpack(fmt, data))
+                for i in range(n):
+                    for j in range(n - 1 - i):
+                        if arr[j] > arr[j + 1]:
+                            tmp = arr[j]
+                            arr[j] = arr[j + 1]
+                            arr[j + 1] = tmp
+                out = struct.pack(fmt, *arr)
+                return out
+        }
+    }
+
+    setup rust {
+        helpers {
+            fn bubble_rust(data: &[u8]) -> Vec<u8> {
+                let n = data.len() / 4;
+                let mut arr: Vec<i32> = (0..n).map(|i| {
+                    let j = i * 4;
+                    i32::from_be_bytes([data[j], data[j+1], data[j+2], data[j+3]])
+                }).collect();
+                for i in 0..n {
+                    for j in 0..n-1-i {
+                        if arr[j] > arr[j+1] {
+                            let tmp = arr[j];
+                            arr[j] = arr[j+1];
+                            arr[j+1] = tmp;
+                        }
+                    }
+                }
+                let mut out = vec![0u8; data.len()];
+                for i in 0..n {
+                    out[i*4..(i+1)*4].copy_from_slice(&arr[i].to_be_bytes());
+                }
+                out
+            }
+        }
+    }
+
+    setup csharp {
+        import {
+            using System;
+            using System.Buffers.Binary;
+        }
+
+        helpers {
+            static byte[] BubbleCsharp(byte[] data) {
+                int n = data.Length / 4;
+                int[] arr = new int[n];
+                for (int i = 0; i < n; i++) {
+                    int j = i * 4;
+                    arr[i] = BinaryPrimitives.ReadInt32BigEndian(new ReadOnlySpan<byte>(data, j, 4));
+                }
+                for (int i = 0; i < n; i++) {
+                    for (int j = 0; j < n - 1 - i; j++) {
+                        if (arr[j] > arr[j + 1]) {
+                            int tmp = arr[j];
+                            arr[j] = arr[j + 1];
+                            arr[j + 1] = tmp;
+                        }
+                    }
+                }
+                byte[] outBytes = new byte[data.Length];
+                for (int i = 0; i < n; i++) {
+                    int j = i * 4;
+                    BinaryPrimitives.WriteInt32BigEndian(new Span<byte>(outBytes, j, 4), arr[i]);
+                }
+                return outBytes;
+            }
+        }
+    }
+
+    setup zig {
+        helpers {
+            fn bubbleZig(data: []const u8) []u8 {
+                const n = data.len / 4;
+                const allocator = std.heap.page_allocator;
+                const arr = allocator.alloc(i32, n) catch @panic("alloc failed");
+                defer allocator.free(arr);
+                for (0..n) |i| {
+                    const offset = i * 4;
+                    arr[i] = std.mem.readInt(i32, @ptrCast(data[offset..].ptr), .big);
+                }
+                for (0..n) |i| {
+                    for (0..n - 1 - i) |j| {
+                        if (arr[j] > arr[j + 1]) {
+                            const tmp = arr[j];
+                            arr[j] = arr[j + 1];
+                            arr[j + 1] = tmp;
+                        }
+                    }
+                }
+                const out = allocator.alloc(u8, data.len) catch @panic("alloc failed");
+                errdefer allocator.free(out);
+                for (0..n) |i| {
+                    const offset = i * 4;
+                    std.mem.writeInt(i32, @ptrCast(out[offset..].ptr), arr[i], .big);
+                }
+                return out;
+            }
+
+            fn bubbleZigAndFree(data: []const u8) void {
+                const allocator = std.heap.page_allocator;
+                const result = bubbleZig(data);
+                allocator.free(result);
+            }
+        }
+    }
+
+    setup c {
+        helpers {
+            static int32_t read_i32_be(const unsigned char* p) {
+                return (int32_t)(
+                    ((uint32_t)p[0] << 24) |
+                    ((uint32_t)p[1] << 16) |
+                    ((uint32_t)p[2] << 8) |
+                    (uint32_t)p[3]
+                );
+            }
+
+            static void write_i32_be(unsigned char* p, int32_t v) {
+                uint32_t u = (uint32_t)v;
+                p[0] = (unsigned char)((u >> 24) & 0xFF);
+                p[1] = (unsigned char)((u >> 16) & 0xFF);
+                p[2] = (unsigned char)((u >> 8) & 0xFF);
+                p[3] = (unsigned char)(u & 0xFF);
+            }
+
+            static void bubble_c(unsigned char* data, size_t len) {
+                size_t n = len / 4;
+                int32_t* arr = (int32_t*)malloc(n * sizeof(int32_t));
+                if (!arr) return;
+                for (size_t i = 0; i < n; i++) {
+                    arr[i] = read_i32_be(data + i * 4);
+                }
+                for (size_t i = 0; i < n; i++) {
+                    for (size_t j = 0; j < n - 1 - i; j++) {
+                        if (arr[j] > arr[j + 1]) {
+                            int32_t tmp = arr[j];
+                            arr[j] = arr[j + 1];
+                            arr[j + 1] = tmp;
+                        }
+                    }
+                }
+                unsigned char* out = (unsigned char*)malloc(len);
+                if (!out) { free(arr); return; }
+                for (size_t i = 0; i < n; i++) {
+                    write_i32_be(out + i * 4, arr[i]);
+                }
+                memcpy(data, out, len);
+                free(arr);
+                free(out);
+            }
+        }
+    }
+
+    fixture s100 {
+        hex: @file("fixtures/sort/sort_100.hex")
+    }
+
+    fixture s200 {
+        hex: @file("fixtures/sort/sort_200.hex")
+    }
+
+    fixture s300 {
+        hex: @file("fixtures/sort/sort_300.hex")
+    }
+
+    fixture s400 {
+        hex: @file("fixtures/sort/sort_400.hex")
+    }
+
+    fixture s500 {
+        hex: @file("fixtures/sort/sort_500.hex")
+    }
+
+    fixture s600 {
+        hex: @file("fixtures/sort/sort_600.hex")
+    }
+
+    fixture s700 {
+        hex: @file("fixtures/sort/sort_700.hex")
+    }
+
+    fixture s800 {
+        hex: @file("fixtures/sort/sort_800.hex")
+    }
+
+    fixture s900 {
+        hex: @file("fixtures/sort/sort_900.hex")
+    }
+
+    fixture s1000 {
+        hex: @file("fixtures/sort/sort_1000.hex")
+    }
+
+    bench n100 {
+        go: bubbleGo(s100)
+        ts: bubbleTs(s100)
+        rust: bubble_rust(&s100)
+        python: bubble_python(s100)
+        csharp: BubbleCsharp(s100);
+        zig: bubbleZigAndFree(&s100);
+        c: {
+            unsigned char __buf[sizeof(s100)];
+            memcpy(__buf, s100, sizeof(s100));
+            bubble_c(__buf, sizeof(__buf));
+        }
+    }
+
+    bench n200 {
+        go: bubbleGo(s200)
+        ts: bubbleTs(s200)
+        rust: bubble_rust(&s200)
+        python: bubble_python(s200)
+        csharp: BubbleCsharp(s200);
+        zig: bubbleZigAndFree(&s200);
+        c: {
+            unsigned char __buf[sizeof(s200)];
+            memcpy(__buf, s200, sizeof(s200));
+            bubble_c(__buf, sizeof(__buf));
+        }
+    }
+
+    bench n300 {
+        go: bubbleGo(s300)
+        ts: bubbleTs(s300)
+        rust: bubble_rust(&s300)
+        python: bubble_python(s300)
+        csharp: BubbleCsharp(s300);
+        zig: bubbleZigAndFree(&s300);
+        c: {
+            unsigned char __buf[sizeof(s300)];
+            memcpy(__buf, s300, sizeof(s300));
+            bubble_c(__buf, sizeof(__buf));
+        }
+    }
+
+    bench n400 {
+        go: bubbleGo(s400)
+        ts: bubbleTs(s400)
+        rust: bubble_rust(&s400)
+        python: bubble_python(s400)
+        csharp: BubbleCsharp(s400);
+        zig: bubbleZigAndFree(&s400);
+        c: {
+            unsigned char __buf[sizeof(s400)];
+            memcpy(__buf, s400, sizeof(s400));
+            bubble_c(__buf, sizeof(__buf));
+        }
+    }
+
+    bench n500 {
+        go: bubbleGo(s500)
+        ts: bubbleTs(s500)
+        rust: bubble_rust(&s500)
+        python: bubble_python(s500)
+        csharp: BubbleCsharp(s500);
+        zig: bubbleZigAndFree(&s500);
+        c: {
+            unsigned char __buf[sizeof(s500)];
+            memcpy(__buf, s500, sizeof(s500));
+            bubble_c(__buf, sizeof(__buf));
+        }
+    }
+
+    bench n600 {
+        go: bubbleGo(s600)
+        ts: bubbleTs(s600)
+        rust: bubble_rust(&s600)
+        python: bubble_python(s600)
+        csharp: BubbleCsharp(s600);
+        zig: bubbleZigAndFree(&s600);
+        c: {
+            unsigned char __buf[sizeof(s600)];
+            memcpy(__buf, s600, sizeof(s600));
+            bubble_c(__buf, sizeof(__buf));
+        }
+    }
+
+    bench n700 {
+        go: bubbleGo(s700)
+        ts: bubbleTs(s700)
+        rust: bubble_rust(&s700)
+        python: bubble_python(s700)
+        csharp: BubbleCsharp(s700);
+        zig: bubbleZigAndFree(&s700);
+        c: {
+            unsigned char __buf[sizeof(s700)];
+            memcpy(__buf, s700, sizeof(s700));
+            bubble_c(__buf, sizeof(__buf));
+        }
+    }
+
+    bench n800 {
+        go: bubbleGo(s800)
+        ts: bubbleTs(s800)
+        rust: bubble_rust(&s800)
+        python: bubble_python(s800)
+        csharp: BubbleCsharp(s800);
+        zig: bubbleZigAndFree(&s800);
+        c: {
+            unsigned char __buf[sizeof(s800)];
+            memcpy(__buf, s800, sizeof(s800));
+            bubble_c(__buf, sizeof(__buf));
+        }
+    }
+
+    bench n900 {
+        go: bubbleGo(s900)
+        ts: bubbleTs(s900)
+        rust: bubble_rust(&s900)
+        python: bubble_python(s900)
+        csharp: BubbleCsharp(s900);
+        zig: bubbleZigAndFree(&s900);
+        c: {
+            unsigned char __buf[sizeof(s900)];
+            memcpy(__buf, s900, sizeof(s900));
+            bubble_c(__buf, sizeof(__buf));
+        }
+    }
+
+    bench n1000 {
+        go: bubbleGo(s1000)
+        ts: bubbleTs(s1000)
+        rust: bubble_rust(&s1000)
+        python: bubble_python(s1000)
+        csharp: BubbleCsharp(s1000);
+        zig: bubbleZigAndFree(&s1000);
+        c: {
+            unsigned char __buf[sizeof(s1000)];
+            memcpy(__buf, s1000, sizeof(s1000));
+            bubble_c(__buf, sizeof(__buf));
+        }
+    }
+
+    after {
+        charting.drawLineChart(
+            title: "Bubble Sort - O(n²)",
+            description: "Classic bubble sort - quadratic trend with regression + error overlays",
+            output: "bubble-line-log10.svg",
+            yScale: "log10",
+            showStdDev: true,
+            showErrorBars: true,
+            showRegression: true,
+            regressionModel: "auto",
+        )
+        charting.drawBarChart(
+            title: "Bubble Sort - Grouped Bars",
+            description: "Grouped bars per dataset size with statistical overlays",
+            output: "bubble-bar-log10.svg",
+            yScale: "log10",
+            showStdDev: true,
+            showErrorBars: true,
+            showRegression: true,
+            regressionModel: "auto",
+        )
+        charting.drawSpeedupChart(
+            title: "String Concatenation - O(n²)",
+            description: "Naive string concat s += 'x' - quadratic complexity",
+            output: "cbubble-bar-speed.svg",
+        )
+        charting.drawTable(
+            title: "Sort Performance Comparison",
+            description: "Vertical grouped bars - Go vs TypeScript vs Rust",
+            output: "bubble-table-curr.svg",
+        )
+    }
+}

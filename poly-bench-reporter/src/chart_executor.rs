@@ -34,9 +34,9 @@ pub fn execute_chart_directives(
     let mut generated = Vec::new();
 
     for directive in directives {
-        // Generate the main combined chart
-        let chart = execute_single_directive(directive, results, output_dir)?;
-        generated.push(chart);
+        // Generate the main combined chart (and wide SVG when bar chart is wide)
+        let charts = execute_single_directive(directive, results, output_dir)?;
+        generated.extend(charts);
 
         // For SpeedupChart, also generate per-benchmark individual charts
         if directive.chart_type == ChartType::SpeedupChart {
@@ -53,7 +53,7 @@ fn execute_single_directive(
     directive: &ChartDirectiveIR,
     results: &BenchmarkResults,
     output_dir: &Path,
-) -> Result<GeneratedChart> {
+) -> Result<Vec<GeneratedChart>> {
     // Filter results to the relevant suite if specified
     let filtered_results = if let Some(ref suite_name) = directive.suite_name {
         filter_results_by_suite(results, suite_name)
@@ -61,28 +61,60 @@ fn execute_single_directive(
         results.clone()
     };
 
-    // Generate the SVG content based on chart type
-    let svg_content = match directive.chart_type {
-        ChartType::SpeedupChart => generate_speedup_chart(directive, &filtered_results)?,
-        ChartType::Table => generate_table(directive, &filtered_results)?,
-        ChartType::LineChart => generate_line_chart(directive, &filtered_results)?,
-        ChartType::BarChart => generate_bar_chart(directive, &filtered_results)?,
+    // Generate the chart content and determine output path
+    let (content, output_file, wide_svg) = match directive.chart_type {
+        ChartType::SpeedupChart => {
+            let c = generate_speedup_chart(directive, &filtered_results)?;
+            (c, directive.output_file.clone(), None)
+        }
+        ChartType::Table => {
+            let c = generate_table(directive, &filtered_results)?;
+            (c, directive.output_file.clone(), None)
+        }
+        ChartType::LineChart => {
+            let c = generate_line_chart(directive, &filtered_results)?;
+            (c, directive.output_file.clone(), None)
+        }
+        ChartType::BarChart => {
+            let out = generate_bar_chart(directive, &filtered_results)?;
+            let output_file = if out.is_html {
+                directive.output_file.replace(".svg", ".html")
+            } else {
+                directive.output_file.clone()
+            };
+            (out.content, output_file, out.wide_svg)
+        }
     };
 
     // Ensure output directory exists
     std::fs::create_dir_all(output_dir)
         .map_err(|e| miette!("Failed to create output directory: {}", e))?;
 
-    // Write the SVG file
-    let output_path = output_dir.join(&directive.output_file);
-    std::fs::write(&output_path, &svg_content)
+    // Write the chart file
+    let output_path = output_dir.join(&output_file);
+    std::fs::write(&output_path, &content)
         .map_err(|e| miette!("Failed to write chart file: {}", e))?;
 
-    Ok(GeneratedChart {
+    let mut charts = vec![GeneratedChart {
         path: output_path.to_string_lossy().to_string(),
         chart_type: directive.chart_type,
         title: directive.get_title(),
-    })
+    }];
+
+    // When bar chart is wide, also write full-width SVG for users who prefer it
+    if let Some(svg) = wide_svg {
+        let base = output_file.strip_suffix(".html").unwrap_or(&output_file);
+        let wide_path = format!("{}-wide.svg", base);
+        let wide_full = output_dir.join(&wide_path);
+        std::fs::write(&wide_full, &svg).map_err(|e| miette!("Failed to write wide SVG: {}", e))?;
+        charts.push(GeneratedChart {
+            path: wide_full.to_string_lossy().to_string(),
+            chart_type: directive.chart_type,
+            title: format!("{} (wide)", directive.get_title()),
+        });
+    }
+
+    Ok(charts)
 }
 
 /// Generate individual speedup charts for each benchmark in the suite
@@ -224,8 +256,11 @@ fn generate_line_chart(directive: &ChartDirectiveIR, results: &BenchmarkResults)
     Ok(line_chart::generate(benchmarks, directive, suite_type))
 }
 
-/// Generate a bar chart SVG
-fn generate_bar_chart(directive: &ChartDirectiveIR, results: &BenchmarkResults) -> Result<String> {
+/// Generate a bar chart (SVG or HTML with scrollable wrapper when wide)
+fn generate_bar_chart(
+    directive: &ChartDirectiveIR,
+    results: &BenchmarkResults,
+) -> Result<bar_chart::BarChartOutput> {
     let benchmarks: Vec<_> = results.suites.iter().flat_map(|s| s.benchmarks.iter()).collect();
     let suite_type = suite_type_from_results(results);
     Ok(bar_chart::generate(benchmarks, directive, suite_type))
@@ -390,9 +425,133 @@ mod tests {
         let results = make_test_results();
         let mut directive = ChartDirectiveIR::new(ChartType::BarChart, "bar-test.svg".to_string());
         directive.title = Some("Bar".to_string());
+        directive.width = Some(600); // Narrow chart → SVG only, no wide export
         let out_dir = std::env::temp_dir().join("polybench_chart_executor_bar");
         let generated = execute_chart_directives(&[directive], &results, &out_dir).unwrap();
         assert_eq!(generated.len(), 1);
         assert_eq!(generated[0].chart_type, ChartType::BarChart);
+    }
+
+    #[test]
+    fn test_execute_wide_bar_chart_outputs_html() {
+        let results = make_wide_bar_chart_results();
+        let directive = ChartDirectiveIR::new(ChartType::BarChart, "wide-bar.svg".to_string());
+        let out_dir = std::env::temp_dir().join("polybench_chart_executor_wide_bar");
+        let generated = execute_chart_directives(&[directive], &results, &out_dir).unwrap();
+        assert_eq!(generated.len(), 2, "wide bar chart should output HTML + wide SVG");
+        let html_chart = generated.iter().find(|c| c.path.ends_with(".html")).unwrap();
+        let wide_chart = generated.iter().find(|c| c.path.ends_with("-wide.svg")).unwrap();
+        let content = std::fs::read_to_string(&html_chart.path).unwrap();
+        assert!(content.contains("<!DOCTYPE html"));
+        assert!(content.contains("chart-scroll"));
+        let svg_content = std::fs::read_to_string(&wide_chart.path).unwrap();
+        assert!(svg_content.starts_with("<svg"), "wide SVG should be raw SVG");
+    }
+
+    fn make_wide_bar_chart_results() -> BenchmarkResults {
+        let mut benchmarks = Vec::new();
+        for i in 1..=15 {
+            let mut measurements = HashMap::new();
+            measurements.insert(
+                poly_bench_dsl::Lang::Go,
+                Measurement {
+                    iterations: 100,
+                    total_nanos: (i as u64) * 100_000,
+                    warmup_nanos: None,
+                    spawn_nanos: None,
+                    nanos_per_op: (i as f64) * 1000.0,
+                    ops_per_sec: 1_000_000.0 / i as f64,
+                    min_nanos: None,
+                    max_nanos: None,
+                    p50_nanos: None,
+                    p75_nanos: None,
+                    p99_nanos: None,
+                    p995_nanos: None,
+                    rme_percent: None,
+                    samples: None,
+                    bytes_per_op: None,
+                    allocs_per_op: None,
+                    raw_samples: Some(vec![900, 1000, 1100]),
+                    raw_result: None,
+                    successful_results: None,
+                    async_success_count: None,
+                    async_error_count: None,
+                    async_error_samples: None,
+                    cv_percent: None,
+                    outliers_removed: None,
+                    is_stable: None,
+                    run_count: Some(3),
+                    median_across_runs: None,
+                    ci_95_lower: Some(900.0),
+                    ci_95_upper: Some(1100.0),
+                    std_dev_nanos: Some(100.0),
+                    estimator_source: None,
+                    raw_nanos_per_op: None,
+                    filtered_nanos_per_op: None,
+                    timed_out: None,
+                    run_nanos_per_op: None,
+                },
+            );
+            measurements.insert(
+                poly_bench_dsl::Lang::TypeScript,
+                Measurement {
+                    iterations: 100,
+                    total_nanos: (i as u64) * 130_000,
+                    warmup_nanos: None,
+                    spawn_nanos: None,
+                    nanos_per_op: (i as f64) * 1300.0,
+                    ops_per_sec: 769_230.0 / i as f64,
+                    min_nanos: None,
+                    max_nanos: None,
+                    p50_nanos: None,
+                    p75_nanos: None,
+                    p99_nanos: None,
+                    p995_nanos: None,
+                    rme_percent: None,
+                    samples: None,
+                    bytes_per_op: None,
+                    allocs_per_op: None,
+                    raw_samples: Some(vec![1200, 1300, 1400]),
+                    raw_result: None,
+                    successful_results: None,
+                    async_success_count: None,
+                    async_error_count: None,
+                    async_error_samples: None,
+                    cv_percent: None,
+                    outliers_removed: None,
+                    is_stable: None,
+                    run_count: Some(3),
+                    median_across_runs: None,
+                    ci_95_lower: Some(1200.0),
+                    ci_95_upper: Some(1400.0),
+                    std_dev_nanos: Some(100.0),
+                    estimator_source: None,
+                    raw_nanos_per_op: None,
+                    filtered_nanos_per_op: None,
+                    timed_out: None,
+                    run_nanos_per_op: None,
+                },
+            );
+            benchmarks.push(BenchmarkResult::new(
+                format!("bench{}", i * 100),
+                format!("suite_bench{}", i * 100),
+                poly_bench_dsl::BenchmarkKind::Sync,
+                None,
+                measurements,
+                poly_bench_dsl::SuiteType::Performance,
+                "legacy".to_string(),
+                None,
+                None,
+                None,
+                None,
+            ));
+        }
+        let suite = SuiteResults::new(
+            "suite".to_string(),
+            None,
+            poly_bench_dsl::SuiteType::Performance,
+            benchmarks,
+        );
+        BenchmarkResults::new(vec![suite])
     }
 }
