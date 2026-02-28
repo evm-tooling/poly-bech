@@ -60,7 +60,10 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
             let spinner = terminal::step_spinner("Creating project directory...");
             std::fs::create_dir_all(&project_dir)
                 .map_err(|e| miette::miette!("Failed to create project directory: {}", e))?;
-            terminal::finish_success(&spinner, &format!("Created directory {}", project_dir.display()));
+            terminal::finish_success(
+                &spinner,
+                &format!("Created directory {}", project_dir.display()),
+            );
         } else {
             std::fs::create_dir_all(&project_dir)
                 .map_err(|e| miette::miette!("Failed to create project directory: {}", e))?;
@@ -108,7 +111,10 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
             std::fs::write(&example_path, example_content)
                 .map_err(|e| miette::miette!("Failed to write example.bench: {}", e))?;
             templates::write_bubble_fixtures(&benchmarks_dir)?;
-            terminal::finish_success(&spinner, &format!("Created {}/example.bench and fixtures", BENCHMARKS_DIR));
+            terminal::finish_success(
+                &spinner,
+                &format!("Created {}/example.bench and fixtures", BENCHMARKS_DIR),
+            );
         } else {
             let example_path = benchmarks_dir.join("example.bench");
             let example_content = templates::example_bench_for_langs(&enabled_langs);
@@ -227,7 +233,8 @@ fn init_runtime_env_for_lang(
         Lang::TypeScript => {
             let ts_env = runtime_env(project_dir, Lang::TypeScript);
             if !quiet {
-                let spinner = terminal::step_spinner("Setting up TypeScript runtime environment...");
+                let spinner =
+                    terminal::step_spinner("Setting up TypeScript runtime environment...");
                 std::fs::create_dir_all(&ts_env)
                     .map_err(|e| miette::miette!("Failed to create {}: {}", ts_env.display(), e))?;
                 let package_json_content = templates::package_json_pretty(project_name);
@@ -278,8 +285,9 @@ fn init_runtime_env_for_lang(
             if !quiet {
                 let spinner = terminal::step_spinner("Setting up Rust runtime environment...");
                 let rust_env = runtime_env(project_dir, Lang::Rust);
-                std::fs::create_dir_all(&rust_env)
-                    .map_err(|e| miette::miette!("Failed to create {}: {}", rust_env.display(), e))?;
+                std::fs::create_dir_all(&rust_env).map_err(|e| {
+                    miette::miette!("Failed to create {}: {}", rust_env.display(), e)
+                })?;
                 let rust_edition =
                     manifest.rust.as_ref().map(|r| r.edition.as_str()).unwrap_or("2021");
                 let cargo_toml_content = templates::cargo_toml(project_name, rust_edition);
@@ -296,8 +304,9 @@ fn init_runtime_env_for_lang(
                 );
             } else {
                 let rust_env = runtime_env(project_dir, Lang::Rust);
-                std::fs::create_dir_all(&rust_env)
-                    .map_err(|e| miette::miette!("Failed to create {}: {}", rust_env.display(), e))?;
+                std::fs::create_dir_all(&rust_env).map_err(|e| {
+                    miette::miette!("Failed to create {}: {}", rust_env.display(), e)
+                })?;
                 let rust_edition =
                     manifest.rust.as_ref().map(|r| r.edition.as_str()).unwrap_or("2021");
                 let cargo_toml_content = templates::cargo_toml(project_name, rust_edition);
@@ -314,8 +323,9 @@ fn init_runtime_env_for_lang(
             if !quiet {
                 let spinner = terminal::step_spinner("Setting up Python runtime environment...");
                 let python_env = runtime_env(project_dir, Lang::Python);
-                std::fs::create_dir_all(&python_env)
-                    .map_err(|e| miette::miette!("Failed to create {}: {}", python_env.display(), e))?;
+                std::fs::create_dir_all(&python_env).map_err(|e| {
+                    miette::miette!("Failed to create {}: {}", python_env.display(), e)
+                })?;
                 let requirements_content = templates::requirements_txt_for_runtime_env(&[]);
                 std::fs::write(python_env.join("requirements.txt"), requirements_content)
                     .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
@@ -325,8 +335,9 @@ fn init_runtime_env_for_lang(
                 );
             } else {
                 let python_env = runtime_env(project_dir, Lang::Python);
-                std::fs::create_dir_all(&python_env)
-                    .map_err(|e| miette::miette!("Failed to create {}: {}", python_env.display(), e))?;
+                std::fs::create_dir_all(&python_env).map_err(|e| {
+                    miette::miette!("Failed to create {}: {}", python_env.display(), e)
+                })?;
                 let requirements_content = templates::requirements_txt_for_runtime_env(&[]);
                 std::fs::write(python_env.join("requirements.txt"), requirements_content)
                     .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
@@ -353,10 +364,14 @@ fn init_runtime_env_for_lang(
             if !quiet {
                 let spinner = terminal::step_spinner("Setting up C# runtime environment...");
                 let csharp_env = runtime_env(project_dir, Lang::CSharp);
-                std::fs::create_dir_all(&csharp_env)
-                    .map_err(|e| miette::miette!("Failed to create {}: {}", csharp_env.display(), e))?;
-                let target_framework =
-                    manifest.csharp.as_ref().map(|c| c.target_framework.as_str()).unwrap_or("net8.0");
+                std::fs::create_dir_all(&csharp_env).map_err(|e| {
+                    miette::miette!("Failed to create {}: {}", csharp_env.display(), e)
+                })?;
+                let target_framework = manifest
+                    .csharp
+                    .as_ref()
+                    .map(|c| c.target_framework.as_str())
+                    .unwrap_or("net8.0");
                 std::fs::write(
                     csharp_env.join("polybench.csproj"),
                     templates::csharp_csproj(target_framework),
@@ -375,10 +390,14 @@ fn init_runtime_env_for_lang(
                 );
             } else {
                 let csharp_env = runtime_env(project_dir, Lang::CSharp);
-                std::fs::create_dir_all(&csharp_env)
-                    .map_err(|e| miette::miette!("Failed to create {}: {}", csharp_env.display(), e))?;
-                let target_framework =
-                    manifest.csharp.as_ref().map(|c| c.target_framework.as_str()).unwrap_or("net8.0");
+                std::fs::create_dir_all(&csharp_env).map_err(|e| {
+                    miette::miette!("Failed to create {}: {}", csharp_env.display(), e)
+                })?;
+                let target_framework = manifest
+                    .csharp
+                    .as_ref()
+                    .map(|c| c.target_framework.as_str())
+                    .unwrap_or("net8.0");
                 std::fs::write(
                     csharp_env.join("polybench.csproj"),
                     templates::csharp_csproj(target_framework),
@@ -397,8 +416,9 @@ fn init_runtime_env_for_lang(
             if !quiet {
                 let spinner = terminal::step_spinner("Setting up Zig runtime environment...");
                 let zig_env = runtime_env(project_dir, Lang::Zig);
-                std::fs::create_dir_all(&zig_env)
-                    .map_err(|e| miette::miette!("Failed to create {}: {}", zig_env.display(), e))?;
+                std::fs::create_dir_all(&zig_env).map_err(|e| {
+                    miette::miette!("Failed to create {}: {}", zig_env.display(), e)
+                })?;
                 std::fs::write(zig_env.join("build.zig"), templates::build_zig())
                     .map_err(|e| miette::miette!("Failed to write build.zig: {}", e))?;
                 std::fs::write(zig_env.join("build.zig.zon"), templates::build_zig_zon())
@@ -414,8 +434,9 @@ fn init_runtime_env_for_lang(
                 );
             } else {
                 let zig_env = runtime_env(project_dir, Lang::Zig);
-                std::fs::create_dir_all(&zig_env)
-                    .map_err(|e| miette::miette!("Failed to create {}: {}", zig_env.display(), e))?;
+                std::fs::create_dir_all(&zig_env).map_err(|e| {
+                    miette::miette!("Failed to create {}: {}", zig_env.display(), e)
+                })?;
                 std::fs::write(zig_env.join("build.zig"), templates::build_zig())
                     .map_err(|e| miette::miette!("Failed to write build.zig: {}", e))?;
                 std::fs::write(zig_env.join("build.zig.zon"), templates::build_zig_zon())

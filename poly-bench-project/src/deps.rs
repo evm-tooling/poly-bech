@@ -997,22 +997,14 @@ pub fn install_all() -> Result<()> {
 
     let manifest = crate::load_manifest(&project_root)?;
 
-    let spinner = terminal::step_spinner(&format!(
-        "Installing dependencies for {}...",
-        manifest.project.name
-    ));
-
     for lang in poly_bench_runtime::supported_languages() {
         if manifest.has_runtime(*lang) {
-            spinner.set_message(format!(
-                "Installing {} dependencies...",
-                poly_bench_runtime::lang_label(*lang)
-            ));
             install_runtime_deps_for_lang(*lang, &project_root, &manifest)?;
         }
     }
 
-    terminal::finish_success(&spinner, "All dependencies installed!");
+    println!();
+    terminal::success("All dependencies installed!");
 
     Ok(())
 }

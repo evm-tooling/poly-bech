@@ -137,11 +137,7 @@ fn build_go_env(
             .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
         terminal::finish_success_indented(
             &spinner,
-            if go_mod_exists && options.force {
-                "Regenerated go.mod"
-            } else {
-                "Created go.mod"
-            },
+            if go_mod_exists && options.force { "Regenerated go.mod" } else { "Created go.mod" },
         );
     } else {
         terminal::info_indented("go.mod exists (use --force to regenerate)");
@@ -305,10 +301,7 @@ fn build_ts_env(
         update_package_json_deps(&ts_env, ts_config)?;
         terminal::finish_success_indented(
             &spinner,
-            &format!(
-                "Added {} dependencies to package.json",
-                ts_config.dependencies.len()
-            ),
+            &format!("Added {} dependencies to package.json", ts_config.dependencies.len()),
         );
     }
 
@@ -408,10 +401,7 @@ fn build_rust_env(
         update_cargo_toml_deps(&rust_env, rust_config)?;
         terminal::finish_success_indented(
             &spinner,
-            &format!(
-                "Added {} dependencies to Cargo.toml",
-                rust_config.dependencies.len()
-            ),
+            &format!("Added {} dependencies to Cargo.toml", rust_config.dependencies.len()),
         );
     }
 
@@ -610,11 +600,7 @@ fn build_csharp_env(
             .map_err(|e| miette::miette!("Failed to write polybench.csproj: {}", e))?;
         terminal::finish_success_indented(
             &spinner,
-            if options.force {
-                "Regenerated polybench.csproj"
-            } else {
-                "Created polybench.csproj"
-            },
+            if options.force { "Regenerated polybench.csproj" } else { "Created polybench.csproj" },
         );
     } else {
         terminal::info_indented("polybench.csproj exists (use --force to regenerate)");
