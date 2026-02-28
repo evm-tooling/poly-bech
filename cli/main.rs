@@ -1332,6 +1332,7 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
         match choice {
             InstallChoice::Install => {
                 if project::runtime_installer::can_auto_install(lang) {
+                    let version = prompt_version_select(&theme, lang, &label)?;
                     let custom_path = prompt_install_path(
                         &theme,
                         lang,
@@ -1342,6 +1343,7 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
                         lang,
                         project::runtime_installer::InstallLocation::UserLocal,
                         custom_path,
+                        version,
                     ) {
                         Err(e) => {
                             eprintln!("{} Failed to install {}: {}", "✗".red(), label, e);
@@ -1417,6 +1419,55 @@ fn prompt_install_or_skip(
         .interact()
         .map_err(|e| miette!("Prompt failed: {}", e))?;
     Ok(if selected == 0 { InstallChoice::Install } else { InstallChoice::Skip })
+}
+
+/// Prompts for version selection: latest (recommended) or choose from fetched top 5.
+/// Returns None to use default/latest, Some(version) when user picks a specific version.
+fn prompt_version_select(
+    theme: &init_t3::T3StyleTheme,
+    lang: poly_bench_dsl::Lang,
+    label: &str,
+) -> Result<Option<String>> {
+    use colored::Colorize;
+    use dialoguer::Select;
+    use miette::miette;
+
+    if !project::runtime_installer::supports_version_selection(lang) {
+        return Ok(None);
+    }
+
+    let choices = ["Latest (recommended)".to_string(), "Choose version...".to_string()];
+    let selected = Select::with_theme(theme)
+        .with_prompt(&format!("Which {} version to install?", label))
+        .items(&choices)
+        .default(0)
+        .interact()
+        .map_err(|e| miette!("Prompt failed: {}", e))?;
+
+    if selected == 0 {
+        return Ok(None);
+    }
+
+    let versions = match project::runtime_installer::fetch_available_versions(lang) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("{} Could not fetch versions: {}. Using latest.", "⚠".yellow(), e);
+            return Ok(None);
+        }
+    };
+
+    if versions.is_empty() {
+        return Ok(None);
+    }
+
+    let selected_idx = Select::with_theme(theme)
+        .with_prompt("Select version")
+        .items(&versions)
+        .default(0)
+        .interact()
+        .map_err(|e| miette!("Prompt failed: {}", e))?;
+
+    Ok(versions.get(selected_idx).cloned())
 }
 
 /// Prompts for install path: default or custom. Returns None for default, Some(path) for custom.
@@ -1608,8 +1659,10 @@ fn cmd_add_runtime(runtime: &str, user_local: bool) -> Result<()> {
                     } else {
                         project::runtime_installer::InstallLocation::System
                     };
+                    let version = prompt_version_select(&theme, lang, &label)?;
                     let custom_path = prompt_install_path(&theme, lang, loc, &label)?;
-                    match project::runtime_installer::install_lang(lang, loc, custom_path)? {
+                    match project::runtime_installer::install_lang(lang, loc, custom_path, version)?
+                    {
                         Some(custom_bin_dir) => {
                             if let Ok(current) = std::env::var("PATH") {
                                 let sep = if cfg!(windows) { ";" } else { ":" };
