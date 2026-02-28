@@ -921,7 +921,7 @@ pub fn readme(
     if has_zig {
         content.push_str("### Zig\n\n");
         content.push_str("```bash\n");
-        content.push_str("poly-bench add --zig \"package@0.1.0\"\n");
+        content.push_str("poly-bench add --zig \"git+https://github.com/Hejsil/zig-bench#main\"\n");
         content.push_str("```\n\n");
     }
 

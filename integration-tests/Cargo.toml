@@ -10,6 +10,7 @@ description = "Integration tests for poly-bench (init, LSP build and request flo
 [dependencies]
 poly-bench-project.workspace = true
 poly-bench-dsl.workspace = true
+poly-bench-ir.workspace = true
 runtimes-go = { path = "../poly-bench-runtime/runtimes/runtimes-go" }
 runtimes-rust = { path = "../poly-bench-runtime/runtimes/runtimes-rust" }
 runtimes-ts = { path = "../poly-bench-runtime/runtimes/runtimes-ts" }

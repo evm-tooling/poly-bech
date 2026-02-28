@@ -7,12 +7,13 @@
 //! 4. Embedded language errors (on save)
 
 use crate::document::Document;
+use poly_bench_project::{find_project_root, load_manifest};
 use poly_bench_runtime::get_helper_function_extractor;
 use poly_bench_syntax::{
     Lang, Node, PartialBenchmark, PartialFixture, PartialSuite, PropertyValue, StructuredSetup,
 };
 use poly_bench_traits::syntax_lang_to_dsl;
-use std::collections::HashSet;
+use std::{collections::HashSet, path::Path};
 use tower_lsp::lsp_types::*;
 
 /// Compute diagnostics for a document
@@ -24,6 +25,9 @@ pub fn compute_diagnostics(doc: &Document) -> Vec<Diagnostic> {
 
     // 2. Semantic errors from partial AST
     validate_partial_ast(doc, &mut diagnostics);
+
+    // 3. Runtime configuration validation (languages used vs polybench.toml)
+    validate_runtime_configuration(doc, &mut diagnostics);
 
     diagnostics
 }
@@ -112,6 +116,126 @@ fn validate_partial_ast(doc: &Document, diagnostics: &mut Vec<Diagnostic>) {
                 message: message.clone(),
                 ..Default::default()
             });
+        }
+    }
+}
+
+/// Validate that languages used in setups, benchmarks, and fixtures are configured in
+/// polybench.toml
+fn validate_runtime_configuration(doc: &Document, diagnostics: &mut Vec<Diagnostic>) {
+    let bench_path = match doc.uri.to_file_path() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let start_path = bench_path.parent().unwrap_or(&bench_path);
+    let project_root = match find_project_root(Path::new(start_path)) {
+        Some(root) => root,
+        None => return,
+    };
+    let manifest = match load_manifest(&project_root) {
+        Ok(m) => m,
+        Err(_) => return,
+    };
+
+    let ast = &doc.partial_ast;
+    for suite in &ast.suites {
+        let Node::Valid(s) = suite else { continue };
+
+        for (lang, setup_node) in &s.setups {
+            if !manifest.has_runtime(syntax_lang_to_dsl(*lang)) {
+                let span = match setup_node {
+                    Node::Valid(setup) => &setup.span,
+                    _ => continue,
+                };
+                diagnostics.push(Diagnostic {
+                    range: doc.span_to_range(span),
+                    severity: Some(DiagnosticSeverity::ERROR),
+                    code: Some(NumberOrString::String("runtime-not-configured".to_string())),
+                    source: Some("poly-bench".to_string()),
+                    message: format!(
+                        "{} is not configured in this project. Run 'poly-bench add-runtime {}' to add this runtime.",
+                        lang.as_str(),
+                        lang.as_str()
+                    ),
+                    ..Default::default()
+                });
+            }
+        }
+
+        for fixture in &s.fixtures {
+            let Node::Valid(f) = fixture else { continue };
+            for (lang, impl_node) in &f.implementations {
+                if !manifest.has_runtime(syntax_lang_to_dsl(*lang)) {
+                    let span = match impl_node {
+                        Node::Valid(code) => &code.span,
+                        _ => continue,
+                    };
+                    diagnostics.push(Diagnostic {
+                        range: doc.span_to_range(span),
+                        severity: Some(DiagnosticSeverity::ERROR),
+                        code: Some(NumberOrString::String("runtime-not-configured".to_string())),
+                        source: Some("poly-bench".to_string()),
+                        message: format!(
+                            "{} is not configured in this project. Run 'poly-bench add-runtime {}' to add this runtime.",
+                            lang.as_str(),
+                            lang.as_str()
+                        ),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        for benchmark in &s.benchmarks {
+            let Node::Valid(b) = benchmark else { continue };
+
+            for (lang, impl_node) in &b.implementations {
+                if !manifest.has_runtime(syntax_lang_to_dsl(*lang)) {
+                    let span = match impl_node {
+                        Node::Valid(code) => &code.span,
+                        _ => continue,
+                    };
+                    diagnostics.push(Diagnostic {
+                        range: doc.span_to_range(span),
+                        severity: Some(DiagnosticSeverity::ERROR),
+                        code: Some(NumberOrString::String("runtime-not-configured".to_string())),
+                        source: Some("poly-bench".to_string()),
+                        message: format!(
+                            "{} is not configured in this project. Run 'poly-bench add-runtime {}' to add this runtime.",
+                            lang.as_str(),
+                            lang.as_str()
+                        ),
+                        ..Default::default()
+                    });
+                }
+            }
+            for (lang, hook_node) in b
+                .before
+                .iter()
+                .chain(b.after.iter())
+                .chain(b.each.iter())
+                .chain(b.skip.iter())
+                .chain(b.validate.iter())
+            {
+                if !manifest.has_runtime(syntax_lang_to_dsl(*lang)) {
+                    let span = match hook_node {
+                        Node::Valid(code) => &code.span,
+                        _ => continue,
+                    };
+                    diagnostics.push(Diagnostic {
+                        range: doc.span_to_range(span),
+                        severity: Some(DiagnosticSeverity::ERROR),
+                        code: Some(NumberOrString::String("runtime-not-configured".to_string())),
+                        source: Some("poly-bench".to_string()),
+                        message: format!(
+                            "{} is not configured in this project. Run 'poly-bench add-runtime {}' to add this runtime.",
+                            lang.as_str(),
+                            lang.as_str()
+                        ),
+                        ..Default::default()
+                    });
+                }
+            }
         }
     }
 }

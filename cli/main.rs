@@ -632,13 +632,24 @@ async fn cmd_compile(
         println!("{} Cleared compile cache", "✓".green());
     }
 
-    // Filter languages if specified
-    let langs = selected_languages(lang.as_deref())?;
+    // Validate runtime configuration before compile (when we have a project)
+    if project_root.join(project::MANIFEST_FILENAME).exists() {
+        for bench_file in &files {
+            let source = std::fs::read_to_string(bench_file).map_err(|e| {
+                miette::miette!("Failed to read file {}: {}", bench_file.display(), e)
+            })?;
+            let filename = bench_file.file_name().and_then(|s| s.to_str()).unwrap_or("unknown");
+            let ast = dsl::parse(&source, filename)?;
+            let ir = ir::lower(&ast, bench_file.parent())?;
+            validate_runtime_configuration(&project_root, &ir)?;
+        }
+    }
 
+    let lang_filter = lang.as_deref();
     if run_parallel && files.len() > 1 {
-        compile_files_parallel_cached(&files, &langs, &cache, verbose).await
+        compile_files_parallel_cached(&files, lang_filter, &cache, verbose).await
     } else {
-        compile_files_sequential_cached(&files, &langs, &cache, verbose).await
+        compile_files_sequential_cached(&files, lang_filter, &cache, verbose).await
     }
 }
 
@@ -651,7 +662,7 @@ struct CompileResultCached {
 
 async fn compile_single_file_cached(
     bench_file: PathBuf,
-    langs: Vec<dsl::Lang>,
+    lang_filter: Option<&str>,
     cache: &executor::CompileCache,
 ) -> Result<CompileResultCached> {
     let source = std::fs::read_to_string(&bench_file)
@@ -661,6 +672,8 @@ async fn compile_single_file_cached(
 
     let ast = dsl::parse(&source, filename)?;
     let ir_result = ir::lower(&ast, bench_file.parent())?;
+
+    let langs = resolve_languages_for_run(lang_filter, &ir_result)?;
 
     let bench_count: usize = ir_result.suites.iter().map(|s| s.benchmarks.len()).sum();
     let project_roots = resolve_project_roots(&std::collections::HashMap::new(), &bench_file)?;
@@ -673,7 +686,7 @@ async fn compile_single_file_cached(
 
 async fn compile_files_parallel_cached(
     files: &[PathBuf],
-    langs: &[dsl::Lang],
+    lang_filter: Option<&str>,
     cache: &executor::CompileCache,
     verbose: bool,
 ) -> Result<()> {
@@ -691,10 +704,8 @@ async fn compile_files_parallel_cached(
 
     let spinner = create_compiling_spinner();
 
-    let futures: Vec<_> = files
-        .iter()
-        .map(|f| compile_single_file_cached(f.clone(), langs.to_vec(), cache))
-        .collect();
+    let futures: Vec<_> =
+        files.iter().map(|f| compile_single_file_cached(f.clone(), lang_filter, cache)).collect();
 
     let results = join_all(futures).await;
     spinner.finish_and_clear();
@@ -767,7 +778,7 @@ async fn compile_files_parallel_cached(
 
 async fn compile_files_sequential_cached(
     files: &[PathBuf],
-    langs: &[dsl::Lang],
+    lang_filter: Option<&str>,
     cache: &executor::CompileCache,
     verbose: bool,
 ) -> Result<()> {
@@ -787,6 +798,8 @@ async fn compile_files_sequential_cached(
         let ast = dsl::parse(&source, filename)?;
         let ir_result = ir::lower(&ast, bench_file.parent())?;
 
+        let langs = resolve_languages_for_run(lang_filter, &ir_result)?;
+
         let bench_count: usize = ir_result.suites.iter().map(|s| s.benchmarks.len()).sum();
         total_benchmarks += bench_count;
 
@@ -794,7 +807,7 @@ async fn compile_files_sequential_cached(
 
         let spinner = create_compiling_spinner();
         let (compile_errors, stats) =
-            executor::validate_benchmarks_with_cache(&ir_result, langs, &project_roots, cache)
+            executor::validate_benchmarks_with_cache(&ir_result, &langs, &project_roots, cache)
                 .await?;
         spinner.finish_and_clear();
 
@@ -893,11 +906,14 @@ async fn cmd_run(
     project_dir: Vec<String>,
     verbose: bool,
 ) -> Result<()> {
-    // Get benchmark files to run
-    let files = match file {
-        Some(f) => vec![f],
+    // Get benchmark files and project root (project_root is None when file specified but not in a
+    // project)
+    let (files, project_root) = match file {
+        Some(f) => {
+            let root = project::find_project_root(f.parent().unwrap_or(&f));
+            (vec![f], root)
+        }
         None => {
-            // Try to find project root and discover benchmark files
             let current_dir = std::env::current_dir()
                 .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
 
@@ -918,12 +934,9 @@ async fn cmd_run(
                 ));
             }
 
-            bench_files
+            (bench_files, Some(project_root))
         }
     };
-
-    // Filter languages if specified
-    let langs = selected_languages(lang.as_deref())?;
 
     // Run each benchmark file
     let mut all_results = Vec::new();
@@ -940,6 +953,14 @@ async fn cmd_run(
 
         // Lower to IR
         let ir = ir::lower(&ast, bench_file.parent())?;
+
+        // Validate runtime configuration (languages used vs polybench.toml)
+        if let Some(ref root) = project_root {
+            validate_runtime_configuration(root, &ir)?;
+        }
+
+        // Only run/compile languages used in this bench file (or --lang filter if specified)
+        let langs = resolve_languages_for_run(lang.as_deref(), &ir)?;
 
         // Collect chart directives
         all_chart_directives.extend(ir.chart_directives.clone());
@@ -1339,12 +1360,59 @@ fn selected_languages(lang: Option<&str>) -> Result<Vec<dsl::Lang>> {
     }
 }
 
+/// Resolve languages for run/compile: when --lang is specified, use that single language
+/// (validating it's used in the IR); otherwise use only languages actually used in the bench file.
+fn resolve_languages_for_run(lang: Option<&str>, ir: &ir::BenchmarkIR) -> Result<Vec<dsl::Lang>> {
+    match lang {
+        Some(raw) => {
+            let l = parse_lang_arg(raw, "--lang")?;
+            let used = ir.languages_used();
+            if !used.contains(&l) {
+                return Err(miette::miette!(
+                    "Language '{}' specified with --lang is not used in this benchmark file. Languages used: {}",
+                    raw,
+                    used.iter().map(|x| x.as_str()).collect::<Vec<_>>().join(", ")
+                ));
+            }
+            Ok(vec![l])
+        }
+        None => {
+            let used = ir.languages_used();
+            // Deterministic order: sort by supported_languages order
+            let supported = runtime::supported_languages();
+            let mut langs: Vec<_> = used.into_iter().collect();
+            langs.sort_by_key(|l| supported.iter().position(|s| s == l).unwrap_or(usize::MAX));
+            Ok(langs)
+        }
+    }
+}
+
 fn supported_languages_help() -> String {
     runtime::supported_languages()
         .iter()
         .map(|l| l.as_str().to_string())
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// Validate that all languages used in the IR are configured in polybench.toml.
+/// Returns Err if any language is used but not configured.
+fn validate_runtime_configuration(
+    project_root: &std::path::Path,
+    ir: &ir::BenchmarkIR,
+) -> Result<()> {
+    let manifest = project::load_manifest(project_root)?;
+    let languages_used = ir.languages_used();
+    let unconfigured: Vec<_> =
+        languages_used.iter().filter(|lang| !manifest.has_runtime(**lang)).collect();
+    if unconfigured.is_empty() {
+        return Ok(());
+    }
+    let lang_list: Vec<String> = unconfigured.iter().map(|l| l.as_str().to_string()).collect();
+    Err(miette::miette!(
+        "Language(s) {} used in benchmark file but not configured in polybench.toml. Run 'poly-bench add <lang>' for each to add them.",
+        lang_list.join(", ")
+    ))
 }
 
 async fn cmd_codegen(file: &PathBuf, lang: &str, output: &PathBuf) -> Result<()> {
