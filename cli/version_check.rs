@@ -19,13 +19,12 @@ pub fn warn_if_outdated(current: &str) {
 /// Fetch latest version string from GitHub releases. Returns None on any error or timeout.
 pub fn fetch_latest_version() -> Option<String> {
     let url = format!("https://api.github.com/repos/{}/releases/latest", GITHUB_REPO);
-    let response = ureq::get(&url)
-        .set("User-Agent", "poly-bench-cli")
-        .set("Accept", "application/vnd.github.v3+json")
-        .timeout(std::time::Duration::from_secs(5))
+    let mut response = ureq::get(&url)
+        .header("User-Agent", "poly-bench-cli")
+        .header("Accept", "application/vnd.github.v3+json")
         .call()
         .ok()?;
-    let json: serde_json::Value = response.into_json().ok()?;
+    let json: serde_json::Value = response.body_mut().read_json().ok()?;
     let tag_name = json.get("tag_name")?.as_str()?;
     let version = tag_name.trim_start_matches('v');
     Some(version.to_string())

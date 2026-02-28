@@ -1,8 +1,12 @@
 //! Runtime installer: download and install language runtimes (Go, Node, Rust, etc.)
 //!
-//! Installs to standard user-local paths and configures PATH:
-//! - Unix: ~/.local/share/polybench/runtimes/<lang>/
-//! - Windows: %LOCALAPPDATA%\polybench\runtimes\<lang>\
+//! Installs to each language's canonical locations (same as manual install):
+//! - Rust: ~/.cargo, ~/.rustup (rustup defaults)
+//! - .NET: ~/.dotnet or /usr/local/share/dotnet
+//! - Go: ~/sdk/go or /usr/local/go
+//! - Node: ~/.local/share/node or /usr/local
+//! - Python: ~/.local/share/python or /usr/local
+//! - Zig: ~/.local/share/zig or /usr/local
 
 use crate::{runtime_check, terminal};
 use flate2::read::GzDecoder;
@@ -10,284 +14,246 @@ use miette::Result;
 use poly_bench_dsl::Lang;
 use std::{
     env, fs,
-    io::Read,
+    io::Write,
     path::{Path, PathBuf},
     process::Command,
 };
 
-/// Base directory for poly-bench managed runtimes.
-/// Uses standard user-local paths (XDG on Unix, LOCALAPPDATA on Windows).
-fn runtimes_base_dir() -> Result<PathBuf> {
-    if cfg!(windows) {
-        let local = env::var("LOCALAPPDATA")
-            .or_else(|_| env::var("USERPROFILE").map(|p| format!("{}\\AppData\\Local", p)))
-            .map_err(|_| miette::miette!("Could not determine LOCALAPPDATA or USERPROFILE"))?;
-        Ok(PathBuf::from(local).join("polybench").join("runtimes"))
-    } else {
-        let home = env::var("HOME").or_else(|_| env::var("USERPROFILE")).map_err(|_| {
-            miette::miette!("Could not determine home directory (HOME or USERPROFILE)")
-        })?;
-        Ok(PathBuf::from(home).join(".local").join("share").join("polybench").join("runtimes"))
-    }
+fn home_dir() -> Result<PathBuf> {
+    env::var("HOME")
+        .or_else(|_| env::var("USERPROFILE"))
+        .map(PathBuf::from)
+        .map_err(|_| miette::miette!("Could not determine home directory (HOME or USERPROFILE)"))
 }
 
-/// Legacy base dir (~/.polybench/runtimes) for backward compatibility.
-fn legacy_runtimes_base_dir() -> Option<PathBuf> {
-    let home = env::var("HOME").or_else(|_| env::var("USERPROFILE")).ok()?;
-    Some(PathBuf::from(home).join(".polybench").join("runtimes"))
+#[cfg(windows)]
+fn local_share() -> Result<PathBuf> {
+    let local = env::var("LOCALAPPDATA")
+        .or_else(|_| env::var("USERPROFILE").map(|p| format!("{}\\AppData\\Local", p)))
+        .map_err(|_| miette::miette!("Could not determine LOCALAPPDATA"))?;
+    Ok(PathBuf::from(local))
 }
 
-/// User-local bin directory for symlinks (~/.local/bin). Binaries here work globally.
-fn local_bin_dir() -> Result<PathBuf> {
-    if cfg!(windows) {
-        let local = env::var("LOCALAPPDATA")
-            .or_else(|_| env::var("USERPROFILE").map(|p| format!("{}\\AppData\\Local", p)))
-            .map_err(|_| miette::miette!("Could not determine LOCALAPPDATA"))?;
-        Ok(PathBuf::from(local).join("polybench").join("bin"))
-    } else {
-        let home = env::var("HOME")
-            .or_else(|_| env::var("USERPROFILE"))
-            .map_err(|_| miette::miette!("Could not determine home directory"))?;
-        Ok(PathBuf::from(home).join(".local").join("bin"))
-    }
-}
-
-/// System bin directory (/usr/local/bin). Requires sudo to write.
-fn system_bin_dir() -> PathBuf {
-    PathBuf::from("/usr/local/bin")
-}
-
-fn target_bin_dir(location: InstallLocation) -> Result<PathBuf> {
-    match location {
-        InstallLocation::UserLocal => local_bin_dir(),
-        InstallLocation::System => Ok(system_bin_dir()),
-    }
-}
-
-/// Symlink a binary into the target bin dir. Uses sudo for system install.
-fn symlink_binary(src: &Path, bin_name: &str, location: InstallLocation) -> Result<()> {
-    let bin_dir = target_bin_dir(location)?;
-    let dest = bin_dir.join(bin_name);
-
-    #[cfg(unix)]
-    {
-        if location == InstallLocation::System {
-            let status = Command::new("sudo")
-                .args(["ln", "-sf", src.to_str().unwrap(), dest.to_str().unwrap()])
-                .status()
-                .map_err(|e| miette::miette!("Failed to run sudo ln: {}", e))?;
-            if !status.success() {
-                return Err(miette::miette!(
-                    "sudo ln failed. Ensure you have permission to write to /usr/local/bin."
-                ));
-            }
-        } else {
-            fs::create_dir_all(&bin_dir)
-                .map_err(|e| miette::miette!("Failed to create {}: {}", bin_dir.display(), e))?;
-            if dest.exists() {
-                fs::remove_file(&dest).or_else(|_| fs::remove_dir_all(&dest)).map_err(|e| {
-                    miette::miette!("Failed to remove existing {}: {}", dest.display(), e)
-                })?;
-            }
-            std::os::unix::fs::symlink(src, &dest).map_err(|e| {
-                miette::miette!("Failed to symlink {} -> {}: {}", src.display(), dest.display(), e)
-            })?;
+/// Install root for a language. Extraction happens here; tarball structure may add subdirs.
+fn lang_install_dir(lang: Lang, location: InstallLocation) -> Result<PathBuf> {
+    match (lang, location) {
+        (Lang::Rust, _) => {
+            // Rust uses rustup defaults (~/.cargo, ~/.rustup) - we don't control the dir
+            home_dir().map(|h| h.join(".cargo"))
         }
-    }
-    #[cfg(windows)]
-    {
-        if location == InstallLocation::System {
-            return Err(miette::miette!(
-                "--system is not supported on Windows. Use default user-local install."
-            ));
-        }
-        fs::create_dir_all(&bin_dir)
-            .map_err(|e| miette::miette!("Failed to create {}: {}", bin_dir.display(), e))?;
-        if dest.exists() {
-            fs::remove_file(&dest).or_else(|_| fs::remove_dir_all(&dest)).map_err(|e| {
-                miette::miette!("Failed to remove existing {}: {}", dest.display(), e)
-            })?;
-        }
-        std::os::windows::fs::symlink_file(src, &dest)
-            .or_else(|_| std::os::windows::fs::symlink_dir(src, &dest))
-            .map_err(|e| {
-                miette::miette!("Failed to symlink {} -> {}: {}", src.display(), dest.display(), e)
-            })?;
-    }
-    Ok(())
-}
-
-/// Symlink all executables in a directory to the target bin dir.
-fn symlink_bin_dir(bin_dir: &Path, location: InstallLocation) -> Result<()> {
-    if !bin_dir.exists() {
-        return Ok(());
-    }
-    let target = target_bin_dir(location)?;
-
-    #[cfg(unix)]
-    {
-        if location == InstallLocation::System {
-            for entry in fs::read_dir(bin_dir)
-                .map_err(|e| miette::miette!("Failed to read {}: {}", bin_dir.display(), e))?
+        (Lang::Go, InstallLocation::UserLocal) => home_dir().map(|h| h.join("sdk")),
+        (Lang::Go, InstallLocation::System) => Ok(PathBuf::from("/usr/local")),
+        (Lang::TypeScript, InstallLocation::UserLocal) => {
+            #[cfg(windows)]
             {
-                let entry =
-                    entry.map_err(|e| miette::miette!("Failed to read dir entry: {}", e))?;
-                let path = entry.path();
-                if path.is_file() {
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        let dest = target.join(name);
-                        let status = Command::new("sudo")
-                            .args(["ln", "-sf", path.to_str().unwrap(), dest.to_str().unwrap()])
-                            .status()
-                            .map_err(|e| miette::miette!("Failed to run sudo ln: {}", e))?;
-                        if !status.success() {
-                            return Err(miette::miette!("sudo ln failed for {}", name));
-                        }
-                    }
-                }
+                local_share().map(|l| l.join("node"))
             }
-        } else {
-            fs::create_dir_all(&target)
-                .map_err(|e| miette::miette!("Failed to create {}: {}", target.display(), e))?;
-            for entry in fs::read_dir(bin_dir)
-                .map_err(|e| miette::miette!("Failed to read {}: {}", bin_dir.display(), e))?
+            #[cfg(not(windows))]
             {
-                let entry =
-                    entry.map_err(|e| miette::miette!("Failed to read dir entry: {}", e))?;
-                let path = entry.path();
-                if path.is_file() {
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        let dest = target.join(name);
-                        if dest.exists() {
-                            let _ = fs::remove_file(&dest).or_else(|_| fs::remove_dir_all(&dest));
-                        }
-                        std::os::unix::fs::symlink(&path, &dest).ok();
-                    }
-                }
+                home_dir().map(|h| h.join(".local").join("share").join("node"))
             }
         }
-    }
-    #[cfg(windows)]
-    {
-        if location == InstallLocation::System {
-            return Err(miette::miette!("--system is not supported on Windows."));
-        }
-        fs::create_dir_all(&target)
-            .map_err(|e| miette::miette!("Failed to create {}: {}", target.display(), e))?;
-        for entry in fs::read_dir(bin_dir)
-            .map_err(|e| miette::miette!("Failed to read {}: {}", bin_dir.display(), e))?
-        {
-            let entry = entry.map_err(|e| miette::miette!("Failed to read dir entry: {}", e))?;
-            let path = entry.path();
-            if path.is_file() {
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    let dest = target.join(name);
-                    if dest.exists() {
-                        let _ = fs::remove_file(&dest).or_else(|_| fs::remove_dir_all(&dest));
-                    }
-                    let _ = std::os::windows::fs::symlink_file(&path, &dest)
-                        .or_else(|_| std::os::windows::fs::symlink_dir(&path, &dest));
-                }
+        (Lang::TypeScript, InstallLocation::System) => Ok(PathBuf::from("/usr/local")),
+        (Lang::Python, InstallLocation::UserLocal) => {
+            #[cfg(windows)]
+            {
+                local_share().map(|l| l.join("python"))
+            }
+            #[cfg(not(windows))]
+            {
+                home_dir().map(|h| h.join(".local").join("share").join("python"))
             }
         }
+        (Lang::Python, InstallLocation::System) => Ok(PathBuf::from("/usr/local")),
+        (Lang::Zig, InstallLocation::UserLocal) => {
+            #[cfg(windows)]
+            {
+                local_share().map(|l| l.join("zig"))
+            }
+            #[cfg(not(windows))]
+            {
+                home_dir().map(|h| h.join(".local").join("share").join("zig"))
+            }
+        }
+        (Lang::Zig, InstallLocation::System) => Ok(PathBuf::from("/usr/local")),
+        (Lang::CSharp, InstallLocation::UserLocal) => home_dir().map(|h| h.join(".dotnet")),
+        (Lang::CSharp, InstallLocation::System) => Ok(PathBuf::from("/usr/local/share/dotnet")),
+        (Lang::C, _) => Err(miette::miette!("C is not auto-installed")),
     }
-    Ok(())
 }
 
-/// Install directory for a specific language
-fn lang_install_dir(lang: Lang) -> Result<PathBuf> {
-    Ok(runtimes_base_dir()?.join(lang.as_str()))
-}
-
-/// Where to symlink installed binaries: user-local (~/.local/bin) or system (/usr/local/bin).
+/// Where to install: user-local (no sudo) or system (/usr/local, requires sudo).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum InstallLocation {
-    /// ~/.local/bin (default, no sudo)
+    /// User-writable standard paths (e.g. ~/sdk/go, ~/.dotnet)
     UserLocal,
-    /// /usr/local/bin (system-wide, requires sudo)
+    /// System paths (e.g. /usr/local/go) - requires sudo
     System,
 }
 
 /// Returns true if poly-bench can auto-install this language.
-/// C requires system package manager - we only provide install_hint.
 pub fn can_auto_install(lang: Lang) -> bool {
     lang != Lang::C
 }
 
-/// Returns the PATH entry for a language if installed (in ~/.local/bin, /usr/local/bin, or runtimes
-/// dir). Caller can prepend this to PATH so build commands find the binary in the current process.
-pub fn polybench_runtime_path(lang: Lang) -> Option<PathBuf> {
-    // Check /usr/local/bin (system install)
-    let system_bin = system_bin_dir();
-    let has_in_system = match lang {
-        Lang::Go => system_bin.join("go").exists(),
-        Lang::TypeScript => system_bin.join("node").exists(),
-        Lang::Rust => system_bin.join("cargo").exists(),
-        Lang::Python => system_bin.join("python3").exists() || system_bin.join("python").exists(),
-        Lang::Zig => system_bin.join("zig").exists(),
-        Lang::CSharp => system_bin.join("dotnet").exists(),
-        Lang::C => false,
-    };
-    if has_in_system {
-        return Some(system_bin);
-    }
-    // Check ~/.local/bin (user-local install)
-    if let Ok(bin_dir) = local_bin_dir() {
-        let has_binary = match lang {
-            Lang::Go => bin_dir.join("go").exists(),
-            Lang::TypeScript => bin_dir.join("node").exists(),
-            Lang::Rust => bin_dir.join("cargo").exists(),
-            Lang::Python => bin_dir.join("python3").exists() || bin_dir.join("python").exists(),
-            Lang::Zig => bin_dir.join("zig").exists(),
-            Lang::CSharp => bin_dir.join("dotnet").exists(),
-            Lang::C => false,
-        };
-        if has_binary {
-            return Some(bin_dir);
+/// Returns the bin directory to prepend to PATH when the binary is not on PATH but exists in a
+/// standard location. Returns None if already on PATH.
+pub fn lang_bin_path_for_prepend(lang: Lang) -> Option<PathBuf> {
+    for bin in runtime_check::required_binary(lang) {
+        if which::which(bin).is_ok() {
+            return None;
         }
     }
-    // Fallback: check runtimes dir
-    let bases = [runtimes_base_dir().ok(), legacy_runtimes_base_dir()];
-    for base in bases {
-        let base = base?.join(lang.as_str());
-        if !base.exists() {
-            continue;
+    // Check standard locations
+    let home = home_dir().ok()?;
+    #[cfg(not(windows))]
+    let local_share = home.join(".local").join("share");
+    #[cfg(windows)]
+    let local_share = env::var("LOCALAPPDATA").ok().map(PathBuf::from)?;
+
+    let candidates: Vec<PathBuf> = match lang {
+        Lang::Rust => vec![home.join(".cargo").join("bin")],
+        Lang::CSharp => vec![home.join(".dotnet"), PathBuf::from("/usr/local/share/dotnet")],
+        Lang::Go => {
+            vec![home.join("sdk").join("go").join("bin"), PathBuf::from("/usr/local/go/bin")]
         }
-        let path = match lang {
-            Lang::Go => base.join("go").join("bin"),
-            Lang::TypeScript => {
-                let entry = std::fs::read_dir(&base)
-                    .ok()?
-                    .filter_map(|e| e.ok())
-                    .find(|e| e.file_name().to_str().map_or(false, |n| n.starts_with("node-v")))?;
-                entry.path().join("bin")
-            }
-            Lang::Rust => base.join(".cargo").join("bin"),
-            Lang::Python => {
-                let install = base.join("install");
-                if cfg!(windows) {
-                    install
-                } else {
-                    install.join("bin")
+        Lang::TypeScript => {
+            let node_base =
+                if cfg!(windows) { local_share.join("node") } else { local_share.join("node") };
+            let mut paths = Vec::new();
+            if let Ok(entries) = fs::read_dir(&node_base) {
+                for e in entries.filter_map(|e| e.ok()) {
+                    let p = e.path().join("bin");
+                    if p.exists() {
+                        paths.push(p);
+                    }
                 }
             }
-            Lang::Zig => {
-                let entry = std::fs::read_dir(&base).ok()?.filter_map(|e| e.ok()).find(|e| {
-                    let name = e.file_name();
-                    let n = name.to_str().unwrap_or("");
-                    (n.starts_with("zig-") || n.starts_with("zig_")) &&
-                        (e.path().join("zig").exists() || e.path().join("zig.exe").exists())
-                })?;
-                entry.path()
+            paths.push(PathBuf::from("/usr/local/bin"));
+            paths
+        }
+        Lang::Python => {
+            let py_base =
+                if cfg!(windows) { local_share.join("python") } else { local_share.join("python") };
+            vec![
+                py_base.join("install").join("bin"),
+                py_base.join("install"),
+                PathBuf::from("/usr/local/bin"),
+            ]
+        }
+        Lang::Zig => {
+            let zig_base =
+                if cfg!(windows) { local_share.join("zig") } else { local_share.join("zig") };
+            let mut paths = Vec::new();
+            if let Ok(entries) = fs::read_dir(&zig_base) {
+                for e in entries.filter_map(|e| e.ok()) {
+                    let p = e.path();
+                    if p.join("zig").exists() || p.join("zig.exe").exists() {
+                        paths.push(p);
+                    }
+                }
             }
-            Lang::CSharp => base.join("dotnet"),
-            Lang::C => continue,
-        };
-        if path.exists() {
-            return Some(path);
+            paths.push(PathBuf::from("/usr/local/bin"));
+            paths
+        }
+        Lang::C => return None,
+    };
+
+    for p in candidates {
+        if p.exists() {
+            let has_binary = match lang {
+                Lang::Go => p.join("go").exists(),
+                Lang::TypeScript => p.join("node").exists(),
+                Lang::Rust => p.join("cargo").exists(),
+                Lang::Python => p.join("python3").exists() || p.join("python").exists(),
+                Lang::Zig => p.join("zig").exists() || p.join("zig.exe").exists(),
+                Lang::CSharp => p.join("dotnet").exists(),
+                Lang::C => false,
+            };
+            if has_binary {
+                return Some(p);
+            }
         }
     }
     None
+}
+
+/// Backward compatibility: same as lang_bin_path_for_prepend.
+pub fn polybench_runtime_path(lang: Lang) -> Option<PathBuf> {
+    lang_bin_path_for_prepend(lang)
+}
+
+/// Returns the shell config file path based on $SHELL. None if we can't determine it.
+fn shell_config_path() -> Option<PathBuf> {
+    let home = home_dir().ok()?;
+    let shell = env::var("SHELL").unwrap_or_default();
+    let shell_lower = shell.to_lowercase();
+    if shell_lower.contains("fish") {
+        Some(home.join(".config").join("fish").join("config.fish"))
+    } else if shell_lower.contains("zsh") {
+        Some(home.join(".zshrc"))
+    } else if shell_lower.contains("bash") {
+        #[cfg(target_os = "macos")]
+        if home.join(".bash_profile").exists() {
+            return Some(home.join(".bash_profile"));
+        }
+        Some(home.join(".bashrc"))
+    } else {
+        Some(home.join(".profile"))
+    }
+}
+
+/// Appends the given bin directory to PATH in the user's shell config. Returns None if the path
+/// is already present or we couldn't write. Returns Some(config_path) if we appended.
+fn append_path_to_shell_config(bin_dir: &Path) -> Result<Option<PathBuf>> {
+    let config_path = match shell_config_path() {
+        Some(p) => p,
+        None => return Ok(None),
+    };
+
+    let bin_str = bin_dir.to_string_lossy();
+    let content = fs::read_to_string(&config_path).unwrap_or_default();
+
+    // Skip if this path is already in the config
+    if content.contains(bin_str.as_ref()) {
+        return Ok(None);
+    }
+
+    let line = if config_path.extension().and_then(|e| e.to_str()) == Some("fish") {
+        format!(
+            "\n# Added by poly-bench for runtime PATH\nfish_add_path --global \"{}\"\n",
+            bin_str
+        )
+    } else {
+        format!("\n# Added by poly-bench for runtime PATH\nexport PATH=\"{}\":$PATH\n", bin_str)
+    };
+
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            miette::miette!("Failed to create config directory {}: {}", parent.display(), e)
+        })?;
+    }
+
+    let mut f = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&config_path)
+        .map_err(|e| miette::miette!("Failed to open {}: {}", config_path.display(), e))?;
+
+    f.write_all(line.as_bytes())
+        .map_err(|e| miette::miette!("Failed to write to {}: {}", config_path.display(), e))?;
+
+    Ok(Some(config_path))
+}
+
+/// Ensures the runtime's bin directory is in the user's shell config. Returns Some(config_path) if
+/// we appended. Returns None if the binary is already on PATH or we couldn't determine the path.
+pub fn ensure_runtime_in_shell_config(lang: Lang) -> Result<Option<PathBuf>> {
+    let bin_dir = match lang_bin_path_for_prepend(lang) {
+        Some(p) => p,
+        None => return Ok(None),
+    };
+    append_path_to_shell_config(&bin_dir)
 }
 
 /// Install a language runtime. For C, returns error with install_hint.
@@ -332,7 +298,7 @@ fn install_go(location: InstallLocation) -> Result<()> {
     let filename = format!("go{}.{}-{}.tar.gz", version, os, arch);
     let url = format!("https://go.dev/dl/{}", filename);
 
-    let install_dir = lang_install_dir(Lang::Go)?;
+    let install_dir = lang_install_dir(Lang::Go, location)?;
     let bin_dir = install_dir.join("go").join("bin");
     if bin_dir.exists() && which::which("go").is_err() {
         // Installed but not on PATH - we'll add it
@@ -345,22 +311,28 @@ fn install_go(location: InstallLocation) -> Result<()> {
     let body = download(&url)?;
     terminal::install_step(2, 4, "Extracting...");
 
-    fs::create_dir_all(&install_dir)
-        .map_err(|e| miette::miette!("Failed to create install dir: {}", e))?;
+    if location == InstallLocation::System {
+        let tmp = std::env::temp_dir().join(&filename);
+        fs::write(&tmp, &body).map_err(|e| miette::miette!("Failed to write archive: {}", e))?;
+        let status = Command::new("sudo")
+            .args(["tar", "-xzf", tmp.to_str().unwrap(), "-C", install_dir.to_str().unwrap()])
+            .status()
+            .map_err(|e| miette::miette!("Failed to run sudo tar: {}", e))?;
+        let _ = fs::remove_file(&tmp);
+        if !status.success() {
+            return Err(miette::miette!("Failed to extract Go to {}", install_dir.display()));
+        }
+    } else {
+        fs::create_dir_all(&install_dir)
+            .map_err(|e| miette::miette!("Failed to create install dir: {}", e))?;
+        let decoder = GzDecoder::new(body.as_slice());
+        let mut archive = tar::Archive::new(decoder);
+        archive.unpack(&install_dir).map_err(|e| miette::miette!("Failed to extract Go: {}", e))?;
+    }
 
-    let decoder = GzDecoder::new(body.as_slice());
-    let mut archive = tar::Archive::new(decoder);
-    archive.unpack(&install_dir).map_err(|e| miette::miette!("Failed to extract Go: {}", e))?;
-
-    terminal::install_step(3, 4, "Configuring PATH...");
-    symlink_bin_dir(&bin_dir, location)?;
-    terminal::install_step(4, 4, "Done");
-    let dest = if location == InstallLocation::System { "/usr/local/bin" } else { "~/.local/bin" };
-    terminal::success_indented(&format!(
-        "Go installed at {} (symlinked to {})",
-        bin_dir.display(),
-        dest
-    ));
+    terminal::install_step(3, 4, "Done");
+    let dest = install_dir.join("go");
+    terminal::success_indented(&format!("Go installed at {}", dest.display()));
     Ok(())
 }
 
@@ -379,13 +351,12 @@ fn install_node(location: InstallLocation) -> Result<()> {
     let filename = format!("node-v{}-{}-{}.tar.gz", version, node_os, node_arch);
     let url = format!("https://nodejs.org/dist/v{}/{}", version, filename);
 
-    let install_dir = lang_install_dir(Lang::TypeScript)?;
-    let bin_dir =
-        install_dir.join(format!("node-v{}-{}-{}", version, node_os, node_arch)).join("bin");
-    let alt_bin = install_dir.join("bin");
-    if (bin_dir.exists() || alt_bin.exists()) && which::which("node").is_err() {
+    let install_dir = lang_install_dir(Lang::TypeScript, location)?;
+    let extracted_name = format!("node-v{}-{}-{}", version, node_os, node_arch);
+    let bin_dir = install_dir.join(&extracted_name).join("bin");
+    if bin_dir.exists() && which::which("node").is_err() {
         // Installed but not on PATH
-    } else if bin_dir.exists() || alt_bin.exists() {
+    } else if bin_dir.exists() {
         terminal::info_indented("Node.js already installed");
         return Ok(());
     }
@@ -394,50 +365,44 @@ fn install_node(location: InstallLocation) -> Result<()> {
     let body = download(&url)?;
     terminal::install_step(2, 4, "Extracting...");
 
-    fs::create_dir_all(&install_dir)
-        .map_err(|e| miette::miette!("Failed to create install dir: {}", e))?;
-
-    let decoder = GzDecoder::new(body.as_slice());
-    let mut archive = tar::Archive::new(decoder);
-    archive
-        .unpack(&install_dir)
-        .map_err(|e| miette::miette!("Failed to extract Node.js: {}", e))?;
-
-    // Node tarball extracts to node-vX.Y.Z-os-arch/
-    let extracted = install_dir
-        .read_dir()
-        .map_err(|e| miette::miette!("Failed to read install dir: {}", e))?
-        .filter_map(|e| e.ok())
-        .find(|e| {
-            e.path().is_dir() && e.file_name().to_str().map_or(false, |n| n.starts_with("node-v"))
-        });
-    if let Some(entry) = extracted {
-        let node_bin = entry.path().join("bin");
-        terminal::install_step(3, 4, "Configuring PATH...");
-        symlink_bin_dir(&node_bin, location)?;
-        terminal::install_step(4, 4, "Done");
-        let dest =
-            if location == InstallLocation::System { "/usr/local/bin" } else { "~/.local/bin" };
-        terminal::success_indented(&format!(
-            "Node.js installed at {} (symlinked to {})",
-            node_bin.display(),
-            dest
-        ));
+    if location == InstallLocation::System {
+        let tmp = std::env::temp_dir().join(&filename);
+        fs::write(&tmp, &body).map_err(|e| miette::miette!("Failed to write archive: {}", e))?;
+        let status = Command::new("sudo")
+            .args(["tar", "-xzf", tmp.to_str().unwrap(), "-C", install_dir.to_str().unwrap()])
+            .status()
+            .map_err(|e| miette::miette!("Failed to run sudo tar: {}", e))?;
+        let _ = fs::remove_file(&tmp);
+        if !status.success() {
+            return Err(miette::miette!("Failed to extract Node.js to {}", install_dir.display()));
+        }
     } else {
-        return Err(miette::miette!("Node.js archive structure unexpected"));
+        fs::create_dir_all(&install_dir)
+            .map_err(|e| miette::miette!("Failed to create install dir: {}", e))?;
+        let decoder = GzDecoder::new(body.as_slice());
+        let mut archive = tar::Archive::new(decoder);
+        archive
+            .unpack(&install_dir)
+            .map_err(|e| miette::miette!("Failed to extract Node.js: {}", e))?;
     }
+
+    terminal::install_step(3, 4, "Done");
+    terminal::success_indented(&format!(
+        "Node.js installed at {}",
+        install_dir.join(extracted_name).display()
+    ));
     Ok(())
 }
 
-fn install_rust(location: InstallLocation) -> Result<()> {
-    let install_dir = lang_install_dir(Lang::Rust)?;
-    let cargo_bin = install_dir.join(".cargo").join("bin");
+fn install_rust(_location: InstallLocation) -> Result<()> {
+    // Rust uses rustup defaults (~/.cargo, ~/.rustup) - we don't override CARGO_HOME/RUSTUP_HOME
+    let cargo_bin = home_dir()?.join(".cargo").join("bin");
     if cargo_bin.join("cargo").exists() || cargo_bin.join("cargo.exe").exists() {
         if which::which("cargo").is_ok() {
             terminal::info_indented("Rust already installed");
             return Ok(());
         }
-        symlink_bin_dir(&cargo_bin, location)?;
+        // Installed but not on PATH - lang_bin_path_for_prepend will find it
         return Ok(());
     }
 
@@ -458,10 +423,10 @@ fn install_rust(location: InstallLocation) -> Result<()> {
     };
 
     let body = download(&rustup_url)?;
-    let rustup_path =
-        install_dir.join(if ext == "exe" { "rustup-init.exe" } else { "rustup-init" });
-    fs::create_dir_all(&install_dir)
-        .map_err(|e| miette::miette!("Failed to create install dir: {}", e))?;
+    let tmp_dir = std::env::temp_dir().join("polybench-rustup");
+    fs::create_dir_all(&tmp_dir)
+        .map_err(|e| miette::miette!("Failed to create temp dir: {}", e))?;
+    let rustup_path = tmp_dir.join(if ext == "exe" { "rustup-init.exe" } else { "rustup-init" });
     fs::write(&rustup_path, &body)
         .map_err(|e| miette::miette!("Failed to write rustup-init: {}", e))?;
 
@@ -477,27 +442,20 @@ fn install_rust(location: InstallLocation) -> Result<()> {
     }
 
     terminal::install_step(2, 4, "Running rustup (this may take a few minutes)...");
+    // Do not set CARGO_HOME/RUSTUP_HOME - let rustup use defaults (~/.cargo, ~/.rustup)
     let status = Command::new(&rustup_path)
         .args(["-y", "--default-toolchain", "stable"])
-        .env("CARGO_HOME", &install_dir)
-        .env("RUSTUP_HOME", install_dir.join(".rustup"))
         .status()
         .map_err(|e| miette::miette!("Failed to run rustup: {}", e))?;
+
+    let _ = fs::remove_dir_all(&tmp_dir);
 
     if !status.success() {
         return Err(miette::miette!("rustup failed with exit code {:?}", status.code()));
     }
 
-    let cargo_bin = install_dir.join(".cargo").join("bin");
-    terminal::install_step(3, 4, "Configuring PATH...");
-    symlink_bin_dir(&cargo_bin, location)?;
-    terminal::install_step(4, 4, "Done");
-    let dest = if location == InstallLocation::System { "/usr/local/bin" } else { "~/.local/bin" };
-    terminal::success_indented(&format!(
-        "Rust installed at {} (symlinked to {})",
-        cargo_bin.display(),
-        dest
-    ));
+    terminal::install_step(3, 4, "Done");
+    terminal::success_indented(&format!("Rust installed at {}", cargo_bin.display()));
     Ok(())
 }
 
@@ -522,7 +480,7 @@ fn install_python(location: InstallLocation) -> Result<()> {
         release_tag, filename
     );
 
-    let install_dir = lang_install_dir(Lang::Python)?;
+    let install_dir = lang_install_dir(Lang::Python, location)?;
     let python_bin = install_dir.join("install").join("bin");
     let python_bin_win = install_dir.join("install");
     if (python_bin.exists() || python_bin_win.join("python.exe").exists()) &&
@@ -539,27 +497,34 @@ fn install_python(location: InstallLocation) -> Result<()> {
     let body = download(&url)?;
     terminal::install_step(2, 4, "Extracting...");
 
-    fs::create_dir_all(&install_dir)
-        .map_err(|e| miette::miette!("Failed to create install dir: {}", e))?;
-
-    let decoder = GzDecoder::new(body.as_slice());
-    let mut archive = tar::Archive::new(decoder);
-    archive.unpack(&install_dir).map_err(|e| miette::miette!("Failed to extract Python: {}", e))?;
+    if location == InstallLocation::System {
+        let tmp = std::env::temp_dir().join(&filename);
+        fs::write(&tmp, &body).map_err(|e| miette::miette!("Failed to write archive: {}", e))?;
+        let status = Command::new("sudo")
+            .args(["tar", "-xzf", tmp.to_str().unwrap(), "-C", install_dir.to_str().unwrap()])
+            .status()
+            .map_err(|e| miette::miette!("Failed to run sudo tar: {}", e))?;
+        let _ = fs::remove_file(&tmp);
+        if !status.success() {
+            return Err(miette::miette!("Failed to extract Python to {}", install_dir.display()));
+        }
+    } else {
+        fs::create_dir_all(&install_dir)
+            .map_err(|e| miette::miette!("Failed to create install dir: {}", e))?;
+        let decoder = GzDecoder::new(body.as_slice());
+        let mut archive = tar::Archive::new(decoder);
+        archive
+            .unpack(&install_dir)
+            .map_err(|e| miette::miette!("Failed to extract Python: {}", e))?;
+    }
 
     let path_to_add = if cfg!(windows) {
         install_dir.join("install")
     } else {
         install_dir.join("install").join("bin")
     };
-    terminal::install_step(3, 4, "Configuring PATH...");
-    symlink_bin_dir(&path_to_add, location)?;
-    terminal::install_step(4, 4, "Done");
-    let dest = if location == InstallLocation::System { "/usr/local/bin" } else { "~/.local/bin" };
-    terminal::success_indented(&format!(
-        "Python installed at {} (symlinked to {})",
-        path_to_add.display(),
-        dest
-    ));
+    terminal::install_step(3, 4, "Done");
+    terminal::success_indented(&format!("Python installed at {}", path_to_add.display()));
     Ok(())
 }
 
@@ -578,7 +543,7 @@ fn install_zig(location: InstallLocation) -> Result<()> {
     let filename = format!("zig-{}-{}-{}.tar.xz", zig_os, zig_arch, version);
     let url = format!("https://ziglang.org/download/{}/{}", version, filename);
 
-    let install_dir = lang_install_dir(Lang::Zig)?;
+    let install_dir = lang_install_dir(Lang::Zig, location)?;
     let zig_extracted = install_dir.join(format!("zig-{}-{}-{}", zig_os, zig_arch, version));
     let zig_bin = zig_extracted.join("zig");
     let zig_bin_exe = zig_extracted.join("zig.exe");
@@ -593,17 +558,33 @@ fn install_zig(location: InstallLocation) -> Result<()> {
     let body = download(&url)?;
     terminal::install_step(2, 4, "Extracting...");
 
-    fs::create_dir_all(&install_dir)
-        .map_err(|e| miette::miette!("Failed to create install dir: {}", e))?;
-
-    let archive_path = install_dir.join(&filename);
+    let archive_path = if location == InstallLocation::System {
+        std::env::temp_dir().join(&filename)
+    } else {
+        install_dir.join(&filename)
+    };
+    fs::create_dir_all(archive_path.parent().unwrap())
+        .map_err(|e| miette::miette!("Failed to create dir: {}", e))?;
     fs::write(&archive_path, &body)
         .map_err(|e| miette::miette!("Failed to write archive: {}", e))?;
 
-    let status = Command::new("tar")
-        .args(["-xJf", archive_path.to_str().unwrap(), "-C", install_dir.to_str().unwrap()])
-        .status()
-        .map_err(|e| miette::miette!("Failed to extract Zig (tar required): {}", e))?;
+    let status = if location == InstallLocation::System {
+        Command::new("sudo")
+            .args([
+                "tar",
+                "-xJf",
+                archive_path.to_str().unwrap(),
+                "-C",
+                install_dir.to_str().unwrap(),
+            ])
+            .status()
+    } else {
+        Command::new("tar")
+            .args(["-xJf", archive_path.to_str().unwrap(), "-C", install_dir.to_str().unwrap()])
+            .status()
+    };
+    let status =
+        status.map_err(|e| miette::miette!("Failed to extract Zig (tar required): {}", e))?;
 
     let _ = fs::remove_file(&archive_path);
 
@@ -611,16 +592,8 @@ fn install_zig(location: InstallLocation) -> Result<()> {
         return Err(miette::miette!("Failed to extract Zig archive"));
     }
 
-    terminal::install_step(3, 4, "Configuring PATH...");
-    let zig_bin = zig_extracted.join(if cfg!(windows) { "zig.exe" } else { "zig" });
-    symlink_binary(&zig_bin, "zig", location)?;
-    terminal::install_step(4, 4, "Done");
-    let dest = if location == InstallLocation::System { "/usr/local/bin" } else { "~/.local/bin" };
-    terminal::success_indented(&format!(
-        "Zig installed at {} (symlinked to {})",
-        zig_extracted.display(),
-        dest
-    ));
+    terminal::install_step(3, 4, "Done");
+    terminal::success_indented(&format!("Zig installed at {}", zig_extracted.display()));
     Ok(())
 }
 
@@ -641,7 +614,7 @@ fn install_dotnet(location: InstallLocation) -> Result<()> {
         version, version, dotnet_os, dotnet_arch
     );
 
-    let install_dir = lang_install_dir(Lang::CSharp)?;
+    let install_dir = lang_install_dir(Lang::CSharp, location)?;
     let dotnet_bin = install_dir.join("dotnet");
     if dotnet_bin.exists() && which::which("dotnet").is_err() {
         // Installed but not on PATH
@@ -654,33 +627,50 @@ fn install_dotnet(location: InstallLocation) -> Result<()> {
     let body = download(&url)?;
     terminal::install_step(2, 4, "Extracting...");
 
-    fs::create_dir_all(&install_dir)
-        .map_err(|e| miette::miette!("Failed to create install dir: {}", e))?;
+    if location == InstallLocation::System {
+        let filename = format!("dotnet-sdk-{}-{}-{}.tar.gz", version, dotnet_os, dotnet_arch);
+        let tmp = std::env::temp_dir().join(&filename);
+        fs::write(&tmp, &body).map_err(|e| miette::miette!("Failed to write archive: {}", e))?;
+        // Ensure target dir exists (e.g. /usr/local/share/dotnet)
+        let mkdir =
+            Command::new("sudo").args(["mkdir", "-p", install_dir.to_str().unwrap()]).status();
+        if let Ok(s) = mkdir {
+            if !s.success() {
+                return Err(miette::miette!("Failed to create {}", install_dir.display()));
+            }
+        }
+        let status = Command::new("sudo")
+            .args(["tar", "-xzf", tmp.to_str().unwrap(), "-C", install_dir.to_str().unwrap()])
+            .status()
+            .map_err(|e| miette::miette!("Failed to run sudo tar: {}", e))?;
+        let _ = fs::remove_file(&tmp);
+        if !status.success() {
+            return Err(miette::miette!("Failed to extract .NET to {}", install_dir.display()));
+        }
+    } else {
+        fs::create_dir_all(&install_dir)
+            .map_err(|e| miette::miette!("Failed to create install dir: {}", e))?;
+        let decoder = GzDecoder::new(body.as_slice());
+        let mut archive = tar::Archive::new(decoder);
+        archive
+            .unpack(&install_dir)
+            .map_err(|e| miette::miette!("Failed to extract .NET: {}", e))?;
+    }
 
-    let decoder = GzDecoder::new(body.as_slice());
-    let mut archive = tar::Archive::new(decoder);
-    archive.unpack(&install_dir).map_err(|e| miette::miette!("Failed to extract .NET: {}", e))?;
-
-    terminal::install_step(3, 4, "Configuring PATH...");
-    symlink_binary(&install_dir.join("dotnet"), "dotnet", location)?;
-    terminal::install_step(4, 4, "Done");
-    let dest = if location == InstallLocation::System { "/usr/local/bin" } else { "~/.local/bin" };
-    terminal::success_indented(&format!(
-        ".NET installed at {} (symlinked to {})",
-        install_dir.display(),
-        dest
-    ));
+    terminal::install_step(3, 4, "Done");
+    terminal::success_indented(&format!(".NET installed at {}", install_dir.display()));
     Ok(())
 }
 
 fn download(url: &str) -> Result<Vec<u8>> {
-    let response = ureq::get(url).call().map_err(|e| {
+    let mut response = ureq::get(url).call().map_err(|e| {
         miette::miette!("Failed to download {}: {}. Ensure you have network access.", url, e)
     })?;
-    let mut body = Vec::new();
-    response
-        .into_reader()
-        .read_to_end(&mut body)
+    let body = response
+        .body_mut()
+        .with_config()
+        .limit(200 * 1024 * 1024)
+        .read_to_vec()
         .map_err(|e| miette::miette!("Failed to read download: {}", e))?;
     Ok(body)
 }
