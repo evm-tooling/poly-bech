@@ -14,7 +14,7 @@ use std::{
 const MIN_DISPLAY_MS: u64 = 500;
 const ERROR_EXCERPT_MAX_LINES: usize = 24;
 
-/// Create a spinner for a step with the [±] style prefix
+/// Create a spinner for a step (same style as compile command)
 pub fn step_spinner(msg: &str) -> ProgressBar {
     let pb = ProgressBar::new_spinner();
     pb.set_style(
@@ -24,7 +24,7 @@ pub fn step_spinner(msg: &str) -> ProgressBar {
             .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
     );
     pb.set_message(msg.to_string());
-    pb.enable_steady_tick(Duration::from_millis(120));
+    pb.enable_steady_tick(Duration::from_millis(80));
     pb
 }
 
@@ -38,7 +38,7 @@ pub fn indented_spinner(msg: &str) -> ProgressBar {
             .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
     );
     pb.set_message(msg.to_string());
-    pb.enable_steady_tick(Duration::from_millis(120));
+    pb.enable_steady_tick(Duration::from_millis(80));
     pb
 }
 

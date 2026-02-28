@@ -71,23 +71,12 @@ pub fn build_project(options: &BuildOptions) -> Result<()> {
 pub fn build_project_at(project_root: &Path, options: &BuildOptions) -> Result<()> {
     let manifest = crate::load_manifest(project_root)?;
 
-    let spinner = terminal::step_spinner(&format!(
-        "Building runtime environment for '{}'...",
-        manifest.project.name
-    ));
-
     for lang in poly_bench_runtime::supported_languages() {
         if manifest.has_runtime(*lang) {
-            spinner.set_message(format!(
-                "Building {} environment...",
-                poly_bench_runtime::lang_label(*lang)
-            ));
             build_runtime_env_for_lang(*lang, project_root, &manifest, options)?;
         }
     }
 
-    terminal::ensure_min_display(spinner.elapsed());
-    spinner.finish_and_clear();
     println!();
     terminal::success("Runtime environment ready!");
 
@@ -138,15 +127,22 @@ fn build_go_env(
 
     // Create or recreate go.mod
     if !go_mod_exists || options.force {
+        let spinner = terminal::indented_spinner(if go_mod_exists && options.force {
+            "Regenerating go.mod..."
+        } else {
+            "Creating go.mod..."
+        });
         let go_mod_content = templates::go_mod(&go_config.module, go_config.version.as_deref());
         std::fs::write(&go_mod_path, &go_mod_content)
             .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
-
-        if go_mod_exists && options.force {
-            terminal::success_indented("Regenerated go.mod");
-        } else {
-            terminal::success_indented("Created go.mod");
-        }
+        terminal::finish_success_indented(
+            &spinner,
+            if go_mod_exists && options.force {
+                "Regenerated go.mod"
+            } else {
+                "Created go.mod"
+            },
+        );
     } else {
         terminal::info_indented("go.mod exists (use --force to regenerate)");
     }
@@ -185,7 +181,8 @@ fn build_go_env(
 
     install_local_gopls(&go_env, options)?;
 
-    terminal::success_indented("Go environment ready");
+    let spinner = terminal::indented_spinner("Finalizing Go environment...");
+    terminal::finish_success_indented(&spinner, "Go environment ready");
 
     Ok(())
 }
@@ -257,15 +254,22 @@ fn build_ts_env(
 
     // Create or recreate package.json
     if !package_json_exists || options.force {
+        let spinner = terminal::indented_spinner(if package_json_exists && options.force {
+            "Regenerating package.json..."
+        } else {
+            "Creating package.json..."
+        });
         let package_json_content = templates::package_json_pretty(project_name);
         std::fs::write(&package_json_path, &package_json_content)
             .map_err(|e| miette::miette!("Failed to write package.json: {}", e))?;
-
-        if package_json_exists && options.force {
-            terminal::success_indented("Regenerated package.json");
-        } else {
-            terminal::success_indented("Created package.json");
-        }
+        terminal::finish_success_indented(
+            &spinner,
+            if package_json_exists && options.force {
+                "Regenerated package.json"
+            } else {
+                "Created package.json"
+            },
+        );
     } else {
         terminal::info_indented("package.json exists (use --force to regenerate)");
     }
@@ -275,26 +279,37 @@ fn build_ts_env(
 
     // Create or recreate tsconfig.json
     if !tsconfig_exists || options.force {
+        let spinner = terminal::indented_spinner(if tsconfig_exists && options.force {
+            "Regenerating tsconfig.json..."
+        } else {
+            "Creating tsconfig.json..."
+        });
         let tsconfig_content = templates::tsconfig_json();
         std::fs::write(&tsconfig_path, &tsconfig_content)
             .map_err(|e| miette::miette!("Failed to write tsconfig.json: {}", e))?;
-
-        if tsconfig_exists && options.force {
-            terminal::success_indented("Regenerated tsconfig.json");
-        } else {
-            terminal::success_indented("Created tsconfig.json");
-        }
+        terminal::finish_success_indented(
+            &spinner,
+            if tsconfig_exists && options.force {
+                "Regenerated tsconfig.json"
+            } else {
+                "Created tsconfig.json"
+            },
+        );
     } else {
         terminal::info_indented("tsconfig.json exists (use --force to regenerate)");
     }
 
     // Add user dependencies from manifest to package.json
     if !ts_config.dependencies.is_empty() {
+        let spinner = terminal::indented_spinner("Adding dependencies to package.json...");
         update_package_json_deps(&ts_env, ts_config)?;
-        terminal::success_indented(&format!(
-            "Added {} dependencies to package.json",
-            ts_config.dependencies.len()
-        ));
+        terminal::finish_success_indented(
+            &spinner,
+            &format!(
+                "Added {} dependencies to package.json",
+                ts_config.dependencies.len()
+            ),
+        );
     }
 
     // Run npm install if not skipped
@@ -333,7 +348,8 @@ fn build_ts_env(
         terminal::info_indented("Skipping npm install (--skip-install)");
     }
 
-    terminal::success_indented("TypeScript environment ready");
+    let spinner = terminal::indented_spinner("Finalizing TypeScript environment...");
+    terminal::finish_success_indented(&spinner, "TypeScript environment ready");
 
     Ok(())
 }
@@ -357,15 +373,22 @@ fn build_rust_env(
 
     // Create or recreate Cargo.toml
     if !cargo_toml_exists || options.force {
+        let spinner = terminal::indented_spinner(if cargo_toml_exists && options.force {
+            "Regenerating Cargo.toml..."
+        } else {
+            "Creating Cargo.toml..."
+        });
         let cargo_toml_content = templates::cargo_toml("polybench-runner", &rust_config.edition);
         std::fs::write(&cargo_toml_path, &cargo_toml_content)
             .map_err(|e| miette::miette!("Failed to write Cargo.toml: {}", e))?;
-
-        if cargo_toml_exists && options.force {
-            terminal::success_indented("Regenerated Cargo.toml");
-        } else {
-            terminal::success_indented("Created Cargo.toml");
-        }
+        terminal::finish_success_indented(
+            &spinner,
+            if cargo_toml_exists && options.force {
+                "Regenerated Cargo.toml"
+            } else {
+                "Created Cargo.toml"
+            },
+        );
     } else {
         terminal::info_indented("Cargo.toml exists (use --force to regenerate)");
     }
@@ -373,18 +396,23 @@ fn build_rust_env(
     // Create placeholder main.rs if it doesn't exist
     let main_rs_path = rust_env.join("src").join("main.rs");
     if !main_rs_path.exists() {
+        let spinner = terminal::indented_spinner("Creating src/main.rs...");
         std::fs::write(&main_rs_path, "fn main() {}\n")
             .map_err(|e| miette::miette!("Failed to write src/main.rs: {}", e))?;
-        terminal::success_indented("Created src/main.rs");
+        terminal::finish_success_indented(&spinner, "Created src/main.rs");
     }
 
     // Add user dependencies from manifest to Cargo.toml
     if !rust_config.dependencies.is_empty() {
+        let spinner = terminal::indented_spinner("Adding dependencies to Cargo.toml...");
         update_cargo_toml_deps(&rust_env, rust_config)?;
-        terminal::success_indented(&format!(
-            "Added {} dependencies to Cargo.toml",
-            rust_config.dependencies.len()
-        ));
+        terminal::finish_success_indented(
+            &spinner,
+            &format!(
+                "Added {} dependencies to Cargo.toml",
+                rust_config.dependencies.len()
+            ),
+        );
     }
 
     // Run cargo check to download dependencies if not skipped
@@ -425,7 +453,8 @@ fn build_rust_env(
 
     install_local_rust_analyzer(&rust_env, options)?;
 
-    terminal::success_indented("Rust environment ready");
+    let spinner = terminal::indented_spinner("Finalizing Rust environment...");
+    terminal::finish_success_indented(&spinner, "Rust environment ready");
 
     Ok(())
 }
@@ -448,19 +477,22 @@ fn build_python_env(
         .map_err(|e| miette::miette!("Failed to create {}: {}", python_env.display(), e))?;
 
     let requirements_path = python_env.join("requirements.txt");
+    let spinner = terminal::indented_spinner("Creating requirements.txt...");
     let deps: Vec<(String, String)> =
         python_config.dependencies.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let requirements_content = templates::requirements_txt_for_runtime_env(&deps);
     std::fs::write(&requirements_path, requirements_content)
         .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
-
     if python_config.dependencies.is_empty() {
-        terminal::success_indented("Created requirements.txt (no dependencies)");
+        terminal::finish_success_indented(&spinner, "Created requirements.txt (no dependencies)");
     } else {
-        terminal::success_indented(&format!(
-            "Created requirements.txt ({} dependencies)",
-            python_config.dependencies.len()
-        ));
+        terminal::finish_success_indented(
+            &spinner,
+            &format!(
+                "Created requirements.txt ({} dependencies)",
+                python_config.dependencies.len()
+            ),
+        );
     }
 
     if !options.skip_install {
@@ -508,7 +540,8 @@ fn build_python_env(
                 }
             }
         } else {
-            terminal::info_indented("Virtual environment exists");
+            let spinner = terminal::indented_spinner("Checking virtual environment...");
+            terminal::finish_success_indented(&spinner, "Virtual environment exists");
         }
 
         // Install dependencies into venv (always run: requirements.txt includes pyright for LSP)
@@ -548,7 +581,8 @@ fn build_python_env(
         terminal::info_indented("Skipping pip install (--skip-install)");
     }
 
-    terminal::success_indented("Python environment ready");
+    let spinner = terminal::indented_spinner("Finalizing Python environment...");
+    terminal::finish_success_indented(&spinner, "Python environment ready");
 
     Ok(())
 }
@@ -566,26 +600,35 @@ fn build_csharp_env(
 
     let csproj_path = csharp_env.join("polybench.csproj");
     if !csproj_path.exists() || options.force {
+        let spinner = terminal::indented_spinner(if options.force {
+            "Regenerating polybench.csproj..."
+        } else {
+            "Creating polybench.csproj..."
+        });
         let csproj_content = templates::csharp_csproj(&csharp_config.target_framework);
         std::fs::write(&csproj_path, csproj_content)
             .map_err(|e| miette::miette!("Failed to write polybench.csproj: {}", e))?;
-        if options.force {
-            terminal::success_indented("Regenerated polybench.csproj");
-        } else {
-            terminal::success_indented("Created polybench.csproj");
-        }
+        terminal::finish_success_indented(
+            &spinner,
+            if options.force {
+                "Regenerated polybench.csproj"
+            } else {
+                "Created polybench.csproj"
+            },
+        );
     } else {
         terminal::info_indented("polybench.csproj exists (use --force to regenerate)");
     }
 
     let program_path = csharp_env.join("Program.cs");
     if !program_path.exists() {
+        let spinner = terminal::indented_spinner("Creating Program.cs...");
         std::fs::write(
             &program_path,
             "public static class Program { public static void Main() {} }\n",
         )
         .map_err(|e| miette::miette!("Failed to write Program.cs: {}", e))?;
-        terminal::success_indented("Created Program.cs");
+        terminal::finish_success_indented(&spinner, "Created Program.cs");
     }
 
     let nuget_config_path = csharp_env.join("NuGet.config");
@@ -657,7 +700,8 @@ fn build_csharp_env(
         terminal::info_indented("Skipping dotnet restore (--skip-install)");
     }
 
-    terminal::success_indented("C# environment ready");
+    let spinner = terminal::indented_spinner("Finalizing C# environment...");
+    terminal::finish_success_indented(&spinner, "C# environment ready");
     Ok(())
 }
 
@@ -674,9 +718,10 @@ fn build_c_env(
 
     let main_c_path = c_env.join("main.c");
     if !main_c_path.exists() {
+        let spinner = terminal::indented_spinner("Creating main.c...");
         std::fs::write(&main_c_path, "int main(void) {\n    return 0;\n}\n")
             .map_err(|e| miette::miette!("Failed to write main.c: {}", e))?;
-        terminal::success_indented("Created main.c");
+        terminal::finish_success_indented(&spinner, "Created main.c");
     } else {
         terminal::info_indented("main.c exists");
     }
@@ -690,7 +735,8 @@ fn build_c_env(
         ));
     }
 
-    terminal::success_indented("C environment ready");
+    let spinner = terminal::indented_spinner("Finalizing C environment...");
+    terminal::finish_success_indented(&spinner, "C environment ready");
     Ok(())
 }
 
@@ -707,18 +753,20 @@ fn build_zig_env(
 
     let build_zig_path = zig_env.join("build.zig");
     if !build_zig_path.exists() {
+        let spinner = terminal::indented_spinner("Creating build.zig...");
         std::fs::write(&build_zig_path, templates::build_zig())
             .map_err(|e| miette::miette!("Failed to write build.zig: {}", e))?;
-        terminal::success_indented("Created build.zig");
+        terminal::finish_success_indented(&spinner, "Created build.zig");
     } else {
         terminal::info_indented("build.zig exists");
     }
 
     let build_zig_zon_path = zig_env.join("build.zig.zon");
     if !build_zig_zon_path.exists() {
+        let spinner = terminal::indented_spinner("Creating build.zig.zon...");
         std::fs::write(&build_zig_zon_path, templates::build_zig_zon())
             .map_err(|e| miette::miette!("Failed to write build.zig.zon: {}", e))?;
-        terminal::success_indented("Created build.zig.zon");
+        terminal::finish_success_indented(&spinner, "Created build.zig.zon");
     } else {
         terminal::info_indented("build.zig.zon exists");
     }
@@ -729,16 +777,18 @@ fn build_zig_env(
 
     let main_zig_path = src_dir.join("main.zig");
     if !main_zig_path.exists() {
+        let spinner = terminal::indented_spinner("Creating src/main.zig...");
         std::fs::write(&main_zig_path, templates::main_zig())
             .map_err(|e| miette::miette!("Failed to write main.zig: {}", e))?;
-        terminal::success_indented("Created src/main.zig");
+        terminal::finish_success_indented(&spinner, "Created src/main.zig");
     } else {
         terminal::info_indented("src/main.zig exists");
     }
 
     install_local_zls(&zig_env, _options)?;
 
-    terminal::success_indented("Zig environment ready");
+    let spinner = terminal::indented_spinner("Finalizing Zig environment...");
+    terminal::finish_success_indented(&spinner, "Zig environment ready");
     Ok(())
 }
 

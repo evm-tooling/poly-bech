@@ -1001,17 +1001,18 @@ pub fn install_all() -> Result<()> {
         "Installing dependencies for {}...",
         manifest.project.name
     ));
-    terminal::ensure_min_display(spinner.elapsed());
-    spinner.finish_and_clear();
 
     for lang in poly_bench_runtime::supported_languages() {
         if manifest.has_runtime(*lang) {
+            spinner.set_message(format!(
+                "Installing {} dependencies...",
+                poly_bench_runtime::lang_label(*lang)
+            ));
             install_runtime_deps_for_lang(*lang, &project_root, &manifest)?;
         }
     }
 
-    println!();
-    terminal::success("All dependencies installed!");
+    terminal::finish_success(&spinner, "All dependencies installed!");
 
     Ok(())
 }
