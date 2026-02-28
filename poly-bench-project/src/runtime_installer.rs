@@ -101,6 +101,150 @@ pub fn can_auto_install(lang: Lang) -> bool {
     lang != Lang::C
 }
 
+/// Returns true if this language supports interactive version selection (fetch + pick from list).
+pub fn supports_version_selection(lang: Lang) -> bool {
+    matches!(lang, Lang::Go | Lang::TypeScript | Lang::Zig | Lang::CSharp)
+}
+
+/// Fetches available versions for a language from official APIs. Returns up to 5 versions.
+/// Returns error on network failure or parse error.
+pub fn fetch_available_versions(lang: Lang) -> Result<Vec<String>> {
+    match lang {
+        Lang::Go => fetch_go_versions(),
+        Lang::TypeScript => fetch_node_versions(),
+        Lang::Zig => fetch_zig_versions(),
+        Lang::CSharp => fetch_dotnet_versions(),
+        _ => Err(miette::miette!(
+            "Version selection not supported for {}",
+            poly_bench_runtime::lang_label(lang)
+        )),
+    }
+}
+
+fn fetch_go_versions() -> Result<Vec<String>> {
+    let url = "https://go.dev/dl/?mode=json";
+    let resp: Vec<serde_json::Value> = ureq::get(url)
+        .call()
+        .map_err(|e| miette::miette!("Failed to fetch Go versions: {}", e))?
+        .body_mut()
+        .read_json()
+        .map_err(|e| miette::miette!("Failed to parse Go versions: {}", e))?;
+
+    let versions: Vec<String> = resp
+        .into_iter()
+        .filter_map(|v: serde_json::Value| {
+            let stable = v.get("stable").and_then(|s| s.as_bool()).unwrap_or(false);
+            if !stable {
+                return None;
+            }
+            v.get("version").and_then(|s: &serde_json::Value| s.as_str()).map(|s| s.to_string())
+        })
+        .take(5)
+        .collect();
+
+    if versions.is_empty() {
+        return Err(miette::miette!("No stable Go versions found"));
+    }
+    Ok(versions)
+}
+
+fn fetch_node_versions() -> Result<Vec<String>> {
+    let url = "https://nodejs.org/dist/index.json";
+    let resp: Vec<serde_json::Value> = ureq::get(url)
+        .call()
+        .map_err(|e| miette::miette!("Failed to fetch Node.js versions: {}", e))?
+        .body_mut()
+        .read_json()
+        .map_err(|e| miette::miette!("Failed to parse Node.js versions: {}", e))?;
+
+    let versions: Vec<String> = resp
+        .into_iter()
+        .filter_map(|v: serde_json::Value| {
+            v.get("version").and_then(|s: &serde_json::Value| s.as_str()).map(|s| s.to_string())
+        })
+        .take(5)
+        .collect();
+
+    if versions.is_empty() {
+        return Err(miette::miette!("No Node.js versions found"));
+    }
+    Ok(versions)
+}
+
+fn fetch_zig_versions() -> Result<Vec<String>> {
+    let url = "https://ziglang.org/download/index.json";
+    let resp: serde_json::Value = ureq::get(url)
+        .call()
+        .map_err(|e| miette::miette!("Failed to fetch Zig versions: {}", e))?
+        .body_mut()
+        .read_json()
+        .map_err(|e| miette::miette!("Failed to parse Zig versions: {}", e))?;
+
+    let obj = resp.as_object().ok_or_else(|| miette::miette!("Zig index is not an object"))?;
+
+    let mut versions: Vec<String> = obj
+        .keys()
+        .filter(|k: &&String| {
+            let k = k.as_str();
+            k != "master" &&
+                !k.contains("-dev") &&
+                k.chars().next().map(|c: char| c.is_ascii_digit()).unwrap_or(false)
+        })
+        .cloned()
+        .collect();
+
+    versions.sort_by(|a, b| semver_compare_zig(a, b).unwrap_or(std::cmp::Ordering::Equal));
+    versions.reverse();
+    versions.truncate(5);
+
+    if versions.is_empty() {
+        return Err(miette::miette!("No Zig versions found"));
+    }
+    Ok(versions)
+}
+
+fn semver_compare_zig(a: &str, b: &str) -> Option<std::cmp::Ordering> {
+    let parse = |s: &str| {
+        let parts: Vec<u32> = s.split('.').filter_map(|p| p.parse::<u32>().ok()).collect();
+        (
+            parts.get(0).copied().unwrap_or(0),
+            parts.get(1).copied().unwrap_or(0),
+            parts.get(2).copied().unwrap_or(0),
+        )
+    };
+    let va = parse(a);
+    let vb = parse(b);
+    Some(va.cmp(&vb))
+}
+
+fn fetch_dotnet_versions() -> Result<Vec<String>> {
+    let url = "https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/releases-index.json";
+    let resp: serde_json::Value = ureq::get(url)
+        .call()
+        .map_err(|e| miette::miette!("Failed to fetch .NET versions: {}", e))?
+        .body_mut()
+        .read_json()
+        .map_err(|e| miette::miette!("Failed to parse .NET versions: {}", e))?;
+
+    let index = resp
+        .get("releases-index")
+        .and_then(|v: &serde_json::Value| v.as_array())
+        .ok_or_else(|| miette::miette!("Invalid .NET releases index"))?;
+
+    let versions: Vec<String> = index
+        .iter()
+        .filter_map(|v: &serde_json::Value| {
+            v.get("latest-sdk").and_then(|s: &serde_json::Value| s.as_str()).map(|s| s.to_string())
+        })
+        .take(5)
+        .collect();
+
+    if versions.is_empty() {
+        return Err(miette::miette!("No .NET SDK versions found"));
+    }
+    Ok(versions)
+}
+
 /// Returns the bin directory to prepend to PATH when the binary is not on PATH but exists in a
 /// standard location. Returns None if already on PATH.
 pub fn lang_bin_path_for_prepend(lang: Lang) -> Option<PathBuf> {
@@ -269,10 +413,12 @@ pub fn ensure_path_in_shell_config(bin_dir: &Path) -> Result<Option<PathBuf>> {
 
 /// Install a language runtime. For C, returns error with install_hint.
 /// Returns Some(bin_dir) when installed to custom path (caller should add to shell config).
+/// `version` is optional; when None, uses the default/latest for that language.
 pub fn install_lang(
     lang: Lang,
     location: InstallLocation,
     custom_path: Option<PathBuf>,
+    version: Option<String>,
 ) -> Result<Option<PathBuf>> {
     if !can_auto_install(lang) {
         return Err(runtime_check::not_installed_error(lang));
@@ -284,12 +430,12 @@ pub fn install_lang(
     let pb = terminal::indented_spinner(&format!("Installing {}...", label));
 
     let result = match lang {
-        Lang::Go => install_go(location, custom_path),
-        Lang::TypeScript => install_node(location, custom_path),
+        Lang::Go => install_go(location, custom_path, version),
+        Lang::TypeScript => install_node(location, custom_path, version),
         Lang::Rust => install_rust(location, custom_path),
         Lang::Python => install_python(location, custom_path),
-        Lang::Zig => install_zig(location, custom_path),
-        Lang::CSharp => install_dotnet(location, custom_path),
+        Lang::Zig => install_zig(location, custom_path, version),
+        Lang::CSharp => install_dotnet(location, custom_path, version),
         Lang::C => Err(runtime_check::not_installed_error(lang)),
     };
 
@@ -320,9 +466,15 @@ fn platform() -> (String, String) {
     (arch, os)
 }
 
-fn install_go(location: InstallLocation, custom_path: Option<PathBuf>) -> Result<Option<PathBuf>> {
+fn install_go(
+    location: InstallLocation,
+    custom_path: Option<PathBuf>,
+    version_opt: Option<String>,
+) -> Result<Option<PathBuf>> {
     let (arch, os) = platform();
-    let version = "1.22.4";
+    let version = version_opt
+        .map(|v| v.trim_start_matches("go").to_string())
+        .unwrap_or_else(|| "1.22.4".to_string());
     let filename = format!("go{}.{}-{}.tar.gz", version, os, arch);
     let url = format!("https://go.dev/dl/{}", filename);
 
@@ -370,9 +522,12 @@ fn install_go(location: InstallLocation, custom_path: Option<PathBuf>) -> Result
 fn install_node(
     location: InstallLocation,
     custom_path: Option<PathBuf>,
+    version_opt: Option<String>,
 ) -> Result<Option<PathBuf>> {
     let (arch, os) = platform();
-    let version = "22.11.0";
+    let version = version_opt
+        .map(|v| v.trim_start_matches('v').to_string())
+        .unwrap_or_else(|| "22.11.0".to_string());
     let (node_arch, node_os) = match (os.as_str(), arch.as_str()) {
         ("darwin", "arm64") => ("arm64", "darwin"),
         ("darwin", "amd64") => ("x64", "darwin"),
@@ -582,9 +737,13 @@ fn install_python(
     Ok(custom_path.map(|_| path_to_add))
 }
 
-fn install_zig(location: InstallLocation, custom_path: Option<PathBuf>) -> Result<Option<PathBuf>> {
+fn install_zig(
+    location: InstallLocation,
+    custom_path: Option<PathBuf>,
+    version_opt: Option<String>,
+) -> Result<Option<PathBuf>> {
     let (arch, os) = platform();
-    let version = "0.13.0";
+    let version = version_opt.unwrap_or_else(|| "0.13.0".to_string());
     let (zig_arch, zig_os) = match (os.as_str(), arch.as_str()) {
         ("darwin", "arm64") => ("aarch64", "macos"),
         ("darwin", "amd64") => ("x86_64", "macos"),
@@ -594,12 +753,13 @@ fn install_zig(location: InstallLocation, custom_path: Option<PathBuf>) -> Resul
         ("windows", "arm64") => ("aarch64", "windows"),
         _ => ("x86_64", "linux"),
     };
-    let filename = format!("zig-{}-{}-{}.tar.xz", zig_os, zig_arch, version);
+    // Zig format: zig-{arch}-{os}-{version}.tar.xz (e.g. zig-aarch64-macos-0.15.2.tar.xz)
+    let filename = format!("zig-{}-{}-{}.tar.xz", zig_arch, zig_os, version);
     let url = format!("https://ziglang.org/download/{}/{}", version, filename);
 
     let install_dir =
         custom_path.clone().unwrap_or_else(|| lang_install_dir(Lang::Zig, location).unwrap());
-    let zig_extracted = install_dir.join(format!("zig-{}-{}-{}", zig_os, zig_arch, version));
+    let zig_extracted = install_dir.join(format!("zig-{}-{}-{}", zig_arch, zig_os, version));
     let zig_bin = zig_extracted.join("zig");
     let zig_bin_exe = zig_extracted.join("zig.exe");
     if (zig_bin.exists() || zig_bin_exe.exists()) && which::which("zig").is_err() {
@@ -654,9 +814,10 @@ fn install_zig(location: InstallLocation, custom_path: Option<PathBuf>) -> Resul
 fn install_dotnet(
     location: InstallLocation,
     custom_path: Option<PathBuf>,
+    version_opt: Option<String>,
 ) -> Result<Option<PathBuf>> {
     let (arch, os) = platform();
-    let version = "8.0.203";
+    let version = version_opt.unwrap_or_else(|| "8.0.203".to_string());
     let (dotnet_arch, dotnet_os) = match (os.as_str(), arch.as_str()) {
         ("darwin", "arm64") => ("arm64", "osx"),
         ("darwin", "amd64") => ("x64", "osx"),
