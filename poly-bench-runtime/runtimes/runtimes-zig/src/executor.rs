@@ -405,6 +405,14 @@ fn generate_zig_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) 
     }
 
     src.push_str("pub fn main() !void {\n");
+    src.push_str("    const __zig_ver = @import(\"builtin\").zig_version;\n");
+    src.push_str(
+        "    const __ver_0_13 = std.SemanticVersion{ .major = 0, .minor = 13, .patch = 0 };\n",
+    );
+    src.push_str(
+        "    const __ver_0_15 = std.SemanticVersion{ .major = 0, .minor = 15, .patch = 0 };\n",
+    );
+    src.push_str("    const __is_zig_13_or_14 = comptime (__zig_ver.order(__ver_0_13) != .lt and __zig_ver.order(__ver_0_15) == .lt);\n");
     if suite.init_code.get(&Lang::Zig).is_some() {
         src.push_str("    __polybench_init();\n");
     }
@@ -433,7 +441,7 @@ fn generate_zig_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) 
 
     if spec.mode == BenchMode::Auto {
         src.push_str(&format!(
-            "    const __allocator = std.heap.page_allocator;\n    const target_ns = {:.0};\n    var total_iterations: u64 = 0;\n    var total_ns: f64 = 0;\n    var batch: u64 = 100;\n    var samples = std.ArrayList(f64).initCapacity(__allocator, 16) catch return;\n    defer samples.deinit(__allocator);\n    while (total_ns < target_ns) {{\n        const t0 = std.time.Instant.now() catch return;\n        for (0..batch) |_| {{\n",
+            "    const __allocator = std.heap.page_allocator;\n    const target_ns = {:.0};\n    var total_iterations: u64 = 0;\n    var total_ns: f64 = 0;\n    var batch: u64 = 100;\n    var samples = std.ArrayList(f64).initCapacity(__allocator, 16) catch return;\n    defer if (__is_zig_13_or_14) samples.deinit() else samples.deinit(__allocator);\n    while (total_ns < target_ns) {{\n        const t0 = std.time.Instant.now() catch return;\n        for (0..batch) |_| {{\n",
             (spec.target_time_ms as f64) * 1_000_000.0
         ));
         src.push_str(&emit_hook(spec.each_hooks.get(&Lang::Zig), "            "));
@@ -447,7 +455,7 @@ fn generate_zig_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) 
         src.push_str("        }\n        const t1 = std.time.Instant.now() catch return;\n");
         src.push_str("        const elapsed_ns = @as(f64, @floatFromInt(t1.since(t0)));\n");
         src.push_str("        total_ns += elapsed_ns;\n        total_iterations += batch;\n");
-        src.push_str("        _ = samples.append(__allocator, elapsed_ns / @as(f64, @floatFromInt(if (batch > 0) batch else 1))) catch break;\n");
+        src.push_str("        if (__is_zig_13_or_14) _ = samples.append(elapsed_ns / @as(f64, @floatFromInt(if (batch > 0) batch else 1))) catch break else _ = samples.append(__allocator, elapsed_ns / @as(f64, @floatFromInt(if (batch > 0) batch else 1))) catch break;\n");
         src.push_str("        if (elapsed_ns > 0) {\n");
         src.push_str(
             "            const remaining = @max(@as(f64, 0), target_ns - total_ns);\n            const next_f = (@as(f64, @floatFromInt(batch)) * remaining / elapsed_ns) * 1.1;\n            batch = @max(@as(u64, 1), @min(@as(u64, @intFromFloat(next_f)), 1000000));\n",
@@ -459,14 +467,32 @@ fn generate_zig_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) 
             "    const nanos_per_op = total_ns / @as(f64, @floatFromInt(if (total_iterations > 0) total_iterations else 1));\n    const ops_per_sec = 1000000000.0 / (if (nanos_per_op > 0) nanos_per_op else 1.0);\n",
         );
         src.push_str(&emit_hook(spec.after_hooks.get(&Lang::Zig), "    "));
-        src.push_str("    var __stdout_buffer: [4096]u8 = undefined;\n    var __stdout_writer = std.fs.File.stdout().writer(&__stdout_buffer);\n    const stdout = &__stdout_writer.interface;\n");
-        src.push_str("    try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"samples\\\":[\", .{ total_iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec });\n");
-        src.push_str("    for (samples.items, 0..) |s, i| {\n");
-        src.push_str("        if (i > 0) _ = stdout.writeAll(\",\") catch {};\n");
-        src.push_str("    try stdout.print(\"{d:.0}\", .{s});\n");
+        src.push_str("    if (__is_zig_13_or_14) {\n");
+        src.push_str(
+            "        var __stdout_writer = std.io.bufferedWriter(std.io.getStdOut().writer());\n",
+        );
+        src.push_str("        const stdout = __stdout_writer.writer();\n");
+        src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"samples\\\":[\", .{ total_iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec });\n");
+        src.push_str("        for (samples.items, 0..) |s, i| {\n");
+        src.push_str("            if (i > 0) _ = stdout.writeAll(\",\") catch {};\n");
+        src.push_str("            try stdout.print(\"{d:.0}\", .{s});\n");
+        src.push_str("        }\n");
+        src.push_str("        _ = stdout.writeAll(\"]}\\n\") catch {};\n");
+        src.push_str("        __stdout_writer.flush() catch {};\n");
+        src.push_str("    } else {\n");
+        src.push_str("        var __stdout_buffer: [4096]u8 = undefined;\n");
+        src.push_str(
+            "        var __stdout_writer = std.fs.File.stdout().writer(&__stdout_buffer);\n",
+        );
+        src.push_str("        const stdout = &__stdout_writer.interface;\n");
+        src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"samples\\\":[\", .{ total_iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec });\n");
+        src.push_str("        for (samples.items, 0..) |s, i| {\n");
+        src.push_str("            if (i > 0) _ = stdout.writeAll(\",\") catch {};\n");
+        src.push_str("            try stdout.print(\"{d:.0}\", .{s});\n");
+        src.push_str("        }\n");
+        src.push_str("        _ = stdout.writeAll(\"]}\\n\") catch {};\n");
+        src.push_str("        stdout.flush() catch {};\n");
         src.push_str("    }\n");
-        src.push_str("    _ = stdout.writeAll(\"]}\\n\") catch {};\n");
-        src.push_str("    stdout.flush() catch {};\n");
     } else {
         src.push_str(&format!(
             "    const iterations: u64 = {};\n    var samples: [{}]f64 = undefined;\n    for (0..iterations) |i| {{\n        const t0 = std.time.Instant.now() catch return;\n",
@@ -481,14 +507,32 @@ fn generate_zig_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) 
             "    var total_ns: f64 = 0;\n    for (samples) |s| total_ns += s;\n    const nanos_per_op = total_ns / @as(f64, @floatFromInt(if (iterations > 0) iterations else 1));\n    const ops_per_sec = 1000000000.0 / (if (nanos_per_op > 0) nanos_per_op else 1.0);\n",
         );
         src.push_str(&emit_hook(spec.after_hooks.get(&Lang::Zig), "    "));
-        src.push_str("    var __stdout_buffer: [4096]u8 = undefined;\n    var __stdout_writer = std.fs.File.stdout().writer(&__stdout_buffer);\n    const stdout = &__stdout_writer.interface;\n");
-        src.push_str("    try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"samples\\\":[\", .{ iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec });\n");
-        src.push_str("    for (samples, 0..) |s, i| {\n");
-        src.push_str("        if (i > 0) _ = stdout.writeAll(\",\") catch {};\n");
-        src.push_str("        try stdout.print(\"{d:.0}\", .{s});\n");
+        src.push_str("    if (__is_zig_13_or_14) {\n");
+        src.push_str(
+            "        var __stdout_writer = std.io.bufferedWriter(std.io.getStdOut().writer());\n",
+        );
+        src.push_str("        const stdout = __stdout_writer.writer();\n");
+        src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"samples\\\":[\", .{ iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec });\n");
+        src.push_str("        for (samples, 0..) |s, i| {\n");
+        src.push_str("            if (i > 0) _ = stdout.writeAll(\",\") catch {};\n");
+        src.push_str("            try stdout.print(\"{d:.0}\", .{s});\n");
+        src.push_str("        }\n");
+        src.push_str("        _ = stdout.writeAll(\"]}\\n\") catch {};\n");
+        src.push_str("        __stdout_writer.flush() catch {};\n");
+        src.push_str("    } else {\n");
+        src.push_str("        var __stdout_buffer: [4096]u8 = undefined;\n");
+        src.push_str(
+            "        var __stdout_writer = std.fs.File.stdout().writer(&__stdout_buffer);\n",
+        );
+        src.push_str("        const stdout = &__stdout_writer.interface;\n");
+        src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"samples\\\":[\", .{ iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec });\n");
+        src.push_str("        for (samples, 0..) |s, i| {\n");
+        src.push_str("            if (i > 0) _ = stdout.writeAll(\",\") catch {};\n");
+        src.push_str("            try stdout.print(\"{d:.0}\", .{s});\n");
+        src.push_str("        }\n");
+        src.push_str("        _ = stdout.writeAll(\"]}\\n\") catch {};\n");
+        src.push_str("        stdout.flush() catch {};\n");
         src.push_str("    }\n");
-        src.push_str("    _ = stdout.writeAll(\"]}\\n\") catch {};\n");
-        src.push_str("    stdout.flush() catch {};\n");
     }
 
     src.push_str("}\n");
