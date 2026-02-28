@@ -5,7 +5,10 @@
 
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::{process::{Command, Output, Stdio}, time::Duration};
+use std::{
+    process::{Command, Output, Stdio},
+    time::Duration,
+};
 
 /// Minimum display time for spinners (500ms) so users can follow progress
 const MIN_DISPLAY_MS: u64 = 500;

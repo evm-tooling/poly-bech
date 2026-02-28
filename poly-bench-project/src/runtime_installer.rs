@@ -231,14 +231,7 @@ fn zig_download_url(version: &str) -> Result<String> {
         .and_then(|v| v.get(platform_key))
         .and_then(|v| v.get("tarball"))
         .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            miette::miette!(
-                "Zig {} not available for {}-{}",
-                version,
-                arch,
-                os
-            )
-        })?;
+        .ok_or_else(|| miette::miette!("Zig {} not available for {}-{}", version, arch, os))?;
 
     Ok(tarball.to_string())
 }
@@ -784,11 +777,7 @@ fn install_zig(
 ) -> Result<Option<PathBuf>> {
     let version = version_opt.unwrap_or_else(|| "0.13.0".to_string());
     let url = zig_download_url(&version)?;
-    let filename = url
-        .rsplit('/')
-        .next()
-        .unwrap_or("zig.tar.xz")
-        .to_string();
+    let filename = url.rsplit('/').next().unwrap_or("zig.tar.xz").to_string();
     let extracted_dir_name = filename
         .strip_suffix(".tar.xz")
         .or_else(|| filename.strip_suffix(".zip"))
