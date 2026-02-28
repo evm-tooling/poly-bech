@@ -14,7 +14,7 @@ use miette::Result;
 use poly_bench_dsl::Lang;
 use std::{
     env, fs,
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -89,6 +89,11 @@ pub enum InstallLocation {
     UserLocal,
     /// System paths (e.g. /usr/local/go) - requires sudo
     System,
+}
+
+/// Returns the default install root for a language (for display in prompts).
+pub fn default_install_path(lang: Lang, location: InstallLocation) -> Result<PathBuf> {
+    lang_install_dir(lang, location)
 }
 
 /// Returns true if poly-bench can auto-install this language.
@@ -256,23 +261,46 @@ pub fn ensure_runtime_in_shell_config(lang: Lang) -> Result<Option<PathBuf>> {
     append_path_to_shell_config(&bin_dir)
 }
 
+/// Appends the given bin directory to the user's shell config. Use when installing to a custom
+/// path.
+pub fn ensure_path_in_shell_config(bin_dir: &Path) -> Result<Option<PathBuf>> {
+    append_path_to_shell_config(bin_dir)
+}
+
 /// Install a language runtime. For C, returns error with install_hint.
-pub fn install_lang(lang: Lang, location: InstallLocation) -> Result<()> {
+/// Returns Some(bin_dir) when installed to custom path (caller should add to shell config).
+pub fn install_lang(
+    lang: Lang,
+    location: InstallLocation,
+    custom_path: Option<PathBuf>,
+) -> Result<Option<PathBuf>> {
     if !can_auto_install(lang) {
         return Err(runtime_check::not_installed_error(lang));
     }
 
     terminal::section(&format!("Installing {}", poly_bench_runtime::lang_label(lang)));
 
-    match lang {
-        Lang::Go => install_go(location),
-        Lang::TypeScript => install_node(location),
-        Lang::Rust => install_rust(location),
-        Lang::Python => install_python(location),
-        Lang::Zig => install_zig(location),
-        Lang::CSharp => install_dotnet(location),
+    let label = poly_bench_runtime::lang_label(lang);
+    let pb = terminal::indented_spinner(&format!("Installing {}...", label));
+
+    let result = match lang {
+        Lang::Go => install_go(location, custom_path),
+        Lang::TypeScript => install_node(location, custom_path),
+        Lang::Rust => install_rust(location, custom_path),
+        Lang::Python => install_python(location, custom_path),
+        Lang::Zig => install_zig(location, custom_path),
+        Lang::CSharp => install_dotnet(location, custom_path),
         Lang::C => Err(runtime_check::not_installed_error(lang)),
+    };
+
+    match &result {
+        Ok(_) => {
+            terminal::ensure_min_display(pb.elapsed());
+            pb.finish_and_clear();
+        }
+        Err(_) => terminal::finish_failure_indented(&pb, "Installation failed"),
     }
+    result
 }
 
 fn platform() -> (String, String) {
@@ -292,26 +320,29 @@ fn platform() -> (String, String) {
     (arch, os)
 }
 
-fn install_go(location: InstallLocation) -> Result<()> {
+fn install_go(location: InstallLocation, custom_path: Option<PathBuf>) -> Result<Option<PathBuf>> {
     let (arch, os) = platform();
     let version = "1.22.4";
     let filename = format!("go{}.{}-{}.tar.gz", version, os, arch);
     let url = format!("https://go.dev/dl/{}", filename);
 
-    let install_dir = lang_install_dir(Lang::Go, location)?;
+    let install_dir =
+        custom_path.clone().unwrap_or_else(|| lang_install_dir(Lang::Go, location).unwrap());
     let bin_dir = install_dir.join("go").join("bin");
     if bin_dir.exists() && which::which("go").is_err() {
         // Installed but not on PATH - we'll add it
     } else if bin_dir.exists() {
         terminal::info_indented("Go already installed");
-        return Ok(());
+        return Ok(None);
     }
 
+    let use_sudo = custom_path.is_none() && location == InstallLocation::System;
+
     terminal::install_step(1, 4, &format!("Downloading Go {}...", version));
-    let body = download(&url)?;
+    let body = download_with_progress(&url, &format!("Downloading Go {}...", version))?;
     terminal::install_step(2, 4, "Extracting...");
 
-    if location == InstallLocation::System {
+    if use_sudo {
         let tmp = std::env::temp_dir().join(&filename);
         fs::write(&tmp, &body).map_err(|e| miette::miette!("Failed to write archive: {}", e))?;
         let status = Command::new("sudo")
@@ -333,10 +364,13 @@ fn install_go(location: InstallLocation) -> Result<()> {
     terminal::install_step(3, 4, "Done");
     let dest = install_dir.join("go");
     terminal::success_indented(&format!("Go installed at {}", dest.display()));
-    Ok(())
+    Ok(custom_path.map(|_| bin_dir))
 }
 
-fn install_node(location: InstallLocation) -> Result<()> {
+fn install_node(
+    location: InstallLocation,
+    custom_path: Option<PathBuf>,
+) -> Result<Option<PathBuf>> {
     let (arch, os) = platform();
     let version = "22.11.0";
     let (node_arch, node_os) = match (os.as_str(), arch.as_str()) {
@@ -351,21 +385,25 @@ fn install_node(location: InstallLocation) -> Result<()> {
     let filename = format!("node-v{}-{}-{}.tar.gz", version, node_os, node_arch);
     let url = format!("https://nodejs.org/dist/v{}/{}", version, filename);
 
-    let install_dir = lang_install_dir(Lang::TypeScript, location)?;
+    let install_dir = custom_path
+        .clone()
+        .unwrap_or_else(|| lang_install_dir(Lang::TypeScript, location).unwrap());
     let extracted_name = format!("node-v{}-{}-{}", version, node_os, node_arch);
     let bin_dir = install_dir.join(&extracted_name).join("bin");
     if bin_dir.exists() && which::which("node").is_err() {
         // Installed but not on PATH
     } else if bin_dir.exists() {
         terminal::info_indented("Node.js already installed");
-        return Ok(());
+        return Ok(None);
     }
 
+    let use_sudo = custom_path.is_none() && location == InstallLocation::System;
+
     terminal::install_step(1, 4, &format!("Downloading Node.js {}...", version));
-    let body = download(&url)?;
+    let body = download_with_progress(&url, &format!("Downloading Node.js {}...", version))?;
     terminal::install_step(2, 4, "Extracting...");
 
-    if location == InstallLocation::System {
+    if use_sudo {
         let tmp = std::env::temp_dir().join(&filename);
         fs::write(&tmp, &body).map_err(|e| miette::miette!("Failed to write archive: {}", e))?;
         let status = Command::new("sudo")
@@ -391,19 +429,27 @@ fn install_node(location: InstallLocation) -> Result<()> {
         "Node.js installed at {}",
         install_dir.join(extracted_name).display()
     ));
-    Ok(())
+    Ok(custom_path.map(|_| bin_dir))
 }
 
-fn install_rust(_location: InstallLocation) -> Result<()> {
-    // Rust uses rustup defaults (~/.cargo, ~/.rustup) - we don't override CARGO_HOME/RUSTUP_HOME
-    let cargo_bin = home_dir()?.join(".cargo").join("bin");
+fn install_rust(
+    _location: InstallLocation,
+    custom_path: Option<PathBuf>,
+) -> Result<Option<PathBuf>> {
+    let (cargo_home, cargo_bin) = if let Some(ref p) = custom_path {
+        let cargo = p.join(".cargo");
+        (cargo.clone(), cargo.join("bin"))
+    } else {
+        let home = home_dir()?;
+        (home.join(".cargo"), home.join(".cargo").join("bin"))
+    };
+
     if cargo_bin.join("cargo").exists() || cargo_bin.join("cargo.exe").exists() {
         if which::which("cargo").is_ok() {
             terminal::info_indented("Rust already installed");
-            return Ok(());
+            return Ok(None);
         }
-        // Installed but not on PATH - lang_bin_path_for_prepend will find it
-        return Ok(());
+        return Ok(None);
     }
 
     terminal::install_step(1, 4, "Downloading rustup...");
@@ -422,7 +468,7 @@ fn install_rust(_location: InstallLocation) -> Result<()> {
         (format!("https://static.rust-lang.org/rustup/dist/{}/rustup-init", target), "bin")
     };
 
-    let body = download(&rustup_url)?;
+    let body = download_with_progress(&rustup_url, "Downloading rustup...")?;
     let tmp_dir = std::env::temp_dir().join("polybench-rustup");
     fs::create_dir_all(&tmp_dir)
         .map_err(|e| miette::miette!("Failed to create temp dir: {}", e))?;
@@ -442,11 +488,13 @@ fn install_rust(_location: InstallLocation) -> Result<()> {
     }
 
     terminal::install_step(2, 4, "Running rustup (this may take a few minutes)...");
-    // Do not set CARGO_HOME/RUSTUP_HOME - let rustup use defaults (~/.cargo, ~/.rustup)
-    let status = Command::new(&rustup_path)
-        .args(["-y", "--default-toolchain", "stable"])
-        .status()
-        .map_err(|e| miette::miette!("Failed to run rustup: {}", e))?;
+    let rustup_home = cargo_home.parent().unwrap().join(".rustup");
+    let mut cmd = Command::new(&rustup_path);
+    cmd.args(["-y", "--default-toolchain", "stable"]);
+    if custom_path.is_some() {
+        cmd.env("CARGO_HOME", &cargo_home).env("RUSTUP_HOME", &rustup_home);
+    }
+    let status = cmd.status().map_err(|e| miette::miette!("Failed to run rustup: {}", e))?;
 
     let _ = fs::remove_dir_all(&tmp_dir);
 
@@ -456,10 +504,13 @@ fn install_rust(_location: InstallLocation) -> Result<()> {
 
     terminal::install_step(3, 4, "Done");
     terminal::success_indented(&format!("Rust installed at {}", cargo_bin.display()));
-    Ok(())
+    Ok(custom_path.map(|_| cargo_bin))
 }
 
-fn install_python(location: InstallLocation) -> Result<()> {
+fn install_python(
+    location: InstallLocation,
+    custom_path: Option<PathBuf>,
+) -> Result<Option<PathBuf>> {
     // Use python-build-standalone for pre-built binaries
     let (arch, os) = platform();
     let target = match (os.as_str(), arch.as_str()) {
@@ -480,9 +531,15 @@ fn install_python(location: InstallLocation) -> Result<()> {
         release_tag, filename
     );
 
-    let install_dir = lang_install_dir(Lang::Python, location)?;
+    let install_dir =
+        custom_path.clone().unwrap_or_else(|| lang_install_dir(Lang::Python, location).unwrap());
     let python_bin = install_dir.join("install").join("bin");
     let python_bin_win = install_dir.join("install");
+    let path_to_add = if cfg!(windows) {
+        install_dir.join("install")
+    } else {
+        install_dir.join("install").join("bin")
+    };
     if (python_bin.exists() || python_bin_win.join("python.exe").exists()) &&
         which::which("python3").is_err() &&
         which::which("python").is_err()
@@ -490,14 +547,16 @@ fn install_python(location: InstallLocation) -> Result<()> {
         // Installed but not on PATH
     } else if python_bin.exists() || python_bin_win.join("python.exe").exists() {
         terminal::info_indented("Python already installed");
-        return Ok(());
+        return Ok(None);
     }
 
+    let use_sudo = custom_path.is_none() && location == InstallLocation::System;
+
     terminal::install_step(1, 4, &format!("Downloading Python {}...", py_version));
-    let body = download(&url)?;
+    let body = download_with_progress(&url, &format!("Downloading Python {}...", py_version))?;
     terminal::install_step(2, 4, "Extracting...");
 
-    if location == InstallLocation::System {
+    if use_sudo {
         let tmp = std::env::temp_dir().join(&filename);
         fs::write(&tmp, &body).map_err(|e| miette::miette!("Failed to write archive: {}", e))?;
         let status = Command::new("sudo")
@@ -518,17 +577,12 @@ fn install_python(location: InstallLocation) -> Result<()> {
             .map_err(|e| miette::miette!("Failed to extract Python: {}", e))?;
     }
 
-    let path_to_add = if cfg!(windows) {
-        install_dir.join("install")
-    } else {
-        install_dir.join("install").join("bin")
-    };
     terminal::install_step(3, 4, "Done");
     terminal::success_indented(&format!("Python installed at {}", path_to_add.display()));
-    Ok(())
+    Ok(custom_path.map(|_| path_to_add))
 }
 
-fn install_zig(location: InstallLocation) -> Result<()> {
+fn install_zig(location: InstallLocation, custom_path: Option<PathBuf>) -> Result<Option<PathBuf>> {
     let (arch, os) = platform();
     let version = "0.13.0";
     let (zig_arch, zig_os) = match (os.as_str(), arch.as_str()) {
@@ -543,7 +597,8 @@ fn install_zig(location: InstallLocation) -> Result<()> {
     let filename = format!("zig-{}-{}-{}.tar.xz", zig_os, zig_arch, version);
     let url = format!("https://ziglang.org/download/{}/{}", version, filename);
 
-    let install_dir = lang_install_dir(Lang::Zig, location)?;
+    let install_dir =
+        custom_path.clone().unwrap_or_else(|| lang_install_dir(Lang::Zig, location).unwrap());
     let zig_extracted = install_dir.join(format!("zig-{}-{}-{}", zig_os, zig_arch, version));
     let zig_bin = zig_extracted.join("zig");
     let zig_bin_exe = zig_extracted.join("zig.exe");
@@ -551,24 +606,23 @@ fn install_zig(location: InstallLocation) -> Result<()> {
         // Installed but not on PATH
     } else if zig_bin.exists() || zig_bin_exe.exists() {
         terminal::info_indented("Zig already installed");
-        return Ok(());
+        return Ok(None);
     }
 
+    let use_sudo = custom_path.is_none() && location == InstallLocation::System;
+
     terminal::install_step(1, 4, &format!("Downloading Zig {}...", version));
-    let body = download(&url)?;
+    let body = download_with_progress(&url, &format!("Downloading Zig {}...", version))?;
     terminal::install_step(2, 4, "Extracting...");
 
-    let archive_path = if location == InstallLocation::System {
-        std::env::temp_dir().join(&filename)
-    } else {
-        install_dir.join(&filename)
-    };
+    let archive_path =
+        if use_sudo { std::env::temp_dir().join(&filename) } else { install_dir.join(&filename) };
     fs::create_dir_all(archive_path.parent().unwrap())
         .map_err(|e| miette::miette!("Failed to create dir: {}", e))?;
     fs::write(&archive_path, &body)
         .map_err(|e| miette::miette!("Failed to write archive: {}", e))?;
 
-    let status = if location == InstallLocation::System {
+    let status = if use_sudo {
         Command::new("sudo")
             .args([
                 "tar",
@@ -594,10 +648,13 @@ fn install_zig(location: InstallLocation) -> Result<()> {
 
     terminal::install_step(3, 4, "Done");
     terminal::success_indented(&format!("Zig installed at {}", zig_extracted.display()));
-    Ok(())
+    Ok(custom_path.map(|_| zig_extracted))
 }
 
-fn install_dotnet(location: InstallLocation) -> Result<()> {
+fn install_dotnet(
+    location: InstallLocation,
+    custom_path: Option<PathBuf>,
+) -> Result<Option<PathBuf>> {
     let (arch, os) = platform();
     let version = "8.0.203";
     let (dotnet_arch, dotnet_os) = match (os.as_str(), arch.as_str()) {
@@ -614,20 +671,23 @@ fn install_dotnet(location: InstallLocation) -> Result<()> {
         version, version, dotnet_os, dotnet_arch
     );
 
-    let install_dir = lang_install_dir(Lang::CSharp, location)?;
+    let install_dir =
+        custom_path.clone().unwrap_or_else(|| lang_install_dir(Lang::CSharp, location).unwrap());
     let dotnet_bin = install_dir.join("dotnet");
     if dotnet_bin.exists() && which::which("dotnet").is_err() {
         // Installed but not on PATH
     } else if dotnet_bin.exists() {
         terminal::info_indented(".NET already installed");
-        return Ok(());
+        return Ok(None);
     }
 
+    let use_sudo = custom_path.is_none() && location == InstallLocation::System;
+
     terminal::install_step(1, 4, &format!("Downloading .NET SDK {}...", version));
-    let body = download(&url)?;
+    let body = download_with_progress(&url, &format!("Downloading .NET SDK {}...", version))?;
     terminal::install_step(2, 4, "Extracting...");
 
-    if location == InstallLocation::System {
+    if use_sudo {
         let filename = format!("dotnet-sdk-{}-{}-{}.tar.gz", version, dotnet_os, dotnet_arch);
         let tmp = std::env::temp_dir().join(&filename);
         fs::write(&tmp, &body).map_err(|e| miette::miette!("Failed to write archive: {}", e))?;
@@ -659,18 +719,36 @@ fn install_dotnet(location: InstallLocation) -> Result<()> {
 
     terminal::install_step(3, 4, "Done");
     terminal::success_indented(&format!(".NET installed at {}", install_dir.display()));
-    Ok(())
+    Ok(custom_path.map(|_| install_dir))
 }
 
-fn download(url: &str) -> Result<Vec<u8>> {
+/// Download a URL with progress bar or spinner. Used by runtime installer and build.
+pub fn download_with_progress(url: &str, msg: &str) -> Result<Vec<u8>> {
     let mut response = ureq::get(url).call().map_err(|e| {
         miette::miette!("Failed to download {}: {}. Ensure you have network access.", url, e)
     })?;
-    let body = response
-        .body_mut()
-        .with_config()
-        .limit(200 * 1024 * 1024)
-        .read_to_vec()
-        .map_err(|e| miette::miette!("Failed to read download: {}", e))?;
+
+    let total = response.body().content_length();
+
+    let pb = match total {
+        Some(n) => terminal::download_progress_bar(n, msg),
+        None => terminal::download_spinner(msg),
+    };
+
+    let mut reader = response.body_mut().with_config().limit(200 * 1024 * 1024).reader();
+    let mut body = Vec::with_capacity(total.unwrap_or(0) as usize);
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n =
+            reader.read(&mut buf).map_err(|e| miette::miette!("Failed to read download: {}", e))?;
+        if n == 0 {
+            break;
+        }
+        body.extend_from_slice(&buf[..n]);
+        pb.inc(n as u64);
+    }
+
+    terminal::ensure_min_display(pb.elapsed());
+    pb.finish_and_clear();
     Ok(body)
 }

@@ -7,7 +7,7 @@
 //! Use this when the .polybench directory is deleted, corrupted, or after cloning
 //! a repo where it was gitignored.
 
-use crate::{error::ProjectError, manifest, runtime_env, templates, terminal};
+use crate::{error::ProjectError, manifest, runtime_env, runtime_installer, templates, terminal};
 use flate2::read::GzDecoder;
 use miette::Result;
 use poly_bench_dsl::Lang;
@@ -75,15 +75,19 @@ pub fn build_project_at(project_root: &Path, options: &BuildOptions) -> Result<(
         "Building runtime environment for '{}'...",
         manifest.project.name
     ));
-    terminal::ensure_min_display(&spinner);
-    spinner.finish_and_clear();
 
     for lang in poly_bench_runtime::supported_languages() {
         if manifest.has_runtime(*lang) {
+            spinner.set_message(format!(
+                "Building {} environment...",
+                poly_bench_runtime::lang_label(*lang)
+            ));
             build_runtime_env_for_lang(*lang, project_root, &manifest, options)?;
         }
     }
 
+    terminal::ensure_min_display(spinner.elapsed());
+    spinner.finish_and_clear();
     println!();
     terminal::success("Runtime environment ready!");
 
@@ -761,18 +765,10 @@ fn install_local_zls(zig_env: &Path, options: &BuildOptions) -> Result<()> {
         ZLS_VERSION, archive_name
     );
 
-    terminal::info_indented(&format!("Downloading ZLS {} for {}-{}...", ZLS_VERSION, arch, os));
-
-    let mut response = ureq::get(&url).call().map_err(|e| {
-        miette::miette!("Failed to download ZLS: {}. Ensure you have network access.", e)
-    })?;
-
-    let body = response
-        .body_mut()
-        .with_config()
-        .limit(200 * 1024 * 1024)
-        .read_to_vec()
-        .map_err(|e| miette::miette!("Failed to read ZLS download: {}", e))?;
+    let body = runtime_installer::download_with_progress(
+        &url,
+        &format!("Downloading ZLS {} for {}-{}...", ZLS_VERSION, arch, os),
+    )?;
 
     let temp_dir =
         tempfile::tempdir().map_err(|e| miette::miette!("Failed to create temp dir: {}", e))?;
@@ -901,21 +897,10 @@ fn install_local_rust_analyzer(rust_env: &Path, options: &BuildOptions) -> Resul
         )
     };
 
-    terminal::info_indented(&format!(
-        "Downloading rust-analyzer {} for {}...",
-        RUST_ANALYZER_VERSION, target
-    ));
-
-    let mut response = ureq::get(&url).call().map_err(|e| {
-        miette::miette!("Failed to download rust-analyzer: {}. Ensure you have network access.", e)
-    })?;
-
-    let body = response
-        .body_mut()
-        .with_config()
-        .limit(200 * 1024 * 1024)
-        .read_to_vec()
-        .map_err(|e| miette::miette!("Failed to read rust-analyzer download: {}", e))?;
+    let body = runtime_installer::download_with_progress(
+        &url,
+        &format!("Downloading rust-analyzer {} for {}...", RUST_ANALYZER_VERSION, target),
+    )?;
 
     let _temp_dir =
         tempfile::tempdir().map_err(|e| miette::miette!("Failed to create temp dir: {}", e))?;
