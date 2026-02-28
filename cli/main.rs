@@ -11,10 +11,7 @@ use clap::{
 };
 use indicatif::ProgressBar;
 use miette::Result;
-use std::{
-    io::{IsTerminal, Read},
-    path::PathBuf,
-};
+use std::{io::IsTerminal, path::PathBuf};
 
 use poly_bench_dsl as dsl;
 use poly_bench_executor as executor;
@@ -1098,7 +1095,8 @@ fn cmd_upgrade() -> Result<()> {
 
     let temp_path = current_exe.with_extension("new");
 
-    let response = match ureq::get(&download_url).set("User-Agent", "poly-bench-cli").call() {
+    let mut response = match ureq::get(&download_url).header("User-Agent", "poly-bench-cli").call()
+    {
         Ok(r) => r,
         Err(e) => {
             eprintln!("{} Failed to download: {}", "⚠".yellow(), e);
@@ -1106,11 +1104,13 @@ fn cmd_upgrade() -> Result<()> {
         }
     };
 
-    let mut bytes = Vec::new();
-    if let Err(e) = response.into_reader().read_to_end(&mut bytes) {
-        eprintln!("{} Failed to read download: {}", "⚠".yellow(), e);
-        return Ok(());
-    }
+    let bytes = match response.body_mut().with_config().limit(200 * 1024 * 1024).read_to_vec() {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("{} Failed to read download: {}", "⚠".yellow(), e);
+            return Ok(());
+        }
+    };
 
     if let Err(e) = std::fs::File::create(&temp_path).and_then(|mut f| f.write_all(&bytes)) {
         eprintln!("{} Failed to write temporary file: {}", "⚠".yellow(), e);
@@ -1334,11 +1334,19 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
                 if project::runtime_installer::can_auto_install(lang) {
                     if let Err(e) = project::runtime_installer::install_lang(
                         lang,
-                        project::runtime_installer::InstallLocation::System,
+                        project::runtime_installer::InstallLocation::UserLocal,
                     ) {
                         eprintln!("{} Failed to install {}: {}", "✗".red(), label, e);
                         to_remove.push(i);
                         print_runtime_skip_warning(lang, &label);
+                    } else if let Ok(Some(config_path)) =
+                        project::runtime_installer::ensure_runtime_in_shell_config(lang)
+                    {
+                        project::terminal::info_indented(&format!(
+                            "Added to PATH in {}. Run 'source {}' or restart your terminal.",
+                            config_path.display(),
+                            config_path.display()
+                        ));
                     }
                 } else {
                     println!("{} {} requires manual install.", "⚠".yellow(), label);
@@ -1567,6 +1575,15 @@ fn cmd_add_runtime(runtime: &str, user_local: bool) -> Result<()> {
                 let sep = if cfg!(windows) { ";" } else { ":" };
                 std::env::set_var("PATH", format!("{}{}{}", path.display(), sep, current));
             }
+        }
+        if let Ok(Some(config_path)) =
+            project::runtime_installer::ensure_runtime_in_shell_config(lang)
+        {
+            println!(
+                "  Run 'source {}' or open a new terminal to use {} in future sessions.",
+                config_path.display(),
+                poly_bench_runtime::lang_label(lang)
+            );
         }
     }
 

@@ -763,13 +763,15 @@ fn install_local_zls(zig_env: &Path, options: &BuildOptions) -> Result<()> {
 
     terminal::info_indented(&format!("Downloading ZLS {} for {}-{}...", ZLS_VERSION, arch, os));
 
-    let response = ureq::get(&url).call().map_err(|e| {
+    let mut response = ureq::get(&url).call().map_err(|e| {
         miette::miette!("Failed to download ZLS: {}. Ensure you have network access.", e)
     })?;
 
-    let mut reader = response.into_reader();
-    let mut body = Vec::new();
-    std::io::Read::read_to_end(&mut reader, &mut body)
+    let body = response
+        .body_mut()
+        .with_config()
+        .limit(200 * 1024 * 1024)
+        .read_to_vec()
         .map_err(|e| miette::miette!("Failed to read ZLS download: {}", e))?;
 
     let temp_dir =
@@ -904,14 +906,15 @@ fn install_local_rust_analyzer(rust_env: &Path, options: &BuildOptions) -> Resul
         RUST_ANALYZER_VERSION, target
     ));
 
-    let response = ureq::get(&url).call().map_err(|e| {
+    let mut response = ureq::get(&url).call().map_err(|e| {
         miette::miette!("Failed to download rust-analyzer: {}. Ensure you have network access.", e)
     })?;
 
-    let mut body = Vec::new();
-    response
-        .into_reader()
-        .read_to_end(&mut body)
+    let body = response
+        .body_mut()
+        .with_config()
+        .limit(200 * 1024 * 1024)
+        .read_to_vec()
         .map_err(|e| miette::miette!("Failed to read rust-analyzer download: {}", e))?;
 
     let _temp_dir =
