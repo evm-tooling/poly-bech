@@ -56,10 +56,14 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
 
     // Create project directory if it doesn't exist
     if !project_dir.exists() {
-        std::fs::create_dir_all(&project_dir)
-            .map_err(|e| miette::miette!("Failed to create project directory: {}", e))?;
         if !options.quiet {
-            terminal::success(&format!("Created directory {}", project_dir.display()));
+            let spinner = terminal::step_spinner("Creating project directory...");
+            std::fs::create_dir_all(&project_dir)
+                .map_err(|e| miette::miette!("Failed to create project directory: {}", e))?;
+            terminal::finish_success(&spinner, &format!("Created directory {}", project_dir.display()));
+        } else {
+            std::fs::create_dir_all(&project_dir)
+                .map_err(|e| miette::miette!("Failed to create project directory: {}", e))?;
         }
     }
 
@@ -75,29 +79,42 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
     // Create manifest
     let manifest = Manifest::new(&project_name, &languages);
     let manifest_path = project_dir.join(MANIFEST_FILENAME);
-    manifest::save(&manifest_path, &manifest)?;
     if !options.quiet {
-        terminal::success(&format!("Created {}", MANIFEST_FILENAME));
+        let spinner = terminal::step_spinner(&format!("Creating {}...", MANIFEST_FILENAME));
+        manifest::save(&manifest_path, &manifest)?;
+        terminal::finish_success(&spinner, &format!("Created {}", MANIFEST_FILENAME));
+    } else {
+        manifest::save(&manifest_path, &manifest)?;
     }
 
     // Create benchmarks directory
     let benchmarks_dir = project_dir.join(BENCHMARKS_DIR);
-    std::fs::create_dir_all(&benchmarks_dir)
-        .map_err(|e| miette::miette!("Failed to create benchmarks directory: {}", e))?;
     if !options.quiet {
-        terminal::success(&format!("Created {}/", BENCHMARKS_DIR));
+        let spinner = terminal::step_spinner(&format!("Creating {}/...", BENCHMARKS_DIR));
+        std::fs::create_dir_all(&benchmarks_dir)
+            .map_err(|e| miette::miette!("Failed to create benchmarks directory: {}", e))?;
+        terminal::finish_success(&spinner, &format!("Created {}/", BENCHMARKS_DIR));
+    } else {
+        std::fs::create_dir_all(&benchmarks_dir)
+            .map_err(|e| miette::miette!("Failed to create benchmarks directory: {}", e))?;
     }
 
     // Create example benchmark and fixtures
     if !options.no_example {
-        let example_path = benchmarks_dir.join("example.bench");
-        let example_content = templates::example_bench_for_langs(&enabled_langs);
-        std::fs::write(&example_path, example_content)
-            .map_err(|e| miette::miette!("Failed to write example.bench: {}", e))?;
-        templates::write_bubble_fixtures(&benchmarks_dir)?;
         if !options.quiet {
-            terminal::success(&format!("Created {}/example.bench", BENCHMARKS_DIR));
-            terminal::success(&format!("Created {}/fixtures/sort/", BENCHMARKS_DIR));
+            let spinner = terminal::step_spinner("Creating example benchmark and fixtures...");
+            let example_path = benchmarks_dir.join("example.bench");
+            let example_content = templates::example_bench_for_langs(&enabled_langs);
+            std::fs::write(&example_path, example_content)
+                .map_err(|e| miette::miette!("Failed to write example.bench: {}", e))?;
+            templates::write_bubble_fixtures(&benchmarks_dir)?;
+            terminal::finish_success(&spinner, &format!("Created {}/example.bench and fixtures", BENCHMARKS_DIR));
+        } else {
+            let example_path = benchmarks_dir.join("example.bench");
+            let example_content = templates::example_bench_for_langs(&enabled_langs);
+            std::fs::write(&example_path, example_content)
+                .map_err(|e| miette::miette!("Failed to write example.bench: {}", e))?;
+            templates::write_bubble_fixtures(&benchmarks_dir)?;
         }
     }
 
@@ -116,31 +133,49 @@ pub fn init_project(options: &InitOptions) -> Result<PathBuf> {
 
     // Create .gitignore
     let gitignore_path = project_dir.join(".gitignore");
-    // Append to existing .gitignore or create new one
-    let gitignore_content = if gitignore_path.exists() {
-        let existing = std::fs::read_to_string(&gitignore_path).unwrap_or_default();
-        if !existing.contains(".polybench/") {
-            format!("{}\n\n# poly-bench\n{}", existing.trim(), templates::gitignore())
-        } else {
-            existing
-        }
-    } else {
-        templates::gitignore().to_string()
-    };
-    std::fs::write(&gitignore_path, gitignore_content)
-        .map_err(|e| miette::miette!("Failed to write .gitignore: {}", e))?;
     if !options.quiet {
-        terminal::success("Created .gitignore");
+        let spinner = terminal::step_spinner("Creating .gitignore...");
+        let gitignore_content = if gitignore_path.exists() {
+            let existing = std::fs::read_to_string(&gitignore_path).unwrap_or_default();
+            if !existing.contains(".polybench/") {
+                format!("{}\n\n# poly-bench\n{}", existing.trim(), templates::gitignore())
+            } else {
+                existing
+            }
+        } else {
+            templates::gitignore().to_string()
+        };
+        std::fs::write(&gitignore_path, gitignore_content)
+            .map_err(|e| miette::miette!("Failed to write .gitignore: {}", e))?;
+        terminal::finish_success(&spinner, "Created .gitignore");
+    } else {
+        let gitignore_content = if gitignore_path.exists() {
+            let existing = std::fs::read_to_string(&gitignore_path).unwrap_or_default();
+            if !existing.contains(".polybench/") {
+                format!("{}\n\n# poly-bench\n{}", existing.trim(), templates::gitignore())
+            } else {
+                existing
+            }
+        } else {
+            templates::gitignore().to_string()
+        };
+        std::fs::write(&gitignore_path, gitignore_content)
+            .map_err(|e| miette::miette!("Failed to write .gitignore: {}", e))?;
     }
 
     // Create README.md
     let readme_path = project_dir.join("README.md");
     if !readme_path.exists() {
-        let readme_content = templates::readme_for_langs(&project_name, &enabled_langs);
-        std::fs::write(&readme_path, readme_content)
-            .map_err(|e| miette::miette!("Failed to write README.md: {}", e))?;
         if !options.quiet {
-            terminal::success("Created README.md");
+            let spinner = terminal::step_spinner("Creating README.md...");
+            let readme_content = templates::readme_for_langs(&project_name, &enabled_langs);
+            std::fs::write(&readme_path, readme_content)
+                .map_err(|e| miette::miette!("Failed to write README.md: {}", e))?;
+            terminal::finish_success(&spinner, "Created README.md");
+        } else {
+            let readme_content = templates::readme_for_langs(&project_name, &enabled_langs);
+            std::fs::write(&readme_path, readme_content)
+                .map_err(|e| miette::miette!("Failed to write README.md: {}", e))?;
         }
     }
 
@@ -169,150 +204,227 @@ fn init_runtime_env_for_lang(
 ) -> Result<()> {
     match lang {
         Lang::Go => {
-            let go_env = runtime_env(project_dir, Lang::Go);
-            std::fs::create_dir_all(&go_env)
-                .map_err(|e| miette::miette!("Failed to create {}: {}", go_env.display(), e))?;
-            let go_version = manifest.go.as_ref().and_then(|g| g.version.as_deref());
-            let go_mod_content = templates::go_mod(project_name, go_version);
-            std::fs::write(go_env.join("go.mod"), go_mod_content)
-                .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
             if !quiet {
-                terminal::success("Created .polybench/runtime-env/go/ (go.mod)");
+                let spinner = terminal::step_spinner("Setting up Go runtime environment...");
+                let go_env = runtime_env(project_dir, Lang::Go);
+                std::fs::create_dir_all(&go_env)
+                    .map_err(|e| miette::miette!("Failed to create {}: {}", go_env.display(), e))?;
+                let go_version = manifest.go.as_ref().and_then(|g| g.version.as_deref());
+                let go_mod_content = templates::go_mod(project_name, go_version);
+                std::fs::write(go_env.join("go.mod"), go_mod_content)
+                    .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
+                terminal::finish_success(&spinner, "Created .polybench/runtime-env/go/ (go.mod)");
+            } else {
+                let go_env = runtime_env(project_dir, Lang::Go);
+                std::fs::create_dir_all(&go_env)
+                    .map_err(|e| miette::miette!("Failed to create {}: {}", go_env.display(), e))?;
+                let go_version = manifest.go.as_ref().and_then(|g| g.version.as_deref());
+                let go_mod_content = templates::go_mod(project_name, go_version);
+                std::fs::write(go_env.join("go.mod"), go_mod_content)
+                    .map_err(|e| miette::miette!("Failed to write go.mod: {}", e))?;
             }
         }
         Lang::TypeScript => {
             let ts_env = runtime_env(project_dir, Lang::TypeScript);
-            std::fs::create_dir_all(&ts_env)
-                .map_err(|e| miette::miette!("Failed to create {}: {}", ts_env.display(), e))?;
-            let package_json_content = templates::package_json_pretty(project_name);
-            std::fs::write(ts_env.join("package.json"), package_json_content)
-                .map_err(|e| miette::miette!("Failed to write package.json: {}", e))?;
-            let tsconfig_content = templates::tsconfig_json();
-            std::fs::write(ts_env.join("tsconfig.json"), tsconfig_content)
-                .map_err(|e| miette::miette!("Failed to write tsconfig.json: {}", e))?;
             if !quiet {
-                terminal::success(
+                let spinner = terminal::step_spinner("Setting up TypeScript runtime environment...");
+                std::fs::create_dir_all(&ts_env)
+                    .map_err(|e| miette::miette!("Failed to create {}: {}", ts_env.display(), e))?;
+                let package_json_content = templates::package_json_pretty(project_name);
+                std::fs::write(ts_env.join("package.json"), package_json_content)
+                    .map_err(|e| miette::miette!("Failed to write package.json: {}", e))?;
+                let tsconfig_content = templates::tsconfig_json();
+                std::fs::write(ts_env.join("tsconfig.json"), tsconfig_content)
+                    .map_err(|e| miette::miette!("Failed to write tsconfig.json: {}", e))?;
+                terminal::finish_success(
+                    &spinner,
                     "Created .polybench/runtime-env/ts/ (package.json, tsconfig.json)",
                 );
+            } else {
+                std::fs::create_dir_all(&ts_env)
+                    .map_err(|e| miette::miette!("Failed to create {}: {}", ts_env.display(), e))?;
+                let package_json_content = templates::package_json_pretty(project_name);
+                std::fs::write(ts_env.join("package.json"), package_json_content)
+                    .map_err(|e| miette::miette!("Failed to write package.json: {}", e))?;
+                let tsconfig_content = templates::tsconfig_json();
+                std::fs::write(ts_env.join("tsconfig.json"), tsconfig_content)
+                    .map_err(|e| miette::miette!("Failed to write tsconfig.json: {}", e))?;
             }
 
             if !crate::runtime_check::is_lang_installed(Lang::TypeScript) {
                 return Err(crate::runtime_check::not_installed_error(Lang::TypeScript));
             }
-            if quiet {
-                let output = Command::new("npm")
-                    .arg("install")
-                    .current_dir(&ts_env)
-                    .output()
-                    .map_err(|e| miette::miette!("Could not run npm install: {}", e))?;
-                if !output.status.success() {
-                    return Err(miette::miette!(
-                        "npm install failed in {}:\n{}",
-                        ts_env.display(),
-                        terminal::stderr_excerpt(&output.stderr, 10)
-                    ));
+            let spinner = terminal::step_spinner("Installing TypeScript dependencies...");
+            let npm_result = terminal::run_command_with_spinner(
+                &spinner,
+                Command::new("npm").arg("install").current_dir(&ts_env),
+            );
+            match npm_result {
+                Ok(output) if output.status.success() => {
+                    terminal::finish_success(&spinner, "TypeScript dependencies installed");
                 }
-            } else {
-                let spinner = terminal::step_spinner("Installing TypeScript dependencies...");
-                let npm_result = terminal::run_command_with_spinner(
-                    &spinner,
-                    Command::new("npm").arg("install").current_dir(&ts_env),
-                );
-                match npm_result {
-                    Ok(output) if output.status.success() => {
-                        terminal::finish_success(&spinner, "TypeScript dependencies installed");
-                    }
-                    Ok(output) => {
-                        terminal::finish_failure(&spinner, "npm install failed");
-                        terminal::print_stderr_excerpt(&output.stderr, 8);
-                        return Err(miette::miette!("npm install failed in {}", ts_env.display()));
-                    }
-                    Err(e) => {
-                        terminal::finish_failure(&spinner, &format!("Could not run npm: {}", e));
-                        return Err(miette::miette!("Could not run npm install: {}", e));
-                    }
+                Ok(output) => {
+                    terminal::finish_failure(&spinner, "npm install failed");
+                    terminal::print_stderr_excerpt(&output.stderr, 8);
+                    return Err(miette::miette!("npm install failed in {}", ts_env.display()));
+                }
+                Err(e) => {
+                    terminal::finish_failure(&spinner, &format!("Could not run npm: {}", e));
+                    return Err(miette::miette!("Could not run npm install: {}", e));
                 }
             }
         }
         Lang::Rust => {
-            let rust_env = runtime_env(project_dir, Lang::Rust);
-            std::fs::create_dir_all(&rust_env)
-                .map_err(|e| miette::miette!("Failed to create {}: {}", rust_env.display(), e))?;
-            let rust_edition = manifest.rust.as_ref().map(|r| r.edition.as_str()).unwrap_or("2021");
-            let cargo_toml_content = templates::cargo_toml(project_name, rust_edition);
-            std::fs::write(rust_env.join("Cargo.toml"), cargo_toml_content)
-                .map_err(|e| miette::miette!("Failed to write Cargo.toml: {}", e))?;
-            let src_dir = rust_env.join("src");
-            std::fs::create_dir_all(&src_dir)
-                .map_err(|e| miette::miette!("Failed to create src dir: {}", e))?;
-            std::fs::write(src_dir.join("main.rs"), "fn main() {}\n")
-                .map_err(|e| miette::miette!("Failed to write main.rs: {}", e))?;
             if !quiet {
-                terminal::success("Created .polybench/runtime-env/rust/ (Cargo.toml, src/main.rs)");
+                let spinner = terminal::step_spinner("Setting up Rust runtime environment...");
+                let rust_env = runtime_env(project_dir, Lang::Rust);
+                std::fs::create_dir_all(&rust_env)
+                    .map_err(|e| miette::miette!("Failed to create {}: {}", rust_env.display(), e))?;
+                let rust_edition =
+                    manifest.rust.as_ref().map(|r| r.edition.as_str()).unwrap_or("2021");
+                let cargo_toml_content = templates::cargo_toml(project_name, rust_edition);
+                std::fs::write(rust_env.join("Cargo.toml"), cargo_toml_content)
+                    .map_err(|e| miette::miette!("Failed to write Cargo.toml: {}", e))?;
+                let src_dir = rust_env.join("src");
+                std::fs::create_dir_all(&src_dir)
+                    .map_err(|e| miette::miette!("Failed to create src dir: {}", e))?;
+                std::fs::write(src_dir.join("main.rs"), "fn main() {}\n")
+                    .map_err(|e| miette::miette!("Failed to write main.rs: {}", e))?;
+                terminal::finish_success(
+                    &spinner,
+                    "Created .polybench/runtime-env/rust/ (Cargo.toml, src/main.rs)",
+                );
+            } else {
+                let rust_env = runtime_env(project_dir, Lang::Rust);
+                std::fs::create_dir_all(&rust_env)
+                    .map_err(|e| miette::miette!("Failed to create {}: {}", rust_env.display(), e))?;
+                let rust_edition =
+                    manifest.rust.as_ref().map(|r| r.edition.as_str()).unwrap_or("2021");
+                let cargo_toml_content = templates::cargo_toml(project_name, rust_edition);
+                std::fs::write(rust_env.join("Cargo.toml"), cargo_toml_content)
+                    .map_err(|e| miette::miette!("Failed to write Cargo.toml: {}", e))?;
+                let src_dir = rust_env.join("src");
+                std::fs::create_dir_all(&src_dir)
+                    .map_err(|e| miette::miette!("Failed to create src dir: {}", e))?;
+                std::fs::write(src_dir.join("main.rs"), "fn main() {}\n")
+                    .map_err(|e| miette::miette!("Failed to write main.rs: {}", e))?;
             }
         }
         Lang::Python => {
-            let python_env = runtime_env(project_dir, Lang::Python);
-            std::fs::create_dir_all(&python_env)
-                .map_err(|e| miette::miette!("Failed to create {}: {}", python_env.display(), e))?;
-            let requirements_content = templates::requirements_txt_for_runtime_env(&[]);
-            std::fs::write(python_env.join("requirements.txt"), requirements_content)
-                .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
             if !quiet {
-                terminal::success("Created .polybench/runtime-env/python/ (requirements.txt)");
+                let spinner = terminal::step_spinner("Setting up Python runtime environment...");
+                let python_env = runtime_env(project_dir, Lang::Python);
+                std::fs::create_dir_all(&python_env)
+                    .map_err(|e| miette::miette!("Failed to create {}: {}", python_env.display(), e))?;
+                let requirements_content = templates::requirements_txt_for_runtime_env(&[]);
+                std::fs::write(python_env.join("requirements.txt"), requirements_content)
+                    .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
+                terminal::finish_success(
+                    &spinner,
+                    "Created .polybench/runtime-env/python/ (requirements.txt)",
+                );
+            } else {
+                let python_env = runtime_env(project_dir, Lang::Python);
+                std::fs::create_dir_all(&python_env)
+                    .map_err(|e| miette::miette!("Failed to create {}: {}", python_env.display(), e))?;
+                let requirements_content = templates::requirements_txt_for_runtime_env(&[]);
+                std::fs::write(python_env.join("requirements.txt"), requirements_content)
+                    .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
             }
         }
         Lang::C => {
-            let c_env = runtime_env(project_dir, Lang::C);
-            std::fs::create_dir_all(&c_env)
-                .map_err(|e| miette::miette!("Failed to create {}: {}", c_env.display(), e))?;
-            std::fs::write(c_env.join("main.c"), "int main(void) {\n    return 0;\n}\n")
-                .map_err(|e| miette::miette!("Failed to write main.c: {}", e))?;
             if !quiet {
-                terminal::success("Created .polybench/runtime-env/c/ (main.c)");
+                let spinner = terminal::step_spinner("Setting up C runtime environment...");
+                let c_env = runtime_env(project_dir, Lang::C);
+                std::fs::create_dir_all(&c_env)
+                    .map_err(|e| miette::miette!("Failed to create {}: {}", c_env.display(), e))?;
+                std::fs::write(c_env.join("main.c"), "int main(void) {\n    return 0;\n}\n")
+                    .map_err(|e| miette::miette!("Failed to write main.c: {}", e))?;
+                terminal::finish_success(&spinner, "Created .polybench/runtime-env/c/ (main.c)");
+            } else {
+                let c_env = runtime_env(project_dir, Lang::C);
+                std::fs::create_dir_all(&c_env)
+                    .map_err(|e| miette::miette!("Failed to create {}: {}", c_env.display(), e))?;
+                std::fs::write(c_env.join("main.c"), "int main(void) {\n    return 0;\n}\n")
+                    .map_err(|e| miette::miette!("Failed to write main.c: {}", e))?;
             }
         }
         Lang::CSharp => {
-            let csharp_env = runtime_env(project_dir, Lang::CSharp);
-            std::fs::create_dir_all(&csharp_env)
-                .map_err(|e| miette::miette!("Failed to create {}: {}", csharp_env.display(), e))?;
-            let target_framework =
-                manifest.csharp.as_ref().map(|c| c.target_framework.as_str()).unwrap_or("net8.0");
-            std::fs::write(
-                csharp_env.join("polybench.csproj"),
-                templates::csharp_csproj(target_framework),
-            )
-            .map_err(|e| miette::miette!("Failed to write polybench.csproj: {}", e))?;
-            std::fs::write(
-                csharp_env.join("Program.cs"),
-                "public static class Program { public static void Main() {} }\n",
-            )
-            .map_err(|e| miette::miette!("Failed to write Program.cs: {}", e))?;
-            std::fs::write(csharp_env.join("NuGet.config"), templates::csharp_nuget_config())
-                .map_err(|e| miette::miette!("Failed to write NuGet.config: {}", e))?;
             if !quiet {
-                terminal::success(
+                let spinner = terminal::step_spinner("Setting up C# runtime environment...");
+                let csharp_env = runtime_env(project_dir, Lang::CSharp);
+                std::fs::create_dir_all(&csharp_env)
+                    .map_err(|e| miette::miette!("Failed to create {}: {}", csharp_env.display(), e))?;
+                let target_framework =
+                    manifest.csharp.as_ref().map(|c| c.target_framework.as_str()).unwrap_or("net8.0");
+                std::fs::write(
+                    csharp_env.join("polybench.csproj"),
+                    templates::csharp_csproj(target_framework),
+                )
+                .map_err(|e| miette::miette!("Failed to write polybench.csproj: {}", e))?;
+                std::fs::write(
+                    csharp_env.join("Program.cs"),
+                    "public static class Program { public static void Main() {} }\n",
+                )
+                .map_err(|e| miette::miette!("Failed to write Program.cs: {}", e))?;
+                std::fs::write(csharp_env.join("NuGet.config"), templates::csharp_nuget_config())
+                    .map_err(|e| miette::miette!("Failed to write NuGet.config: {}", e))?;
+                terminal::finish_success(
+                    &spinner,
                     "Created .polybench/runtime-env/csharp/ (polybench.csproj, Program.cs, NuGet.config)",
                 );
+            } else {
+                let csharp_env = runtime_env(project_dir, Lang::CSharp);
+                std::fs::create_dir_all(&csharp_env)
+                    .map_err(|e| miette::miette!("Failed to create {}: {}", csharp_env.display(), e))?;
+                let target_framework =
+                    manifest.csharp.as_ref().map(|c| c.target_framework.as_str()).unwrap_or("net8.0");
+                std::fs::write(
+                    csharp_env.join("polybench.csproj"),
+                    templates::csharp_csproj(target_framework),
+                )
+                .map_err(|e| miette::miette!("Failed to write polybench.csproj: {}", e))?;
+                std::fs::write(
+                    csharp_env.join("Program.cs"),
+                    "public static class Program { public static void Main() {} }\n",
+                )
+                .map_err(|e| miette::miette!("Failed to write Program.cs: {}", e))?;
+                std::fs::write(csharp_env.join("NuGet.config"), templates::csharp_nuget_config())
+                    .map_err(|e| miette::miette!("Failed to write NuGet.config: {}", e))?;
             }
         }
         Lang::Zig => {
-            let zig_env = runtime_env(project_dir, Lang::Zig);
-            std::fs::create_dir_all(&zig_env)
-                .map_err(|e| miette::miette!("Failed to create {}: {}", zig_env.display(), e))?;
-            std::fs::write(zig_env.join("build.zig"), templates::build_zig())
-                .map_err(|e| miette::miette!("Failed to write build.zig: {}", e))?;
-            std::fs::write(zig_env.join("build.zig.zon"), templates::build_zig_zon())
-                .map_err(|e| miette::miette!("Failed to write build.zig.zon: {}", e))?;
-            let src_dir = zig_env.join("src");
-            std::fs::create_dir_all(&src_dir)
-                .map_err(|e| miette::miette!("Failed to create src directory: {}", e))?;
-            std::fs::write(src_dir.join("main.zig"), templates::main_zig())
-                .map_err(|e| miette::miette!("Failed to write main.zig: {}", e))?;
             if !quiet {
-                terminal::success(
+                let spinner = terminal::step_spinner("Setting up Zig runtime environment...");
+                let zig_env = runtime_env(project_dir, Lang::Zig);
+                std::fs::create_dir_all(&zig_env)
+                    .map_err(|e| miette::miette!("Failed to create {}: {}", zig_env.display(), e))?;
+                std::fs::write(zig_env.join("build.zig"), templates::build_zig())
+                    .map_err(|e| miette::miette!("Failed to write build.zig: {}", e))?;
+                std::fs::write(zig_env.join("build.zig.zon"), templates::build_zig_zon())
+                    .map_err(|e| miette::miette!("Failed to write build.zig.zon: {}", e))?;
+                let src_dir = zig_env.join("src");
+                std::fs::create_dir_all(&src_dir)
+                    .map_err(|e| miette::miette!("Failed to create src directory: {}", e))?;
+                std::fs::write(src_dir.join("main.zig"), templates::main_zig())
+                    .map_err(|e| miette::miette!("Failed to write main.zig: {}", e))?;
+                terminal::finish_success(
+                    &spinner,
                     "Created .polybench/runtime-env/zig/ (build.zig, build.zig.zon, src/main.zig)",
                 );
+            } else {
+                let zig_env = runtime_env(project_dir, Lang::Zig);
+                std::fs::create_dir_all(&zig_env)
+                    .map_err(|e| miette::miette!("Failed to create {}: {}", zig_env.display(), e))?;
+                std::fs::write(zig_env.join("build.zig"), templates::build_zig())
+                    .map_err(|e| miette::miette!("Failed to write build.zig: {}", e))?;
+                std::fs::write(zig_env.join("build.zig.zon"), templates::build_zig_zon())
+                    .map_err(|e| miette::miette!("Failed to write build.zig.zon: {}", e))?;
+                let src_dir = zig_env.join("src");
+                std::fs::create_dir_all(&src_dir)
+                    .map_err(|e| miette::miette!("Failed to create src directory: {}", e))?;
+                std::fs::write(src_dir.join("main.zig"), templates::main_zig())
+                    .map_err(|e| miette::miette!("Failed to write main.zig: {}", e))?;
             }
         }
     }
