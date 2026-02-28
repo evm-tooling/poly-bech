@@ -64,7 +64,7 @@ impl VirtualFileManagers {
         if let Some(setup) = get_registry_setup(dsl_lang) {
             let key = setup_key(module_root, dsl_lang);
             if !self.setup_initialized.contains_key(&key) {
-                let ctx = LspEmbeddedDiagnosticContext::new(module_root);
+                let ctx = LspEmbeddedDiagnosticContext::new(module_root, bench_path);
                 setup.prepare(module_root, &ctx);
                 self.setup_initialized.insert(key, ());
             }
