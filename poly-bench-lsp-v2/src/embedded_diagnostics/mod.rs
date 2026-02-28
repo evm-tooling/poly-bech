@@ -7,7 +7,9 @@
 use crate::{
     document::Document,
     embedded::{extract_embedded_blocks, EmbeddedBlock},
-    embedded_diagnostic_context::LspEmbeddedDiagnosticContext,
+    embedded_diagnostic_context::{
+        should_skip_embedded_lsp_for_lang, LspEmbeddedDiagnosticContext,
+    },
 };
 use poly_bench_project::get_detector;
 use poly_bench_runtime::{
@@ -71,6 +73,9 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
     // Check each language via registry
     for (lang, blocks) in &blocks_by_lang {
         let dsl_lang = syntax_lang_to_dsl(*lang);
+        if should_skip_embedded_lsp_for_lang(Path::new(&bench_path), dsl_lang) {
+            continue;
+        }
         let Some(builder) = get_virtual_file_builder(dsl_lang) else {
             continue;
         };
@@ -80,7 +85,7 @@ pub fn check_embedded_code(doc: &Document) -> Vec<Diagnostic> {
 
         let module_root = find_module_root_for_lang(*lang, &bench_path);
 
-        let ctx = LspEmbeddedDiagnosticContext::new(&module_root);
+        let ctx = LspEmbeddedDiagnosticContext::new(&module_root, &bench_path);
 
         // Language-specific setup via registry or context
         if let Some(setup) = get_embedded_diagnostic_setup(dsl_lang) {

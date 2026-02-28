@@ -44,6 +44,12 @@ impl EmbeddedHoverContext for LspEmbeddedHoverContext<'_> {
         lang: poly_bench_dsl::Lang,
         module_root: &str,
     ) -> Option<Arc<dyn EmbeddedLspClient>> {
+        if crate::embedded_diagnostic_context::should_skip_embedded_lsp_for_lang(
+            std::path::Path::new(self.bench_path),
+            lang,
+        ) {
+            return None;
+        }
         if module_root != self.module_root {
             return None;
         }
