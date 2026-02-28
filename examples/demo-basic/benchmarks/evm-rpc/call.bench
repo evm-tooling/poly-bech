@@ -1,0 +1,185 @@
+use std::anvil
+use std::charting
+
+declare suite call performance iterationBased sameDataset: false {
+    description: "Contract calls — name(), balanceOf, decimals, symbol, etc."
+    baseline: "go"
+    iterations: 20
+    warmup: 5
+    count: 4
+    cvThreshold: 10
+    sink: true
+
+    setup go {
+        import (
+            "context"
+            "time"
+            "github.com/ethereum/go-ethereum/common"
+            "github.com/ChefBingbong/viem-go/actions/public"
+            "github.com/ChefBingbong/viem-go/chain/definitions"
+            "github.com/ChefBingbong/viem-go/client"
+            "github.com/ChefBingbong/viem-go/client/transport"
+        )
+
+        declare {
+            var publicClient *client.PublicClient
+            var ctx context.Context
+            var noCache time.Duration
+            var usdcAddress common.Address
+            var vitalikAddress  common.Address
+            var anvilAccount0  common.Address
+            var nameSelector []byte
+            var decimalsSelector []byte
+            var symbolSelector []byte
+            var balanceOfSelector []byte
+            var balanceOfVitalikData []byte
+        }
+
+        init {
+            usdcAddress = common.HexToAddress("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
+            vitalikAddress = common.HexToAddress("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
+            anvilAccount0 = common.HexToAddress("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")
+            nameSelector = common.Hex2Bytes("06fdde03")
+            decimalsSelector = common.Hex2Bytes("313ce567")
+            symbolSelector = common.Hex2Bytes("95d89b41")
+            balanceOfSelector = common.Hex2Bytes("70a08231")
+
+            ctx = context.Background()
+            noCache = 0
+            cl, err := client.CreatePublicClient(client.PublicClientConfig{
+                CacheTime: 0 * time.Second,
+                Chain:     &definitions.Mainnet,
+                Transport: transport.HTTP( "https://rough-purple-market.quiknode.pro/c1a568726a34041d3c5d58603f5981951e6a8503"),
+            })
+            if err != nil { panic(err) }
+            publicClient = cl
+            balanceOfVitalikData = append(append([]byte{}, balanceOfSelector...), common.LeftPadBytes(vitalikAddress.Bytes(), 32)...)
+        }
+
+        helpers {
+            func callBasicGo() any {
+                ba := true
+                result, err := public.Call(ctx, publicClient, public.CallParameters{To: &usdcAddress, Data: nameSelector, Batch: &ba})
+                if err != nil { panic(err) }
+                return result
+            }
+            func callWithDataGo() any {
+                ba := true
+                result, err := public.Call(ctx, publicClient, public.CallParameters{To: &usdcAddress, Data: balanceOfVitalikData, Batch: &ba})
+                if err != nil { panic(err) }
+                return result
+            }
+            func callWithAccountGo() any {
+                ba := true
+                result, err := public.Call(ctx, publicClient, public.CallParameters{Account: &anvilAccount0, To: &usdcAddress, Data: nameSelector, Batch: &ba})
+                if err != nil { panic(err) }
+                return result
+            }
+            func callDecimalsGo() any {
+                result, err := public.Call(ctx, publicClient, public.CallParameters{To: &usdcAddress, Data: decimalsSelector})
+                if err != nil { panic(err) }
+                return result
+            }
+            func callSymbolGo() any {
+                result, err := public.Call(ctx, publicClient, public.CallParameters{To: &usdcAddress, Data: symbolSelector})
+                if err != nil { panic(err) }
+                return result
+            }
+        }
+    }
+
+    setup ts {
+        import {
+            import { createPublicClient, http, encodeFunctionData, parseAbi } from 'viem'
+            import { mainnet } from 'viem/chains'
+        }
+
+        declare {
+            let publicClient: any
+            let USDC: any
+            let VITALIK: any
+            let ANVIL_0: any
+            let NAME_SELECTOR: any
+            let DECIMALS_SELECTOR: any
+            let SYMBOL_SELECTOR: any
+            let erc20Abi: any
+            let balanceOfVitalikData: any
+        }
+
+        init {
+               publicClient = createPublicClient({
+               cacheTime: 0,
+                   chain: mainnet,
+            transport: http("https://rough-purple-market.quiknode.pro/c1a568726a34041d3c5d58603f5981951e6a8503"),
+               })
+               USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+               VITALIK = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
+               ANVIL_0 = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266'
+               NAME_SELECTOR = '0x06fdde03'
+               DECIMALS_SELECTOR = '0x313ce567'
+               SYMBOL_SELECTOR = '0x95d89b41'
+               erc20Abi = parseAbi(['function balanceOf(address account) view returns (uint256)'])
+               balanceOfVitalikData = encodeFunctionData({ abi: erc20Abi, functionName: 'balanceOf', args: [VITALIK] })
+        }
+
+        helpers {
+            async function callBasicTs() { 
+                const req = { to: USDC, data: NAME_SELECTOR }
+                return await publicClient.call(req) 
+                }
+            async function callWithDataTs() { 
+                const req ={ to: USDC, data: balanceOfVitalikData }
+
+                return await publicClient.call(req) 
+            }
+            async function callWithAccountTs() { 
+                const req ={ account: ANVIL_0, to: USDC, data: NAME_SELECTOR }
+
+                return await publicClient.call(req) 
+                }
+            async function callDecimalsTs() { 
+                const req = { to: USDC, data: DECIMALS_SELECTOR }
+
+                return await publicClient.call(req) 
+                }
+            async function callSymbolTs() { 
+                const req = { to: USDC, data: SYMBOL_SELECTOR }
+
+                return await publicClient.call(req) 
+                }
+        }
+    }
+
+    benchAsync callBasic {
+        go: callBasicGo()
+        ts: callBasicTs()
+    }
+
+    benchAsync callWithData {
+        go: callWithDataGo()
+        ts: callWithDataTs()
+    }
+
+    benchAsync callWithAccount {
+        go: callWithAccountGo()
+        ts: callWithAccountTs()
+    }
+
+    benchAsync callDecimals {
+        go: callDecimalsGo()
+        ts: callDecimalsTs()
+    }
+
+    benchAsync callSymbol {
+        go: callSymbolGo()
+        ts: callSymbolTs()
+    }
+
+    after {
+        charting.drawTable(
+            title: "Call Benchmarks",
+            output: "call-table.svg",
+            sortBy: "speedup",
+        )
+    }
+}

@@ -1,0 +1,76 @@
+[project]
+name = "demo-basic"
+version = "0.0.1"
+
+[defaults]
+iterations = 1000
+warmup = 100
+languages = [
+    "go",
+    "ts",
+    "rust",
+    "python",
+    "csharp",
+    "c",
+    "zig",
+]
+
+[go]
+module = "demo-basic"
+version = "1.21"
+
+[go.dependencies]
+"golang.org/x/crypto/sha3" = "latest"
+"github.com/ChefBingbong/viem-go" = "latest"
+
+[ts]
+runtime = "node"
+
+[ts.dependencies]
+viem = "latest"
+
+[rust]
+edition = "2021"
+
+[rust.dependencies]
+regex = "1.12.3"
+eyre = "0.6.12"
+lazy_static = "1.5.0"
+
+[rust.dependencies.tiny_keccak]
+version = "latest"
+features = [
+    "keccak",
+    "sha3",
+]
+
+[rust.dependencies.tokio]
+version = "1.49.0"
+features = [
+    "rt",
+    "rt-multi-thread",
+]
+
+[rust.dependencies.alloy]
+version = "1.6.3"
+features = ["full"]
+
+[rust.dependencies.tiny-keccak]
+version = "2.0"
+features = ["keccak"]
+
+[python.dependencies]
+
+[c]
+standard = "c11"
+
+[csharp]
+target_framework = "net8.0"
+
+[zig]
+version = "0.13"
+
+[output]
+report_formats = []
+output_dir = "out"
+auto_save_results = true

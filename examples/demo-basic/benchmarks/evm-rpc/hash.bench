@@ -1,0 +1,107 @@
+declare suite hash performance timeBased sameDataset: false {
+    description: "Keccak256, SHA256, function/event selectors"
+    baseline: "go"
+    warmup: 100
+    targetTime: 2000ms
+    count: 3
+
+    setup go {
+        import (
+            "github.com/ChefBingbong/viem-go/utils/hash"
+        )
+
+        declare {
+            var longData []byte
+        }
+
+        init {
+            longData = make([]byte, 1024)
+            for i := range longData { longData[i] = byte(i % 256) }
+        }
+
+        helpers {
+            func keccak256ShortGo(data []byte) []byte { 
+                return hash.Keccak256Bytes(data) 
+            }
+            func keccak256LongGo() []byte { return hash.Keccak256Bytes(longData) }
+            func keccak256HexGo() []byte { return hash.Keccak256Bytes("0x68656c6c6f20776f726c64") }
+            func sha256ShortGo(data []byte) []byte { return hash.Sha256Bytes(data) }
+            func sha256LongGo() []byte { return hash.Sha256Bytes(longData) }
+            func functionSelectorGo() any {
+                sel, err := hash.ToFunctionSelector("function transfer(address to, uint256 amount)")
+                if err != nil { panic(err) }
+                return sel
+            }
+            func eventSelectorGo() any {
+                sel, err := hash.ToEventSelector("event Transfer(address indexed from, address indexed to, uint256 amount)")
+                if err != nil { panic(err) }
+                return sel
+            }
+        }
+    }
+
+    setup ts {
+        import {
+            import { keccak256, sha256, toFunctionSelector, toEventSelector, toHex } from 'viem'
+        }
+
+        declare {
+            let longArray: Uint8Array
+        }
+
+        init {
+            longArray = new Uint8Array(1024)
+            for (let i = 0; i < 1024; i++) longArray[i] = i % 256
+        }
+
+        helpers {
+            function keccak256ShortTs(data: Uint8Array) { return keccak256(data) }
+            function keccak256LongTs() { return keccak256(toHex(longArray)) }
+            function keccak256HexTs() { return keccak256('0x68656c6c6f20776f726c64') }
+            function sha256ShortTs(data: Uint8Array) { return sha256(data) }
+            function sha256LongTs() { return sha256(toHex(longArray)) }
+            function functionSelectorTs() { return toFunctionSelector('function transfer(address to, uint256 amount)') }
+            function eventSelectorTs() { return toEventSelector('event Transfer(address indexed from, address indexed to, uint256 amount)') }
+        }
+    }
+
+    fixture shortData {
+        hex: "68656c6c6f20776f726c64"
+    }
+
+    bench keccak256Short {
+        go: keccak256ShortGo(shortData)
+        ts: keccak256ShortTs(shortData)
+    }
+
+    bench keccak256Long {
+        go: keccak256LongGo()
+        ts: keccak256LongTs()
+    }
+
+    bench keccak256Hex {
+        go: keccak256HexGo()
+        ts: keccak256HexTs()
+    }
+
+    bench sha256Short {
+        go: sha256ShortGo(shortData)
+        ts: sha256ShortTs(shortData)
+    }
+
+    bench sha256Long {
+        go: sha256LongGo()
+        ts: sha256LongTs()
+    }
+
+    bench functionSelector {
+        go: functionSelectorGo()
+        ts: functionSelectorTs()
+    }
+
+    bench eventSelector {
+        go: eventSelectorGo()
+        ts: eventSelectorTs()
+    }
+
+}

@@ -20,6 +20,18 @@ const STATS_TOP_GAP: f64 = 18.0;
 const STATS_HEADER_HEIGHT: f64 = 22.0;
 const STATS_ROW_HEIGHT: f64 = 22.0;
 const TARGET_BAR_WIDTH: f64 = 20.0;
+const MAX_VIEWPORT_WIDTH: f64 = 750.0;
+
+/// Output from bar chart generation. When `is_html` is true, the content is an HTML
+/// document with the SVG embedded in a scrollable container; otherwise it is raw SVG.
+/// When `wide_svg` is `Some`, the raw full-width SVG is also provided for a separate export.
+#[derive(Debug, Clone)]
+pub struct BarChartOutput {
+    pub content: String,
+    pub is_html: bool,
+    /// When `is_html` is true, the raw full-width SVG for optional separate export
+    pub wide_svg: Option<String>,
+}
 
 #[derive(Clone, Copy)]
 struct Theme {
@@ -82,16 +94,24 @@ pub fn generate(
     benchmarks: Vec<&BenchmarkResult>,
     directive: &ChartDirectiveIR,
     suite_type: SuiteType,
-) -> String {
+) -> BarChartOutput {
     let mut filtered = filter_benchmarks(benchmarks, directive);
     sort_benchmarks(&mut filtered, directive);
     if filtered.is_empty() {
-        return empty_chart("No benchmark data available");
+        return BarChartOutput {
+            content: empty_chart("No benchmark data available"),
+            is_html: false,
+            wide_svg: None,
+        };
     }
 
     let langs = available_langs(&filtered);
     if langs.is_empty() {
-        return empty_chart("No language measurements available");
+        return BarChartOutput {
+            content: empty_chart("No language measurements available"),
+            is_html: false,
+            wide_svg: None,
+        };
     }
     let group_count = filtered.len().max(1) as f64;
     let lang_count = langs.len().max(1) as f64;
@@ -554,7 +574,136 @@ pub fn generate(
         MARGIN_LEFT, MARGIN_TOP, MARGIN_LEFT, MARGIN_TOP + plot_h, theme.text
     ));
     svg.push_str("</svg>\n");
-    svg
+
+    if width > MAX_VIEWPORT_WIDTH {
+        BarChartOutput {
+            content: wrap_svg_in_html(&svg, MAX_VIEWPORT_WIDTH as u32, width, height),
+            is_html: true,
+            wide_svg: Some(svg),
+        }
+    } else {
+        BarChartOutput { content: svg, is_html: false, wide_svg: None }
+    }
+}
+
+fn wrap_svg_in_html(
+    svg: &str,
+    max_viewport_width: u32,
+    _chart_width: f64,
+    chart_height: f64,
+) -> String {
+    // Window dimensions: viewport width + scrollbar/padding; chart height + chrome
+    let win_width = (max_viewport_width as i32 + 40).max(400);
+    let win_height = (chart_height as i32 + 100).max(400);
+    let step = (max_viewport_width as i32 * 3 / 4).max(200);
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>if (location.search.indexOf('standalone=1')!==-1) document.documentElement.classList.add('standalone');</script>
+  <style>
+    body {{ margin: 0; padding: 0; overflow: auto; }}
+    .chart-wrapper {{ position: relative; max-width: {0}px; margin: 0 auto; }}
+    .chart-scroll {{ overflow-x: auto; scroll-behavior: smooth; }}
+    .chart-scroll svg {{ display: block; }}
+    .chart-chevron {{
+      position: absolute; top: 50%; transform: translateY(-50%);
+      width: 36px; height: 72px; padding: 0; border: none;
+      background: rgba(30,30,32,0.85); color: rgba(255,255,255,0.9);
+      cursor: pointer; border-radius: 8px; z-index: 10;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; font-family: system-ui, sans-serif;
+      transition: opacity 0.2s, background 0.2s;
+    }}
+    .chart-chevron:hover {{ background: rgba(50,50,52,0.95); }}
+    .chart-chevron:disabled {{ opacity: 0; pointer-events: none; }}
+    .chart-chevron-left {{ left: 8px; }}
+    .chart-chevron-right {{ right: 8px; }}
+    .chart-launch-banner {{
+      position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+      background: rgba(30,30,32,0.97); color: rgba(255,255,255,0.9);
+      padding: 10px 16px; font-family: system-ui, sans-serif; font-size: 13px;
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }}
+    .chart-launch-banner.hidden {{ display: none; }}
+    .standalone .chart-launch-banner {{ display: none; }}
+    .chart-launch-btn {{
+      background: #FF8A00; color: #1E1E20; border: none; padding: 8px 16px;
+      border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px;
+    }}
+    .chart-launch-btn:hover {{ background: #FFBA07; }}
+    body.has-launch-banner {{ padding-top: 48px; }}
+  </style>
+</head>
+<body>
+  <div class="chart-launch-banner" id="launch-banner">
+    <span>Open in chart-sized window</span>
+    <button type="button" class="chart-launch-btn" id="launch-btn">Open window</button>
+  </div>
+  <div class="chart-wrapper">
+    <button type="button" class="chart-chevron chart-chevron-left" id="chevron-left" aria-label="Scroll left">&#9664;</button>
+    <div class="chart-scroll" id="chart-scroll">
+      {4}
+    </div>
+    <button type="button" class="chart-chevron chart-chevron-right" id="chevron-right" aria-label="Scroll right">&#9654;</button>
+  </div>
+  <script>
+    (function() {{
+      var scrollEl = document.getElementById('chart-scroll');
+      var leftBtn = document.getElementById('chevron-left');
+      var rightBtn = document.getElementById('chevron-right');
+      var step = {1};
+      function updateButtons() {{
+        var sl = scrollEl.scrollLeft;
+        var maxScroll = scrollEl.scrollWidth - scrollEl.clientWidth;
+        leftBtn.disabled = sl <= 0;
+        rightBtn.disabled = sl >= maxScroll - 1;
+      }}
+      function scrollLeft() {{
+        scrollEl.scrollBy({{ left: -step, behavior: 'smooth' }});
+      }}
+      function scrollRight() {{
+        scrollEl.scrollBy({{ left: step, behavior: 'smooth' }});
+      }}
+      leftBtn.addEventListener('click', scrollLeft);
+      rightBtn.addEventListener('click', scrollRight);
+      scrollEl.addEventListener('scroll', updateButtons);
+      document.addEventListener('keydown', function(e) {{
+        if (e.key === 'ArrowLeft') {{ e.preventDefault(); scrollLeft(); }}
+        else if (e.key === 'ArrowRight') {{ e.preventDefault(); scrollRight(); }}
+      }});
+      updateButtons();
+      var isStandalone = location.search.indexOf('standalone=1') !== -1;
+      var banner = document.getElementById('launch-banner');
+      var launchBtn = document.getElementById('launch-btn');
+      function openInWindow() {{
+        var url = location.href.split('?')[0] + '?standalone=1';
+        var features = 'width={2},height={3},scrollbars=yes,resizable=yes';
+        return window.open(url, '_blank', features);
+      }}
+      if (isStandalone) {{
+        banner.classList.add('hidden');
+      }} else {{
+        var win = openInWindow();
+        if (win) {{
+          window.close();
+        }} else {{
+          document.body.classList.add('has-launch-banner');
+          launchBtn.addEventListener('click', function() {{
+            var w = openInWindow();
+            if (w) {{ banner.classList.add('hidden'); document.body.classList.remove('has-launch-banner'); }}
+          }});
+        }}
+      }}
+    }})();
+  </script>
+</body>
+</html>"#,
+        max_viewport_width, step, win_width, win_height, svg
+    )
 }
 
 fn available_langs(benchmarks: &[&BenchmarkResult]) -> Vec<Lang> {
@@ -1075,9 +1224,10 @@ mod tests {
         directive.show_std_dev = true;
         directive.show_error_bars = true;
         directive.regression_model = "auto".to_string();
-        let svg = generate(vec![&b1, &b2, &b3], &directive, poly_bench_dsl::SuiteType::Performance);
-        assert!(svg.contains("<svg"));
-        assert!(svg.contains("stroke-dasharray"));
+        let output =
+            generate(vec![&b1, &b2, &b3], &directive, poly_bench_dsl::SuiteType::Performance);
+        assert!(output.content.contains("<svg"));
+        assert!(output.content.contains("stroke-dasharray"));
     }
 
     #[test]
@@ -1090,10 +1240,30 @@ mod tests {
                 ChartDirectiveIR::new(poly_bench_dsl::ChartType::BarChart, "bar.svg".to_string());
             directive.description = Some("desc".to_string());
             directive.y_scale = scale.to_string();
-            let svg =
+            let output =
                 generate(vec![&b1, &b2, &b3], &directive, poly_bench_dsl::SuiteType::Performance);
-            assert!(svg.contains("<svg"));
-            assert!(svg.contains("nanos/op"));
+            assert!(output.content.contains("<svg"));
+            assert!(output.content.contains("nanos/op"));
         }
+    }
+
+    #[test]
+    fn test_generate_bar_chart_wide_outputs_html_with_scroll() {
+        // Create enough benchmarks to exceed MAX_VIEWPORT_WIDTH (750px)
+        let benches: Vec<_> = (1..=15)
+            .map(|i| bench(&format!("n{}", i * 100), 100.0 * i as f64, 140.0 * i as f64))
+            .collect();
+        let refs: Vec<_> = benches.iter().collect();
+        let directive =
+            ChartDirectiveIR::new(poly_bench_dsl::ChartType::BarChart, "bar.svg".to_string());
+        let output = generate(refs, &directive, poly_bench_dsl::SuiteType::Performance);
+        assert!(output.is_html, "wide chart should output HTML with scroll wrapper");
+        assert!(output.wide_svg.is_some(), "wide chart should provide wide_svg export");
+        assert!(output.content.contains("<!DOCTYPE html"));
+        assert!(output.content.contains("chart-scroll"));
+        assert!(output.content.contains("overflow-x: auto"));
+        assert!(output.content.contains("<svg"));
+        let svg = output.wide_svg.as_ref().unwrap();
+        assert!(svg.starts_with("<svg"), "wide_svg should be raw SVG");
     }
 }

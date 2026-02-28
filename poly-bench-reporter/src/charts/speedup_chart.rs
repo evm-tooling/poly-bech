@@ -17,7 +17,7 @@ const BAR_GAP: i32 = 8;
 const SPEEDUP_BAR_WIDTH_FACTOR: f64 = 1.8;
 
 // Margins and spacing
-const MARGIN_TOP: i32 = 72;
+const MARGIN_TOP: i32 = 100;
 const MARGIN_BOTTOM: i32 = 100; // Reduced to favour wider aspect ratio (more width vs height)
 const MARGIN_LEFT: i32 = 50;
 const MARGIN_RIGHT: i32 = 40;
@@ -35,6 +35,15 @@ const ACCENT_GLOW: &str = "#FFBA07";
 
 // Font
 const FONT_FAMILY: &str = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+const FONT_SIZE_TITLE: i32 = 34;
+const FONT_SIZE_SUBTITLE: i32 = 24;
+const FONT_SIZE_AXIS: i32 = 20;
+const FONT_SIZE_LEGEND: i32 = 18;
+const FONT_SIZE_DETAIL: i32 = 17;
+const FONT_SIZE_BAR_LABEL: i32 = 17;
+const FONT_SIZE_FOOTER: i32 = 15;
+const STATS_HEADER_HEIGHT: i32 = 34;
+const STATS_ROW_HEIGHT: i32 = 34;
 
 /// Theme colors for chart rendering
 struct ThemeColors {
@@ -109,6 +118,11 @@ struct LangSummary {
     total_iterations: u64,
     total_speedup: f64,
     is_baseline: bool,
+    /// Number of benchmarks that contributed to this summary (for averaging)
+    bench_count: usize,
+    /// Sum of bytes_per_op for memory mode; count in bytes_bench_count (None for performance)
+    bytes_per_op_sum: Option<f64>,
+    bytes_bench_count: usize,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -258,6 +272,12 @@ pub fn generate(
                     BenchMetricMode::Auto => auto_mode_count += 1,
                     BenchMetricMode::Memory => {}
                 }
+                // Sort bars by metric value descending (highest first)
+                bench_speedups.sort_by(|a, b| {
+                    let va = bench_metric_value(bench_mode, a);
+                    let vb = bench_metric_value(bench_mode, b);
+                    vb.partial_cmp(&va).unwrap_or(std::cmp::Ordering::Equal)
+                });
                 speedups.push((bench.name.clone(), bench_mode, bench_speedups));
             }
         }
@@ -281,14 +301,24 @@ pub fn generate(
         let mut total_iterations = 0u64;
         let mut speedup_log_sum = 0.0;
         let mut speedup_samples = 0usize;
+        let mut bench_count = 0usize;
+        let mut bytes_per_op_sum = 0.0;
+        let mut bytes_bench_count = 0usize;
 
         for bench in &filtered {
             let baseline = bench.measurements.get(&baseline_lang);
             let current = bench.measurements.get(&lang);
 
             if let (Some(base), Some(cur)) = (baseline, current) {
+                bench_count += 1;
                 lang_total_nanos += cur.nanos_per_op * cur.iterations as f64;
                 total_iterations += cur.iterations;
+                if is_memory {
+                    if let Some(b) = cur.bytes_per_op {
+                        bytes_per_op_sum += b as f64;
+                        bytes_bench_count += 1;
+                    }
+                }
                 let base_val = primary_from_m(base);
                 let cur_val = primary_from_m(cur);
                 if cur_val > 0.0 && cur_val < f64::MAX {
@@ -305,6 +335,13 @@ pub fn generate(
                 total_iterations,
                 total_speedup: (speedup_log_sum / speedup_samples as f64).exp(),
                 is_baseline: lang == baseline_lang,
+                bench_count,
+                bytes_per_op_sum: if is_memory && bytes_bench_count > 0 {
+                    Some(bytes_per_op_sum)
+                } else {
+                    None
+                },
+                bytes_bench_count,
             });
         }
     }
@@ -318,6 +355,48 @@ pub fn generate(
             _ => OverallMetricMode::Fixed,
         }
     };
+
+    // Replace combined grid with single averaged chart when multiple benchmarks
+    if speedups.len() > 1 {
+        let agg_mode = match overall_mode {
+            OverallMetricMode::Fixed => BenchMetricMode::Fixed,
+            OverallMetricMode::Auto => BenchMetricMode::Auto,
+            OverallMetricMode::Memory => BenchMetricMode::Memory,
+            OverallMetricMode::Mixed => BenchMetricMode::Auto, // Use iterations for mixed
+        };
+        let mut agg_speedups: Vec<LangSpeedup> = language_summaries
+            .iter()
+            .map(|s| {
+                let n = s.bench_count.max(1);
+                let avg_total_nanos = s.total_nanos / n as f64;
+                let avg_iterations = s.total_iterations / n as u64;
+                let primary_value = match agg_mode {
+                    BenchMetricMode::Fixed => avg_total_nanos,
+                    BenchMetricMode::Auto => avg_iterations as f64,
+                    BenchMetricMode::Memory => s
+                        .bytes_per_op_sum
+                        .and_then(|sum| {
+                            let bc = s.bytes_bench_count.max(1);
+                            Some(sum / bc as f64)
+                        })
+                        .unwrap_or(f64::MAX),
+                };
+                LangSpeedup {
+                    lang: s.lang,
+                    total_nanos: avg_total_nanos,
+                    primary_value,
+                    iterations: avg_iterations,
+                    run_count: max_run_count,
+                }
+            })
+            .collect();
+        agg_speedups.sort_by(|a, b| {
+            let va = bench_metric_value(agg_mode, a);
+            let vb = bench_metric_value(agg_mode, b);
+            vb.partial_cmp(&va).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        speedups = vec![("Average".to_string(), agg_mode, agg_speedups)];
+    }
 
     let num_benchmarks = speedups.len() as i32;
     let num_langs = all_langs.len() as i32;
@@ -336,8 +415,10 @@ pub fn generate(
         directive.width.unwrap_or(default_single_width)
     };
     let plot_y = MARGIN_TOP;
-    let details_height = ((language_summaries.len() as i32).max(1) * 16) + 18;
-    let combined_summary_height = ((language_summaries.len() as i32).max(1) * 24) + 30;
+    let details_height =
+        STATS_HEADER_HEIGHT + (language_summaries.len() as i32).max(1) * STATS_ROW_HEIGHT + 12;
+    let combined_summary_height =
+        STATS_HEADER_HEIGHT + (language_summaries.len() as i32).max(1) * STATS_ROW_HEIGHT + 18;
     let is_combined_chart = num_benchmarks > 1;
 
     let (
@@ -429,12 +510,13 @@ pub fn generate(
     let y_axis_label = "runtime";
     let y_axis_x = if is_combined_chart { plot_x - 30 } else { plot_x - 24 };
     svg.push_str(&format!(
-        "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" transform=\"rotate(-90 {} {})\" font-family=\"{}\" font-size=\"10\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
+        "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" transform=\"rotate(-90 {} {})\" font-family=\"{}\" font-size=\"{}\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
         y_axis_x,
         plot_y + plot_height / 2,
         y_axis_x,
         plot_y + plot_height / 2,
         FONT_FAMILY,
+        FONT_SIZE_AXIS,
         theme.text_muted,
         y_axis_label
     ));
@@ -463,10 +545,11 @@ pub fn generate(
             ));
 
             svg.push_str(&format!(
-                "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"11\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
+                "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{}\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
                 card_x + grid_layout.card_width / 2,
                 card_y + 15,
                 FONT_FAMILY,
+                FONT_SIZE_BAR_LABEL,
                 theme.text_primary,
                 escape_xml(bench_name)
             ));
@@ -526,11 +609,12 @@ pub fn generate(
                 };
 
                 svg.push_str(&format!(
-                    "  <text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-family=\"{}\" font-size=\"10\" font-weight=\"500\" fill=\"{}\">{}</text>\n",
+                    "  <text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-family=\"{}\" font-size=\"{}\" font-weight=\"500\" fill=\"{}\">{}</text>\n",
                     label_x,
                     y + bar_height / 2 + 4,
                     label_anchor,
                     FONT_FAMILY,
+                    FONT_SIZE_BAR_LABEL,
                     label_color,
                     escape_xml(&speedup_label)
                 ));
@@ -598,11 +682,12 @@ pub fn generate(
                 };
 
                 svg.push_str(&format!(
-                    "  <text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-family=\"{}\" font-size=\"11\" font-weight=\"500\" fill=\"{}\">{}</text>\n",
+                    "  <text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-family=\"{}\" font-size=\"{}\" font-weight=\"500\" fill=\"{}\">{}</text>\n",
                     label_x,
                     y + bar_height / 2 + 4,
                     label_anchor,
                     FONT_FAMILY,
+                    FONT_SIZE_BAR_LABEL,
                     label_color,
                     escape_xml(&speedup_label)
                 ));
@@ -644,18 +729,20 @@ pub fn generate(
         OverallMetricMode::Mixed => "time / iterations by mode",
     };
     svg.push_str(&format!(
-        "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"10\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
+        "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{}\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
         plot_x + plot_width / 2,
         x_axis_label_y,
         FONT_FAMILY,
+        FONT_SIZE_AXIS,
         theme.text_muted,
         x_axis_label
     ));
 
     // Legend and detail stats below axis label.
-    svg.push_str(&svg_legend(chart_width, legend_y, &all_langs, baseline_lang, &theme));
+    svg.push_str(&svg_legend(plot_x, plot_width, legend_y, &all_langs, baseline_lang, &theme));
     svg.push_str(&svg_detail_legend(
-        chart_width,
+        plot_x,
+        plot_width,
         details_y,
         details_height,
         &language_summaries,
@@ -695,10 +782,11 @@ pub fn generate(
     for (idx, line) in footer_lines.iter().enumerate() {
         let y = chart_height - 8 - ((footer_lines.len() as i32 - 1 - idx as i32) * 12);
         svg.push_str(&format!(
-            "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"9\" fill=\"{}\">{}</text>\n",
+            "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
             chart_width / 2,
             y,
             FONT_FAMILY,
+            FONT_SIZE_FOOTER,
             theme.text_dim,
             escape_xml(line)
         ));
@@ -724,9 +812,9 @@ fn empty_chart(message: &str, theme: &ThemeColors) -> String {
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"400\" height=\"100\">\
         <rect width=\"400\" height=\"100\" fill=\"{}\" rx=\"8\"/>\
-        <text x=\"200\" y=\"55\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"13\" fill=\"{}\">{}</text>\
+        <text x=\"200\" y=\"55\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>\
         </svg>",
-        theme.bg_color, FONT_FAMILY, theme.text_muted, message
+        theme.bg_color, FONT_FAMILY, FONT_SIZE_DETAIL, theme.text_muted, message
     )
 }
 
@@ -786,16 +874,17 @@ fn svg_title(
         ),
     };
     format!(
-        "<text x=\"{}\" y=\"28\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"18\" font-weight=\"700\" fill=\"{}\">{}</text>\n\
-<text x=\"{}\" y=\"48\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"11\" fill=\"{}\">{}</text>\n",
-        width / 2, FONT_FAMILY, theme.text_primary, escape_xml(title),
-        width / 2, FONT_FAMILY, theme.text_muted, subtitle
+        "<text x=\"{}\" y=\"44\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{}\" font-weight=\"700\" fill=\"{}\">{}</text>\n\
+<text x=\"{}\" y=\"78\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+        width / 2, FONT_FAMILY, FONT_SIZE_TITLE, theme.text_primary, escape_xml(title),
+        width / 2, FONT_FAMILY, FONT_SIZE_SUBTITLE, theme.text_muted, subtitle
     )
 }
 
-/// Legend section
+/// Legend section - spans plot width, items distributed evenly
 fn svg_legend(
-    width: i32,
+    plot_x: i32,
+    plot_width: i32,
     y: i32,
     all_langs: &[Lang],
     baseline_lang: Lang,
@@ -807,26 +896,26 @@ fn svg_legend(
         items.push((lang_color(lang), lang_full_name(lang), baseline_lang == lang));
     }
 
-    let item_width = 130;
-    let total_width = items.len() as i32 * item_width;
-    let start_x = (width - total_width) / 2;
+    let n = items.len().max(1) as i32;
+    let item_width = plot_width / n;
 
-    let mut svg = format!("<g transform=\"translate({},{})\">\n", start_x, y);
+    let mut svg = format!("<g transform=\"translate({},{})\">\n", plot_x, y);
 
     for (i, (color, label, is_baseline)) in items.iter().enumerate() {
         let x = i as i32 * item_width;
         let display_label = if *is_baseline { format!("{} ★", label) } else { label.to_string() };
 
         svg.push_str(&format!(
-            "  <circle cx=\"{}\" cy=\"0\" r=\"4\" fill=\"{}\"/>\n",
-            x + 4,
+            "  <circle cx=\"{}\" cy=\"0\" r=\"5\" fill=\"{}\"/>\n",
+            x + 5,
             color
         ));
 
         svg.push_str(&format!(
-            "  <text x=\"{}\" y=\"4\" font-family=\"{}\" font-size=\"11\" fill=\"{}\">{}</text>\n",
-            x + 14,
+            "  <text x=\"{}\" y=\"5\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+            x + 18,
             FONT_FAMILY,
+            FONT_SIZE_LEGEND,
             theme.text_secondary,
             display_label
         ));
@@ -837,31 +926,86 @@ fn svg_legend(
 }
 
 fn svg_detail_legend(
-    width: i32,
+    plot_x: i32,
+    plot_width: i32,
     y: i32,
-    height: i32,
+    _height: i32,
     summaries: &[LangSummary],
     baseline_lang: Lang,
     mode: OverallMetricMode,
     theme: &ThemeColors,
 ) -> String {
-    let box_x = 40;
-    let box_width = (width - 80).max(220);
     let mut svg = String::new();
 
+    if summaries.is_empty() {
+        return svg;
+    }
+
+    let pad_x = 10;
+    let table_x = plot_x + pad_x;
+    let table_w = (plot_width - pad_x * 2).max(280);
+    let table_h = STATS_HEADER_HEIGHT + summaries.len() as i32 * STATS_ROW_HEIGHT;
+
+    // Column widths: Language | Iterations | Runtime | Speedup
+    let lang_w = table_w * 18 / 100;
+    let iter_w = table_w * 22 / 100;
+    let runtime_w = table_w * 22 / 100;
+    let speedup_w = table_w - lang_w - iter_w - runtime_w;
+    let cols = [lang_w, iter_w, runtime_w, speedup_w];
+    let headers = ["Language", "Iterations", "Runtime", "Speedup"];
+    let header_y = y + STATS_HEADER_HEIGHT;
+
     svg.push_str(&format!(
-        "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
-        box_x,
-        y,
-        box_width,
-        height,
-        theme.detail_box_fill,
+        "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"6\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+        table_x, y, table_w, table_h, theme.detail_box_fill, theme.detail_box_stroke
+    ));
+    svg.push_str(&format!(
+        "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+        table_x,
+        header_y,
+        table_x + table_w,
+        header_y,
         theme.detail_box_stroke
     ));
 
-    let mut text_y = y + 14;
-    for summary in summaries {
-        let lang_name = lang_full_name(summary.lang);
+    let mut col_x = table_x;
+    for (idx, col_w) in cols.iter().enumerate() {
+        if idx < headers.len() {
+            svg.push_str(&format!(
+                "  <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-size=\"{}\" font-weight=\"700\" fill=\"{}\">{}</text>\n",
+                col_x + 8,
+                y + 20,
+                FONT_FAMILY,
+                FONT_SIZE_DETAIL,
+                theme.text_secondary,
+                headers[idx]
+            ));
+        }
+        col_x += *col_w;
+        if idx < cols.len() - 1 {
+            svg.push_str(&format!(
+                "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+                col_x, y, col_x, y + table_h, theme.detail_box_stroke
+            ));
+        }
+    }
+
+    for (idx, summary) in summaries.iter().enumerate() {
+        let row_top = header_y + idx as i32 * STATS_ROW_HEIGHT;
+        if idx % 2 == 1 {
+            svg.push_str(&format!(
+                "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\" fill-opacity=\"0.35\"/>\n",
+                table_x, row_top, table_w, STATS_ROW_HEIGHT, theme.detail_box_fill
+            ));
+        }
+        if idx < summaries.len() - 1 {
+            svg.push_str(&format!(
+                "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+                table_x, row_top + STATS_ROW_HEIGHT, table_x + table_w, row_top + STATS_ROW_HEIGHT,
+                theme.detail_box_stroke
+            ));
+        }
+
         let total = format_duration(summary.total_nanos);
         let iters = format_iterations_short(summary.total_iterations);
         let speedup = format_speedup_phrase(
@@ -870,26 +1014,50 @@ fn svg_detail_legend(
             baseline_lang,
             mode == OverallMetricMode::Memory,
         );
-        let line = match mode {
-            OverallMetricMode::Fixed => {
-                format!("{lang_name}: total {total} · {iters} iter · {speedup}")
-            }
-            OverallMetricMode::Auto | OverallMetricMode::Mixed => {
-                format!("{lang_name}: total {iters} iter · {total} runtime · {speedup}")
-            }
-            OverallMetricMode::Memory => {
-                format!("{lang_name}: total {iters} iter · {total} runtime · {speedup}")
-            }
-        };
+        let lang_name = lang_full_name(summary.lang);
+        let baseline_y = row_top + 20;
+
+        let mut x_cursor = table_x;
         svg.push_str(&format!(
-            "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"10\" fill=\"{}\">{}</text>\n",
-            box_x + (box_width / 2),
-            text_y,
-            FONT_FAMILY,
-            theme.text_muted,
-            escape_xml(&line)
+            "  <circle cx=\"{}\" cy=\"{}\" r=\"4\" fill=\"{}\"/>\n",
+            x_cursor + 9,
+            baseline_y - 3,
+            lang_color(summary.lang)
         ));
-        text_y += 16;
+        svg.push_str(&format!(
+            "  <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-size=\"{}\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
+            x_cursor + 17, baseline_y, FONT_FAMILY, FONT_SIZE_DETAIL, theme.text_primary, lang_name
+        ));
+        x_cursor += cols[0];
+        svg.push_str(&format!(
+            "  <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+            x_cursor + 8,
+            baseline_y,
+            FONT_FAMILY,
+            FONT_SIZE_DETAIL,
+            theme.text_muted,
+            iters
+        ));
+        x_cursor += cols[1];
+        svg.push_str(&format!(
+            "  <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+            x_cursor + 8,
+            baseline_y,
+            FONT_FAMILY,
+            FONT_SIZE_DETAIL,
+            theme.text_muted,
+            total
+        ));
+        x_cursor += cols[2];
+        svg.push_str(&format!(
+            "  <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+            x_cursor + 8,
+            baseline_y,
+            FONT_FAMILY,
+            FONT_SIZE_DETAIL,
+            theme.text_muted,
+            escape_xml(&speedup)
+        ));
     }
 
     svg
@@ -898,94 +1066,136 @@ fn svg_detail_legend(
 fn svg_combined_summary(
     plot_x: i32,
     plot_width: i32,
-    summary_max_width: i32,
+    _summary_max_width: i32,
     y: i32,
-    height: i32,
+    _height: i32,
     summaries: &[LangSummary],
     baseline_lang: Lang,
     mode: OverallMetricMode,
     theme: &ThemeColors,
 ) -> String {
-    let box_width = plot_width.min(summary_max_width).max(300);
-    let box_x = plot_x + (plot_width - box_width) / 2;
     let mut svg = String::new();
-    let row_spacing = 24;
-    let track_height = 15;
-    let max_speedup = summaries.iter().map(|s| s.total_speedup).fold(1.0_f64, f64::max).max(1.0);
+
+    if summaries.is_empty() {
+        return svg;
+    }
+
+    let pad_x = 10;
+    let table_x = plot_x + pad_x;
+    let table_w = (plot_width - pad_x * 2).max(280);
+    let table_h = STATS_HEADER_HEIGHT + summaries.len() as i32 * STATS_ROW_HEIGHT;
+
+    let lang_w = table_w * 18 / 100;
+    let iter_w = table_w * 22 / 100;
+    let runtime_w = table_w * 22 / 100;
+    let speedup_w = table_w - lang_w - iter_w - runtime_w;
+    let cols = [lang_w, iter_w, runtime_w, speedup_w];
+    let headers = ["Language", "Iterations", "Runtime", "Avg Speedup"];
+    let header_y = y + STATS_HEADER_HEIGHT;
 
     svg.push_str(&format!(
-        "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
-        box_x, y, box_width, height, theme.detail_box_fill, theme.detail_box_stroke
+        "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"6\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+        table_x, y, table_w, table_h, theme.detail_box_fill, theme.detail_box_stroke
     ));
-    let gain_label = if mode == OverallMetricMode::Memory {
-        "Average memory reduction across all benchmarks (geometric mean)"
-    } else {
-        "Average gain across all benchmarks (geometric mean)"
-    };
     svg.push_str(&format!(
-        "  <text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"10\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
-        box_x + box_width / 2,
-        y + 14,
-        FONT_FAMILY,
-        theme.text_secondary,
-        gain_label
+        "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+        table_x,
+        header_y,
+        table_x + table_w,
+        header_y,
+        theme.detail_box_stroke
     ));
 
-    let track_x = box_x + 170;
-    let track_width = (box_width - 230).max(120);
-    let baseline_x = track_x + ((track_width as f64) * (1.0 / max_speedup)) as i32;
-
-    for (idx, summary) in summaries.iter().enumerate() {
-        let row_y = y + 26 + (idx as i32 * row_spacing);
-        let speedup = summary.total_speedup.max(0.0);
-        let ratio = (speedup / max_speedup).clamp(0.0, 1.0);
-        let fill_width = ((track_width as f64) * ratio) as i32;
-        let label = if summary.is_baseline {
-            "baseline".to_string()
-        } else if mode == OverallMetricMode::Memory {
-            if speedup >= 1.0 {
-                format!("{:.2}x less memory", speedup)
-            } else {
-                format!("{:.2}x more memory", 1.0 / speedup.max(1e-9))
-            }
-        } else if speedup >= 1.0 {
-            format!("{:.2}x faster", speedup)
-        } else {
-            format!("{:.2}x slower", 1.0 / speedup.max(1e-9))
-        };
-
-        svg.push_str(&format!(
-            "  <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-size=\"10\" fill=\"{}\">{} · {}</text>\n",
-            box_x + 12,
-            row_y + 10,
-            FONT_FAMILY,
-            theme.text_muted,
-            lang_full_name(summary.lang),
-            label
-        ));
-        svg.push_str(&format!(
-            "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"5\" fill=\"{}\"/>\n",
-            track_x, row_y, track_width, track_height, theme.plot_bg
-        ));
-        svg.push_str(&format!(
-            "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"5\" fill=\"{}\"/>\n",
-            track_x,
-            row_y,
-            fill_width.max(4),
-            track_height,
-            lang_color(summary.lang)
-        ));
-
-        if summary.lang != baseline_lang {
+    let mut col_x = table_x;
+    for (idx, col_w) in cols.iter().enumerate() {
+        if idx < headers.len() {
             svg.push_str(&format!(
-                "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-opacity=\"0.65\"/>\n",
-                baseline_x,
-                row_y - 1,
-                baseline_x,
-                row_y + track_height + 1,
-                theme.text_secondary
+                "  <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-size=\"{}\" font-weight=\"700\" fill=\"{}\">{}</text>\n",
+                col_x + 8,
+                y + 20,
+                FONT_FAMILY,
+                FONT_SIZE_DETAIL,
+                theme.text_secondary,
+                headers[idx]
             ));
         }
+        col_x += *col_w;
+        if idx < cols.len() - 1 {
+            svg.push_str(&format!(
+                "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+                col_x, y, col_x, y + table_h, theme.detail_box_stroke
+            ));
+        }
+    }
+
+    for (idx, summary) in summaries.iter().enumerate() {
+        let row_top = header_y + idx as i32 * STATS_ROW_HEIGHT;
+        if idx % 2 == 1 {
+            svg.push_str(&format!(
+                "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\" fill-opacity=\"0.35\"/>\n",
+                table_x, row_top, table_w, STATS_ROW_HEIGHT, theme.detail_box_fill
+            ));
+        }
+        if idx < summaries.len() - 1 {
+            svg.push_str(&format!(
+                "  <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>\n",
+                table_x, row_top + STATS_ROW_HEIGHT, table_x + table_w, row_top + STATS_ROW_HEIGHT,
+                theme.detail_box_stroke
+            ));
+        }
+
+        let total = format_duration(summary.total_nanos);
+        let iters = format_iterations_short(summary.total_iterations);
+        let speedup = format_speedup_phrase(
+            summary.total_speedup,
+            summary.is_baseline,
+            baseline_lang,
+            mode == OverallMetricMode::Memory,
+        );
+        let lang_name = lang_full_name(summary.lang);
+        let baseline_y = row_top + 20;
+
+        let mut x_cursor = table_x;
+        svg.push_str(&format!(
+            "  <circle cx=\"{}\" cy=\"{}\" r=\"4\" fill=\"{}\"/>\n",
+            x_cursor + 9,
+            baseline_y - 3,
+            lang_color(summary.lang)
+        ));
+        svg.push_str(&format!(
+            "  <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-size=\"{}\" font-weight=\"600\" fill=\"{}\">{}</text>\n",
+            x_cursor + 17, baseline_y, FONT_FAMILY, FONT_SIZE_DETAIL, theme.text_primary, lang_name
+        ));
+        x_cursor += cols[0];
+        svg.push_str(&format!(
+            "  <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+            x_cursor + 8,
+            baseline_y,
+            FONT_FAMILY,
+            FONT_SIZE_DETAIL,
+            theme.text_muted,
+            iters
+        ));
+        x_cursor += cols[1];
+        svg.push_str(&format!(
+            "  <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+            x_cursor + 8,
+            baseline_y,
+            FONT_FAMILY,
+            FONT_SIZE_DETAIL,
+            theme.text_muted,
+            total
+        ));
+        x_cursor += cols[2];
+        svg.push_str(&format!(
+            "  <text x=\"{}\" y=\"{}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+            x_cursor + 8,
+            baseline_y,
+            FONT_FAMILY,
+            FONT_SIZE_DETAIL,
+            theme.text_muted,
+            escape_xml(&speedup)
+        ));
     }
 
     svg
