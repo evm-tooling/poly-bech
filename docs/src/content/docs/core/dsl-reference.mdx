@@ -25,8 +25,8 @@ globalSetup {
     anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
 }
 
-# One or more suites
-suite mySuite {
+# One or more suites (declare suite is required)
+declare suite mySuite performance timeBased sameDataset: true {
     # Suite configuration, setup blocks, fixtures, benchmarks
 }`
     },
@@ -46,7 +46,7 @@ Comments begin with `#` and extend to the end of the line. They can appear anywh
       language: "bench",
       code: `# This is a full-line comment
 
-suite example {
+declare suite example performance timeBased sameDataset: true {
     warmup: 100  # Inline comment after a value
 
     bench myBench {
@@ -66,7 +66,7 @@ Import standard library modules at the top of your file before any other blocks.
     {
       title: "Imports",
       language: "bench",
-      code: `use std::charting   # Chart generation
+      code: `use std::charting   # Chart generation  # [!code focus:3]
 use std::anvil      # Ethereum node spawning
 use std::constants  # Mathematical constants`
     },
@@ -89,15 +89,15 @@ The `globalSetup` block runs once before all benchmarks in the file. It is the c
       code: `use std::anvil
 
 globalSetup {
-    anvil.spawnAnvil()                           # Local node, no fork
+    anvil.spawnAnvil()                           # Local node, no fork  # [!code focus:2]
     anvil.spawnAnvil(fork: "https://rpc.url")    # Fork from an RPC endpoint
 }`
     },
     {
       title: "Suite-level",
       language: "bench",
-      code: `suite evmBench {
-    globalSetup {
+      code: `declare suite evmBench performance timeBased sameDataset: true {
+    globalSetup {  # [!code focus:3]
         anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
     }
 
@@ -141,7 +141,7 @@ A suite groups related benchmarks with shared configuration, setup code, fixture
 
     # ── Comparison ────────────────────────────────────
     compare: true             # Show comparison table in output
-    baseline: "go"            # Language for speedup ratios ("go", "ts", "rust")
+    baseline: "go"            # Language for speedup ratios ("go", "ts", "rust", "python", "c", "csharp", "zig")
 
     # ── Observability ─────────────────────────────────
     concurrency: 1            # Parallel workers per benchmark
@@ -159,6 +159,10 @@ A suite groups related benchmarks with shared configuration, setup code, fixture
     setup go { ... }
     setup ts { ... }
     setup rust { ... }
+    setup python { ... }
+    setup c { ... }
+    setup csharp { ... }
+    setup zig { ... }
     fixture myData { ... }
     bench myBench { ... }
     after { ... }
@@ -184,7 +188,7 @@ A suite groups related benchmarks with shared configuration, setup code, fixture
 | `cvThreshold` | number | `5.0` | Target coefficient of variation (%) |
 | `outlierDetection` | boolean | `true` | IQR-based outlier removal |
 | `compare` | boolean | `false` | Show cross-language comparison table |
-| `baseline` | string | — | Language for speedup ratios (`"go"`, `"ts"`, `"rust"`) |
+| `baseline` | string | — | Language for speedup ratios (`"go"`, `"ts"`, `"rust"`, `"python"`, `"c"`, `"csharp"`, `"zig"`) |
 | `concurrency` | number | `1` | Parallel workers per benchmark |
 | `sink` | boolean | `true` | Prevent dead-code elimination via black-box sink |
 | `order` | identifier | `sequential` | `sequential`, `parallel`, or `random` |
@@ -193,6 +197,10 @@ A suite groups related benchmarks with shared configuration, setup code, fixture
 
 <Aside type="tip">
 <span>Use <code>timeBased</code> in the suite declaration for most suites. It calibrates runtime via <code>targetTime</code> and avoids per-benchmark mode drift.</span>
+</Aside>
+
+<Aside type="caution">
+<span>The property <code>mode</code> is deprecated and rejected. Use <code>declare suite</code> with <code>runMode</code> (<code>timeBased</code> or <code>iterationBased</code>) in the header instead.</span>
 </Aside>
 
 ### Duration Syntax
@@ -210,7 +218,7 @@ Duration values can be specified with a unit suffix. Plain numbers are treated a
     {
       title: "Examples",
       language: "bench",
-      code: `suite timing {
+      code: `declare suite timing performance timeBased sameDataset: true {
     targetTime: 3000ms   # 3 seconds
     targetTime: 3s       # same as above
     timeout: 1m          # 1 minute
@@ -224,7 +232,7 @@ Duration values can be specified with a unit suffix. Plain numbers are treated a
 
 ### `setup <lang>` Blocks
 
-Setup blocks define language-specific imports, package-level declarations, one-time initialization, and helper functions. Supported language keywords: `go`, `ts` (or `typescript`), `rust`.
+Setup blocks define language-specific imports, package-level declarations, one-time initialization, and helper functions. Supported language keywords: `go`, `ts` (or `typescript`), `rust`, `python`, `c`, `csharp`, `zig`.
 
 All four sub-sections are optional and can appear in any order.
 
@@ -359,7 +367,7 @@ Provide binary data as a hex-encoded string. The bytes are decoded and passed to
       title: "Inline hex",
       language: "bench",
       code: `fixture shortData {
-    hex: "68656c6c6f20776f726c64"   # "hello world" in UTF-8
+    hex: "68656c6c6f20776f726c64"   # "hello world" in UTF-8  # [!code focus:1]
 }
 
 # In bench blocks:
@@ -380,7 +388,7 @@ Load hex data from an external file using `@file(...)`. The path is relative to 
       title: "@file reference",
       language: "bench",
       code: `fixture largePayload {
-    hex: @file("fixtures/sort/sort_1000.hex")
+    hex: @file("fixtures/sort/sort_1000.hex")  # [!code focus:1]
 }
 
 fixture abiData {
@@ -405,7 +413,7 @@ Use `data` for non-hex external samples. `encoding` controls byte decoding.
       language: "bench",
       code: `fixture packetRaw {
     data: @file("fixtures/net/packet.bin")
-    encoding: raw
+    encoding: raw  # [!code focus:1]
 }
 
 fixture payloadUtf8 {
@@ -432,7 +440,7 @@ Structured inputs are normalized at compile time to deterministic bytes.
       language: "bench",
       code: `fixture requestId {
     data: @file("fixtures/requests.json")
-    format: json
+    format: json  # [!code focus:2]
     selector: "$.items[0].id"
 }
 
@@ -580,7 +588,7 @@ Language implementations can be a single inline expression or a multi-line block
       title: "Inline expression",
       language: "bench",
       code: `bench hashShort {
-    go: sha256Sum(data)
+    go: sha256Sum(data)  # [!code focus:3]
     ts: sha256Sum(data)
     rust: sha256_sum(&data)
 }`
@@ -589,7 +597,7 @@ Language implementations can be a single inline expression or a multi-line block
       title: "Block form",
       language: "bench",
       code: `bench complexOp {
-    go: {
+    go: {  # [!code focus:4]
         result := processData(data)
         _ = result
     }
@@ -606,7 +614,7 @@ Language implementations can be a single inline expression or a multi-line block
     {
       title: "Async TypeScript",
       language: "bench",
-      code: `benchAsync fetchBlock {
+      code: `benchAsync fetchBlock {  # [!code focus:3]
     go: getBlockNumber()
     ts: await getBlockNumber()   # one awaited operation per iteration
 }`
@@ -1024,7 +1032,8 @@ When `baseline: "go"` (or another language) is set, every benchmark must impleme
 
 ### Further Reading
 
+- [Features](/docs/features) — Per-feature reference (suites, setup, benchmarks, fixtures, globalSetup)
 - [Standard Library](/docs/core/standard-library) — Module reference for `std::anvil`, `std::charting`, `std::constants`
-- [Examples](/docs/examples) — Real-world benchmark patterns
+- [Benchmark Features](/docs/examples) — Fixtures, hooks, globalSetup, charting in practice
 - [CLI Reference](/docs/tools/cli) — Command-line options
 - [Architecture](/docs/core/architecture) — How the DSL compiles to native code

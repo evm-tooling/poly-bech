@@ -1,0 +1,310 @@
+---
+title: Benchmarks
+description: Bench blocks, language implementations, lifecycle hooks, overrides, and benchAsync
+---
+
+Bench blocks define the operations to measure. Each benchmark has per-language implementations — one expression or block per language — and can override suite-level settings, use lifecycle hooks, and optionally validate results.
+
+---
+
+## Basic Structure
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Basic",
+      language: "bench",
+      code: `bench <name> {
+    go: helperFunc(data)  # [!code focus:3]
+    ts: helperFunc(data)
+    rust: helper_func(&data)
+}`
+    },
+  ]}
+/>
+
+Only languages that have both a setup block and an implementation line in the bench block are executed. You can define benchmarks for a subset of languages and omit the rest.
+
+<Aside type="note">
+<span>Only languages with both a setup block and an implementation in the bench block are executed.</span>
+</Aside>
+
+---
+
+## Language Implementations
+
+You can write each language implementation as a single inline expression or as a multi-line block when you need multiple statements.
+
+### Inline expression
+
+For simple operations, a single expression per language is enough:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Inline",
+      language: "bench",
+      code: `bench hashShort {
+    go: keccak256Go(data)  # [!code focus:3]
+    ts: keccak256Ts(data)
+    rust: keccak256_rust(&data)
+}`
+    },
+  ]}
+/>
+
+### Block form
+
+When you need multiple statements, use a block:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Block",
+      language: "bench",
+      code: `bench complexOp {
+    go: {  # [!code focus:4]
+        result := processData(data)
+        _ = result
+    }
+    ts: {
+        const result = processData(data)
+        void result
+    }
+    rust: {
+        let result = process_data(&data);
+        let _ = result;
+    }
+}`
+    },
+  ]}
+/>
+
+<Aside type="note">
+<span>Rust benchmarks almost always need <code>&</code> when passing fixtures to functions that take <code>&[u8]</code>.</span>
+</Aside>
+
+---
+
+## Partial Language Coverage
+
+You can benchmark a subset of languages. Only languages that have both a setup block and an implementation line in the bench block will run; others are skipped.
+
+<Aside type="tip">
+<span>You can benchmark a subset of languages; omit languages you don't need.</span>
+</Aside>
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Go + TypeScript only",
+      language: "bench",
+      code: `setup go { ... }
+setup ts { ... }
+# No setup rust block
+
+bench operation {
+    go: doSomething()  # [!code focus:2]
+    ts: doSomething()
+    # No rust: line — Rust is skipped
+}`
+    },
+  ]}
+/>
+
+---
+
+## Bench-level Overrides
+
+Bench properties inherit from the suite when omitted. You can override them per benchmark when a specific bench needs different settings:
+
+| Property | Description |
+|----------|-------------|
+| `iterations` | Fixed iteration count (when `iterationBased`) |
+| `warmup` | Warmup iterations |
+| `targetTime` | Target time (when `timeBased`) |
+| `timeout` | Per-benchmark timeout |
+| `count` | Number of timed runs |
+| `cvThreshold` | Coefficient of variation target (%) |
+| `outlierDetection` | IQR-based outlier removal |
+| `sink` | Black-box sink |
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Overrides",
+      language: "bench",
+      code: `bench expensiveOp {
+    description: "Heavy computation"
+    warmup: 500
+    targetTime: 5000ms
+    count: 3
+
+    go: heavyCompute(data)
+    ts: heavyCompute(data)
+    rust: heavy_compute(&data)
+}`
+    },
+  ]}
+/>
+
+---
+
+## Lifecycle Hooks
+
+Hooks run at specific points in the benchmark lifecycle. They are defined per language on individual bench blocks.
+
+| Hook | When it runs |
+|------|--------------|
+| `before <lang>` | Once before the timed loop starts |
+| `each <lang>` | Before each iteration, outside the timing window |
+| `after <lang>` | Once after the timed loop ends |
+
+Use before for setup that should not be timed. Use each to reset mutable state between iterations. Use after for teardown or inspection. You can write hooks in flat syntax (one line per language) or grouped syntax (all languages under a single before/each/after block).
+
+### Flat syntax
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Flat",
+      language: "bench",
+      code: `bench withHooks {
+    before go: resetCounter()
+    before ts: resetCounter()
+
+    each go: prepareIteration()
+    each ts: prepareIteration()
+
+    go: runBenchmark()
+    ts: runBenchmark()
+
+    after go: { _ = counter }
+    after ts: { void counter }
+}`
+    },
+  ]}
+/>
+
+### Grouped syntax
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Grouped",
+      language: "bench",
+      code: `bench withHooks {
+    before: {
+        go: resetCounter()
+        ts: resetCounter()
+    }
+
+    each: {
+        go: prepareIteration()
+        ts: prepareIteration()
+    }
+
+    go: runBenchmark()
+    ts: runBenchmark()
+
+    after: {
+        go: { _ = counter }
+        ts: { void counter }
+    }
+}`
+    },
+  ]}
+/>
+
+<Aside type="tip">
+<span>Hook bodies can be an inline expression (e.g. <code>before go: resetState()</code>) or a multi-line block (e.g. <code>after go: &#123; _ = x &#125;</code>).</span>
+</Aside>
+
+---
+
+## Other Fields
+
+Bench blocks support a few additional fields for metadata and control:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `description` | string | Human-readable description |
+| `tags` | string[] | Tags for filtering/grouping |
+| `skip` | per-lang bool | Skip this benchmark for specific languages |
+| `validate` | per-lang expr | Validate the return value |
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "skip and validate",
+      language: "bench",
+      code: `bench hashWithValidation {
+    description: "Keccak256 with output check"
+    tags: ["crypto", "hash"]
+
+    skip: { go: false  ts: false  rust: true }   # Skip Rust for this benchmark  # [!code focus]
+    go: keccak256(data)
+    ts: keccak256(data)
+
+    validate: { go: len(result) == 32  ts: result.length === 32 }  # [!code focus]
+}`
+    },
+  ]}
+/>
+
+---
+
+## benchAsync
+
+For async operations such as RPC calls, use benchAsync instead of bench. It uses async-sequential semantics: one awaited completion per iteration.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "benchAsync",
+      language: "bench",
+      code: `benchAsync fetchBlock {  # [!code focus:4]
+    description: "Fetch block number from RPC"
+    targetTime: 5000ms
+
+    go: getBlockNumber()
+    ts: await getBlockNumber()
+}`
+    },
+  ]}
+/>
+
+<Aside type="note">
+<span><code>benchAsync</code> applies internal caps: warmup ≤ 5, samples ≤ 50. Async implementations should fail fast on errors (throw/panic) rather than returning error values.</span>
+</Aside>
+
+---
+
+## Complete Example
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Full bench",
+      language: "bench",
+      code: `bench keccak256Bench {
+    description: "Keccak-256 hash"
+    tags: ["crypto"]
+    warmup: 100
+    targetTime: 1000ms
+
+    before go: { _ = data }
+    before ts: { void data }
+
+    go: keccak256Go(data)
+    ts: keccak256Ts(data)
+    rust: keccak256_rust(&data)
+
+    after go: { _ = 0 }
+    after ts: { void 0 }
+
+    validate: { go: len(result) == 32  ts: result.length === 32  rust: result.len() == 32 }
+}`
+    },
+  ]}
+/>

@@ -13,6 +13,7 @@ const benchKeywords = [
   'setup',
   'fixture',
   'bench',
+  'benchAsync',
   'globalSetup',
   // Setup sections
   'import',
@@ -44,6 +45,9 @@ const benchProperties = [
   'cvThreshold',
   'count',
   'memory',
+  'sameDataset',
+  'fairness',
+  'fairnessSeed',
   // Fixture + hooks
   'hex',
   'shape',
@@ -64,6 +68,9 @@ const benchProperties = [
   'includeBenchmarks',
   'excludeBenchmarks',
   'fork',
+  'yScale',
+  'showStdDev',
+  'showRegression',
 ]
 
 const benchValues = [
@@ -76,9 +83,25 @@ const benchValues = [
   'light',
   'asc',
   'desc',
+  'timeBased',
+  'iterationBased',
+  'performance',
+  'memory',
+  'strict',
+  'legacy',
 ]
 
-const languageTags = ['go', 'ts', 'typescript', 'rust', 'python', 'py']
+const languageTags = [
+  'go',
+  'ts',
+  'typescript',
+  'rust',
+  'python',
+  'py',
+  'c',
+  'csharp',
+  'zig',
+]
 
 // Fallback keyword set for embedded code blocks inside bench files.
 // This does not fully parse each language, but it provides good visual coverage.
@@ -274,7 +297,8 @@ Prism.languages.bench = {
   },
 
   function: {
-    pattern: /\b(?:spawnAnvil|stopAnvil|drawTable|drawSpeedupChart)\b(?=\s*\()/,
+    pattern:
+      /\b(?:spawnAnvil|stopAnvil|drawTable|drawSpeedupChart|drawLineChart)\b(?=\s*\()/,
     greedy: true,
   },
 

@@ -69,7 +69,7 @@ After `poly-bench init`, the project looks like this:
     {
       title: "Terminal",
       language: "bash",
-      code: `poly-bench run benchmarks/keccak.bench`
+      code: `poly-bench run benchmarks/keccak.bench  # [!code focus]`
     },
   ]}
 />
@@ -81,7 +81,7 @@ After `poly-bench init`, the project looks like this:
     {
       title: "Terminal",
       language: "bash",
-      code: `poly-bench run`
+      code: `poly-bench run  # [!code focus]`
     },
   ]}
 />
@@ -124,7 +124,7 @@ Run only the languages you care about. Useful during development when you're ite
 poly-bench run benchmarks/keccak.bench
 
 # Run only Go
-poly-bench run benchmarks/keccak.bench --lang go
+poly-bench run benchmarks/keccak.bench --lang go  # [!code focus:2]
 
 # Run only TypeScript
 poly-bench run benchmarks/keccak.bench --lang ts
@@ -157,7 +157,7 @@ Override the iteration count to run a fast sanity check without waiting for full
       title: "Terminal",
       language: "bash",
       code: `# Run exactly 100 iterations per benchmark (fast smoke test)
-poly-bench run benchmarks/keccak.bench --iterations 100
+poly-bench run benchmarks/keccak.bench --iterations 100  # [!code focus:1]
 
 # Combine with language filter for maximum speed
 poly-bench run benchmarks/keccak.bench --iterations 100 --lang go`
@@ -227,7 +227,7 @@ poly-bench fmt benchmarks/keccak.bench
 poly-bench fmt
 
 # Write formatted output back to file(s)
-poly-bench fmt benchmarks/keccak.bench --write
+poly-bench fmt benchmarks/keccak.bench --write  # [!code focus:2]
 poly-bench fmt --write`
     },
   ]}
@@ -276,6 +276,10 @@ Generated files:
 - Go: `generated/benchmark_plugin.go`
 - TypeScript: `generated/benchmark.ts`
 - Rust: `generated/main.rs`
+
+<Aside type="note">
+<span><code>codegen</code> supports only Go, TypeScript, and Rust. Python, C, C#, and Zig do not emit standalone harness files.</span>
+</Aside>
 
 <Aside type="note">
 <span>Generated code is a complete, standalone benchmark program. You can compile and run it directly to verify correctness before running through poly-bench.</span>
@@ -459,7 +463,7 @@ jobs:
 | Fast smoke test | `poly-bench run bench.bench --iterations 100 --lang go` |
 | Full run with all outputs | `poly-bench run bench.bench --report markdown --output results/` then `poly-bench run bench.bench --report json --output results/` |
 | Format benchmark files | `poly-bench fmt --write` |
-| CI validation | `poly-bench check benchmarks/*.bench` |
+| CI validation | `for f in benchmarks/*.bench; do poly-bench check "$f"; done` |
 | Compile-check before running | `poly-bench compile bench.bench --lang go` |
 | Inspect generated Go code | `poly-bench codegen bench.bench --lang go --output gen/` |
 | Run with reduced logs | `poly-bench run bench.bench --quiet` |
@@ -471,4 +475,4 @@ jobs:
 
 - [CLI Reference](/docs/tools/cli) — Full flag and option reference for every command
 - [Getting Started](/docs/getting-started) — Step-by-step first benchmark walkthrough
-- [Reporting](/docs/reporting) — Output formats, chart generation, and CI integration details
+- [Reporting](/docs/getting-started#reporting) — Output formats, chart generation, and CI integration (in Getting Started)

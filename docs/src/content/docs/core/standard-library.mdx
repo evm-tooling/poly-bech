@@ -91,11 +91,10 @@ globalSetup {
     anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
 }
 
-suite evmBench {
+declare suite evmBench performance timeBased sameDataset: true {
     description: "EVM RPC benchmarks against a forked mainnet node"
     compare: true
     baseline: "go"
-    mode: "auto"
     targetTime: 10000ms
     cvThreshold: 10
 
@@ -170,7 +169,7 @@ The `charting` module generates SVG output from benchmark results. Chart directi
       language: "bench",
       code: `use std::charting
 
-suite example {
+declare suite example performance timeBased sameDataset: true {
     # ... setup, fixtures, benchmarks ...
 
     after {
@@ -227,8 +226,6 @@ Generates an SVG summary table for benchmark results.
 | `output` | string | — | Output filename (e.g. `"results.svg"`) |
 | `width` | integer | — | Chart width in pixels |
 | `height` | integer | — | Chart height in pixels |
-| `width` | integer | — | Output width in pixels |
-| `height` | integer | — | Output height in pixels |
 
 **Display Toggles**
 
@@ -245,7 +242,7 @@ Generates an SVG summary table for benchmark results.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `minSpeedup` | float | — | Only include benchmarks where the fastest language is at least this much faster than the slowest |
-| `filterWinner` | string | `"all"` | Only include benchmarks won by this language (`"go"`, `"ts"`, `"rust"`, or `"all"`) |
+| `filterWinner` | string | `"all"` | Only include benchmarks won by this language (`"go"`, `"ts"`, `"rust"`, `"python"`, `"c"`, `"csharp"`, `"zig"`, or `"all"`) |
 | `includeBenchmarks` | string[] | — | Whitelist of benchmark names to include |
 | `excludeBenchmarks` | string[] | — | Blacklist of benchmark names to exclude |
 | `limit` | integer | — | Maximum number of benchmarks to display |
@@ -333,7 +330,7 @@ You can generate any number of charts in a single `after` block. Each call produ
       language: "bench",
       code: `use std::charting
 
-suite comprehensive {
+declare suite comprehensive performance timeBased sameDataset: true {
     # ... benchmarks ...
 
     after {
@@ -379,7 +376,7 @@ The `constants` module provides common mathematical constants for use in benchma
       language: "bench",
       code: `use std::constants
 
-suite mathBenchmarks {
+declare suite mathBenchmarks performance timeBased sameDataset: true {
     setup go {
         helpers {
             func circleArea(radius float64) float64 {
@@ -436,5 +433,5 @@ suite mathBenchmarks {
 ### Further Reading
 
 - [DSL Reference](/docs/core/dsl-reference) — Complete `.bench` file syntax
-- [Examples](/docs/examples) — Real-world benchmark patterns
+- [Benchmark Features](/docs/examples) — Fixtures, hooks, globalSetup, charting
 - [CLI Reference](/docs/tools/cli) — Command-line options

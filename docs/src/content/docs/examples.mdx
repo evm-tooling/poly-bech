@@ -1,52 +1,150 @@
 ---
-title: Examples
-description: Real-world benchmark examples showing poly-bench patterns and best practices
+title: Benchmark Features
+description: Advanced benchmark features — fixtures, lifecycle hooks, globalSetup, and charting
 ---
 
+<div data-pagefind-weight="10">
 
-### Basic Example
+Once you've created your first benchmark with [Getting Started](/docs/getting-started), you can use these features to build more powerful and flexible benchmarks. This page covers fixtures, lifecycle hooks, global setup, and suite-level charting.
 
-A minimal benchmark suite comparing a single operation across Go, TypeScript, and Rust. This is the starting point for most benchmarks.
+</div>
+
+---
+
+## Fixtures
+
+Fixtures define shared test data passed to every language implementation. They ensure all languages operate on identical input.
+
+### Inline hex
+
+Use `hex:` for small, fixed test vectors. The bytes are decoded and passed to each language as its native byte array type.
 
 <CodeGroup 
   tabs={[
     {
-      title: "basic.bench",
+      title: "Inline hex",
       language: "bench",
-      code: `suite basic {
-    description: "Basic benchmark example"
-    warmup: 100
-    compare: true
-    baseline: "go"
+      code: `fixture shortData {
+    hex: "68656c6c6f20776f726c64"   # "hello world" in UTF-8  # [!code focus:1]
+}
 
-    setup go {
-        helpers {
-            func add(a, b int) int {
-                return a + b
-            }
-        }
+bench hashShort {
+    go: keccak256Go(shortData)
+    ts: keccak256Ts(shortData)
+    rust: keccak256_rust(&shortData)
+}`
+    },
+  ]}
+/>
+
+### File-referenced hex
+
+For larger payloads, load hex from an external file. The path is relative to the `.bench` file.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "@file reference",
+      language: "bench",
+      code: `fixture largePayload {
+    hex: @file("fixtures/sort/sort_1000.hex")  # [!code focus:1]
+}
+
+bench sortLarge {
+    go: bubbleGo(largePayload)
+    ts: bubbleTs(largePayload)
+    rust: bubble_rust(&largePayload)
+}`
+    },
+  ]}
+/>
+
+<Aside type="tip">
+<span>Keep fixture files in a <code>fixtures/</code> subdirectory next to your <code>.bench</code> files. Organize by benchmark type (e.g. <code>fixtures/sort/</code>, <code>fixtures/keccak/</code>).</span>
+</Aside>
+
+### Data with encoding
+
+Use `data` for non-hex external samples. `encoding` controls byte decoding.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Raw / UTF-8 / Base64",
+      language: "bench",
+      code: `fixture packetRaw {
+    data: @file("fixtures/net/packet.bin")
+    encoding: raw
+}
+
+fixture payloadUtf8 {
+    data: "hello world"
+    encoding: utf8
+}
+
+fixture payloadB64 {
+    data: "aGVsbG8gd29ybGQ="
+    encoding: base64
+}`
+    },
+  ]}
+/>
+
+See the [Fixtures Guide](/docs/guides/fixtures) for structured extraction (`format` + `selector`), JSON/CSV support, and more.
+
+---
+
+## Lifecycle Hooks (per‑benchmark)
+
+Hooks run at specific points in the benchmark lifecycle. They are defined **per-language** on individual `bench` blocks, not at the suite level.
+
+| Hook | When it runs |
+|------|--------------|
+| `before <lang>` | Once before the timed loop starts for that language |
+| `each <lang>` | Before each iteration, outside the timing window |
+| `after <lang>` | Once after the timed loop ends for that language |
+
+Use `before` for setup that should not be included in timing. Use `each` to reset mutable state between iterations. Use `after` for teardown or inspection.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Flat syntax",
+      language: "bench",
+      code: `bench withHooks {
+    before go: resetCounter()  # [!code focus:2]
+    before ts: resetCounter()
+
+    each go: prepareIteration()
+    each ts: prepareIteration()
+
+    go: runBenchmark()
+    ts: runBenchmark()
+
+    after go: { _ = counter }
+    after ts: { void counter }
+}`
+    },
+    {
+      title: "Grouped syntax",
+      language: "bench",
+      code: `bench withHooks {
+    before: {
+        go: resetCounter()
+        ts: resetCounter()
     }
 
-    setup ts {
-        helpers {
-            function add(a: number, b: number): number {
-                return a + b
-            }
-        }
+    each: {
+        go: prepareIteration()
+        ts: prepareIteration()
     }
 
-    setup rust {
-        helpers {
-            fn add(a: i32, b: i32) -> i32 {
-                a + b
-            }
-        }
-    }
+    go: runBenchmark()
+    ts: runBenchmark()
 
-    bench addition {
-        go: add(1, 2)
-        ts: add(1, 2)
-        rust: add(1, 2)
+    after: {
+        go: { _ = counter }
+        ts: { void counter }
     }
 }`
     },
@@ -54,626 +152,95 @@ A minimal benchmark suite comparing a single operation across Go, TypeScript, an
 />
 
 <Aside type="tip">
-<span>Start with <code>compare: true</code> and <code>baseline</code> to see relative performance. This makes it easy to understand which implementation is faster at a glance.</span>
+<span>Hook bodies can be either an inline expression (e.g. <code>before go: resetState()</code>) or a multi-line block (e.g. <code>after go: &#123; _ = x &#125;</code>).</span>
 </Aside>
 
+---
 
-### Keccak256 Benchmark
+## globalSetup
 
-A real-world cryptographic benchmark comparing Keccak256 implementations. This pattern is common when evaluating crypto libraries across languages.
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "keccak.bench",
-      language: "bench",
-      code: `use std::charting
-
-suite keccak {
-    description: "Keccak256 hash benchmark"
-    warmup: 100
-    compare: true
-    baseline: "go"
-    mode: "auto"
-    targetTime: 3000ms
-    count: 3
-
-    setup go {
-        import (
-            "golang.org/x/crypto/sha3"
-        )
-
-        helpers {
-            func keccak256Go(data []byte) []byte {
-                h := sha3.NewLegacyKeccak256()
-                h.Write(data)
-                return h.Sum(nil)
-            }
-        }
-    }
-
-    setup ts {
-        import {
-            import { keccak256 } from 'viem'
-        }
-
-        helpers {
-            function keccak256Ts(data: Uint8Array): Uint8Array {
-                return keccak256(data, 'bytes')
-            }
-        }
-    }
-
-    setup rust {
-        import {
-            use tiny_keccak::{Hasher, Keccak};
-        }
-
-        helpers {
-            fn keccak256_rust(data: &[u8]) -> [u8; 32] {
-                let mut hasher = Keccak::v256();
-                let mut output = [0u8; 32];
-                hasher.update(data);
-                hasher.finalize(&mut output);
-                output
-            }
-        }
-    }
-
-    fixture data {
-        hex: "68656c6c6f20776f726c64"
-    }
-
-    bench keccak256Bench {
-        go: keccak256Go(data)
-        ts: keccak256Ts(data)
-        rust: keccak256_rust(&data)
-    }
-
-    after {
-        charting.drawTable(
-            title: "Keccak256 Performance",
-            output: "keccak-bar.svg",
-            xlabel: "Implementation"
-        )
-    }
-}`
-    },
-  ]}
-/>
-
-
-### Multiple Benchmarks in a Suite
-
-Group related benchmarks together to share setup code. This is useful for comparing different input sizes or variations of an algorithm.
+The `globalSetup` block runs once before all benchmarks in the file. It is the correct place to spawn long-lived services like an Anvil node for Ethereum RPC benchmarks.
 
 <CodeGroup 
   tabs={[
     {
-      title: "hash-suite.bench",
-      language: "bench",
-      code: `suite hashBenchmarks {
-    description: "Hash function benchmarks with varying input sizes"
-    warmup: 50
-    compare: true
-    baseline: "go"
-    mode: "auto"
-    targetTime: 2000ms
-
-    setup go {
-        import (
-            "golang.org/x/crypto/sha3"
-        )
-
-        helpers {
-            func keccak256(data []byte) []byte {
-                h := sha3.NewLegacyKeccak256()
-                h.Write(data)
-                return h.Sum(nil)
-            }
-        }
-    }
-
-    setup ts {
-        import {
-            import { keccak256 } from 'viem'
-        }
-    }
-
-    setup rust {
-        import {
-            use tiny_keccak::{Hasher, Keccak};
-        }
-
-        helpers {
-            fn keccak256(data: &[u8]) -> [u8; 32] {
-                let mut hasher = Keccak::v256();
-                let mut output = [0u8; 32];
-                hasher.update(data);
-                hasher.finalize(&mut output);
-                output
-            }
-        }
-    }
-
-    # Small input (32 bytes)
-    fixture smallData {
-        hex: "68656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f726c64"
-    }
-
-    # Medium input (256 bytes)
-    fixture mediumData {
-        hex: "68656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f726c64"
-    }
-
-    bench hashSmall {
-        go: keccak256(smallData)
-        ts: keccak256(smallData)
-        rust: keccak256(&smallData)
-    }
-
-    bench hashMedium {
-        go: keccak256(mediumData)
-        ts: keccak256(mediumData)
-        rust: keccak256(&mediumData)
-    }
-}`
-    },
-  ]}
-/>
-
-<Aside type="note">
-<span>Fixtures are shared across all benchmarks in a suite. Define them once and use them in multiple <code>bench</code> blocks.</span>
-</Aside>
-
-
-### Using std::anvil for Ethereum Benchmarks
-
-The `std::anvil` module spawns a local Anvil node for Ethereum RPC benchmarks. This is useful for comparing blockchain client libraries.
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "rpc.bench",
+      title: "File-level",
       language: "bench",
       code: `use std::anvil
 
-suite rpcBenchmarks {
-    description: "Ethereum RPC benchmarks against local Anvil"
-    warmup: 10
-    compare: true
-    baseline: "go"
-    mode: "auto"
-    targetTime: 5000ms
+globalSetup {
+    anvil.spawnAnvil()                           # Local node, no fork
+    anvil.spawnAnvil(fork: "https://rpc.url")    # Fork from an RPC endpoint
+}
 
+suite evmBench {
+    # ... setup, fixtures, benchmarks ...
+}`
+    },
+    {
+      title: "Suite-level",
+      language: "bench",
+      code: `suite evmBench {
     globalSetup {
         anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
     }
 
-    setup go {
-        import (
-            "context"
-            "github.com/ethereum/go-ethereum/ethclient"
-        )
-
-        declare {
-            var client *ethclient.Client
-            var ctx context.Context
-        }
-
-        init {
-            ctx = context.Background()
-            client, _ = ethclient.Dial(os.Getenv("ANVIL_RPC_URL"))
-        }
-
-        helpers {
-            func getBlockNumber() uint64 {
-                num, _ := client.BlockNumber(ctx)
-                return num
-            }
-        }
-    }
-
-    setup ts {
-        import {
-            import { createPublicClient, http } from 'viem'
-            import { mainnet } from 'viem/chains'
-        }
-
-        declare {
-            let client: any
-        }
-
-        init {
-            client = createPublicClient({
-                chain: mainnet,
-                transport: http(ANVIL_RPC_URL),
-            })
-        }
-
-        helpers {
-            async function getBlockNumber(): Promise<bigint> {
-                return await client.getBlockNumber()
-            }
-        }
-    }
-
-    benchAsync getBlockNumber {
-        go: getBlockNumber()
-        ts: await getBlockNumber()
-    }
+    # ... setup, fixtures, benchmarks ...
 }`
     },
   ]}
 />
-
-<Aside type="tip">
-<span>The <code>ANVIL_RPC_URL</code> value is available after calling <code>anvil.spawnAnvil()</code> (injected directly for TypeScript and available via env var for Go/Rust).</span>
-</Aside>
 
 <Aside type="note">
-<span>Use <code>benchAsync</code> for async operations. It runs in async-sequential mode (one awaited call per iteration), applies internal caps (<code>warmup &lt;= 5</code>, <code>samples &lt;= 50</code>), and expects implementations to fail fast on operation errors (throw/panic) instead of returning error values.</span>
+<span>When <code>anvil.spawnAnvil()</code> is called, <code>ANVIL_RPC_URL</code> is injected into TypeScript and available via env var for Go/Rust.</span>
 </Aside>
 
+See the [Anvil & EVM Guide](/docs/guides/anvil) for full walkthrough.
 
-### ABI Encoding Comparison
+---
 
-Compare ABI encoding performance across different libraries. This is a common benchmark for Ethereum developer tooling.
+## Suite-level `after` Block
+
+The suite-level `after` block runs after all benchmarks complete. It is the correct place for chart generation directives. It requires `use std::charting` at the top of the file.
 
 <CodeGroup 
   tabs={[
     {
-      title: "abi.bench",
+      title: "Chart generation",
       language: "bench",
       code: `use std::charting
 
-suite abiBenchmarks {
-    description: "ABI encoding/decoding benchmarks"
-    warmup: 100
-    compare: true
+declare suite mySuite performance timeBased sameDataset: true {
     baseline: "go"
-    mode: "auto"
-    targetTime: 2000ms
-    count: 3
+    warmup: 100
+    targetTime: 1000ms
 
-    setup go {
-        import (
-            "math/big"
-            "github.com/ethereum/go-ethereum/accounts/abi"
-            "github.com/ethereum/go-ethereum/common"
-        )
+    setup go { ... }
+    setup ts { ... }
+    setup rust { ... }
 
-        declare {
-            var args abi.Arguments
-        }
+    fixture data { hex: "68656c6c6f" }
 
-        init {
-            uint256Type, _ := abi.NewType("uint256", "", nil)
-            addressType, _ := abi.NewType("address", "", nil)
-            args = abi.Arguments{
-                {Type: uint256Type},
-                {Type: addressType},
-            }
-        }
-
-        helpers {
-            func encodeArgs(amount *big.Int, addr common.Address) []byte {
-                data, _ := args.Pack(amount, addr)
-                return data
-            }
-        }
+    bench hashShort {
+        go: hash(data)
+        ts: hash(data)
+        rust: hash(&data)
     }
 
-    setup ts {
-        import {
-            import { encodeAbiParameters, parseAbiParameters } from 'viem'
-        }
-
-        declare {
-            const params = parseAbiParameters('uint256, address')
-        }
-
-        helpers {
-            function encodeArgs(amount: bigint, addr: string): string {
-                return encodeAbiParameters(params, [amount, addr])
-            }
-        }
-    }
-
-    setup rust {
-        import {
-            use alloy_sol_types::{sol, SolValue};
-            use alloy_primitives::{U256, Address, address};
-        }
-
-        helpers {
-            fn encode_args(amount: U256, addr: Address) -> Vec<u8> {
-                (amount, addr).abi_encode()
-            }
-        }
-    }
-
-    fixture testAmount {
-        hex: "0000000000000000000000000000000000000000000000000de0b6b3a7640000"
-    }
-
-    fixture testAddress {
-        hex: "d8da6bf26964af9d7eed9e03e53415d37aa96045"
-    }
-
-    bench encodeSimple {
-        go: encodeArgs(big.NewInt(1000000000000000000), common.HexToAddress("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"))
-        ts: encodeArgs(1000000000000000000n, "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
-        rust: encode_args(U256::from(1000000000000000000u64), address!("d8dA6BF26964aF9D7eEd9e03E53415D37aA96045"))
+    bench hashLong {
+        go: hash(largeData)
+        ts: hash(largeData)
+        rust: hash(&largeData)
     }
 
     after {
         charting.drawTable(
-            title: "ABI Encoding Performance",
-            xlabel: "Implementation"
+            title: "Hash Performance",
+            output: "hash-table.svg"
         )
-    }
-}`
-    },
-  ]}
-/>
-
-
-### Memory Profiling Example
-
-Use `suiteType: memory` in the suite declaration to track allocations alongside timing. This helps identify not just which implementation is fastest, but which is most memory-efficient.
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "memory.bench",
-      language: "bench",
-      code: `declare suite memoryBenchmarks memory timeBased sameDataset: true {
-    description: "Benchmarks with memory profiling"
-    warmup: 50
-    compare: true
-    baseline: "go"
-
-    setup go {
-        helpers {
-            func allocateSlice(n int) []byte {
-                data := make([]byte, n)
-                for i := range data {
-                    data[i] = byte(i % 256)
-                }
-                return data
-            }
-        }
-    }
-
-    setup ts {
-        helpers {
-            function allocateArray(n: number): Uint8Array {
-                const data = new Uint8Array(n)
-                for (let i = 0; i < n; i++) {
-                    data[i] = i % 256
-                }
-                return data
-            }
-        }
-    }
-
-    setup rust {
-        helpers {
-            fn allocate_vec(n: usize) -> Vec<u8> {
-                let mut data = Vec::with_capacity(n);
-                for i in 0..n {
-                    data.push((i % 256) as u8);
-                }
-                data
-            }
-        }
-    }
-
-    bench allocate1KB {
-        go: allocateSlice(1024)
-        ts: allocateArray(1024)
-        rust: allocate_vec(1024)
-    }
-
-    bench allocate1MB {
-        go: allocateSlice(1048576)
-        ts: allocateArray(1048576)
-        rust: allocate_vec(1048576)
-    }
-}`
-    },
-  ]}
-/>
-
-Memory results appear in the output:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Output",
-      language: "text",
-      code: `  Running: allocate1KB
-    go:   156 ns/op | 1,024 B/op, 1 allocs/op
-    ts:   892 ns/op | 1,024 B/op
-    rust: 98 ns/op  | 1,024 B/op, 1 allocs/op`
-    },
-  ]}
-/>
-
-
-### Lifecycle Hooks
-
-Use `before`, `after`, and `each` hooks for setup and teardown. This is useful for benchmarks that need shared state or cleanup.
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "hooks.bench",
-      language: "bench",
-      code: `suite withHooks {
-    description: "Demonstrating lifecycle hooks"
-    warmup: 50
-    compare: true
-    baseline: "go"
-
-    setup go {
-        declare {
-            var counter int
-        }
-
-        helpers {
-            func increment() int {
-                counter++
-                return counter
-            }
-            func reset() {
-                counter = 0
-            }
-        }
-    }
-
-    setup ts {
-        declare {
-            let counter = 0
-        }
-
-        helpers {
-            function increment(): number {
-                return ++counter
-            }
-            function reset(): void {
-                counter = 0
-            }
-        }
-    }
-
-    setup rust {
-        helpers {
-            static mut COUNTER: i32 = 0;
-            fn increment() -> i32 {
-                unsafe {
-                    COUNTER += 1;
-                    COUNTER
-                }
-            }
-            fn reset() {
-                unsafe { COUNTER = 0; }
-            }
-        }
-    }
-
-    bench incrementBench {
-        # before runs once before the timed loop for each language
-        before go: reset()
-        before ts: reset()
-
-        # each runs before every iteration, outside the timing window
-        each go: reset()
-        each ts: reset()
-
-        go: increment()
-        ts: increment()
-        rust: increment()
-
-        # after runs once after the timed loop
-        after go: { _ = counter }
-        after ts: { void counter }
-    }
-}`
-    },
-  ]}
-/>
-
-
-### Chart Generation
-
-Generate multiple chart types for visual comparison. The `charting` module supports tables, speedup charts, speedup charts, and tables.
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "charts.bench",
-      language: "bench",
-      code: `use std::charting
-
-suite chartExamples {
-    description: "Benchmark with multiple chart outputs"
-    warmup: 100
-    compare: true
-    baseline: "go"
-    mode: "auto"
-    targetTime: 2000ms
-
-    setup go {
-        helpers {
-            func compute(n int) int {
-                sum := 0
-                for i := 0; i < n; i++ {
-                    sum += i
-                }
-                return sum
-            }
-        }
-    }
-
-    setup ts {
-        helpers {
-            function compute(n: number): number {
-                let sum = 0
-                for (let i = 0; i < n; i++) {
-                    sum += i
-                }
-                return sum
-            }
-        }
-    }
-
-    setup rust {
-        helpers {
-            fn compute(n: i32) -> i32 {
-                (0..n).sum()
-            }
-        }
-    }
-
-    bench compute100 {
-        go: compute(100)
-        ts: compute(100)
-        rust: compute(100)
-    }
-
-    bench compute1000 {
-        go: compute(1000)
-        ts: compute(1000)
-        rust: compute(1000)
-    }
-
-    bench compute10000 {
-        go: compute(10000)
-        ts: compute(10000)
-        rust: compute(10000)
-    }
-
-    after {
-        # Bar chart comparing all implementations
-        charting.drawTable(
-            title: "Compute Performance by Size",
-            output: "compute-bar.svg",
-            xlabel: "Benchmark"
-        )
-
-        # Line chart showing scaling behavior
-        charting.drawSpeedupChart(
-            title: "Scaling Behavior",
-            output: "compute-line.svg",
-            xlabel: "Input Size"
-        )
-
-        # Speedup chart relative to Go
         charting.drawSpeedupChart(
             title: "Speedup vs Go",
-            output: "compute-speedup.svg"
+            output: "hash-speedup.svg"
         )
     }
 }`
@@ -681,96 +248,18 @@ suite chartExamples {
   ]}
 />
 
-<Aside type="note">
-<span>Charts are saved as SVG files in the output directory. Use <code>--output results/</code> when running to specify where charts should be saved.</span>
-</Aside>
+Charts are written to the output directory (e.g. `out/` when using `poly-bench run --output out/`).
 
+See the [Charting Guide](/docs/guides/charting) for all chart types and parameters.
 
-### Go-Only or Two-Language Benchmarks
+---
 
-You don't have to benchmark all three languages. poly-bench works with any subset.
+## Next Steps
 
-<CodeGroup 
-  tabs={[
-    {
-      title: "go-vs-ts.bench",
-      language: "bench",
-      code: `suite goVsTs {
-    description: "Comparing only Go and TypeScript"
-    warmup: 100
-    compare: true
-    baseline: "go"
-
-    setup go {
-        import (
-            "encoding/json"
-        )
-
-        helpers {
-            func parseJSON(data []byte) map[string]any {
-                var result map[string]any
-                json.Unmarshal(data, &result)
-                return result
-            }
-        }
-    }
-
-    setup ts {
-        helpers {
-            function parseJSON(data: Uint8Array): object {
-                return JSON.parse(new TextDecoder().decode(data))
-            }
-        }
-    }
-
-    # No setup rust block — Rust won't be benchmarked
-
-    # JSON payload encoded as UTF-8 hex: {"name":"test","value":42}
-    fixture jsonData {
-        hex: "7b226e616d65223a2274657374222c2276616c7565223a34327d"
-    }
-
-    bench parseJSON {
-        go: parseJSON(jsonData)
-        ts: parseJSON(jsonData)
-        # No rust: line — skipped for this benchmark
-    }
-}`
-    },
-  ]}
-/>
-
-
-### Running Specific Languages
-
-Even with all three languages defined, you can run only a subset:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Terminal",
-      language: "bash",
-      code: `# Run all languages
-poly-bench run suite.bench
-
-# Run only Go
-poly-bench run suite.bench --lang go
-
-# Run Go and Rust only
-poly-bench run suite.bench --lang go --lang rust
-
-# Run TypeScript only
-poly-bench run suite.bench --lang ts`
-    },
-  ]}
-/>
-
-
-### Next Steps
-
-- [Charting Guide](/docs/guides/charting) — Every chart type with real examples and all major parameter combinations
-- [Anvil & EVM Guide](/docs/guides/anvil) — Full walkthrough for benchmarking Ethereum client libraries
-- [Fixtures Guide](/docs/guides/fixtures) — Inline hex, file-referenced fixtures, and scaling patterns
-- [CLI Recipes](/docs/guides/cli-recipes) — Practical workflows for running, checking, and CI integration
+- [Features](/docs/features) — Per-feature reference (suites, setup, benchmarks, fixtures, globalSetup)
+- [Charting Guide](/docs/guides/charting) — Every chart type with real examples
+- [Anvil & EVM Guide](/docs/guides/anvil) — Benchmarking Ethereum client libraries
+- [Fixtures Guide](/docs/guides/fixtures) — Inline hex, file references, structured extraction
+- [CLI Recipes](/docs/guides/cli-recipes) — Practical workflows and CI integration
 - [DSL Reference](/docs/core/dsl-reference) — Complete syntax documentation
 - [Standard Library](/docs/core/standard-library) — `std::anvil`, `std::charting`, `std::constants`

@@ -13,12 +13,14 @@ poly-bench generates SVG charts directly from your `.bench` file. Charts are pro
 
 | Chart | Best for |
 |-------|----------|
-| `drawTable` | Comparing all languages side-by-side across multiple benchmarks |
-| `drawSpeedupChart` | Showing how performance scales as input size grows |
-| `drawSpeedupChart` | Highlighting how much faster one language is relative to a baseline |
-| `drawTable` | Embedding a results summary in a README or report |
+| `drawTable` | Comparing all languages side-by-side; embedding results in READMEs or reports |
+| `drawSpeedupChart` | Showing how performance scales as input size grows; highlighting speedup vs baseline |
 
 All four require `use std::charting` at the top of the file and must be called inside an `after { }` block.
+
+<Aside type="note">
+<span>All chart directives require <code>use std::charting</code> at the top of the file and must be called inside an <code>after &#123; &#125;</code> block.</span>
+</Aside>
 
 ---
 
@@ -35,7 +37,7 @@ The simplest possible table — just a title and output file.
       language: "bench",
       code: `use std::charting
 
-suite hashBench {
+declare suite hashBench performance timeBased sameDataset: true {
     # ... setup and benchmarks ...
 
     after {
@@ -62,7 +64,7 @@ Sort by speedup descending and only show benchmarks where the fastest language i
     charting.drawTable(
         title: "Hash Performance — Notable Differences",
         output: "hash-bar-filtered.svg",
-        sortBy: "speedup",
+        sortBy: "speedup",  # [!code focus:4]
         sortOrder: "desc",
         minSpeedup: 1.5,
         limit: 10
@@ -89,7 +91,7 @@ Show memory allocation data alongside timing. Use `suiteType: memory` in the sui
         charting.drawTable(
             title: "Allocation Comparison",
             output: "alloc-bar.svg",
-            showMemory: true,
+            showMemory: true,  # [!code focus:2]
             showTotalTime: true
         )
     }
@@ -107,15 +109,14 @@ Show 95% confidence interval error bars to communicate measurement uncertainty.
     {
       title: "bench",
       language: "bench",
-      code: `suite cryptoBench {
-    count: 10  
-
+      code: `declare suite cryptoBench performance timeBased sameDataset: true {
+    count: 10
 
     after {
         charting.drawTable(
             title: "Keccak256 — 95% CI",
             output: "keccak-ci.svg",
-            showErrorBars: true,
+            showErrorBars: true,  # [!code focus:4]
             ciLevel: 95,
             errorBarOpacity: 0.8,
             errorBarThickness: 1.5
@@ -140,7 +141,7 @@ Fit a complexity curve to the bars. Useful when benchmarks encode input sizes in
         title: "Sort Performance with Regression",
         output: "sort-regression.svg",
         xlabel: "Array Size",
-        showRegression: true,
+        showRegression: true,  # [!code focus:5]
         regressionModel: "nlogn",
         showRSquared: true,
         showEquation: true,
@@ -276,8 +277,7 @@ Speedup charts are designed for scaling benchmarks where benchmark names encode 
       language: "bench",
       code: `use std::charting
 
-suite sortN {
-    mode: "auto"
+declare suite sortN performance timeBased sameDataset: true {
     targetTime: 500ms
 
     # ... setup ...
@@ -311,7 +311,7 @@ Shade ±1 standard deviation around each line to show measurement spread. Requir
     {
       title: "bench",
       language: "bench",
-      code: `suite matmulN {
+      code: `declare suite matmulN performance timeBased sameDataset: true {
     count: 5
 
     # ... benchmarks ...
@@ -367,7 +367,7 @@ Flip the y-axis to show operations per second instead of time per operation.
         title: "Throughput Scaling",
         output: "throughput-line.svg",
         xlabel: "Payload Size",
-        chartMode: "throughput",
+        chartMode: "throughput",  # [!code focus:2]
         timeUnit: "s"
     )
 }`
@@ -390,7 +390,7 @@ Use a specific benchmark as the 1× reference point, and sort by speedup.
     charting.drawSpeedupChart(
         title: "Speedup vs hashShort Baseline",
         output: "speedup-sorted.svg",
-        baselineBenchmark: "hashShort",
+        baselineBenchmark: "hashShort",  # [!code focus:1]
         sortBy: "speedup",
         sortOrder: "desc",
         showGrid: true,
@@ -497,6 +497,10 @@ Generates an SVG table — useful for embedding in GitHub READMEs, reports, or C
 
 You can call any number of chart directives in a single `after` block. Each produces a separate SVG file.
 
+<Aside type="tip">
+<span>You can call any number of chart directives in a single <code>after</code> block; each produces a separate SVG file.</span>
+</Aside>
+
 <CodeGroup
   tabs={[
     {
@@ -560,6 +564,10 @@ declare suite sortN memory timeBased sameDataset: true {
 ---
 
 ### Output Files and the `--output` Flag
+
+<Aside type="caution">
+<span>Charts are only written when you pass <code>--output</code> to the CLI. Without it, charts are not generated even if <code>after &#123; &#125;</code> directives are present.</span>
+</Aside>
 
 Chart files are written to the directory specified by `--output` on the CLI. Without it, charts are not generated even if `after { }` directives are present.
 

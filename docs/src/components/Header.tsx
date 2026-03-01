@@ -158,7 +158,7 @@ export default function Header() {
             href="/docs/getting-started"
             className="hidden lg:inline-flex text-sm font-medium px-4 py-2 rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary-hover"
           >
-            Get Started
+            Read the Docs
           </Link>
           <SidebarToggle className="ml-1" />
         </nav>
@@ -166,6 +166,13 @@ export default function Header() {
     </header>
   )
 }
+
+const POLYBENCH_VERSION =
+  typeof process !== 'undefined' && process.env.NEXT_PUBLIC_POLYBENCH_VERSION
+    ? process.env.NEXT_PUBLIC_POLYBENCH_VERSION
+    : '0.1.0'
+
+const GITHUB_BASE = 'https://github.com/evm-tooling/poly-bench'
 
 function VersionDropdown() {
   const [isOpen, setIsOpen] = useState(false)
@@ -199,7 +206,7 @@ function VersionDropdown() {
         className="h-auto px-3 py-1.5 rounded-md gap-1"
         onClick={() => setIsOpen(!isOpen)}
       >
-        v0.1.0
+        v{POLYBENCH_VERSION}
         <svg
           xmlns="http://www.w3.org/2000/svg"
           width="12"
@@ -225,7 +232,7 @@ function VersionDropdown() {
           className="w-full justify-between px-3 py-2 h-auto rounded-md text-foreground-secondary hover:text-primary"
         >
           <a
-            href="https://github.com/ChefBingbong/viem-go/releases"
+            href={`${GITHUB_BASE}/releases`}
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -255,7 +262,7 @@ function VersionDropdown() {
           className="w-full justify-between px-3 py-2 h-auto rounded-md text-foreground-secondary hover:text-primary"
         >
           <a
-            href="https://github.com/ChefBingbong/viem-go/tree/main/examples"
+            href={`${GITHUB_BASE}/tree/main/examples`}
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -285,7 +292,7 @@ function VersionDropdown() {
           className="w-full justify-between px-3 py-2 h-auto rounded-md text-foreground-secondary hover:text-primary"
         >
           <a
-            href="https://github.com/ChefBingbong/viem-go/blob/main/.github/CONTRIBUTING.md"
+            href={`${GITHUB_BASE}/blob/main/.github/CONTRIBUTING.md`}
             target="_blank"
             rel="noopener noreferrer"
           >

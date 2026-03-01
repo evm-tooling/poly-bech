@@ -1,0 +1,36 @@
+---
+title: Features
+description: DSL feature reference — suites, setup, benchmarks, fixtures, and globalSetup
+---
+
+<div data-pagefind-weight="10">
+
+The poly-bench DSL provides a declarative way to define cross-language benchmarks. This section is a focused reference for each main feature. For complete syntax, see the [DSL Reference](/docs/core/dsl-reference). For practical usage and examples, see [Benchmark Features](/docs/examples).
+
+</div>
+
+<Aside type="tip">
+<span>Each feature has its own page with syntax, examples, and gotchas. For complete syntax, see the [DSL Reference](/docs/core/dsl-reference).</span>
+</Aside>
+
+---
+
+## Feature Reference
+
+The table below lists the main DSL features and links to their full guides. Each feature has its own page with syntax, examples, and gotchas.
+
+| Feature | Description | Full Guide |
+|---------|-------------|------------|
+| **Suites** | Group benchmarks with shared config; declare suiteType, runMode, sameDataset | [Suites](/docs/features/suites) |
+| **Setup Blocks** | Per-language imports, declarations, init, and helpers | [Setup Blocks](/docs/features/setup) |
+| **Benchmarks** | Language implementations, lifecycle hooks, overrides, benchAsync | [Benchmarks](/docs/features/benchmarks) |
+| **Fixtures** | Shared test data — inline hex, @file, data/encoding, structured extraction | [Fixtures](/docs/features/fixtures) |
+| **globalSetup** | One-time setup before benchmarks; Anvil spawning | [globalSetup](/docs/features/global-setup) |
+
+---
+
+## Quick Links
+
+- [DSL Reference](/docs/core/dsl-reference) — Complete syntax for every block and field
+- [Benchmark Features](/docs/examples) — Fixtures, hooks, globalSetup, and charting in practice
+- [Standard Library](/docs/core/standard-library) — std::charting, std::anvil, and std::constants

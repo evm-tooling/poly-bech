@@ -1,0 +1,308 @@
+---
+title: Suites
+description: Suite declaration, suiteType, runMode, sameDataset, and configuration
+---
+
+Suites group related benchmarks with shared configuration, setup code, and fixtures. When you declare a suite, you must specify three header tokens: suiteType, runMode, and sameDataset. These control how benchmarks are run and how results can be visualized.
+
+---
+
+## Declaration Syntax
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Syntax",
+      language: "bench",
+      code: `declare suite <name> <suiteType> <runMode> sameDataset: <true|false> { ... } # [!code focus]`
+    },
+  ]}
+/>
+
+All three header tokens are required.
+
+<Aside type="tip">
+<span>All three header tokens (suiteType, runMode, sameDataset) are required.</span>
+</Aside>
+
+---
+
+## Required Header Tokens
+
+The table below describes each header token and its allowed values.
+
+| Token | Values | Description |
+|-------|--------|-------------|
+| **suiteType** | `performance` \| `memory` | `performance` = timing only; `memory` = alloc tracking (B/op, allocs/op) |
+| **runMode** | `timeBased` \| `iterationBased` | `timeBased` = calibrate via `targetTime`; `iterationBased` = fixed `iterations` |
+| **sameDataset** | `true` \| `false` | Whether all benchmarks in the suite share the same fixture dataset |
+
+---
+
+## Enabled Languages
+
+Only languages that have been set up or initialized in the project's `polybench.toml` can be used in your benchmarks. If you write `setup rust` or `bench { rust: ... }` in a `.bench` file but Rust is not enabled in the project, you will get a syntax or validation error.
+
+To add or register a new language for use in your bench files, run:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "CLI",
+      language: "bash",
+      code: `poly-bench add-runtime rust  # [!code focus:2]
+poly-bench add-runtime zig`
+    },
+  ]}
+/>
+
+This updates `polybench.toml` and creates the `.polybench/runtime-env/<lang>/` directory for that runtime. You can then add `setup` blocks and benchmark implementations for that language.
+
+<Aside type="note">
+<span>Run <code>poly-bench add-runtime &lt;lang&gt;</code> to register a language before using it in setup or bench blocks.</span>
+</Aside>
+
+---
+
+## suiteType
+
+The suiteType determines whether you are measuring timing only or also tracking allocations.
+
+| Value | Effect |
+|-------|--------|
+| `performance` | Standard timing benchmarks. Output: ns/op, ops/s. |
+| `memory` | Enables allocation tracking. Output includes B/op, allocs/op. Requires `alloc_tracker` for Rust. |
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "performance",
+      language: "bench",
+      code: `declare suite hashBench performance timeBased sameDataset: true {
+    baseline: "go"
+    warmup: 100
+    targetTime: 1000ms
+
+    setup go { ... }
+    setup ts { ... }
+    bench keccak256 { go: hash(data)  ts: hash(data) }
+}`
+    },
+    {
+      title: "memory",
+      language: "bench",
+      code: `declare suite allocBench memory timeBased sameDataset: true {
+    baseline: "go"
+    warmup: 50
+    targetTime: 500ms
+
+    setup go { ... }
+    setup rust { ... }
+    bench allocate1KB { go: alloc(1024)  rust: alloc(1024) }
+}`
+    },
+  ]}
+/>
+
+---
+
+## runMode
+
+The runMode controls how many iterations each benchmark runs. You can either calibrate to a target time or use a fixed iteration count.
+
+| Value | Use | Key property |
+|-------|-----|--------------|
+| `timeBased` | Calibrate iterations to hit a target wall-clock time | `targetTime` (e.g. `1000ms`) |
+| `iterationBased` | Fixed iteration count per benchmark | `iterations` (e.g. `100000`) |
+
+<Aside type="tip">
+<span>Use <code>timeBased</code> for most suites. It adapts to benchmark speed and avoids per-benchmark drift.</span>
+</Aside>
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "timeBased",
+      language: "bench",
+      code: `declare suite mySuite performance timeBased sameDataset: true { //[!code focus:1]
+      targetTime: 3000ms   # Calibrate to ~3s per benchmark
+      warmup: 100
+
+    # ... setup, fixtures, benchmarks ...
+}`
+    },
+    {
+      title: "iterationBased",
+      language: "bench",
+      code: `declare suite mySuite performance iterationBased sameDataset: true {
+    iterations: 100000   # Fixed 100k iterations per benchmark # [!code focus:1]
+    warmup: 1000
+
+    # ... setup, fixtures, benchmarks ...
+}`
+    },
+  ]}
+/>
+
+<Aside type="caution">
+<span>With <code>timeBased</code>, do not set <code>iterations</code>. With <code>iterationBased</code>, do not set <code>targetTime</code>.</span>
+</Aside>
+
+---
+
+## sameDataset
+
+The sameDataset flag indicates whether all benchmarks in the suite operate on the same fixture set.
+
+| Value | Use |
+|-------|-----|
+| `true` | All benchmarks operate on the same fixture set. Required for line/bar charts. |
+| `false` | Benchmarks may use different fixtures. |
+
+Use `sameDataset: true` when you want to use bar charts and line charts. These chart types are only available when all benchmarks in the suite are derived from the same dataset — they plot performance across benchmarks that share a common x-axis (e.g. input size). Benchmarks that do not use the same data, or that are merely grouped by a similar topic (e.g. different hash functions or unrelated operations), are best visualized with speedup charts, which compare languages relative to a baseline without requiring a shared dataset.
+
+<Aside type="note">
+<span>Use <code>sameDataset: true</code> when you want bar/line charts; they require a shared dataset across benchmarks.</span>
+</Aside>
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "sameDataset: true",
+      language: "bench",
+      code: `declare suite sortBench performance timeBased sameDataset: true {
+    # All benchmarks (n100, n200, n500) share fixtures s100, s200, s500
+    fixture s100 { hex: @file("fixtures/sort_100.hex") }
+    fixture s200 { hex: @file("fixtures/sort_200.hex") }
+    fixture s500 { hex: @file("fixtures/sort_500.hex") }
+
+    bench n100 { go: sort(s100)  ts: sort(s100) }  # [!code focus:3]
+    bench n200 { go: sort(s200)  ts: sort(s200) }
+    bench n500 { go: sort(s500)  ts: sort(s500) }
+
+    after { charting.drawLineChart(...) }  # Requires sameDataset: true
+}`
+    },
+    {
+      title: "sameDataset: false",
+      language: "bench",
+      code: `declare suite mixedBench performance timeBased sameDataset: false {
+    # Benchmarks use unrelated fixtures
+    fixture hashInput { hex: "68656c6c6f" }  # [!code focus:2]
+    fixture sortInput { hex: @file("fixtures/sort.hex") }
+
+    bench hash { go: keccak(hashInput)  ts: keccak(hashInput) }
+    bench sort { go: bubble(sortInput)  ts: bubble(sortInput) }
+}`
+    },
+  ]}
+/>
+
+---
+
+## Suite Configuration Properties
+
+Beyond the header tokens, suites support a number of configuration properties. The table below lists them all.
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `description` | string | — | Human-readable description |
+| `warmup` | number | `1000` | Warmup iterations before timing |
+| `targetTime` | duration | `3000ms` | Target time for `timeBased` mode |
+| `iterations` | number | — | Fixed iterations for `iterationBased` mode |
+| `count` | number | `1` | Number of timed runs per benchmark |
+| `cvThreshold` | number | `5.0` | Target coefficient of variation (%) |
+| `outlierDetection` | boolean | `true` | IQR-based outlier removal |
+| `baseline` | string | — | Language for speedup ratios (`"go"`, `"ts"`, `"rust"`, etc.) |
+| `order` | string | `sequential` | `sequential`, `parallel`, or `random` |
+| `timeout` | duration | — | Suite-level timeout |
+| `requires` | string[] | `[]` | Languages every benchmark must implement |
+| `fairness` | string | `"strict"` | `"strict"` or `"legacy"` |
+| `fairnessSeed` | number | — | Deterministic seed for fairness randomization |
+| `sink` | boolean | `true` | Black-box sink to prevent dead-code elimination |
+
+### Duration Syntax
+
+| Unit | Example |
+|------|---------|
+| `ms` | `3000ms` |
+| `s` | `5s` |
+| `m` | `1m` |
+
+---
+
+## Suite-level `after` Block
+
+The suite-level `after` block runs after all benchmarks complete. It is the correct place for chart generation. Requires `use std::charting`.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Chart generation",
+      language: "bench",
+      code: `use std::charting
+
+declare suite mySuite performance timeBased sameDataset: true {
+    baseline: "go"
+    # ... setup, fixtures, benchmarks ...
+
+    after {
+        charting.drawTable(
+            title: "Performance Comparison",
+            output: "results.svg"
+        )
+        charting.drawSpeedupChart(
+            title: "Speedup vs Go",
+            output: "speedup.svg"
+        )
+    }
+}`
+    },
+  ]}
+/>
+
+<Aside type="note">
+<span>Line and bar charts require <code>sameDataset: true</code> and at least 2 benchmarks.</span>
+</Aside>
+
+---
+
+## Complete Example
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Full suite",
+      language: "bench",
+      code: `use std::charting
+
+declare suite bubbleN performance timeBased sameDataset: true {
+    description: "O(n²) bubble sort on int32 array"
+    baseline: "go"
+    warmup: 100
+    targetTime: 1000ms
+    fairness: "strict"
+    cvThreshold: 5
+    count: 1
+
+    setup go { ... }
+    setup ts { ... }
+    setup rust { ... }
+
+    fixture s100 { hex: @file("fixtures/sort/sort_100.hex") }
+    fixture s200 { hex: @file("fixtures/sort/sort_200.hex") }
+
+    bench n100 { go: bubble(s100)  ts: bubble(s100)  rust: bubble(&s100) }
+    bench n200 { go: bubble(s200)  ts: bubble(s200)  rust: bubble(&s200) }
+
+    after {
+        charting.drawLineChart(
+            title: "Bubble Sort",
+            output: "bubble-line.svg",
+            yScale: "linear"
+        )
+    }
+}`
+    },
+  ]}
+/>

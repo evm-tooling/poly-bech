@@ -12,6 +12,7 @@ import {
   Cpu,
   FileCode,
   Gauge,
+  Github,
   Heart,
   Layers,
   MessageSquare,
@@ -272,6 +273,30 @@ const runtimeDetails = [
     memory: 'Custom allocator tracking',
     accent: '#DEA584',
   },
+  {
+    lang: 'Python',
+    runtime: 'venv + subprocess',
+    memory: 'tracemalloc / sys.getsizeof',
+    accent: '#3776AB',
+  },
+  {
+    lang: 'Zig',
+    runtime: 'zig build + subprocess',
+    memory: 'Zig allocator tracking',
+    accent: '#F7A41D',
+  },
+  {
+    lang: 'C',
+    runtime: 'clang or CMake + subprocess',
+    memory: 'Manual / malloc stats',
+    accent: '#A8B9CC',
+  },
+  {
+    lang: 'C#',
+    runtime: 'dotnet build + subprocess',
+    memory: 'GC.GetTotalMemory',
+    accent: '#239120',
+  },
 ]
 
 const installScriptUrl = 'https://install.evm-tooling.tools'
@@ -304,6 +329,7 @@ export default function Home() {
                 variants={{
                   visible: { transition: { staggerChildren: 0.08 } },
                 }}
+                className="max-w-xl"
               >
                 <motion.div
                   variants={fadeUp}
@@ -342,26 +368,28 @@ export default function Home() {
                   className="mt-8 flex flex-wrap gap-3"
                 >
                   <a
-                    href="#get-started"
+                    href="/docs/getting-started"
                     className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-medium text-primary-foreground bg-primary hover:bg-primary-hover transition-all hover:scale-[1.02]"
                   >
-                    Get Started <ArrowRight className="w-4 h-4" />
+                    Read the Docs <ArrowRight className="w-4 h-4" />
                   </a>
                   <a
-                    href="#how-it-works"
+                    href="https://github.com/evm-tooling/poly-bench"
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-medium text-foreground-secondary !border !border-border bg-secondary/50 hover:bg-secondary transition-colors"
                   >
-                    How it works
+                    <Github className="w-4 h-4" /> GitHub
                   </a>
                 </motion.div>
 
-                {/* Runtime badges */}
+                {/* Runtime badges — Go, TypeScript, Rust + … + N more */}
                 <motion.div
                   variants={fadeUp}
                   custom={4}
-                  className="mt-8 flex gap-3"
+                  className="mt-8 flex flex-wrap gap-3"
                 >
-                  {runtimeDetails.map((r) => (
+                  {runtimeDetails.slice(0, 3).map((r) => (
                     <span
                       key={r.lang}
                       className="inline-flex items-center gap-1.5 text-xs rounded-lg px-4 py-2 bg-secondary !border !border-border text-foreground-secondary"
@@ -373,6 +401,30 @@ export default function Home() {
                       {r.lang}
                     </span>
                   ))}
+                  <div className="relative group">
+                    <span className="inline-flex cursor-default items-center gap-1.5 text-xs rounded-lg px-4 py-2 bg-secondary !border !border-border text-foreground-secondary">
+                      … + {runtimeDetails.length - 3} more
+                    </span>
+                    <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 hidden min-w-[140px] rounded-lg border border-card-border bg-card px-3 py-2 shadow-xl opacity-0 transition-opacity group-hover:block group-hover:opacity-100">
+                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-foreground-muted">
+                        Also supported
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {runtimeDetails.slice(3).map((r) => (
+                          <span
+                            key={r.lang}
+                            className="inline-flex items-center gap-1 text-xs text-foreground-secondary"
+                          >
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: r.accent }}
+                            />
+                            {r.lang}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </motion.div>
               </motion.div>
 

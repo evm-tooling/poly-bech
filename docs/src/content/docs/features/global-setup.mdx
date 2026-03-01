@@ -1,0 +1,172 @@
+---
+title: globalSetup
+description: One-time setup before benchmarks; Anvil spawning
+---
+
+The globalSetup block runs once before all benchmarks in the file. It is the correct place to spawn long-lived services like an Anvil node for Ethereum RPC benchmarks.
+
+---
+
+## Placement
+
+globalSetup can appear at two levels. The placement determines its scope:
+
+| Placement | Scope |
+|-----------|-------|
+| **File-level** | Before any suite; shared across all suites in the file |
+| **Suite-level** | Inside a suite block; only that suite's benchmarks |
+
+<Aside type="note">
+<span>File-level globalSetup runs before any suite; suite-level overrides it for that suite only.</span>
+</Aside>
+
+---
+
+## File-level
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "File-level",
+      language: "bench",
+      code: `use std::anvil
+
+globalSetup {
+    anvil.spawnAnvil()                           # Local node, no fork  # [!code focus:2]
+    anvil.spawnAnvil(fork: "https://rpc.url")    # Fork from an RPC endpoint
+}
+
+suite evmBench {
+    # ... setup, fixtures, benchmarks ...
+}
+
+suite anotherSuite {
+    # Also uses the same Anvil instance from file-level globalSetup
+}`
+    },
+  ]}
+/>
+
+---
+
+## Suite-level
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Suite-level",
+      language: "bench",
+      code: `use std::anvil
+
+suite evmBench {
+    globalSetup {  # [!code focus:3]
+        anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
+    }
+
+    setup go { ... }
+    setup ts { ... }
+
+    bench getBlockNumber {
+        go: getBlockNumber()
+        ts: await getBlockNumber()
+    }
+}`
+    },
+  ]}
+/>
+
+<Aside type="note">
+<span>When a suite has its own <code>globalSetup</code>, it overrides file-level <code>globalSetup</code> for that suite.</span>
+</Aside>
+
+---
+
+## ANVIL_RPC_URL
+
+When anvil.spawnAnvil() is called, poly-bench injects the RPC URL as an environment variable. Each language accesses it differently:
+
+| Language | Access |
+|-----------|--------|
+| TypeScript | `ANVIL_RPC_URL` (module-level constant) |
+| Go | `os.Getenv("ANVIL_RPC_URL")` |
+| Rust | `std::env::var("ANVIL_RPC_URL")` |
+| Python | `os.environ["ANVIL_RPC_URL"]` |
+
+<Aside type="tip">
+<span>poly-bench injects the RPC URL when <code>anvil.spawnAnvil()</code> is called; access it via the env var in each language.</span>
+</Aside>
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Using ANVIL_RPC_URL",
+      language: "bench",
+      code: `use std::anvil
+
+suite rpcBench {
+    globalSetup {
+        anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
+    }
+
+    setup go {
+        import (
+            "github.com/ethereum/go-ethereum/ethclient"
+        )
+        declare { var client *ethclient.Client }
+        init {
+            client, _ = ethclient.Dial(os.Getenv("ANVIL_RPC_URL"))
+        }
+        helpers {
+            func getBlock() uint64 {
+                num, _ := client.BlockNumber(context.Background())
+                return num
+            }
+        }
+    }
+
+    setup ts {
+        import {
+            import { createPublicClient, http } from 'viem'
+            import { mainnet } from 'viem/chains'
+        }
+        declare { let client: any }
+        init {
+            client = createPublicClient({
+                chain: mainnet,
+                transport: http(ANVIL_RPC_URL),
+            })
+        }
+        helpers {
+            async function getBlock(): Promise<bigint> {
+                return await client.getBlockNumber()
+            }
+        }
+    }
+
+    benchAsync getBlockNumber {
+        go: getBlock()
+        ts: await getBlock()
+    }
+}`
+    },
+  ]}
+/>
+
+---
+
+## When to Use
+
+Use globalSetup for one-time setup that must complete before any benchmark runs. Typical uses include spawning an Anvil node with anvil.spawnAnvil(), starting other long-lived services such as mock servers, or loading config that all benchmarks depend on.
+
+<Aside type="caution">
+<span>Do not use globalSetup for per-benchmark setup; use before hooks or init blocks instead.</span>
+</Aside>
+
+For per-language initialization, use the init sub-section in setup blocks.
+
+---
+
+## See Also
+
+- [Anvil & EVM Guide](/docs/guides/anvil) — Full walkthrough for benchmarking Ethereum client libraries
+- [Standard Library — std::anvil](/docs/core/standard-library#stdanvil) — `spawnAnvil` parameters

@@ -16,7 +16,7 @@ poly-bench includes a full Language Server Protocol (LSP) implementation that pr
 | Completions | Intelligent completions for keywords, stdlib, and user symbols |
 | Hover | Documentation and type information on hover |
 | Semantic highlighting | Syntax highlighting tokens for accurate coloring |
-| Embedded languages | Delegates to gopls, tsserver, rust-analyzer, and pyright/pylsp for code blocks |
+| Embedded languages | Delegates to gopls, tsserver, rust-analyzer, pyright/pylsp, clangd, csharp-ls, and zls for code blocks |
 
 </div>
 
@@ -29,7 +29,7 @@ The LSP server runs over stdio. Start it with:
     {
       title: "Terminal",
       language: "bash",
-      code: `poly-bench lsp`
+      code: `poly-bench lsp  # [!code focus]`
     },
   ]}
 />
@@ -69,7 +69,7 @@ If you're not using the extension, configure the LSP manually in `settings.json`
       title: "settings.json",
       language: "json",
       code: `{
-  "poly-bench.serverPath": "poly-bench",
+  "poly-bench.serverPath": "poly-bench",  // [!code focus:2]
   "poly-bench.serverArgs": ["lsp"],
   "[bench]": {
     "editor.formatOnSave": true,
@@ -91,7 +91,7 @@ Associate `.bench` files with the poly-bench language:
       language: "json",
       code: `{
   "files.associations": {
-    "*.bench": "bench"
+    "*.bench": "bench"  // [!code focus:2]
   }
 }`
     },
@@ -122,7 +122,7 @@ local configs = require('lspconfig.configs')
 if not configs.polybench then
   configs.polybench = {
     default_config = {
-      cmd = { 'poly-bench', 'lsp' },
+      cmd = { 'poly-bench', 'lsp' },  -- [!code focus:2]
       filetypes = { 'bench' },
       root_dir = lspconfig.util.root_pattern('polybench.toml', '.git'),
       settings = {},

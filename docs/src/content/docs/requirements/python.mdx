@@ -1,0 +1,89 @@
+---
+title: Python Runtime
+description: Python runtime requirements, setup, and gotchas for poly-bench
+---
+
+This guide walks through using Python with poly-bench, from init through run. It covers what gets created, how dependencies work, and common gotchas.
+
+---
+
+## Prerequisites
+
+You need Python installed and available on your PATH. The table below summarizes the requirements.
+
+| Requirement | Details |
+|-------------|---------|
+| **Binary** | `python3` or `python` on PATH |
+| **Version** | Python 3.8+ |
+| **Verify** | `python3 --version` |
+
+If Python is missing when you run init, poly-bench can offer to install it interactively during `poly-bench init`.
+
+---
+
+## Init
+
+When you run `poly-bench init --languages python` (or select Python in the interactive flow), poly-bench creates a Python project under `.polybench/runtime-env/python/`:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Structure",
+      language: "text",
+      code: `.polybench/runtime-env/python/
+├── .venv/
+├── requirements.txt
+└── main.py`
+    },
+  ]}
+/>
+
+poly-bench creates a virtual environment (`.venv`) in `.polybench/runtime-env/python/` using `python -m venv .venv`. All installs use the venv's pip, so dependencies stay isolated from your system Python.
+
+---
+
+## Add Dependencies
+
+To add Python packages, use the add command with the `--py` flag:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "CLI",
+      language: "bash",
+      code: `poly-bench add --py numpy==1.24.0  # [!code focus]`
+    },
+  ]}
+/>
+
+The spec format is `package==version` — for example, `numpy==1.24.0`. Dependencies are stored in the manifest and appended to requirements.txt.
+
+The `pyright[nodejs]` package is always included in requirements.txt for LSP support. Install and remove operations preserve it.
+
+---
+
+## Install
+
+Running `poly-bench install` (or `poly-bench build`) runs `pip install -r requirements.txt` using the venv's pip. Ensure the venv exists; if it was deleted, re-run init or create it manually with `python -m venv .venv`.
+
+---
+
+## Build / Codegen
+
+When you run `poly-bench run`, poly-bench generates Python code and executes it with the venv's Python. There is no separate compilation step — Python runs the generated code directly.
+
+---
+
+## Gotchas and Troubleshooting
+
+<Aside type="caution">
+<span><strong>venv required</strong> — poly-bench creates <code>.venv</code> in <code>.polybench/runtime-env/python/</code> using <code>python -m venv .venv</code>. All installs use the venv's pip.</span>
+</Aside>
+
+<Aside type="caution">
+<span><strong>python3-venv on Debian/Ubuntu</strong> — On Debian/Ubuntu, install <code>python3-venv</code> or venv creation will fail: <code>sudo apt install python3-venv</code></span>
+</Aside>
+
+<Aside type="note">
+<span><strong>pyright in requirements</strong> — <code>pyright[nodejs]</code> is always in requirements.txt for LSP. Install/remove preserves it.</span>
+</Aside>

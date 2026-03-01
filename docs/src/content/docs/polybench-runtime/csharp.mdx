@@ -1,0 +1,113 @@
+---
+title: C# Runtime
+description: Technical deep-dive on how the .polybench C# runtime project works
+---
+
+This page documents how the `.polybench/runtime-env/csharp/` project is set up, how codegen works, and how execution is performed.
+
+---
+
+## Overview
+
+The C# runtime uses a .NET project. The generated benchmark code overwrites `Program.cs`. poly-bench writes `global.json` to pin the SDK version (e.g. `8.0.0` for net8.0). The target framework defaults to `net8.0`. The runtime crate is `runtimes-csharp`; templates come from `poly-bench-project`.
+
+---
+
+## What Init Does
+
+When you run `poly-bench init --languages csharp`, poly-bench:
+
+1. Creates `.polybench/runtime-env/csharp/`
+2. Writes `polybench.csproj` with target framework from `[csharp] target_framework` (default `net8.0`)
+3. Writes `Program.cs` with a minimal `public static void Main() {}` placeholder
+4. Writes `NuGet.config` with the vs-impl feed (for roslyn-language-server and other .NET tools)
+
+**No `dotnet restore` at init.** Dependencies are restored when you run `poly-bench build` or when the executor runs `dotnet build`.
+
+---
+
+## What Build/Install Does
+
+When you run `poly-bench build` or `poly-bench install`:
+
+1. **Regenerates `polybench.csproj`** if `--force` is used
+2. **Adds user dependencies** from `[csharp] dependencies` to the csproj
+3. **Runs `dotnet restore`** (skipped with `--skip-install`)
+
+The executor writes `global.json` at run time to pin the SDK version (e.g. `8.0.0` for net8.0). This ensures `dotnet build` uses the correct SDK even when multiple SDKs are installed.
+
+<Aside type="note">
+<span>The executor writes <code>global.json</code> at run time to pin the SDK version, ensuring <code>dotnet build</code> uses the correct SDK when multiple SDKs are installed.</span>
+</Aside>
+
+---
+
+## Design Rationale
+
+- **Overwrite `Program.cs`** — Same pattern as Rust: codegen produces a complete program. The placeholder exists for a valid project structure before the first run.
+- **`global.json` at run time** — The executor writes it when executing benchmarks. Pinning the SDK avoids "which SDK?" ambiguity when the user has .NET 6, 7, and 8 installed.
+- **Default net8.0** — .NET 8 is the current LTS. Override in `polybench.toml` if you have only .NET 6 or 7.
+- **NuGet.config vs-impl feed** — Some .NET tools (e.g. roslyn-language-server) are published to the vs-impl feed. Adding it ensures `dotnet tool install` and restore can resolve them.
+- **`UseAppHost: false`** — Reduces build output; the benchmark runs via `dotnet run` or by invoking the DLL directly.
+
+---
+
+## Scaffolded Files (Init/Build)
+
+When you run `poly-bench init --languages csharp` or `poly-bench build`, the following is created in `.polybench/runtime-env/csharp/`:
+
+| File | Source | Purpose |
+|------|--------|---------|
+| `polybench.csproj` | `templates.csharp_csproj()` | Target framework (default net8.0), dependencies |
+| `Program.cs` | Placeholder | Overwritten by codegen at run time |
+| `global.json` | Written by executor | Pins SDK version (e.g. `8.0.0` for net8.0) |
+| `NuGet.config` | `templates.csharp_nuget_config()` | Adds vs-impl feed for roslyn-language-server |
+
+The `global.json` ensures `dotnet build` uses the correct SDK. Override the target framework in `polybench.toml`: `[csharp] target_framework = "net9.0"`.
+
+---
+
+## Codegen
+
+When `poly-bench run` executes a benchmark, the C# runtime:
+
+1. Calls `generate_csharp_source(spec, suite, for_check)` in `runtimes-csharp/src/codegen.rs`
+2. Produces a complete `Program.cs` with: fixture decoding, setup/init code, helper functions, and the benchmark loop
+3. Writes the source to `Program.cs` (overwriting the placeholder)
+
+**Generated files:**
+
+- `Program.cs` — overwritten with full benchmark harness
+
+---
+
+## Build Pipeline
+
+| Step | Command | Output |
+|------|---------|--------|
+| Precompile | `dotnet build` | Compiled assembly in `bin/` |
+| Run | `dotnet run` | Executes the compiled program |
+
+The executor uses `dotnet run` which builds and runs. The `global.json` pin ensures the correct SDK is used.
+
+---
+
+## Execution Model
+
+1. **Precompile:** Write `Program.cs`, run `dotnet build`
+2. **Run:** Spawn `dotnet run` (or equivalent) with the benchmark name and iterations
+3. **Collect:** Parse stdout for timing output
+
+---
+
+## Technical Gotchas
+
+<Aside type="tip">
+<span>Override the target framework in <code>polybench.toml</code> if you have only .NET 6 or 7.</span>
+</Aside>
+
+- **Default net8.0** — Target framework defaults to `net8.0`. Override in `polybench.toml` if you have .NET 6 or 7 only.
+- **global.json pins SDK** — poly-bench writes `global.json` to pin the SDK version. Ensures `dotnet build` uses the correct SDK.
+- **LSP: csharp-ls** — poly-bench uses csharp-ls 0.16.0 for .NET 8; newer versions may require .NET 10.
+
+See [Requirements — C#](/docs/requirements/csharp) for user-facing setup and gotchas.

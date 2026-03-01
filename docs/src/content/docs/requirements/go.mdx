@@ -1,0 +1,105 @@
+---
+title: Go Runtime
+description: Go runtime requirements, setup, and gotchas for poly-bench
+---
+
+This guide walks through using Go with poly-bench, from init through run. It covers what gets created, how dependencies work, and common gotchas.
+
+---
+
+## Prerequisites
+
+You need Go installed and available on your PATH. The table below summarizes the requirements.
+
+| Requirement | Details |
+|-------------|---------|
+| **Binary** | `go` on PATH |
+| **Version** | Go 1.21+ |
+| **Verify** | `go version` |
+
+Install from [go.dev/dl](https://go.dev/dl/). If Go is missing when you run init, poly-bench can offer to install it interactively during `poly-bench init`.
+
+---
+
+## Init
+
+When you run `poly-bench init --languages go` (or select Go in the interactive flow), poly-bench creates a Go module under `.polybench/runtime-env/go/`:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Structure",
+      language: "text",
+      code: `.polybench/runtime-env/go/
+└── go.mod`
+    },
+  ]}
+/>
+
+The go.mod file uses your project name as the module path and defaults to Go 1.21. If you need a different Go version, you can override it in the project manifest:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "polybench.toml",
+      language: "toml",
+      code: `[project]
+name = "my-bench"
+
+[go]
+version = "1.22"`
+    },
+  ]}
+/>
+
+---
+
+## Add Dependencies
+
+To add Go dependencies to your poly-bench project, use the add command with the `--go` flag:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "CLI",
+      language: "bash",
+      code: `poly-bench add --go github.com/example/pkg@v1.2.3  # [!code focus]`
+    },
+  ]}
+/>
+
+The spec format is `module/...@version` — for example, `github.com/example/pkg@v1.2.3`. Dependencies are stored in the poly-bench manifest and written to go.mod. poly-bench uses `go get module/...@version` internally to fetch transitive dependencies into go.sum. Using plain `module@version` (without the `...`) can cause "missing go.sum entry" errors, so stick to the recommended format.
+
+---
+
+## Install
+
+Running `poly-bench install` (or `poly-bench build`) invokes `go get` to resolve and download dependencies. The Go runtime does not need a separate install step beyond what the add command triggers; the build step simply ensures the module is ready for codegen.
+
+---
+
+## Build / Codegen
+
+When you run `poly-bench run`, poly-bench generates Go code and compiles it. The generated binary is built from the `.polybench/runtime-env/go/` directory.
+
+Execution differs by platform. On Linux, poly-bench uses plugin-based execution: it loads the compiled Go code as a shared library into the poly-bench process. On macOS and Windows, it uses subprocess execution instead, spawning the compiled binary as a separate process. This difference matters for debugging and profiling — on non-Linux platforms you will see a separate process in your process list.
+
+---
+
+## Gotchas and Troubleshooting
+
+<Aside type="caution">
+<span><strong>go get module/...@version</strong> — poly-bench uses the <code>module/...@version</code> form to fetch transitive dependencies into go.sum. Using plain <code>module@version</code> can cause "missing go.sum entry" errors.</span>
+</Aside>
+
+<Aside type="caution">
+<span><strong>Plugin vs subprocess</strong> — On Linux, poly-bench uses plugin-based execution; on other platforms it spawns a subprocess. This affects the execution path and how you attach debuggers or profilers.</span>
+</Aside>
+
+<Aside type="note">
+<span><strong>gopls local install</strong> — For LSP support in editors, poly-bench installs gopls locally via <code>GOBIN=&lt;go_env&gt;/bin go install golang.org/x/tools/gopls@latest</code>.</span>
+</Aside>
+
+<Aside type="note">
+<span><strong>Default Go 1.21</strong> — The generated go.mod uses <code>go 1.21</code> unless you override it in the polybench.toml manifest.</span>
+</Aside>

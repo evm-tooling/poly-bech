@@ -1,0 +1,112 @@
+---
+title: Go Runtime
+description: Technical deep-dive on how the .polybench Go runtime project works
+---
+
+This page documents how the `.polybench/runtime-env/go/` project is set up, how codegen works, and how execution is performed.
+
+---
+
+## Overview
+
+The Go runtime compiles generated benchmark code into a binary (`polybench_runner`) and executes it via subprocess. Go plugins are supported on Linux but poly-bench uses subprocess execution on all platforms for consistency. The runtime crate is `runtimes-go`; templates come from `poly-bench-project`.
+
+---
+
+## What Init Does
+
+When you run `poly-bench init` with Go enabled, poly-bench creates the runtime environment and writes the minimal scaffold. Specifically:
+
+1. Creates `.polybench/runtime-env/go/`
+2. Writes `go.mod` with the project name (from `polybench.toml`) as the module path and `go 1.21` (or the version in `[go] version`)
+
+No dependencies are fetched at init. Go defers dependency resolution to `poly-bench build` or `poly-bench install`, when `go get` runs for each entry in `polybench.toml`. This keeps init fast and avoids network calls when the project has no deps yet.
+
+<Aside type="note">
+<span>No dependencies are fetched at init. Go defers dependency resolution to <code>poly-bench build</code> or <code>poly-bench install</code>.</span>
+</Aside>
+
+---
+
+## What Build/Install Does
+
+When you run `poly-bench build` or `poly-bench install`, the Go runtime does the following:
+
+1. **Regenerates `go.mod`** if `--force` is used
+2. **Runs `go get module/...@version`** for each dependency in `[go] dependencies` (skipped with `--skip-install`)
+3. **Installs gopls** into `.polybench/runtime-env/go/bin/` for LSP support (`GOBIN` is set so gopls is local to the runtime-env)
+
+The `module/...@version` form fetches transitive dependencies into `go.sum`. Using plain `module@version` can cause "missing go.sum entry" errors when the generated code imports transitive packages.
+
+---
+
+## Design Rationale
+
+A few design choices are worth understanding. The `go.mod` is kept minimal: only the module declaration and `go` version, with no `require` directives until you run `poly-bench add --go`. Dependencies are fetched at build time, not init. The Go project lives entirely under `.polybench/runtime-env/go/`, so your project root stays clean; generated `bench_standalone.go` and the `polybench_runner` binary live here. For LSP, poly-bench uses `gopls` from `go_env/bin/` rather than the global `go install` path, so the editor uses the same Go module context as poly-bench.
+
+---
+
+## Scaffolded Files (Init/Build)
+
+When you run `poly-bench init` with Go or `poly-bench build`, the following files are created in `.polybench/runtime-env/go/`:
+
+| File | Source | Purpose |
+|------|--------|---------|
+| `go.mod` | `templates.go_mod()` | Module declaration with project name and Go version (default 1.21) |
+| `bin/gopls` | `go install gopls@latest` (at build) | LSP binary for editor support |
+
+The `go.mod` uses the project name from `polybench.toml` as the module path. Dependencies added via `poly-bench add --go` are appended to `go.mod` and fetched with `go get module/...@version`.
+
+---
+
+## Codegen
+
+When `poly-bench run` executes a benchmark, the Go runtime:
+
+1. Calls `generate_standalone_benchmark(spec, suite)` in `runtimes-go/src/codegen.rs`
+2. Produces a complete Go source file with: package declaration, imports, fixture decoding, setup/init code, helper functions, and the benchmark loop
+3. Writes the source to `bench_standalone.go` in the module root
+
+For `poly-bench check` (validation), the runtime generates `bench_check_<suite>_<bench>.go` — a standalone file that compiles without the full benchmark harness, used to verify syntax and types.
+
+**Generated filenames:**
+
+- Run: `bench_standalone.go`
+- Check: `bench_check_<suite>_<bench>.go` (e.g. `bench_check_bubbleN_n100.go`)
+
+---
+
+## Build Pipeline
+
+| Step | Command | Output |
+|------|---------|--------|
+| Precompile | `go build -o polybench_runner bench_standalone.go` | `polybench_runner` binary in module root |
+| Check | `go build -o /dev/null bench_check_<name>.go` | Compilation only; no binary |
+
+The executor caches the compiled binary and source hash. If the source is unchanged, it skips recompilation.
+
+---
+
+## Execution Model
+
+1. **Precompile:** Write `bench_standalone.go`, run `go build -o polybench_runner`, cache binary path
+2. **Run:** Spawn `./polybench_runner <benchmark_name> <iterations>` as a subprocess
+3. **Collect:** Parse stdout for timing output (ns/op, ops/s)
+
+The binary receives the benchmark name and iteration count as arguments. It runs the benchmark loop and prints results to stdout in a format poly-bench parses.
+
+---
+
+## Technical Gotchas
+
+<Aside type="tip">
+<span>poly-bench uses <code>module/...@version</code> (not <code>module@version</code>) to fetch transitive deps into <code>go.sum</code>; plain <code>module@version</code> can cause "missing go.sum entry" errors.</span>
+</Aside>
+
+A few things to watch for:
+
+- **`go get module/...@version`** — poly-bench uses `module/...@version` to fetch transitive deps into `go.sum`. Plain `module@version` can cause "missing go.sum entry" errors.
+- **Binary name** — The output binary is always `polybench_runner`; the executor expects this name.
+- **Plugin vs subprocess** — Go plugins work only on Linux; poly-bench uses subprocess execution on all platforms for consistency.
+
+See [Requirements — Go](/docs/requirements/go) for user-facing setup and gotchas.

@@ -180,7 +180,7 @@ export default function Hero() {
               <Link href="/docs/introduction">Docs</Link>
             </Button>
             <Button asChild variant="secondary" size="lg">
-              <Link href="/docs/reporting">Benchmarks</Link>
+              <Link href="/docs/getting-started#reporting">Benchmarks</Link>
             </Button>
             <Button asChild variant="secondary" size="lg">
               <a

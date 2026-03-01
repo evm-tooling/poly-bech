@@ -1,0 +1,62 @@
+---
+title: Developers
+description: Early development notice, bug-prone areas, and contributor guides for poly-bench
+---
+
+poly-bench is in early development. There may be bugs, and some features are still evolving. We welcome feedback and contributions.
+
+---
+
+## Early Development Notice
+
+poly-bench is actively developed. APIs, CLI behavior, and runtime behavior may change. If you encounter issues, please report them — your feedback helps improve the project.
+
+<Aside type="tip">
+<span>Contributions are welcome. Start with the [Adding a Runtime](/docs/developers/adding-a-runtime) guide or the [Python Case Study](/docs/developers/case-study-python) for a step-by-step walkthrough.</span>
+</Aside>
+
+---
+
+## Bug-Prone Areas
+
+Some areas are more likely to cause issues than others. If you hit problems in one of these areas, you are not alone. The table below lists the main trouble spots and what tends to go wrong:
+
+| Area | Likely Issues |
+|------|----------------|
+| **Zig** | Version compatibility (0.15 vs 0.13/0.14), package patches for `for`-loop syntax, packages targeting older Zig |
+| **C** | External dependencies via vcpkg, CMake toolchain, `VCPKG_ROOT`, system vs vcpkg OpenSSL |
+| **C#** | .NET version mismatch (net8.0 default vs .NET 6/7), `global.json` SDK pin |
+| **Python** | venv creation on Debian/Ubuntu (`python3-venv`), pyenv/conda conflicts |
+
+<Aside type="caution">
+<span><strong>Zig and C with external deps</strong> — Zig package version compatibility and C's vcpkg/CMake setup are the most common sources of build failures. See [Requirements](/docs/requirements) for per-language gotchas.</span>
+</Aside>
+
+---
+
+## How to File an Issue
+
+Use the [Bug Report](https://github.com/evm-tooling/poly-bench/issues/new?template=bug_report.yml) template on GitHub. When filing an issue, include the following:
+
+- **poly-bench version:** Run `poly-bench --version`
+- **Command / workflow:** What you were running when the issue occurred
+- **Environment:** OS and toolchain versions (Rust, Node.js, Go, etc.)
+- **Steps to reproduce:** Minimal sequence to reproduce the behavior
+- **Minimal reproduction:** Smallest example (benchmark file, command, or snippet)
+- **Error output:** Full error message or stack trace
+
+<Aside type="note">
+<span>The more detail you provide, the faster we can help. A minimal <code>.bench</code> file and the exact command that fails are especially useful.</span>
+</Aside>
+
+---
+
+## Contributor Guides
+
+The following guides help contributors add runtimes, understand the codebase, and contribute effectively:
+
+| Topic | Description |
+|-------|-------------|
+| [Runtime Not Available](/docs/developers/runtime-not-available) | The runtime you need isn't supported — here's how to add it |
+| [Adding a Runtime](/docs/developers/adding-a-runtime) | Extreme-detail guide: spec, checklists, LSP, execution, integration tests |
+| [Case Study: Python](/docs/developers/case-study-python) | Step-by-step walkthrough of how the Python runtime was implemented |
