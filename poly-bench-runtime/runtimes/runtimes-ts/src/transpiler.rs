@@ -119,6 +119,49 @@ impl Transpiler {
     }
 }
 
+/// Strip TypeScript type-only syntax from import statements so they are valid JavaScript.
+/// Node.js executes bench.mjs directly without transpilation, so `import type` and `type X` in
+/// imports cause SyntaxError. This function:
+/// - Removes `import type { ... }` and `import type X` entirely (type-only imports)
+/// - Strips `type X` specifiers from `import { a, type B, c }` → `import { a, c }`
+pub fn strip_type_imports(import_stmt: &str) -> Option<String> {
+    let trimmed = import_stmt.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    // Skip entirely: import type { ... } or import type X from '...'
+    let rest = trimmed.strip_prefix("import").map(|s| s.trim_start()).unwrap_or(trimmed);
+    if rest.starts_with("type ") {
+        return None;
+    }
+
+    // import { ... } from '...' - may contain type specifiers
+    if let Some(open_brace) = rest.find('{') {
+        let after_open = &rest[open_brace + 1..];
+        let close_pos = after_open.find('}')?;
+        let specifiers = after_open[..close_pos].trim();
+        let from_part = after_open[close_pos + 1..].trim_start();
+
+        // Split by comma, filter out "type X" and "type X as Y" specifiers
+        let kept: Vec<&str> = specifiers
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.starts_with("type ") && !s.is_empty())
+            .collect();
+
+        if kept.is_empty() {
+            return None;
+        }
+
+        let new_specifiers = kept.join(", ");
+        return Some(format!("import {{ {} }} {}", new_specifiers, from_part));
+    }
+
+    // import X from '...' or import * as X from '...' - no type specifiers, keep as-is
+    Some(trimmed.to_string())
+}
+
 /// Simple type annotation stripping for when no transpiler is available
 /// This is a more careful implementation that preserves object literal colons
 pub fn strip_type_annotations(ts_code: &str) -> String {
@@ -346,12 +389,86 @@ pub fn strip_type_annotations(ts_code: &str) -> String {
         filtered.push(line);
     }
 
-    filtered.join("\n")
+    strip_type_assertions(&filtered.join("\n"))
+}
+
+/// Remove TypeScript `as Type` assertions so the code is valid JavaScript.
+/// e.g. `const x = '0x...' as Address` → `const x = '0x...'`
+fn strip_type_assertions(code: &str) -> String {
+    let mut result = String::new();
+    let mut chars = code.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        result.push(c);
+
+        // Check for " as " (type assertion) - need space before and after
+        if c == ' ' && result.ends_with(" as ") {
+            // Back up and remove " as "
+            result.truncate(result.len() - 4);
+            // Skip the type: identifier, possibly with <...>, until we hit , ; ) ] } or newline
+            let mut depth = 0u32;
+            while let Some(&next) = chars.peek() {
+                match next {
+                    '<' | '(' | '[' => {
+                        depth = depth.saturating_add(1);
+                        chars.next();
+                    }
+                    '>' | ')' | ']' => {
+                        if depth > 0 {
+                            depth -= 1;
+                        } else {
+                            break;
+                        }
+                        chars.next();
+                    }
+                    ',' | ';' | '\n' | '\r' => break,
+                    _ if depth == 0 && (next.is_whitespace() || next == '}') => break,
+                    _ => {
+                        chars.next();
+                    }
+                }
+            }
+        }
+    }
+
+    result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_strip_type_imports_mixed() {
+        let s = "import { encodeFunctionData, parseAbi, type Address, type Abi } from 'viem'";
+        let out = strip_type_imports(s).unwrap();
+        assert_eq!(out, "import { encodeFunctionData, parseAbi } from 'viem'");
+    }
+
+    #[test]
+    fn test_strip_type_imports_type_only() {
+        let s = "import type { Address } from 'viem'";
+        assert!(strip_type_imports(s).is_none());
+    }
+
+    #[test]
+    fn test_strip_type_imports_preserve_value_imports() {
+        let s = "import { createHash } from 'node:crypto'";
+        let out = strip_type_imports(s).unwrap();
+        assert_eq!(out, "import { createHash } from 'node:crypto'");
+    }
+
+    #[test]
+    fn test_strip_type_assertions() {
+        let ts = "const VITALIK = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045' as Address";
+        let js = strip_type_annotations(ts);
+        assert!(!js.contains("as Address"), "Type assertion not stripped: {}", js);
+        assert!(
+            js.contains("VITALIK = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'"),
+            "Value preserved: {}",
+            js
+        );
+    }
 
     #[test]
     fn test_strip_simple_types() {

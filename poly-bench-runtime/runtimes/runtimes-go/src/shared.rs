@@ -92,7 +92,8 @@ impl SinkMemoryDecls {
     /// Create declarations based on benchmark spec
     pub fn from_spec(spec: &BenchmarkSpec) -> Self {
         Self {
-            sink_decl: if spec.use_sink { "\tvar __sink interface{}\n" } else { "" },
+            // Always declare __sink so result marshaling works; when use_sink is false it stays nil
+            sink_decl: "\tvar __sink interface{}\n",
             sink_keepalive: if spec.use_sink { "\t\truntime.KeepAlive(__sink)\n" } else { "" },
             memory_decl: if spec.memory {
                 "\tvar memBefore, memAfter runtime.MemStats\n"
@@ -125,10 +126,42 @@ impl SinkMemoryDecls {
     }
 }
 
-/// Generate the benchmark call expression
+/// Heuristic: does impl_code look like a void-returning call (e.g. incrementCounter())?
+/// Go convention is to assign results to a sink; we only wrap in a closure when that would
+/// cause "used as value" compile errors. See: https://go.dev/blog/testing-b-loop
+fn looks_like_void_call(impl_code: &str) -> bool {
+    let trimmed = impl_code.trim();
+    // Block: multiple statements, has return, braces, or semicolons
+    if trimmed.contains('{') || trimmed.contains(';') || trimmed.contains("return ") {
+        return true;
+    }
+    if trimmed.contains('\n') {
+        return true;
+    }
+    // Single call with no args: Ident() - common pattern for void functions
+    if trimmed.chars().all(|c| c.is_alphanumeric() || c == '_' || c == ' ' || c == '(' || c == ')') &&
+        trimmed.ends_with("()") &&
+        !trimmed[..trimmed.len() - 2].trim_end().contains('(')
+    {
+        return true;
+    }
+    false
+}
+
+/// Generate the benchmark call expression.
+/// When use_sink is true: uses direct assignment (Go convention) for value-returning impls;
+/// only wraps in a closure for likely-void impls to avoid "used as value" compile errors.
 pub fn generate_bench_call(impl_code: &str, use_sink: bool) -> String {
     if use_sink {
-        format!("__sink = {}", impl_code)
+        if looks_like_void_call(impl_code) {
+            // Void-returning: wrap so we don't get "X() (no value) used as value"
+            let body: String =
+                impl_code.trim().lines().map(|l| format!("\t\t\t\t{}\n", l.trim())).collect();
+            ["__sink = func() interface{} {\n", &body, "\t\t\t\treturn nil\n\t\t\t}()"].concat()
+        } else {
+            // Value-returning: direct assignment (Go benchmark convention)
+            format!("__sink = {}", impl_code.trim())
+        }
     } else {
         impl_code.to_string()
     }
@@ -613,7 +646,16 @@ mod tests {
 
     #[test]
     fn test_generate_bench_call() {
-        assert_eq!(generate_bench_call("foo()", true), "__sink = foo()");
+        // Void-like (Ident()): wraps in closure to avoid "used as value" errors
+        let void_sink = generate_bench_call("incrementCounter()", true);
+        assert!(void_sink.contains("__sink = func() interface{}"));
+        assert!(void_sink.contains("incrementCounter()"));
+        assert!(void_sink.contains("return nil"));
+
+        // Value-returning: direct assignment (Go convention)
+        let value_sink = generate_bench_call("sha256SumGo(data)", true);
+        assert_eq!(value_sink, "__sink = sha256SumGo(data)");
+
         assert_eq!(generate_bench_call("foo()", false), "foo()");
     }
 
