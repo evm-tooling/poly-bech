@@ -495,7 +495,10 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
 
     script.push_str("def __polybench_run():\n");
     if use_memory {
+        // tracemalloc tracks current memory, not cumulative allocations
+        // We'll track peak memory per batch to estimate allocations
         script.push_str("    tracemalloc.start()\n");
+        script.push_str("    total_allocated = 0\n");
     }
     script.push_str("    samples = []\n");
     script.push_str("    warmup_nanos = 0\n\n");
@@ -534,11 +537,6 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         script.push_str("\n");
     }
 
-    if use_memory {
-        script.push_str("    gc.collect()\n");
-        script.push_str("    mem_before = tracemalloc.get_traced_memory()[0]\n");
-    }
-
     if use_auto_mode {
         // Batched execution (like Go/TS): time whole batches, not each iteration.
         // Per-iteration timing adds ~300ns overhead per call; for 60ns ops that's 5x overhead
@@ -549,6 +547,10 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         script.push_str("    total_ns = 0.0\n");
         script.push_str("    samples = []\n");
         script.push_str("    while total_ns < target_ns:\n");
+        if use_memory {
+            // Reset tracemalloc peak before each batch to track allocations
+            script.push_str("        tracemalloc.reset_peak()\n");
+        }
         script.push_str("        batch_start = time.perf_counter_ns()\n");
         script.push_str("        for _ in range(batch_size):\n");
         script.push_str(&each_hook_code_inner);
@@ -558,6 +560,11 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
             script.push_str("            __polybench_bench()\n");
         }
         script.push_str("        batch_elapsed = time.perf_counter_ns() - batch_start\n");
+        if use_memory {
+            // Add peak memory from this batch to total (approximates cumulative allocations)
+            script.push_str("        _, batch_peak = tracemalloc.get_traced_memory()\n");
+            script.push_str("        total_allocated += batch_peak\n");
+        }
         script.push_str("        total_iterations += batch_size\n");
         script.push_str("        total_ns += batch_elapsed\n");
         script.push_str("        samples.append(batch_elapsed / batch_size)\n");
@@ -583,6 +590,9 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
         script.push_str("    iterations = total_iterations\n");
     } else {
         script.push_str(&format!("    for _ in range({}):\n", iterations));
+        if use_memory {
+            script.push_str("        tracemalloc.reset_peak()\n");
+        }
         script.push_str("        start = time.perf_counter_ns()\n");
         script.push_str(&each_hook_code);
         if use_sink {
@@ -591,13 +601,15 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
             script.push_str("        __polybench_bench()\n");
         }
         script.push_str("        samples.append(time.perf_counter_ns() - start)\n");
+        if use_memory {
+            script.push_str("        _, iter_peak = tracemalloc.get_traced_memory()\n");
+            script.push_str("        total_allocated += iter_peak\n");
+        }
         script.push_str("    total_nanos = sum(samples)\n");
         script.push_str(&format!("    iterations = {}\n", iterations));
     }
 
     if use_memory {
-        script.push_str("    gc.collect()\n");
-        script.push_str("    mem_after = tracemalloc.get_traced_memory()[0]\n");
         script.push_str("    tracemalloc.stop()\n");
     }
 
@@ -621,9 +633,8 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
     script.push_str("        \"opsPerSec\": ops_per_sec,\n");
     script.push_str("        \"samples\": samples\n");
     if use_memory {
-        script.push_str(
-            "        , \"bytesPerOp\": int(max(0, mem_after - mem_before) / iterations)\n",
-        );
+        // total_allocated is cumulative peak memory from all batches/iterations
+        script.push_str("        , \"bytesPerOp\": int(total_allocated / iterations)\n");
     }
     if use_sink {
         script.push_str("        , \"rawResult\": json.dumps(__polybench_sink, default=str)\n");
@@ -649,6 +660,8 @@ struct BenchResultJson {
     #[serde(default)]
     bytes_per_op: Option<u64>,
     #[serde(default)]
+    allocs_per_op: Option<u64>,
+    #[serde(default)]
     raw_result: Option<String>,
 }
 
@@ -673,7 +686,7 @@ impl BenchResultJson {
         };
 
         if let Some(bytes) = self.bytes_per_op {
-            m = m.with_allocs(bytes, 0);
+            m = m.with_allocs(bytes, self.allocs_per_op.unwrap_or(0));
         }
         if let Some(raw) = self.raw_result {
             m.raw_result = Some(raw);

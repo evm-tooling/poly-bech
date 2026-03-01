@@ -4,7 +4,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
     description: "O(n^2) bubble sort on int32 array"
     baseline: "go"
     warmup: 100
-    targetTime: 100ms
+    targetTime: 1000ms
     fairness: "strict"
     cvThreshold: 5
     count: 1
@@ -152,7 +152,6 @@ declare suite bubbleN performance timeBased sameDataset: true {
                 const n = data.len / 4;
                 const allocator = std.heap.page_allocator;
                 const arr = allocator.alloc(i32, n) catch @panic("alloc failed");
-                defer allocator.free(arr);
                 for (0..n) |i| {
                     const offset = i * 4;
                     arr[i] = std.mem.readInt(i32, @ptrCast(data[offset..].ptr), .big);
@@ -167,18 +166,11 @@ declare suite bubbleN performance timeBased sameDataset: true {
                     }
                 }
                 const out = allocator.alloc(u8, data.len) catch @panic("alloc failed");
-                errdefer allocator.free(out);
                 for (0..n) |i| {
                     const offset = i * 4;
                     std.mem.writeInt(i32, @ptrCast(out[offset..].ptr), arr[i], .big);
                 }
                 return out;
-            }
-
-            fn bubbleZigAndFree(data: []const u8) void {
-                const allocator = std.heap.page_allocator;
-                const result = bubbleZig(data);
-                allocator.free(result);
             }
         }
     }
@@ -224,8 +216,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
                     write_i32_be(out + i * 4, arr[i]);
                 }
                 memcpy(data, out, len);
-                free(arr);
-                free(out);
+         
             }
         }
     }
@@ -276,7 +267,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s100)
         python: bubble_python(s100)
         csharp: BubbleCsharp(s100);
-        zig: bubbleZigAndFree(&s100);
+        zig: bubbleZig(&s100);
         c: {
             unsigned char __buf[sizeof(s100)];
             memcpy(__buf, s100, sizeof(__buf));
@@ -290,7 +281,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s200)
         python: bubble_python(s200)
         csharp: BubbleCsharp(s200);
-        zig: bubbleZigAndFree(&s200);
+        zig: bubbleZig(&s200);
         c: {
             unsigned char __buf[sizeof(s200)];
             memcpy(__buf, s200, sizeof(__buf));
@@ -304,7 +295,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s300)
         python: bubble_python(s300)
         csharp: BubbleCsharp(s300);
-        zig: bubbleZigAndFree(&s300);
+        zig: bubbleZig(&s300);
         c: {
             unsigned char __buf[sizeof(s300)];
             memcpy(__buf, s300, sizeof(__buf));
@@ -318,7 +309,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s400)
         python: bubble_python(s400)
         csharp: BubbleCsharp(s400);
-        zig: bubbleZigAndFree(&s400);
+        zig: bubbleZig(&s400);
         c: {
             unsigned char __buf[sizeof(s400)];
             memcpy(__buf, s400, sizeof(__buf));
@@ -332,7 +323,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s500)
         python: bubble_python(s500)
         csharp: BubbleCsharp(s500);
-        zig: bubbleZigAndFree(&s500);
+        zig: bubbleZig(&s500);
         c: {
             unsigned char __buf[sizeof(s500)];
             memcpy(__buf, s500, sizeof(__buf));
@@ -346,7 +337,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s600)
         python: bubble_python(s600)
         csharp: BubbleCsharp(s600);
-        zig: bubbleZigAndFree(&s600);
+        zig: bubbleZig(&s600);
         c: {
             unsigned char __buf[sizeof(s600)];
             memcpy(__buf, s600, sizeof(__buf));
@@ -360,7 +351,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s700)
         python: bubble_python(s700)
         csharp: BubbleCsharp(s700);
-        zig: bubbleZigAndFree(&s700);
+        zig: bubbleZig(&s700);
         c: {
             unsigned char __buf[sizeof(s700)];
             memcpy(__buf, s700, sizeof(__buf));
@@ -374,7 +365,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s800)
         python: bubble_python(s800)
         csharp: BubbleCsharp(s800);
-        zig: bubbleZigAndFree(&s800);
+        zig: bubbleZig(&s800);
         c: {
             unsigned char __buf[sizeof(s800)];
             memcpy(__buf, s800, sizeof(__buf));
@@ -388,7 +379,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s900)
         python: bubble_python(s900)
         csharp: BubbleCsharp(s900);
-        zig: bubbleZigAndFree(&s900);
+        zig: bubbleZig(&s900);
         c: {
             unsigned char __buf[sizeof(s900)];
             memcpy(__buf, s900, sizeof(__buf));
@@ -402,7 +393,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         rust: bubble_rust(&s1000)
         python: bubble_python(s1000)
         csharp: BubbleCsharp(s1000);
-        zig: bubbleZigAndFree(&s1000);
+        zig: bubbleZig(&s1000);
         c: {
             unsigned char __buf[sizeof(s1000)];
             memcpy(__buf, s1000, sizeof(__buf));

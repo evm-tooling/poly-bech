@@ -711,6 +711,83 @@ fn emit_fixtures(spec: &BenchmarkSpec, suite: &SuiteIR, indent: &str) -> String 
     out
 }
 
+fn emit_memory_helpers() -> String {
+    // Use a tracking allocator that wraps malloc and counts total bytes allocated.
+    // This is cumulative (never decreases) like Go's runtime.MemStats.TotalAlloc.
+    // On macOS, we use malloc_size() to track the actual size of allocations.
+    // On other platforms, we prepend each allocation with the size.
+    r#"static uint64_t __polybench_total_allocated = 0;
+
+#if defined(__APPLE__)
+#include <malloc/malloc.h>
+
+void* __polybench_malloc(size_t size) {
+    void* ptr = malloc(size);
+    if (ptr) {
+        __polybench_total_allocated += malloc_size(ptr);
+    }
+    return ptr;
+}
+
+void* __polybench_calloc(size_t count, size_t size) {
+    void* ptr = calloc(count, size);
+    if (ptr) {
+        __polybench_total_allocated += malloc_size(ptr);
+    }
+    return ptr;
+}
+
+void* __polybench_realloc(void* old_ptr, size_t size) {
+    size_t old_size = old_ptr ? malloc_size(old_ptr) : 0;
+    void* ptr = realloc(old_ptr, size);
+    if (ptr) {
+        size_t new_size = malloc_size(ptr);
+        if (new_size > old_size) {
+            __polybench_total_allocated += (new_size - old_size);
+        }
+    }
+    return ptr;
+}
+
+void __polybench_free(void* ptr) {
+    free(ptr);
+}
+
+#else
+
+void* __polybench_malloc(size_t size) {
+    __polybench_total_allocated += size;
+    return malloc(size);
+}
+
+void* __polybench_calloc(size_t count, size_t size) {
+    __polybench_total_allocated += count * size;
+    return calloc(count, size);
+}
+
+void* __polybench_realloc(void* old_ptr, size_t size) {
+    __polybench_total_allocated += size;
+    return realloc(old_ptr, size);
+}
+
+void __polybench_free(void* ptr) {
+    free(ptr);
+}
+
+#endif
+
+#define malloc(size) __polybench_malloc(size)
+#define calloc(count, size) __polybench_calloc(count, size)
+#define realloc(ptr, size) __polybench_realloc(ptr, size)
+#define free(ptr) __polybench_free(ptr)
+
+static uint64_t __polybench_get_total_allocated(void) {
+    return __polybench_total_allocated;
+}
+"#
+    .to_string()
+}
+
 fn emit_hook(code: Option<&String>, indent: &str) -> String {
     code.map(|c| {
         CRuntime::normalize_indent(c)
@@ -766,6 +843,9 @@ fn generate_c_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) ->
     src.push_str(
         "static uint64_t __polybench_nanos_now(void) {\n    struct timespec ts;\n    clock_gettime(CLOCK_MONOTONIC, &ts);\n    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;\n}\n\n",
     );
+    if spec.memory {
+        src.push_str(&emit_memory_helpers());
+    }
 
     let stdlib_code = stdlib::get_stdlib_code(&suite.stdlib_imports, &crate::C_STDLIB);
     if !stdlib_code.is_empty() {
@@ -844,6 +924,13 @@ fn generate_c_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) ->
         src.push_str("    uint64_t __warmup_nanos = 0;\n");
     }
 
+    let use_memory = spec.memory;
+    if use_memory {
+        // Reset the tracking allocator counter before the benchmark
+        src.push_str("    __polybench_total_allocated = 0;\n");
+        src.push_str("    uint64_t __mem_before = __polybench_get_total_allocated();\n");
+    }
+
     if spec.mode == BenchMode::Auto {
         src.push_str(&format!(
             "    double targetNs = {:.0};\n    uint64_t totalIterations = 0;\n    double totalNs = 0.0;\n    uint64_t batch = 1;\n    size_t sampleCap = 4096;\n    size_t sampleCount = 0;\n    double* samples = (double*)malloc(sampleCap * sizeof(double));\n    if (!samples) return 1;\n    while (totalNs < targetNs) {{\n        uint64_t t0 = __polybench_nanos_now();\n        for (uint64_t i = 0; i < batch; i++) {{\n",
@@ -870,8 +957,16 @@ fn generate_c_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) ->
         src.push_str(
             "    double nanosPerOp = totalNs / (double)(totalIterations ? totalIterations : 1);\n    double opsPerSec = 1000000000.0 / (nanosPerOp > 0.0 ? nanosPerOp : 1.0);\n",
         );
+        if use_memory {
+            src.push_str("    uint64_t __mem_after = __polybench_get_total_allocated();\n");
+            src.push_str("    uint64_t __bytes_per_op = totalIterations ? (__mem_after - __mem_before) / totalIterations : 0;\n");
+        }
         src.push_str(&emit_hook(spec.after_hooks.get(&Lang::C), "    "));
-        src.push_str("    printf(\"{\\\"iterations\\\":%llu,\\\"totalNanos\\\":%.0f,\\\"warmupNanos\\\":%llu,\\\"nanosPerOp\\\":%.6f,\\\"opsPerSec\\\":%.6f,\\\"samples\\\":[\", (unsigned long long)totalIterations, totalNs, (unsigned long long)__warmup_nanos, nanosPerOp, opsPerSec);\n");
+        if use_memory {
+            src.push_str("    printf(\"{\\\"iterations\\\":%llu,\\\"totalNanos\\\":%.0f,\\\"warmupNanos\\\":%llu,\\\"nanosPerOp\\\":%.6f,\\\"opsPerSec\\\":%.6f,\\\"bytesPerOp\\\":%llu,\\\"samples\\\":[\", (unsigned long long)totalIterations, totalNs, (unsigned long long)__warmup_nanos, nanosPerOp, opsPerSec, (unsigned long long)__bytes_per_op);\n");
+        } else {
+            src.push_str("    printf(\"{\\\"iterations\\\":%llu,\\\"totalNanos\\\":%.0f,\\\"warmupNanos\\\":%llu,\\\"nanosPerOp\\\":%.6f,\\\"opsPerSec\\\":%.6f,\\\"samples\\\":[\", (unsigned long long)totalIterations, totalNs, (unsigned long long)__warmup_nanos, nanosPerOp, opsPerSec);\n");
+        }
         src.push_str("    for (size_t i = 0; i < sampleCount; i++) {\n");
         src.push_str(
             "        if (i) printf(\",\");\n        printf(\"%.0f\", samples[i]);\n    }\n",
@@ -890,12 +985,21 @@ fn generate_c_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) ->
             src.push_str("        __polybench_bench();\n");
         }
         src.push_str("        uint64_t t1 = __polybench_nanos_now();\n");
-        src.push_str("        samples[i] = (double)(t1 - t0);\n    }\n");
+        src.push_str("        samples[i] = (double)(t1 - t0);\n");
+        src.push_str("    }\n");
         src.push_str(
             "    double totalNs = 0.0;\n    for (uint64_t i = 0; i < iterations; i++) totalNs += samples[i];\n    double nanosPerOp = totalNs / (double)(iterations ? iterations : 1);\n    double opsPerSec = 1000000000.0 / (nanosPerOp > 0.0 ? nanosPerOp : 1.0);\n",
         );
+        if use_memory {
+            src.push_str("    uint64_t __mem_after = __polybench_get_total_allocated();\n");
+            src.push_str("    uint64_t __bytes_per_op = iterations ? (__mem_after - __mem_before) / iterations : 0;\n");
+        }
         src.push_str(&emit_hook(spec.after_hooks.get(&Lang::C), "    "));
-        src.push_str("    printf(\"{\\\"iterations\\\":%llu,\\\"totalNanos\\\":%.0f,\\\"warmupNanos\\\":%llu,\\\"nanosPerOp\\\":%.6f,\\\"opsPerSec\\\":%.6f,\\\"samples\\\":[\", (unsigned long long)iterations, totalNs, (unsigned long long)__warmup_nanos, nanosPerOp, opsPerSec);\n");
+        if use_memory {
+            src.push_str("    printf(\"{\\\"iterations\\\":%llu,\\\"totalNanos\\\":%.0f,\\\"warmupNanos\\\":%llu,\\\"nanosPerOp\\\":%.6f,\\\"opsPerSec\\\":%.6f,\\\"bytesPerOp\\\":%llu,\\\"samples\\\":[\", (unsigned long long)iterations, totalNs, (unsigned long long)__warmup_nanos, nanosPerOp, opsPerSec, (unsigned long long)__bytes_per_op);\n");
+        } else {
+            src.push_str("    printf(\"{\\\"iterations\\\":%llu,\\\"totalNanos\\\":%.0f,\\\"warmupNanos\\\":%llu,\\\"nanosPerOp\\\":%.6f,\\\"opsPerSec\\\":%.6f,\\\"samples\\\":[\", (unsigned long long)iterations, totalNs, (unsigned long long)__warmup_nanos, nanosPerOp, opsPerSec);\n");
+        }
         src.push_str("    for (uint64_t i = 0; i < iterations; i++) {\n");
         src.push_str(
             "        if (i) printf(\",\");\n        printf(\"%.0f\", samples[i]);\n    }\n",
@@ -919,6 +1023,10 @@ struct BenchResultJson {
     samples: Vec<f64>,
     #[serde(default)]
     raw_result: Option<String>,
+    #[serde(default)]
+    bytes_per_op: Option<u64>,
+    #[serde(default)]
+    allocs_per_op: Option<u64>,
 }
 
 impl BenchResultJson {
@@ -940,6 +1048,9 @@ impl BenchResultJson {
         }
         if let Some(w) = self.warmup_nanos {
             m.warmup_nanos = Some(w as u64);
+        }
+        if let Some(bytes) = self.bytes_per_op {
+            m = m.with_allocs(bytes, self.allocs_per_op.unwrap_or(0));
         }
         m
     }

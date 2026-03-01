@@ -582,23 +582,31 @@ pub const BENCH_HARNESS_MEMORY: &str = r#"
 
     // GC before measurement when available (Node --expose-gc)
     const forceGC = () => { if (typeof global.gc === 'function') global.gc(); };
-    // Prefer V8 total_allocated_bytes (GC-insensitive); fallback to heapUsed when unavailable or zero
+    // Use V8 total_heap_size_executable or malloced_memory as cumulative metric
+    // total_heap_size grows with allocations and doesn't shrink immediately after GC
     const getMemorySnapshot = () => {
-        forceGC();
         const stats = v8 && v8.getHeapStatistics ? v8.getHeapStatistics() : null;
-        const totalAllocated = (stats && typeof stats.total_allocated_bytes === 'number') ? stats.total_allocated_bytes : null;
+        // malloced_memory tracks cumulative C++ allocations; total_heap_size tracks JS heap
+        // Both are more stable than heapUsed for tracking allocations within benchmark loops
+        const totalHeap = stats ? stats.total_heap_size : 0;
+        const malloced = stats ? (stats.malloced_memory || 0) : 0;
         const heapUsed = (typeof process !== 'undefined' && process.memoryUsage) ? process.memoryUsage().heapUsed : 0;
-        return { totalAllocated, heapUsed };
+        return { totalHeap, malloced, heapUsed };
     };
     const bytesPerOpFromSnapshots = (before, after, iters) => {
-        if (before.totalAllocated != null && after.totalAllocated != null) {
-            const delta = (after.totalAllocated - before.totalAllocated) / iters;
+        // Try malloced_memory first (cumulative C++ allocations)
+        if (before.malloced > 0 && after.malloced > 0) {
+            const delta = (after.malloced - before.malloced) / iters;
             if (delta > 0) return Math.round(delta);
         }
-        const heapDelta = (after.heapUsed - before.heapUsed) / iters;
-        const rounded = Math.round(heapDelta);
-        if (rounded < 100) return undefined;
-        return Math.max(0, rounded);
+        // Fallback to total_heap_size (cumulative JS heap growth)
+        if (before.totalHeap > 0 && after.totalHeap > 0) {
+            const delta = (after.totalHeap - before.totalHeap) / iters;
+            if (delta > 0) return Math.round(delta);
+        }
+        // Last resort: heapUsed delta (can be negative after GC, so clamp)
+        const heapDelta = Math.max(0, (after.heapUsed - before.heapUsed)) / iters;
+        return heapDelta > 0 ? Math.round(heapDelta) : 0;
     };
 
     function normalizeRawResult(value) {

@@ -397,6 +397,9 @@ fn build_rust_env(
         terminal::finish_success_indented(&spinner, "Created src/main.rs");
     }
 
+    // Ensure alloc_tracker is in Cargo.toml (required for memory benchmarks)
+    ensure_alloc_tracker_in_cargo_toml(&cargo_toml_path)?;
+
     // Add user dependencies from manifest to Cargo.toml
     if !rust_config.dependencies.is_empty() {
         let spinner = terminal::indented_spinner("Adding dependencies to Cargo.toml...");
@@ -1189,6 +1192,27 @@ fn install_local_roslyn_language_server(csharp_env: &Path, options: &BuildOption
         terminal::print_stderr_excerpt(&output2.stderr, 8);
     }
 
+    Ok(())
+}
+
+/// Ensure alloc_tracker is in Cargo.toml (required for memory benchmarks).
+/// Patches the file if the dependency is missing.
+fn ensure_alloc_tracker_in_cargo_toml(cargo_path: &Path) -> Result<()> {
+    let content = std::fs::read_to_string(cargo_path)
+        .map_err(|e| miette::miette!("Failed to read Cargo.toml: {}", e))?;
+    if content.contains("alloc_tracker") {
+        return Ok(());
+    }
+    let new_content = content
+        .replacen("[dependencies]\n", "[dependencies]\nalloc_tracker = \"0.5\"\n", 1)
+        .replacen("\n[dependencies]\n", "\n[dependencies]\nalloc_tracker = \"0.5\"\n", 1);
+    if new_content == content {
+        return Err(miette::miette!(
+            "Cargo.toml has no [dependencies] section; cannot add alloc_tracker for memory profiling"
+        ));
+    }
+    std::fs::write(cargo_path, new_content)
+        .map_err(|e| miette::miette!("Failed to write Cargo.toml: {}", e))?;
     Ok(())
 }
 
