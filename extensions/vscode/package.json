@@ -59,6 +59,26 @@
           "type": "boolean",
           "default": false,
           "description": "Use Tree-sitter WASM for client-side syntax highlighting (experimental). Provides faster initial highlighting."
+        },
+        "poly-bench.lspRestartOnTimeout": {
+          "type": "boolean",
+          "default": true,
+          "description": "Restart LSP when requests time out repeatedly (e.g., after sleep or long idle)."
+        },
+        "poly-bench.lspRequestTimeoutMs": {
+          "type": "number",
+          "default": 10000,
+          "description": "Request timeout in ms before counting as slow."
+        },
+        "poly-bench.lspTimeoutRestartThreshold": {
+          "type": "number",
+          "default": 2,
+          "description": "Number of timeouts before triggering restart."
+        },
+        "poly-bench.lspRestartCooldownMs": {
+          "type": "number",
+          "default": 60000,
+          "description": "Min ms between timeout-triggered restarts."
         }
       }
     },
