@@ -11,7 +11,8 @@ impl ProjectRootDetector for CDetector {
     }
 
     fn marker_files(&self) -> &[&'static str] {
-        &["compile_commands.json", "CMakeLists.txt", "Makefile", ".clangd", ".clang-format"]
+        // Keep markers conservative to avoid false positives (e.g. workspace-level Makefiles).
+        &["compile_commands.json", "CMakeLists.txt", "vcpkg.json", ".clangd"]
     }
 }
 

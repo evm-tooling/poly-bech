@@ -7,9 +7,10 @@ use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use poly_bench_stdlib as stdlib;
 use poly_bench_traits::{Measurement, Runtime, RuntimeConfig, RuntimeFactory};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     process::Stdio,
+    time::{Duration, Instant},
 };
 
 pub struct ZigRuntime {
@@ -80,6 +81,314 @@ impl ZigRuntime {
         Ok(dir)
     }
 
+    fn resolve_project_root(&self, work_dir: &Path) -> Option<PathBuf> {
+        let work_str = work_dir.to_string_lossy();
+        if work_str.contains("runtime-env") {
+            work_dir
+                .parent()
+                .and_then(|p| p.parent())
+                .and_then(|p| p.parent())
+                .map(|p| p.to_path_buf())
+        } else if work_str.contains(".polybench") {
+            work_dir.parent().and_then(|p| p.parent()).map(|p| p.to_path_buf())
+        } else {
+            None
+        }
+    }
+
+    fn load_zig_dependencies(
+        &self,
+        project_root: &Path,
+    ) -> std::collections::HashMap<String, String> {
+        let manifest_path = project_root.join("polybench.toml");
+        let Ok(content) = std::fs::read_to_string(&manifest_path) else {
+            return std::collections::HashMap::new();
+        };
+        let Ok(full) = content.parse::<toml::Value>() else {
+            return std::collections::HashMap::new();
+        };
+        full.get("zig")
+            .and_then(|v| v.get("dependencies"))
+            .and_then(|v| v.as_table())
+            .map(|t| {
+                t.iter()
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Parse dep names from build.zig.zon .dependencies = .{ .dep_name = .{ ... }, }
+    fn parse_zon_dep_names(&self, zon_path: &Path) -> Vec<String> {
+        let Ok(content) = std::fs::read_to_string(zon_path) else {
+            return vec![];
+        };
+        let re = regex::Regex::new(r"\.(\w+)\s*=\s*\.\{").unwrap();
+        let deps_start_re = regex::Regex::new(r"\.dependencies\s*=\s*\.\{").unwrap();
+        let mut in_deps = false;
+        let mut depth = 0;
+        let mut deps = Vec::new();
+        for line in content.lines() {
+            if deps_start_re.is_match(line) {
+                in_deps = true;
+                depth = 1;
+                continue;
+            }
+            if in_deps {
+                for cap in re.captures_iter(line) {
+                    if let Some(name) = cap.get(1) {
+                        deps.push(name.as_str().to_string());
+                    }
+                }
+                depth += line.matches('{').count();
+                depth -= line.matches('}').count();
+                if depth <= 0 {
+                    break;
+                }
+            }
+        }
+        deps
+    }
+
+    fn parse_zon_dep_hashes(&self, zon_path: &Path) -> HashMap<String, String> {
+        let mut out = HashMap::new();
+        let Ok(content) = std::fs::read_to_string(zon_path) else {
+            return out;
+        };
+        let Ok(dep_start_re) =
+            regex::Regex::new(r#"^\s*\.([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\.\{\s*$"#)
+        else {
+            return out;
+        };
+        let Ok(hash_re) = regex::Regex::new(r#"^\s*\.hash\s*=\s*"([^"]+)""#) else {
+            return out;
+        };
+
+        let mut in_deps_block = false;
+        let mut current_dep: Option<String> = None;
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if !in_deps_block {
+                if trimmed.starts_with(".dependencies") && trimmed.contains(".{") {
+                    in_deps_block = true;
+                }
+                continue;
+            }
+            if current_dep.is_none() && trimmed == "}," {
+                in_deps_block = false;
+                continue;
+            }
+            if let Some(dep) = current_dep.as_ref() {
+                if let Some(cap) = hash_re.captures(trimmed) {
+                    if let Some(m) = cap.get(1) {
+                        out.insert(dep.clone(), m.as_str().to_string());
+                    }
+                }
+                if trimmed == "}," {
+                    current_dep = None;
+                }
+                continue;
+            }
+            if let Some(cap) = dep_start_re.captures(trimmed) {
+                current_dep = cap.get(1).map(|m| m.as_str().to_string());
+            }
+        }
+        out
+    }
+
+    fn resolve_dep_module_source(&self, dep: &str, dep_hash: Option<&str>) -> String {
+        let mut candidates = vec!["src/root.zig".to_string(), format!("src/{dep}.zig")];
+
+        if let Some(hash) = dep_hash {
+            if let Ok(home) = std::env::var("HOME") {
+                let cache_root =
+                    PathBuf::from(home).join(".cache").join("zig").join("p").join(hash);
+                for rel in &candidates {
+                    if cache_root.join(rel).exists() {
+                        return rel.clone();
+                    }
+                }
+                let src_dir = cache_root.join("src");
+                if let Ok(entries) = std::fs::read_dir(src_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().and_then(|e| e.to_str()) == Some("zig") {
+                            if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                                return format!("src/{name}");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback for simple single-file packages.
+        candidates.remove(0); // prefer src/{dep}.zig over src/root.zig when unknown
+        candidates.into_iter().next().unwrap_or_else(|| format!("src/{dep}.zig"))
+    }
+
+    fn patch_dep_for_zig_compat(&self, dep_hash: &str) -> Result<()> {
+        let home = match std::env::var("HOME") {
+            Ok(h) => h,
+            Err(_) => return Ok(()),
+        };
+        let cache_root = PathBuf::from(home).join(".cache").join("zig").join("p").join(dep_hash);
+        if !cache_root.exists() {
+            return Ok(());
+        }
+        let src_dir = cache_root.join("src");
+        if !src_dir.exists() {
+            return Ok(());
+        }
+        // Only patch legacy "single-sequence + index capture" loops:
+        // `for (items) |item, i|` -> `for (items, 0..) |item, i|`
+        // Keep multi-input loops untouched (e.g. `for (a, b, 0..) |...|`).
+        let re_two_capture_loop =
+            regex::Regex::new(r#"for\s*\(\s*([^,\)\n]+)\s*\)\s*\|([^,\|]+),\s*([^\|]+)\|"#)
+                .map_err(|e| miette!("Invalid regex: {}", e))?;
+        let entries = std::fs::read_dir(&src_dir)
+            .map_err(|e| miette!("Failed to read {}: {}", src_dir.display(), e))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| miette!("Failed to read dir entry: {}", e))?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("zig") {
+                continue;
+            }
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| miette!("Failed to read {}: {}", path.display(), e))?;
+            let updated =
+                re_two_capture_loop.replace_all(&content, "for ($1, 0..) |$2, $3|").to_string();
+            if updated != content {
+                std::fs::write(&path, updated)
+                    .map_err(|e| miette!("Failed to write {}: {}", path.display(), e))?;
+            }
+        }
+        Ok(())
+    }
+
+    fn dedupe_zon_deps(
+        &self,
+        zon_deps: &[String],
+        dep_hashes: &HashMap<String, String>,
+    ) -> Vec<String> {
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        for dep in zon_deps {
+            if let Some(base) = dep.strip_suffix("_git") {
+                if let (Some(base_hash), Some(dep_hash)) =
+                    (dep_hashes.get(base), dep_hashes.get(dep))
+                {
+                    if base_hash == dep_hash {
+                        continue;
+                    }
+                }
+            }
+            if seen.insert(dep.clone()) {
+                out.push(dep.clone());
+            }
+        }
+        out
+    }
+
+    /// Normalize legacy build.zig.zon name syntax (`.name = "pkg"`) to enum literal form.
+    fn normalize_build_zig_zon(&self, zon_path: &Path) -> Result<()> {
+        let content = std::fs::read_to_string(zon_path)
+            .map_err(|e| miette!("Failed to read {}: {}", zon_path.display(), e))?;
+        if !content.contains(".name = \"") {
+            return Ok(());
+        }
+        let re = regex::Regex::new(r#"(?m)^(\s*\.name\s*=\s*)"([^"]+)"(\s*,\s*)$"#)
+            .map_err(|e| miette!("Invalid regex: {}", e))?;
+        let updated = re
+            .replace(&content, |caps: &regex::Captures| {
+                let raw = caps.get(2).map(|m| m.as_str()).unwrap_or("polybench");
+                let enum_name: String = raw
+                    .chars()
+                    .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+                    .collect();
+                format!("{}.{enum_name}{}", &caps[1], &caps[3])
+            })
+            .to_string();
+        if updated != content {
+            std::fs::write(zon_path, updated)
+                .map_err(|e| miette!("Failed to write {}: {}", zon_path.display(), e))?;
+        }
+        Ok(())
+    }
+
+    fn extract_suggested_fingerprint(stderr: &str) -> Option<String> {
+        let re = regex::Regex::new(r"suggested value:\s*(0x[0-9a-fA-F]+)").ok()?;
+        re.captures(stderr).and_then(|c| c.get(1)).map(|m| m.as_str().to_string())
+    }
+
+    fn set_build_zig_zon_fingerprint(&self, zon_path: &Path, fingerprint: &str) -> Result<()> {
+        let content = std::fs::read_to_string(zon_path)
+            .map_err(|e| miette!("Failed to read {}: {}", zon_path.display(), e))?;
+        let fp_line = format!("    .fingerprint = {fingerprint},");
+        let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+
+        if let Some(idx) = lines.iter().position(|l| l.trim_start().starts_with(".fingerprint")) {
+            lines[idx] = fp_line;
+        } else if let Some(version_idx) =
+            lines.iter().position(|l| l.trim_start().starts_with(".version"))
+        {
+            lines.insert(version_idx + 1, fp_line);
+        } else {
+            // Fallback: inject right after the opening .{ line.
+            let insert_idx =
+                lines.iter().position(|l| l.trim() == ".{").map(|i| i + 1).unwrap_or(0);
+            lines.insert(insert_idx, fp_line);
+        }
+
+        std::fs::write(zon_path, lines.join("\n") + "\n")
+            .map_err(|e| miette!("Failed to write {}: {}", zon_path.display(), e))?;
+        Ok(())
+    }
+
+    fn detect_used_external_deps(
+        &self,
+        source: &str,
+        declared_deps: &HashSet<String>,
+    ) -> Result<HashSet<String>> {
+        let mut used = HashSet::new();
+
+        // Match `const alias = @import("module");` so we can ignore aliases never used.
+        let alias_import_re = regex::Regex::new(
+            r#"(?m)^\s*const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*@import\(\s*"([^"]+)"\s*\)\s*;"#,
+        )
+        .map_err(|e| miette!("Invalid regex: {}", e))?;
+        let direct_import_re = regex::Regex::new(r#"@import\(\s*"([^"]+)"\s*\)"#)
+            .map_err(|e| miette!("Invalid regex: {}", e))?;
+
+        let mut source_without_import_lines = source.to_string();
+        for caps in alias_import_re.captures_iter(source) {
+            let alias = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
+            let module = caps.get(2).map(|m| m.as_str()).unwrap_or_default();
+            if !declared_deps.contains(module) {
+                continue;
+            }
+            if let Some(full) = caps.get(0) {
+                source_without_import_lines =
+                    source_without_import_lines.replace(full.as_str(), "");
+            }
+            let alias_use_re = regex::Regex::new(&format!(r"\b{}\b", regex::escape(alias)))
+                .map_err(|e| miette!("Invalid regex: {}", e))?;
+            if alias_use_re.is_match(&source_without_import_lines) {
+                used.insert(module.to_string());
+            }
+        }
+
+        // If a dependency is imported in a non-alias form, treat it as used.
+        for caps in direct_import_re.captures_iter(source) {
+            let module = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
+            if declared_deps.contains(module) {
+                used.insert(module.to_string());
+            }
+        }
+
+        Ok(used)
+    }
+
     fn write_source_and_build(
         &self,
         work_dir: &Path,
@@ -91,6 +400,36 @@ impl ZigRuntime {
         std::fs::write(&source_path, source)
             .map_err(|e| miette!("Failed to write {}: {}", source_path.display(), e))?;
 
+        let zon_path = work_dir.join("build.zig.zon");
+        if zon_path.exists() {
+            self.normalize_build_zig_zon(&zon_path)?;
+        }
+        let manifest_deps = self
+            .resolve_project_root(work_dir)
+            .map(|p| self.load_zig_dependencies(&p))
+            .unwrap_or_default();
+        let zon_deps = if zon_path.exists() { self.parse_zon_dep_names(&zon_path) } else { vec![] };
+
+        let declared_deps: HashSet<String> =
+            manifest_deps.keys().cloned().chain(zon_deps.iter().cloned()).collect();
+        let used_external_deps = self.detect_used_external_deps(source, &declared_deps)?;
+        let used_zon_deps: Vec<String> =
+            zon_deps.iter().filter(|dep| used_external_deps.contains(*dep)).cloned().collect();
+        let use_zig_build = !used_zon_deps.is_empty();
+
+        if use_zig_build && zon_path.exists() {
+            self.build_with_zig_build(work_dir, source_name, output_name, &used_zon_deps)
+        } else {
+            self.build_with_build_exe(work_dir, &source_path, output_name)
+        }
+    }
+
+    fn build_with_build_exe(
+        &self,
+        work_dir: &Path,
+        source_path: &Path,
+        output_name: &str,
+    ) -> Result<PathBuf> {
         let binary_path = work_dir.join(output_name);
         let output = std::process::Command::new(&self.zig_binary)
             .args([
@@ -120,6 +459,176 @@ impl ZigRuntime {
         }
 
         Ok(binary_path)
+    }
+
+    fn build_with_zig_build(
+        &self,
+        work_dir: &Path,
+        source_name: &str,
+        output_name: &str,
+        zon_deps: &[String],
+    ) -> Result<PathBuf> {
+        let zon_path = work_dir.join("build.zig.zon");
+        let dep_hashes = self.parse_zon_dep_hashes(&zon_path);
+        let zon_deps = self.dedupe_zon_deps(zon_deps, &dep_hashes);
+        for hash in dep_hashes.values() {
+            self.patch_dep_for_zig_compat(hash)?;
+        }
+        let dep_modules: Vec<(String, String)> = zon_deps
+            .iter()
+            .map(|dep| {
+                let module_source =
+                    self.resolve_dep_module_source(dep, dep_hashes.get(dep).map(|s| s.as_str()));
+                (dep.clone(), module_source)
+            })
+            .collect();
+        let build_zig_content =
+            self.generate_build_zig_for_bench(source_name, output_name, &dep_modules);
+        let build_zig_path = work_dir.join("build.zig");
+        let backup_path = work_dir.join("build.zig.polybench.bak");
+        if build_zig_path.exists() {
+            std::fs::copy(&build_zig_path, &backup_path)
+                .map_err(|e| miette!("Failed to backup build.zig: {}", e))?;
+        }
+        std::fs::write(&build_zig_path, build_zig_content)
+            .map_err(|e| miette!("Failed to write build.zig: {}", e))?;
+
+        let result = (|| {
+            let run_build = || -> Result<std::process::Output> {
+                self.run_zig_build_with_timeout(work_dir, Duration::from_secs(10))
+            };
+
+            let mut output = run_build()?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if stderr.contains("missing top-level 'fingerprint' field") {
+                    if let Some(fp) = Self::extract_suggested_fingerprint(&stderr) {
+                        let zon_path = work_dir.join("build.zig.zon");
+                        self.set_build_zig_zon_fingerprint(&zon_path, &fp)?;
+                        output = run_build()?;
+                    }
+                }
+            }
+
+            if !output.status.success() {
+                return Err(miette!(
+                    "Zig compilation failed:\n{}\n{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+
+            let binary_path = work_dir.join("zig-out").join("bin").join(output_name);
+            if !binary_path.exists() {
+                return Err(miette!(
+                    "Zig build succeeded but binary not found at {}",
+                    binary_path.display()
+                ));
+            }
+            Ok(binary_path)
+        })();
+
+        if backup_path.exists() {
+            let _ = std::fs::rename(&backup_path, &build_zig_path);
+        }
+        result
+    }
+
+    fn run_zig_build_with_timeout(
+        &self,
+        work_dir: &Path,
+        timeout: Duration,
+    ) -> Result<std::process::Output> {
+        let mut child = std::process::Command::new(&self.zig_binary)
+            .args(["build", "-Doptimize=ReleaseFast"])
+            .current_dir(work_dir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| miette!("Failed to spawn zig build: {}", e))?;
+
+        let started = Instant::now();
+        loop {
+            if child
+                .try_wait()
+                .map_err(|e| miette!("Failed while waiting for zig build: {}", e))?
+                .is_some()
+            {
+                return child
+                    .wait_with_output()
+                    .map_err(|e| miette!("Failed to collect zig build output: {}", e));
+            }
+
+            if started.elapsed() >= timeout {
+                let _ = child.kill();
+                let output = child
+                    .wait_with_output()
+                    .map_err(|e| miette!("Failed to collect timed-out zig build output: {}", e))?;
+                return Err(miette!(
+                    "Zig build timed out after {}s.\n{}\n{}",
+                    timeout.as_secs(),
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+
+    fn generate_build_zig_for_bench(
+        &self,
+        source_name: &str,
+        output_name: &str,
+        dep_modules: &[(String, String)],
+    ) -> String {
+        let source_str = source_name.replace('\\', "/");
+        let mut s = format!(
+            r#"const std = @import("std");
+const builtin = @import("builtin");
+
+pub fn build(b: *std.Build) void {{
+    const target = b.standardTargetOptions(.{{}});
+    const optimize = b.standardOptimizeOption(.{{}});
+    const zig_ver = builtin.zig_version;
+    const zig_0_15 = std.SemanticVersion{{ .major = 0, .minor = 15, .patch = 0 }};
+
+    const exe = if (comptime zig_ver.order(zig_0_15) != .lt) b.addExecutable(.{{
+        .name = "{}",
+        .root_module = b.createModule(.{{
+            .root_source_file = b.path("{}"),
+            .target = target,
+            .optimize = optimize,
+        }}),
+    }}) else b.addExecutable(.{{
+        .name = "{}",
+        .root_source_file = b.path("{}"),
+        .target = target,
+        .optimize = optimize,
+    }});
+"#,
+            output_name, source_str, output_name, source_str
+        );
+        for (dep, module_source) in dep_modules {
+            let dep_var = dep.replace('-', "_");
+            s.push_str(&format!(
+                r#"
+    const {0} = b.dependency("{1}", .{{
+        .target = target,
+        .optimize = optimize,
+    }});
+    const {0}_mod = b.createModule(.{{
+        .root_source_file = {0}.path("{2}"),
+        .target = target,
+        .optimize = optimize,
+    }});
+    exe.root_module.addImport("{1}", {0}_mod);
+"#,
+                dep_var, dep, module_source
+            ));
+        }
+        s.push_str("    b.installArtifact(exe);\n}\n");
+        s
     }
 }
 

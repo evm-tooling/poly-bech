@@ -486,11 +486,14 @@ pub async fn run(
             if strict_fairness {
                 // Precompile all participating runtimes before timed runs so interleaving does not
                 // include compile overhead in any runtime's measured path.
+                let precompile_label = format!("▸ {} precompile", spec.name);
+                let precompile_timer = start_timer(&precompile_label);
                 for lang in langs {
                     if spec.has_lang(*lang) {
                         if let Some(ref mut rt) = runtimes.get_mut(lang) {
                             let pc_start = Instant::now();
                             rt.precompile(&spec_clone, suite).await.map_err(|e| {
+                                stop_timer(&precompile_timer);
                                 miette!(
                                     "{} pre-compilation failed ({}): {}",
                                     lang_label(*lang),
@@ -505,6 +508,7 @@ pub async fn run(
                         }
                     }
                 }
+                stop_timer(&precompile_timer);
 
                 let run_count = spec_clone.count.max(1);
                 let mut run_measurements: HashMap<Lang, Vec<Measurement>> = HashMap::new();
@@ -585,8 +589,12 @@ pub async fn run(
                         continue;
                     };
 
+                    let precompile_label =
+                        format!("▸ {} precompile {}", spec.name, lang_label(*lang));
+                    let precompile_timer = start_timer(&precompile_label);
                     let precompile_start = Instant::now();
                     rt.precompile(&spec_clone, suite).await.map_err(|e| {
+                        stop_timer(&precompile_timer);
                         miette!(
                             "{} pre-compilation failed ({}): {}",
                             lang_label(*lang),
@@ -598,6 +606,7 @@ pub async fn run(
                     let rt_nanos = rt.last_precompile_nanos().unwrap_or(0);
                     let nanos = std::cmp::max(wall_nanos, rt_nanos);
                     precompile_nanos.insert(*lang, nanos);
+                    stop_timer(&precompile_timer);
 
                     let timer_color = poly_bench_runtime::lang_display(*lang).terminal_color;
                     let lang_label_str = lang_label(*lang);
@@ -702,10 +711,14 @@ pub async fn run(
                 bench_wall_elapsed = Some(bench_wall_start.elapsed().as_secs_f64());
             }
 
-            // Title: only total elapsed (wall when available, else exec)
-            let total_elapsed = bench_wall_elapsed.unwrap_or_else(|| {
+            // Title: total elapsed including precompile (wall when available, else exec)
+            let sum_precompile_s = precompile_nanos.values().sum::<u64>() as f64 / 1e9;
+            let base_elapsed = bench_wall_elapsed.unwrap_or_else(|| {
                 measurements.values().map(|m| m.total_nanos).sum::<u64>() as f64 / 1e9
             });
+            // Strict mode: bench_wall excludes precompile; non-strict: bench_wall already includes
+            // it
+            let total_elapsed = base_elapsed + if strict_fairness { sum_precompile_s } else { 0.0 };
             println!("  ▸ {} {:.2}s", spec.name.bold(), total_elapsed);
 
             println!(
@@ -768,7 +781,6 @@ pub async fn run(
                 measurements.values().filter_map(|m| m.warmup_nanos).sum::<u64>() as f64 / 1e9;
             let sum_spawn_s =
                 measurements.values().filter_map(|m| m.spawn_nanos).sum::<u64>() as f64 / 1e9;
-            let sum_precompile_s = precompile_nanos.values().sum::<u64>() as f64 / 1e9;
             let sum_all = sum_runtime_s + sum_warmup_s + sum_spawn_s + sum_precompile_s;
             let gap = (total_elapsed - sum_all).abs();
             let eq_sign = if gap < 0.05 { "=" } else { "≈" };

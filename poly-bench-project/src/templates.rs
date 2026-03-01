@@ -705,8 +705,11 @@ pub fn build(b: *std.Build) void {
 /// Generate build.zig.zon for Zig runtime env
 pub fn build_zig_zon() -> String {
     r#".{
-    .name = "polybench",
+    .name = .polybench,
     .version = "0.0.1",
+    .paths = .{
+        "",
+    },
 }
 "#
     .to_string()
@@ -715,6 +718,104 @@ pub fn build_zig_zon() -> String {
 /// Generate src/main.zig for Zig runtime env
 pub fn main_zig() -> String {
     "pub fn main() void {}\n".to_string()
+}
+
+/// Generate vcpkg.json for C runtime env with vcpkg + CMake.
+/// vcpkg package names match manifest keys (e.g. openssl, zlib).
+pub fn c_vcpkg_json(project_name: &str, deps: &[(String, String)]) -> String {
+    let dep_entries: Vec<String> = deps.iter().map(|(name, _)| format!(r#""{}""#, name)).collect();
+    let deps_json = dep_entries.join(",\n    ");
+    format!(
+        r#"{{
+  "name": "{}",
+  "version-string": "0.1.0",
+  "dependencies": [
+    {}
+  ]
+}}
+"#,
+        project_name, deps_json
+    )
+}
+
+/// CMake dependency metadata for a C dependency.
+struct CCmakeDep {
+    find_package: String,
+    components: Vec<String>,
+    targets: Vec<String>,
+}
+
+/// Mapping from vcpkg/manifest package name to CMake metadata.
+fn c_cmake_dep_mapping(name: &str) -> CCmakeDep {
+    match name.to_lowercase().as_str() {
+        "openssl" => CCmakeDep {
+            find_package: "OpenSSL".to_string(),
+            components: vec!["SSL".to_string(), "Crypto".to_string()],
+            targets: vec!["OpenSSL::Crypto".to_string(), "OpenSSL::SSL".to_string()],
+        },
+        "zlib" => CCmakeDep {
+            find_package: "ZLIB".to_string(),
+            components: vec![],
+            targets: vec!["ZLIB::ZLIB".to_string()],
+        },
+        _ => {
+            // Fallback: PascalCase for find_package and target
+            let pascal = to_pascal_case(name);
+            CCmakeDep {
+                find_package: pascal.clone(),
+                components: vec![],
+                targets: vec![format!("{}::{}", pascal, pascal)],
+            }
+        }
+    }
+}
+
+fn to_pascal_case(s: &str) -> String {
+    s.split(|c: char| c == '-' || c == '_' || c == '.')
+        .filter(|p| !p.is_empty())
+        .map(|p| {
+            let mut c = p.chars();
+            match c.next() {
+                None => String::new(),
+                Some(first) => first.to_uppercase().chain(c).collect(),
+            }
+        })
+        .collect()
+}
+
+/// Generate CMakeLists.txt for C runtime env with vcpkg deps.
+pub fn c_cmake_lists(standard: &str, deps: &[(String, String)]) -> String {
+    let std_num = standard.trim_start_matches('c');
+    let mut s = format!(
+        r#"cmake_minimum_required(VERSION 3.20)
+project(polybench-runner C)
+
+set(CMAKE_C_STANDARD {})
+
+add_executable(polybench_runner bench_standalone.c)
+"#,
+        std_num
+    );
+
+    for (name, _) in deps {
+        let dep = c_cmake_dep_mapping(name);
+        if dep.components.is_empty() {
+            s.push_str(&format!("find_package({} REQUIRED)\n", dep.find_package));
+        } else {
+            s.push_str(&format!(
+                "find_package({} REQUIRED COMPONENTS {})\n",
+                dep.find_package,
+                dep.components.join(" ")
+            ));
+        }
+        s.push_str(&format!(
+            "target_link_libraries(polybench_runner PRIVATE {})\n",
+            dep.targets.join(" ")
+        ));
+    }
+
+    s.push('\n');
+    s
 }
 
 /// Internal Python deps always included in .polybench runtime-env (e.g. pyright for LSP).
@@ -1079,5 +1180,22 @@ mod tests {
         let content = tsconfig_json();
         assert!(content.contains("\"types\": [\"node\"]"));
         assert!(content.contains("ES2022"));
+    }
+
+    #[test]
+    fn test_build_zig_zon_includes_paths() {
+        let content = build_zig_zon();
+        assert!(content.contains(".paths"));
+        assert!(content.contains(".name = .polybench"));
+    }
+
+    #[test]
+    fn test_c_cmake_lists_openssl_links_ssl_and_crypto() {
+        let deps = vec![("openssl".to_string(), "3.2".to_string())];
+        let content = c_cmake_lists("c11", &deps);
+        assert!(content.contains("find_package(OpenSSL REQUIRED COMPONENTS SSL Crypto)"));
+        assert!(content.contains(
+            "target_link_libraries(polybench_runner PRIVATE OpenSSL::Crypto OpenSSL::SSL)"
+        ));
     }
 }

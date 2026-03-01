@@ -1,0 +1,100 @@
+declare suite keccak256 performance timeBased sameDataset: true {
+    description: "Keccak256 hash using external libraries (Zig stdlib, OpenSSL, pycryptodome, Keccak256 NuGet)"
+    baseline: "zig"
+    warmup: 100
+    targetTime: 100ms
+    fairness: "strict"
+    cvThreshold: 5
+    count: 3
+
+    setup zig {
+        import {
+            const eth = @import("eth_zig");
+        }
+
+        helpers {
+            fn keccak256Zig(data: []const u8) [32]u8 {
+                return eth.keccak.hash(data);
+            }
+
+            fn keccak256ZigBench(data: []const u8) void {
+                const digest = keccak256Zig(data);
+                std.mem.doNotOptimizeAway(digest);
+            }
+        }
+    }
+
+    setup c {
+        import {
+            #include <openssl/evp.h>
+            #include <openssl/sha.h>
+        }
+
+        helpers {
+            static void keccak256_c(const unsigned char* data, size_t len, unsigned char* out) {
+                EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+                if (!ctx) return;
+                EVP_DigestInit_ex(ctx, EVP_sha3_256(), NULL);
+                EVP_DigestUpdate(ctx, data, len);
+                unsigned int outlen = 32;
+                EVP_DigestFinal_ex(ctx, out, &outlen);
+                EVP_MD_CTX_free(ctx);
+            }
+        }
+    }
+
+    setup python {
+        import {
+            from Crypto.Hash import keccak
+        }
+
+        helpers {
+            def keccak256_python(data):
+                h = keccak.new(digest_bits=256)
+                h.update(data)
+                return h.digest()
+        }
+    }
+
+    setup csharp {
+        import {
+            using System;
+            using Epoche;
+        }
+
+        helpers {
+            static byte[] Keccak256Csharp(byte[] data) {
+                return Keccak256.ComputeHash(data);
+            }
+        }
+    }
+
+    fixture shortData {
+        hex: "68656c6c6f20776f726c64"
+    }
+
+    fixture mediumData {
+        hex: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
+    }
+
+    bench keccak256Short {
+        zig: keccak256ZigBench(&shortData);
+        c: {
+            unsigned char __out[32];
+            keccak256_c(shortData, sizeof(shortData), __out);
+        }
+        python: keccak256_python(shortData)
+        csharp: Keccak256Csharp(shortData);
+    }
+
+    bench keccak256Medium {
+        zig: keccak256ZigBench(&mediumData);
+        c: {
+            unsigned char __out[32];
+            keccak256_c(mediumData, sizeof(mediumData), __out);
+        }
+        python: keccak256_python(mediumData)
+        csharp: Keccak256Csharp(mediumData);
+    }
+
+}

@@ -597,6 +597,26 @@ pub fn add_c_dependency(spec: &str) -> Result<()> {
     manifest.add_c_dependency(&library, &version)?;
     crate::save_manifest(&project_root, &manifest)?;
 
+    let c_config = manifest.c.as_ref().unwrap();
+    let c_root = runtime_env(&project_root, Lang::C);
+    std::fs::create_dir_all(&c_root)
+        .map_err(|e| miette::miette!("Failed to create C env dir: {}", e))?;
+
+    let deps: Vec<(String, String)> =
+        c_config.dependencies.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    std::fs::write(
+        &c_root.join("vcpkg.json"),
+        templates::c_vcpkg_json(&manifest.project.name, &deps),
+    )
+    .map_err(|e| miette::miette!("Failed to write vcpkg.json: {}", e))?;
+    std::fs::write(
+        &c_root.join("CMakeLists.txt"),
+        templates::c_cmake_lists(&c_config.standard, &deps),
+    )
+    .map_err(|e| miette::miette!("Failed to write CMakeLists.txt: {}", e))?;
+
+    c_run_cmake_configure(&c_root)?;
+
     terminal::success(&format!("Added {}@{} to polybench.toml", library, version));
     Ok(())
 }
@@ -624,6 +644,29 @@ pub fn remove_c_dependency(library: &str) -> Result<()> {
 
     manifest.remove_c_dependency(library)?;
     crate::save_manifest(&project_root, &manifest)?;
+
+    let c_config = manifest.c.as_ref().unwrap();
+    let c_root = runtime_env(&project_root, Lang::C);
+    if c_root.exists() {
+        let deps: Vec<(String, String)> =
+            c_config.dependencies.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        if deps.is_empty() {
+            let _ = std::fs::remove_file(c_root.join("vcpkg.json"));
+            let _ = std::fs::remove_file(c_root.join("CMakeLists.txt"));
+        } else {
+            std::fs::write(
+                &c_root.join("vcpkg.json"),
+                templates::c_vcpkg_json(&manifest.project.name, &deps),
+            )
+            .map_err(|e| miette::miette!("Failed to write vcpkg.json: {}", e))?;
+            std::fs::write(
+                &c_root.join("CMakeLists.txt"),
+                templates::c_cmake_lists(&c_config.standard, &deps),
+            )
+            .map_err(|e| miette::miette!("Failed to write CMakeLists.txt: {}", e))?;
+            c_run_cmake_configure(&c_root)?;
+        }
+    }
 
     terminal::success(&format!("Removed {} from polybench.toml", library));
     Ok(())
@@ -781,12 +824,80 @@ fn is_zig_url(spec: &str) -> bool {
     spec.contains("://") || spec.starts_with("git+")
 }
 
+/// True for raw GitHub/GitLab repository URLs (not tarballs/releases/archive links).
+fn is_raw_git_repo_http_url(url: &str) -> bool {
+    let no_query = url.split(['#', '?']).next().unwrap_or(url).trim_end_matches('/');
+    let is_hosted_git = no_query.starts_with("https://github.com/") ||
+        no_query.starts_with("http://github.com/") ||
+        no_query.starts_with("https://gitlab.com/") ||
+        no_query.starts_with("http://gitlab.com/");
+    if !is_hosted_git {
+        return false;
+    }
+    if no_query.ends_with(".git") ||
+        no_query.ends_with(".tar.gz") ||
+        no_query.ends_with(".tgz") ||
+        no_query.ends_with(".zip") ||
+        no_query.contains("/archive/") ||
+        no_query.contains("/releases/download/")
+    {
+        return false;
+    }
+    let segs: Vec<&str> = no_query.split('/').collect();
+    // host + org + repo minimum (e.g. https://github.com/org/repo)
+    segs.len() >= 5
+}
+
+/// Normalize Zig package source to a fetchable URL for `zig fetch`.
+/// Converts raw GitHub/GitLab repo URLs to `git+https://...` automatically.
+fn normalize_zig_package_source(package: &str) -> String {
+    fn add_git_suffix_for_hosted_repo(url: &str) -> String {
+        let (no_fragment, fragment) = match url.split_once('#') {
+            Some((base, frag)) => (base, Some(frag)),
+            None => (url, None),
+        };
+        let (no_query, query) = match no_fragment.split_once('?') {
+            Some((base, q)) => (base, Some(q)),
+            None => (no_fragment, None),
+        };
+        let mut base = no_query.trim_end_matches('/').to_string();
+        if (base.starts_with("https://github.com/") || base.starts_with("https://gitlab.com/")) &&
+            !base.ends_with(".git")
+        {
+            base.push_str(".git");
+        }
+        if let Some(q) = query {
+            base.push('?');
+            base.push_str(q);
+        }
+        if let Some(frag) = fragment {
+            base.push('#');
+            base.push_str(frag);
+        }
+        base
+    }
+
+    if let Some(rest) = package.strip_prefix("git+") {
+        if is_raw_git_repo_http_url(rest) {
+            format!("git+{}", add_git_suffix_for_hosted_repo(rest))
+        } else {
+            package.to_string()
+        }
+    } else if is_raw_git_repo_http_url(package) {
+        format!("git+{}", add_git_suffix_for_hosted_repo(package))
+    } else {
+        package.to_string()
+    }
+}
+
 /// Extract a Zig-safe dependency name from a URL for use in build.zig.zon
 fn zig_dep_name_from_url(url: &str) -> String {
     // Strip fragment (#...) and query (?...)
     let path_part = url.split(['#', '?']).next().unwrap_or(url);
     // Get last path component (e.g. "zig-bench" from ".../Hejsil/zig-bench")
     let last = path_part.trim_end_matches('/').rsplit('/').next().unwrap_or("dep");
+    // Hosted git URLs often end with ".git"; strip it so module name matches repo name.
+    let last = last.strip_suffix(".git").unwrap_or(last);
     // Zig identifiers: alphanumeric + underscore, replace - with _
     let sanitized: String = last
         .chars()
@@ -810,21 +921,36 @@ fn zig_dep_name_from_url(url: &str) -> String {
 
 /// Build the full Zig package URL from package and version (for git URLs with ref)
 fn zig_package_url(package: &str, version: &str) -> String {
+    fn normalize_git_ref(version: &str) -> String {
+        if version.starts_with('v') {
+            return version.to_string();
+        }
+        let looks_semver = version
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '.' || c == '-' || c.is_ascii_alphabetic());
+        if looks_semver && version.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+            format!("v{}", version)
+        } else {
+            version.to_string()
+        }
+    }
+
+    let normalized = normalize_zig_package_source(package);
     if version.is_empty() || version == "latest" {
-        return package.to_string();
+        return normalized;
     }
     // For git URLs, append #version as ref (tag, branch, or commit)
-    if package.contains("github.com") ||
-        package.contains("gitlab.com") ||
-        package.starts_with("git+")
+    if normalized.contains("github.com") ||
+        normalized.contains("gitlab.com") ||
+        normalized.starts_with("git+")
     {
-        if package.contains('#') {
-            package.to_string()
+        if normalized.contains('#') {
+            normalized
         } else {
-            format!("{}#{}", package, version)
+            format!("{}#{}", normalized, normalize_git_ref(version))
         }
     } else {
-        package.to_string()
+        normalized
     }
 }
 
@@ -901,6 +1027,46 @@ fn ensure_zig_build_files(zig_root: &Path) -> Result<()> {
     if !build_zig_zon.exists() {
         std::fs::write(&build_zig_zon, templates::build_zig_zon())
             .map_err(|e| miette::miette!("Failed to write build.zig.zon: {}", e))?;
+    } else {
+        // Heal legacy build.zig.zon generated without required top-level fields or old name syntax.
+        let content = std::fs::read_to_string(&build_zig_zon)
+            .map_err(|e| miette::miette!("Failed to read build.zig.zon: {}", e))?;
+        let mut updated = content.clone();
+        if !updated.contains(".paths") {
+            updated = templates::build_zig_zon();
+        } else if updated.contains(".name = \"") {
+            // Zig package manager expects enum literal for .name in modern build.zig.zon.
+            let mut normalized = String::new();
+            for line in updated.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with(".name = \"") && trimmed.ends_with("\",") {
+                    let quote_start = line.find('"');
+                    let quote_end = line.rfind('"');
+                    if let (Some(start), Some(end)) = (quote_start, quote_end) {
+                        let raw = &line[start + 1..end];
+                        let enum_name: String = raw
+                            .chars()
+                            .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+                            .collect();
+                        let prefix = &line[..start];
+                        let suffix = &line[end + 1..];
+                        normalized.push_str(prefix);
+                        normalized.push('.');
+                        normalized.push_str(&enum_name);
+                        normalized.push_str(suffix);
+                        normalized.push('\n');
+                        continue;
+                    }
+                }
+                normalized.push_str(line);
+                normalized.push('\n');
+            }
+            updated = normalized;
+        }
+        if updated != content {
+            std::fs::write(&build_zig_zon, updated)
+                .map_err(|e| miette::miette!("Failed to refresh legacy build.zig.zon: {}", e))?;
+        }
     }
     Ok(())
 }
@@ -1023,7 +1189,9 @@ fn install_runtime_deps_for_lang(
             install_rust_deps(project_root, manifest.rust.as_ref().unwrap(), &manifest.project.name)
         }
         Lang::Python => install_python_deps(project_root, manifest.python.as_ref().unwrap()),
-        Lang::C => install_c_deps(project_root, manifest.c.as_ref().unwrap()),
+        Lang::C => {
+            install_c_deps(project_root, &manifest.project.name, manifest.c.as_ref().unwrap())
+        }
         Lang::CSharp => install_csharp_deps(project_root, manifest.csharp.as_ref().unwrap()),
         Lang::Zig => install_zig_deps(project_root, manifest.zig.as_ref().unwrap()),
     }
@@ -1269,8 +1437,127 @@ fn install_python_deps(project_root: &Path, python_config: &manifest::PythonConf
     Ok(())
 }
 
-/// Install C dependencies from manifest
-fn install_c_deps(project_root: &Path, c_config: &manifest::CConfig) -> Result<()> {
+/// Resolve vcpkg toolchain file path from VCPKG_ROOT or CMAKE_TOOLCHAIN_FILE env.
+fn resolve_vcpkg_toolchain() -> Result<std::path::PathBuf> {
+    fn discover_default_vcpkg_toolchain() -> Option<std::path::PathBuf> {
+        let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+
+        if let Ok(home) = std::env::var("HOME") {
+            let home = std::path::PathBuf::from(home);
+            candidates
+                .push(home.join("vcpkg").join("scripts").join("buildsystems").join("vcpkg.cmake"));
+            candidates.push(
+                home.join("src")
+                    .join("vcpkg")
+                    .join("scripts")
+                    .join("buildsystems")
+                    .join("vcpkg.cmake"),
+            );
+        }
+
+        candidates.push(std::path::PathBuf::from(
+            "/opt/homebrew/share/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        ));
+        candidates.push(std::path::PathBuf::from(
+            "/usr/local/share/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        ));
+        candidates.push(std::path::PathBuf::from("/opt/vcpkg/scripts/buildsystems/vcpkg.cmake"));
+
+        candidates.into_iter().find(|p| p.exists())
+    }
+
+    if let Ok(path) = std::env::var("CMAKE_TOOLCHAIN_FILE") {
+        let p = std::path::PathBuf::from(&path);
+        if p.exists() {
+            return Ok(p);
+        }
+    }
+    if let Ok(root) = std::env::var("VCPKG_ROOT") {
+        let toolchain =
+            std::path::Path::new(&root).join("scripts").join("buildsystems").join("vcpkg.cmake");
+        if toolchain.exists() {
+            return Ok(toolchain);
+        }
+    }
+    if let Some(toolchain) = discover_default_vcpkg_toolchain() {
+        return Ok(toolchain);
+    }
+    Err(miette::miette!(
+        "vcpkg not found. Set VCPKG_ROOT to your vcpkg directory, or CMAKE_TOOLCHAIN_FILE to vcpkg.cmake. \
+         Example: export VCPKG_ROOT=/path/to/vcpkg"
+    ))
+}
+
+/// Get VCPKG_TARGET_TRIPLET for macOS (arm64-osx or x64-osx).
+fn vcpkg_macos_triplet() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let arch = std::env::consts::ARCH;
+        Some(if arch == "aarch64" || arch == "arm64" {
+            "arm64-osx".to_string()
+        } else {
+            "x64-osx".to_string()
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = std::env::consts::ARCH;
+        None
+    }
+}
+
+/// Minimal stub for bench_standalone.c (required by CMakeLists.txt at configure time).
+const C_BENCH_STUB: &str = "int main(void) { return 0; }\n";
+
+/// Run cmake configure in c_root to install vcpkg deps (manifest mode).
+fn c_run_cmake_configure(c_root: &Path) -> Result<()> {
+    which::which("cmake")
+        .map_err(|_| miette::miette!("cmake not found in PATH. Install CMake 3.20+."))?;
+    let stub_path = c_root.join("bench_standalone.c");
+    if !stub_path.exists() {
+        std::fs::write(&stub_path, C_BENCH_STUB)
+            .map_err(|e| miette::miette!("Failed to write bench_standalone.c stub: {}", e))?;
+    }
+    let toolchain = resolve_vcpkg_toolchain()?;
+
+    let mut args: Vec<String> = vec![
+        "-S".to_string(),
+        ".".to_string(),
+        "-B".to_string(),
+        "build".to_string(),
+        format!("-DCMAKE_TOOLCHAIN_FILE={}", toolchain.display()),
+    ];
+    if let Some(triplet) = vcpkg_macos_triplet() {
+        args.push(format!("-DVCPKG_TARGET_TRIPLET={}", triplet));
+    }
+
+    let spinner = terminal::indented_spinner("Running cmake configure (vcpkg manifest install)...");
+    let output = terminal::run_command_with_spinner(
+        &spinner,
+        Command::new("cmake").args(&args).current_dir(c_root),
+    )
+    .map_err(|e| miette::miette!("Failed to run cmake: {}", e))?;
+
+    if !output.status.success() {
+        terminal::finish_failure_indented(&spinner, "cmake configure failed");
+        terminal::print_stderr_excerpt(&output.stderr, 12);
+        return Err(command_failure(
+            &format!("cmake {}", args.join(" ")),
+            c_root,
+            &output,
+            "Ensure vcpkg is installed, VCPKG_ROOT is set, and dependencies exist in vcpkg.",
+        ));
+    }
+    terminal::finish_success_indented(&spinner, "vcpkg dependencies installed");
+    Ok(())
+}
+
+/// Install C dependencies from manifest (vcpkg + CMake)
+fn install_c_deps(
+    project_root: &Path,
+    project_name: &str,
+    c_config: &manifest::CConfig,
+) -> Result<()> {
     if !crate::runtime_check::is_lang_installed(Lang::C) {
         return Err(crate::runtime_check::not_installed_error(Lang::C));
     }
@@ -1285,10 +1572,21 @@ fn install_c_deps(project_root: &Path, c_config: &manifest::CConfig) -> Result<(
         return Ok(());
     }
 
-    terminal::success_indented(&format!(
-        "C dependencies recorded in manifest: {}",
-        c_config.dependencies.len()
-    ));
+    let deps: Vec<(String, String)> =
+        c_config.dependencies.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+
+    // Sync vcpkg.json and CMakeLists.txt from manifest
+    std::fs::write(&c_root.join("vcpkg.json"), templates::c_vcpkg_json(project_name, &deps))
+        .map_err(|e| miette::miette!("Failed to write vcpkg.json: {}", e))?;
+    std::fs::write(
+        &c_root.join("CMakeLists.txt"),
+        templates::c_cmake_lists(&c_config.standard, &deps),
+    )
+    .map_err(|e| miette::miette!("Failed to write CMakeLists.txt: {}", e))?;
+
+    c_run_cmake_configure(&c_root)?;
+
+    terminal::success_indented(&format!("C dependencies ready: {}", deps.len()));
     Ok(())
 }
 
@@ -1477,5 +1775,36 @@ mod tests {
         let (pkg, ver) = parse_dep_spec("@types/node@^20.0.0");
         assert_eq!(pkg, "@types/node");
         assert_eq!(ver, "^20.0.0");
+    }
+
+    #[test]
+    fn test_normalize_raw_github_repo_url_for_zig_fetch() {
+        let normalized = normalize_zig_package_source("https://github.com/cod1r/sha3");
+        assert_eq!(normalized, "git+https://github.com/cod1r/sha3.git");
+    }
+
+    #[test]
+    fn test_keep_archive_url_unchanged_for_zig_fetch() {
+        let url = "https://github.com/cod1r/sha3/archive/refs/heads/main.tar.gz";
+        let normalized = normalize_zig_package_source(url);
+        assert_eq!(normalized, url);
+    }
+
+    #[test]
+    fn test_zig_package_url_appends_ref_to_normalized_git_url() {
+        let url = zig_package_url("https://github.com/cod1r/sha3", "main");
+        assert_eq!(url, "git+https://github.com/cod1r/sha3.git#main");
+    }
+
+    #[test]
+    fn test_zig_package_url_adds_v_prefix_for_semver_ref() {
+        let url = zig_package_url("https://github.com/StrobeLabs/eth.zig", "0.2.2");
+        assert_eq!(url, "git+https://github.com/StrobeLabs/eth.zig.git#v0.2.2");
+    }
+
+    #[test]
+    fn test_zig_dep_name_strips_git_suffix() {
+        let name = zig_dep_name_from_url("git+https://github.com/StrobeLabs/eth.zig.git#v0.2.2");
+        assert_eq!(name, "eth_zig");
     }
 }
