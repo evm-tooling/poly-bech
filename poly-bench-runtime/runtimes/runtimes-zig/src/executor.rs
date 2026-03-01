@@ -142,7 +142,7 @@ impl ZigRuntime {
                 }
                 depth += line.matches('{').count();
                 depth -= line.matches('}').count();
-                if depth <= 0 {
+                if depth == 0 {
                     break;
                 }
             }
