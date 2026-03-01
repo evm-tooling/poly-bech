@@ -43,7 +43,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         helpers {
             function bubbleTs(data: Uint8Array): Uint8Array {
                 const n = data.length / 4
-                const arr = new Array(n)
+                const arr: number[] = new Array(n)
                 for (let i = 0; i < n; i++) {
                     arr[i] = (data[i*4]<<24) | (data[i*4+1]<<16) | (data[i*4+2]<<8) | data[i*4+3]
                 }

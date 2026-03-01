@@ -2,7 +2,7 @@ use std::charting
 
 declare suite example performance timeBased sameDataset: false {
     description: "Comprehensive benchmark showcasing all DSL features"
-    warmup: 0
+    warmup: 10
     baseline: "go"
     targetTime: 5000ms
     cvThreshold: 10
@@ -83,12 +83,15 @@ declare suite example performance timeBased sameDataset: false {
             import {
             encodeFunctionData,
             parseAbi,
+            type Address,
+            type Abi
             } from 'viem'
         }
 
         declare {
             let setupCounter = 0;
             let allocBuf: Uint8Array | null = null;
+            const VITALIK = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045' as Address
             const erc20Abi = parseAbi([
             'function name() view returns (string)',
             'function symbol() view returns (string)',
@@ -99,9 +102,8 @@ declare suite example performance timeBased sameDataset: false {
             'function transfer(address to, uint256 amount) returns (bool)',
             'function approve(address spender, uint256 amount) returns (bool)',
             'function transferFrom(address from, address to, uint256 amount) returns (bool)',
-            ])
+            ]) 
 
-            const VITALIK = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
         }
 
         helpers {
@@ -154,7 +156,7 @@ declare suite example performance timeBased sameDataset: false {
     bench sink_enabled_example {
         description: "Benchmark with sink pattern enabled"
         targetTime: 2000ms
-        sink: false
+        sink: true
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
     }

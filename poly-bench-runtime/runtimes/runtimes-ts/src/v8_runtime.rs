@@ -428,10 +428,13 @@ fn generate_standalone_script(spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<S
     let mut script = String::new();
 
     // User imports first (ES modules require imports at top of file)
+    // Strip type-only imports and "type X" specifiers so Node.js can execute bench.mjs directly
     if let Some(user_imports) = suite.imports.get(&Lang::TypeScript) {
         for import_stmt in user_imports {
-            script.push_str(import_stmt);
-            script.push('\n');
+            if let Some(stripped) = transpiler::strip_type_imports(import_stmt) {
+                script.push_str(&stripped);
+                script.push('\n');
+            }
         }
         if !user_imports.is_empty() {
             script.push('\n');
@@ -852,26 +855,28 @@ fn generate_typescript_check_source(spec: &BenchmarkSpec, suite: &SuiteIR) -> Re
 
     let mut script = String::new();
 
-    // User imports first
+    // User imports first - strip type-only imports so tsc/esbuild/node can parse
     if let Some(user_imports) = suite.imports.get(&Lang::TypeScript) {
         for import_stmt in user_imports {
-            script.push_str(import_stmt);
-            script.push('\n');
+            if let Some(stripped) = transpiler::strip_type_imports(import_stmt) {
+                script.push_str(&stripped);
+                script.push('\n');
+            }
         }
     }
 
-    // Add declarations
+    // Add declarations - strip type annotations and "as Type"/"as const" for valid JS/TS
     if let Some(declarations) = suite.declarations.get(&Lang::TypeScript) {
         if !declarations.trim().is_empty() {
-            script.push_str(declarations);
+            script.push_str(&strip_typescript_syntax(declarations));
             script.push_str("\n\n");
         }
     }
 
-    // Add helpers
+    // Add helpers - strip type annotations for valid JS/TS
     if let Some(helpers) = suite.helpers.get(&Lang::TypeScript) {
         if !helpers.trim().is_empty() {
-            script.push_str(helpers);
+            script.push_str(&strip_typescript_syntax(helpers));
             script.push_str("\n\n");
         }
     }
