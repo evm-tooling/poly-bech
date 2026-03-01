@@ -582,24 +582,28 @@ pub const BENCH_HARNESS_MEMORY: &str = r#"
 
     // GC before measurement when available (Node --expose-gc)
     const forceGC = () => { if (typeof global.gc === 'function') global.gc(); };
-    // Use V8 total_heap_size_executable or malloced_memory as cumulative metric
-    // total_heap_size grows with allocations and doesn't shrink immediately after GC
+    // Use V8 total_allocated_bytes (GC-insensitive cumulative) when available, else fallbacks
     const getMemorySnapshot = () => {
         const stats = v8 && v8.getHeapStatistics ? v8.getHeapStatistics() : null;
-        // malloced_memory tracks cumulative C++ allocations; total_heap_size tracks JS heap
-        // Both are more stable than heapUsed for tracking allocations within benchmark loops
+        // total_allocated_bytes (Node 25+) is the best cumulative metric - never decreases
+        const totalAllocatedBytes = stats && typeof stats.total_allocated_bytes === 'number' ? stats.total_allocated_bytes : 0;
         const totalHeap = stats ? stats.total_heap_size : 0;
         const malloced = stats ? (stats.malloced_memory || 0) : 0;
         const heapUsed = (typeof process !== 'undefined' && process.memoryUsage) ? process.memoryUsage().heapUsed : 0;
-        return { totalHeap, malloced, heapUsed };
+        return { totalAllocatedBytes, totalHeap, malloced, heapUsed };
     };
     const bytesPerOpFromSnapshots = (before, after, iters) => {
-        // Try malloced_memory first (cumulative C++ allocations)
+        // Prefer total_allocated_bytes (cumulative, GC-insensitive)
+        if (before.totalAllocatedBytes > 0 && after.totalAllocatedBytes > 0) {
+            const delta = (after.totalAllocatedBytes - before.totalAllocatedBytes) / iters;
+            if (delta > 0) return Math.round(delta);
+        }
+        // Fallback: malloced_memory (cumulative C++ allocations)
         if (before.malloced > 0 && after.malloced > 0) {
             const delta = (after.malloced - before.malloced) / iters;
             if (delta > 0) return Math.round(delta);
         }
-        // Fallback to total_heap_size (cumulative JS heap growth)
+        // Fallback: total_heap_size (cumulative JS heap growth)
         if (before.totalHeap > 0 && after.totalHeap > 0) {
             const delta = (after.totalHeap - before.totalHeap) / iters;
             if (delta > 0) return Math.round(delta);
