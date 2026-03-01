@@ -46,6 +46,13 @@ let client: LanguageClient | undefined;
 /** Resolves when the LSP is ready (so format-on-save can run). */
 let clientReady: Promise<void> | null = null;
 
+/** Timeout-based restart: count of recent timeouts */
+let lspTimeoutCount = 0;
+/** Last time we restarted due to timeout (for cooldown) */
+let lspLastTimeoutRestart = 0;
+/** Guard to prevent concurrent restarts */
+let lspRestartInProgress = false;
+
 /** Tree-sitter parser and language (if enabled) */
 let treeSitterParser: any = null;
 let treeSitterLanguage: any = null;
@@ -146,6 +153,62 @@ function findLspServer(context: ExtensionContext): LspServerSpec | null {
   return useLspSubcommand('poly-bench');
 }
 
+/**
+ * Create sendRequest middleware that times out slow requests and restarts the LSP
+ * after repeated timeouts (e.g., after sleep or long idle).
+ */
+function createTimeoutMiddleware(
+  getClient: () => LanguageClient | undefined,
+  setClientReady: (p: Promise<void> | null) => void,
+  outputChannel: { appendLine: (s: string) => void }
+): NonNullable<LanguageClientOptions['middleware']> {
+  return {
+    sendRequest: async (type, param, token, next) => {
+      const config = workspace.getConfiguration('poly-bench');
+      const enabled = config.get<boolean>('lspRestartOnTimeout', true);
+      const timeoutMs = config.get<number>('lspRequestTimeoutMs', 15000);
+      const threshold = config.get<number>('lspTimeoutRestartThreshold', 2);
+      const cooldownMs = config.get<number>('lspRestartCooldownMs', 60000);
+
+      if (!enabled) return next(type, param, token);
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('LSP request timeout')), timeoutMs);
+      });
+
+      try {
+        const result = await Promise.race([next(type, param, token), timeoutPromise]);
+        lspTimeoutCount = 0; // Reset on success
+        return result;
+      } catch (err) {
+        if (err instanceof Error && err.message === 'LSP request timeout') {
+          lspTimeoutCount++;
+          const now = Date.now();
+          if (
+            lspTimeoutCount >= threshold &&
+            !lspRestartInProgress &&
+            now - lspLastTimeoutRestart >= cooldownMs
+          ) {
+            lspRestartInProgress = true;
+            lspTimeoutCount = 0;
+            lspLastTimeoutRestart = now;
+            const c = getClient();
+            if (c) {
+              outputChannel.appendLine('[timeout] Restarting LSP after repeated timeouts');
+              await c.stop();
+              const startPromise = c.start();
+              setClientReady(startPromise);
+              await startPromise;
+            }
+            lspRestartInProgress = false;
+          }
+        }
+        throw err;
+      }
+    },
+  };
+}
+
 export async function activate(context: ExtensionContext): Promise<void> {
   // Initialize Tree-sitter WASM if enabled
   await initTreeSitter(context);
@@ -215,13 +278,22 @@ export async function activate(context: ExtensionContext): Promise<void> {
   // When tree-sitter highlighting is on, we provide semantic tokens client-side.
   // Disable LSP semantic tokens to avoid double highlighting.
   const useTreeSitter = treeSitterParser && treeSitterLanguage;
+  const baseMiddleware = useTreeSitter
+    ? { provideDocumentSemanticTokens: () => undefined }
+    : {};
+  const timeoutMiddleware = createTimeoutMiddleware(
+    () => client,
+    (p) => {
+      clientReady = p;
+    },
+    outputChannel
+  );
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: 'file', language: 'polybench' }],
-    middleware: useTreeSitter
-      ? {
-          provideDocumentSemanticTokens: () => undefined,
-        }
-      : undefined,
+    middleware: {
+      ...baseMiddleware,
+      ...timeoutMiddleware,
+    },
     synchronize: {
       // Watch for changes to .bench files and project configuration files
       // This helps the LSP detect when modules are installed/removed
