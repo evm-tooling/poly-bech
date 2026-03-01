@@ -20,6 +20,12 @@ pub fn extract_zig_imports(setup: &str) -> ParsedSetup {
             imports.push(trimmed.to_string());
             continue;
         }
+        // Const aliases like "const Keccak256 = std.crypto.hash.sha3.Keccak256" bring symbols into
+        // scope
+        if trimmed.starts_with("const ") && trimmed.contains("std.") {
+            imports.push(trimmed.to_string());
+            continue;
+        }
 
         body.push_str(line);
         body.push('\n');

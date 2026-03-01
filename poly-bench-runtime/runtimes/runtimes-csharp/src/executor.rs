@@ -69,6 +69,12 @@ impl CSharpRuntime {
     fn ensure_project_files(&self, dir: &Path) -> Result<PathBuf> {
         let project_path = dir.join("polybench.csproj");
         if !project_path.exists() {
+            let is_runtime_env = dir.as_os_str().to_string_lossy().contains("runtime-env");
+            if !is_runtime_env {
+                return Err(miette!(
+                    "C# benchmarks with external dependencies require runtime-env. Run `poly-bench build` first."
+                ));
+            }
             std::fs::write(&project_path, default_csproj())
                 .map_err(|e| miette!("Failed to write project file: {}", e))?;
         }

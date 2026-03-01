@@ -20,8 +20,8 @@ module = "demo-basic"
 version = "1.21"
 
 [go.dependencies]
-"golang.org/x/crypto/sha3" = "latest"
 "github.com/ChefBingbong/viem-go" = "latest"
+"golang.org/x/crypto/sha3" = "latest"
 
 [ts]
 runtime = "node"
@@ -33,9 +33,13 @@ viem = "latest"
 edition = "2021"
 
 [rust.dependencies]
-regex = "1.12.3"
 eyre = "0.6.12"
 lazy_static = "1.5.0"
+regex = "1.12.3"
+
+[rust.dependencies.tiny-keccak]
+version = "2.0"
+features = ["keccak"]
 
 [rust.dependencies.tiny_keccak]
 version = "latest"
@@ -55,20 +59,26 @@ features = [
 version = "1.6.3"
 features = ["full"]
 
-[rust.dependencies.tiny-keccak]
-version = "2.0"
-features = ["keccak"]
-
 [python.dependencies]
+pycryptodome = "latest"
 
 [c]
 standard = "c11"
 
+[c.dependencies]
+openssl = "3.2"
+
 [csharp]
 target_framework = "net8.0"
 
+[csharp.dependencies]
+Keccak256 = "1.0.2"
+
 [zig]
 version = "0.13"
+
+[zig.dependencies]
+"https://github.com/StrobeLabs/eth.zig" = "0.2.2"
 
 [output]
 report_formats = []

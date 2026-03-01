@@ -102,7 +102,9 @@ fn build_runtime_env_for_lang(
         ),
         Lang::Rust => build_rust_env(project_root, manifest.rust.as_ref().unwrap(), options),
         Lang::Python => build_python_env(project_root, manifest.python.as_ref().unwrap(), options),
-        Lang::C => build_c_env(project_root, manifest.c.as_ref().unwrap(), options),
+        Lang::C => {
+            build_c_env(project_root, &manifest.project.name, manifest.c.as_ref().unwrap(), options)
+        }
         Lang::CSharp => build_csharp_env(project_root, manifest.csharp.as_ref().unwrap(), options),
         Lang::Zig => build_zig_env(project_root, manifest.zig.as_ref().unwrap(), options),
     }
@@ -693,6 +695,7 @@ fn build_csharp_env(
 
 fn build_c_env(
     project_root: &Path,
+    project_name: &str,
     c_config: &manifest::CConfig,
     _options: &BuildOptions,
 ) -> Result<()> {
@@ -712,13 +715,22 @@ fn build_c_env(
         terminal::info_indented("main.c exists");
     }
 
-    if c_config.dependencies.is_empty() {
+    let deps: Vec<(String, String)> =
+        c_config.dependencies.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    if deps.is_empty() {
         terminal::info_indented("No C dependencies declared");
     } else {
-        terminal::info_indented(&format!(
-            "C dependencies recorded in manifest: {}",
-            c_config.dependencies.len()
-        ));
+        let vcpkg_path = c_env.join("vcpkg.json");
+        let cmake_path = c_env.join("CMakeLists.txt");
+        let spinner = terminal::indented_spinner("Creating vcpkg.json and CMakeLists.txt...");
+        std::fs::write(&vcpkg_path, templates::c_vcpkg_json(project_name, &deps))
+            .map_err(|e| miette::miette!("Failed to write vcpkg.json: {}", e))?;
+        std::fs::write(&cmake_path, templates::c_cmake_lists(&c_config.standard, &deps))
+            .map_err(|e| miette::miette!("Failed to write CMakeLists.txt: {}", e))?;
+        terminal::finish_success_indented(
+            &spinner,
+            &format!("Created vcpkg.json and CMakeLists.txt ({} deps)", deps.len()),
+        );
     }
 
     let spinner = terminal::indented_spinner("Finalizing C environment...");

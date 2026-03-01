@@ -279,7 +279,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         zig: bubbleZigAndFree(&s100);
         c: {
             unsigned char __buf[sizeof(s100)];
-            memcpy(__buf, s100, sizeof(s100));
+            memcpy(__buf, s100, sizeof(__buf));
             bubble_c(__buf, sizeof(__buf));
         }
     }
@@ -293,7 +293,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         zig: bubbleZigAndFree(&s200);
         c: {
             unsigned char __buf[sizeof(s200)];
-            memcpy(__buf, s200, sizeof(s200));
+            memcpy(__buf, s200, sizeof(__buf));
             bubble_c(__buf, sizeof(__buf));
         }
     }
@@ -307,7 +307,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         zig: bubbleZigAndFree(&s300);
         c: {
             unsigned char __buf[sizeof(s300)];
-            memcpy(__buf, s300, sizeof(s300));
+            memcpy(__buf, s300, sizeof(__buf));
             bubble_c(__buf, sizeof(__buf));
         }
     }
@@ -321,7 +321,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         zig: bubbleZigAndFree(&s400);
         c: {
             unsigned char __buf[sizeof(s400)];
-            memcpy(__buf, s400, sizeof(s400));
+            memcpy(__buf, s400, sizeof(__buf));
             bubble_c(__buf, sizeof(__buf));
         }
     }
@@ -335,7 +335,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         zig: bubbleZigAndFree(&s500);
         c: {
             unsigned char __buf[sizeof(s500)];
-            memcpy(__buf, s500, sizeof(s500));
+            memcpy(__buf, s500, sizeof(__buf));
             bubble_c(__buf, sizeof(__buf));
         }
     }
@@ -349,7 +349,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         zig: bubbleZigAndFree(&s600);
         c: {
             unsigned char __buf[sizeof(s600)];
-            memcpy(__buf, s600, sizeof(s600));
+            memcpy(__buf, s600, sizeof(__buf));
             bubble_c(__buf, sizeof(__buf));
         }
     }
@@ -363,7 +363,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         zig: bubbleZigAndFree(&s700);
         c: {
             unsigned char __buf[sizeof(s700)];
-            memcpy(__buf, s700, sizeof(s700));
+            memcpy(__buf, s700, sizeof(__buf));
             bubble_c(__buf, sizeof(__buf));
         }
     }
@@ -377,7 +377,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         zig: bubbleZigAndFree(&s800);
         c: {
             unsigned char __buf[sizeof(s800)];
-            memcpy(__buf, s800, sizeof(s800));
+            memcpy(__buf, s800, sizeof(__buf));
             bubble_c(__buf, sizeof(__buf));
         }
     }
@@ -391,7 +391,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         zig: bubbleZigAndFree(&s900);
         c: {
             unsigned char __buf[sizeof(s900)];
-            memcpy(__buf, s900, sizeof(s900));
+            memcpy(__buf, s900, sizeof(__buf));
             bubble_c(__buf, sizeof(__buf));
         }
     }
@@ -405,7 +405,7 @@ declare suite bubbleN performance timeBased sameDataset: true {
         zig: bubbleZigAndFree(&s1000);
         c: {
             unsigned char __buf[sizeof(s1000)];
-            memcpy(__buf, s1000, sizeof(s1000));
+            memcpy(__buf, s1000, sizeof(__buf));
             bubble_c(__buf, sizeof(__buf));
         }
     }
@@ -414,27 +414,17 @@ declare suite bubbleN performance timeBased sameDataset: true {
         charting.drawLineChart(
             title: "Bubble Sort - O(n²)",
             description: "Classic bubble sort - quadratic trend with regression + error overlays",
-            output: "bubble-line-log10.svg",
-            yScale: "log10",
-            showStdDev: true,
-            showErrorBars: true,
-            showRegression: true,
-            regressionModel: "auto",
-        )
-        charting.drawBarChart(
-            title: "Bubble Sort - Grouped Bars",
-            description: "Grouped bars per dataset size with statistical overlays",
-            output: "bubble-bar-log10.svg",
-            yScale: "log10",
+            output: "bubble-line-linear.svg",
+            yScale: "linear",
             showStdDev: true,
             showErrorBars: true,
             showRegression: true,
             regressionModel: "auto",
         )
         charting.drawSpeedupChart(
-            title: "String Concatenation - O(n²)",
-            description: "Naive string concat s += 'x' - quadratic complexity",
-            output: "cbubble-bar-speed.svg",
+            title: "Bubble Sort - O(n²)",
+            description: "Relative performance vs baseline",
+            output: "bubble-bar-speed.svg",
         )
         charting.drawTable(
             title: "Sort Performance Comparison",

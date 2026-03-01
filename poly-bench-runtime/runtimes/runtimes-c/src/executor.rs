@@ -20,6 +20,12 @@ pub struct CRuntime {
     last_precompile_nanos: Option<u64>,
 }
 
+struct CCmakeDep {
+    find_package: String,
+    components: Vec<String>,
+    targets: Vec<String>,
+}
+
 impl CRuntime {
     pub fn new() -> Result<Self> {
         let clang_binary = which::which("clang").map_err(|_| miette!("clang not found in PATH"))?;
@@ -69,15 +75,384 @@ impl CRuntime {
             if root.as_os_str().to_string_lossy().contains("runtime-env") {
                 return Ok(root.clone());
             }
-            let dir = root.join(".polybench").join("c");
-            std::fs::create_dir_all(&dir)
-                .map_err(|e| miette!("Failed to create .polybench/c directory: {}", e))?;
+            // Canonical poly-bench runtime location for C projects.
+            let dir = root.join(".polybench").join("runtime-env").join("c");
+            std::fs::create_dir_all(&dir).map_err(|e| {
+                miette!("Failed to create .polybench/runtime-env/c directory: {}", e)
+            })?;
             return Ok(dir);
         }
         let dir = std::env::temp_dir().join("polybench-c");
         std::fs::create_dir_all(&dir)
             .map_err(|e| miette!("Failed to create temp C directory: {}", e))?;
         Ok(dir)
+    }
+
+    /// Derive project root from work_dir (e.g. .polybench/runtime-env/c -> project root)
+    fn resolve_project_root(&self, work_dir: &Path) -> Option<PathBuf> {
+        let work_str = work_dir.to_string_lossy();
+        if work_str.contains("runtime-env") {
+            // .../project/.polybench/runtime-env/c -> .../project
+            work_dir
+                .parent()
+                .and_then(|p| p.parent())
+                .and_then(|p| p.parent())
+                .map(|p| p.to_path_buf())
+        } else if work_str.contains(".polybench") {
+            // .../project/.polybench/c -> .../project
+            work_dir.parent().and_then(|p| p.parent()).map(|p| p.to_path_buf())
+        } else {
+            None
+        }
+    }
+
+    /// Load [c] section from polybench.toml (standard and dependencies)
+    fn load_c_config(
+        &self,
+        project_root: &Path,
+    ) -> Result<(String, std::collections::HashMap<String, String>)> {
+        let manifest_path = project_root.join("polybench.toml");
+        let content = std::fs::read_to_string(&manifest_path)
+            .map_err(|e| miette!("Failed to read {}: {}", manifest_path.display(), e))?;
+        let full: toml::Value =
+            content.parse().map_err(|e| miette!("Invalid polybench.toml: {}", e))?;
+        let c_table = full.get("c").and_then(|v| v.as_table());
+        let standard = c_table
+            .and_then(|t| t.get("standard"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("c11")
+            .to_string();
+        let deps = c_table
+            .and_then(|t| t.get("dependencies"))
+            .and_then(|v| v.as_table())
+            .map(|t| {
+                t.iter()
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok((standard, deps))
+    }
+
+    /// Fallback deps source for runtime-env/c: parse package names from vcpkg.json.
+    fn load_deps_from_vcpkg_manifest(
+        &self,
+        work_dir: &Path,
+    ) -> Result<std::collections::HashMap<String, String>> {
+        let vcpkg_path = work_dir.join("vcpkg.json");
+        if !vcpkg_path.exists() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let content = std::fs::read_to_string(&vcpkg_path)
+            .map_err(|e| miette!("Failed to read {}: {}", vcpkg_path.display(), e))?;
+        let json: serde_json::Value = serde_json::from_str(&content)
+            .map_err(|e| miette!("Invalid vcpkg.json at {}: {}", vcpkg_path.display(), e))?;
+        let mut deps = std::collections::HashMap::new();
+        if let Some(arr) = json.get("dependencies").and_then(|v| v.as_array()) {
+            for item in arr {
+                if let Some(name) = item.as_str() {
+                    deps.insert(name.to_string(), "latest".to_string());
+                } else if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
+                    deps.insert(name.to_string(), "latest".to_string());
+                }
+            }
+        }
+        Ok(deps)
+    }
+
+    /// Resolve C config from manifest; if unavailable in runtime-env, recover deps from vcpkg.json.
+    fn resolve_c_config_for_work_dir(
+        &self,
+        work_dir: &Path,
+    ) -> Result<(String, std::collections::HashMap<String, String>)> {
+        let is_runtime_env = work_dir.as_os_str().to_string_lossy().contains("runtime-env");
+        let mut standard = "c11".to_string();
+        let mut deps = std::collections::HashMap::new();
+
+        if let Some(project_root) = self.resolve_project_root(work_dir) {
+            if let Ok((std_cfg, dep_cfg)) = self.load_c_config(&project_root) {
+                standard = std_cfg;
+                deps = dep_cfg;
+            }
+        }
+
+        if is_runtime_env && deps.is_empty() {
+            let vcpkg_deps = self.load_deps_from_vcpkg_manifest(work_dir)?;
+            if !vcpkg_deps.is_empty() {
+                deps = vcpkg_deps;
+            }
+        }
+
+        Ok((standard, deps))
+    }
+
+    /// Resolve compiler/linker flags for a C library via pkg-config (used when not using
+    /// vcpkg/CMake)
+    fn pkg_config_flags(&self, lib_name: &str) -> Result<Vec<String>> {
+        let names_to_try: Vec<&str> = match lib_name.to_lowercase().as_str() {
+            "openssl" => vec!["openssl", "openssl@3", "openssl@1.1"],
+            _ => vec![lib_name],
+        };
+
+        let mut last_err = String::new();
+        for name in names_to_try {
+            let output = std::process::Command::new("pkg-config")
+                .args(["--cflags", "--libs", name])
+                .output()
+                .map_err(|e| miette!("pkg-config not found or failed: {}", e))?;
+            if output.status.success() {
+                let out = String::from_utf8_lossy(&output.stdout);
+                let flags: Vec<String> = out.split_whitespace().map(|s| s.to_string()).collect();
+                return Ok(flags);
+            }
+            last_err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        }
+
+        Err(miette!(
+            "pkg-config {} failed: {}. Install the library and pkg-config, then set PKG_CONFIG_PATH if needed (e.g. export PKG_CONFIG_PATH=\"/opt/homebrew/opt/openssl/lib/pkgconfig\").",
+            lib_name,
+            last_err
+        ))
+    }
+
+    /// Map vcpkg package name to CMake package/components/targets metadata.
+    fn cmake_dep_mapping(name: &str) -> CCmakeDep {
+        match name.to_lowercase().as_str() {
+            "openssl" => CCmakeDep {
+                find_package: "OpenSSL".to_string(),
+                components: vec!["SSL".to_string(), "Crypto".to_string()],
+                targets: vec!["OpenSSL::Crypto".to_string(), "OpenSSL::SSL".to_string()],
+            },
+            "zlib" => CCmakeDep {
+                find_package: "ZLIB".to_string(),
+                components: vec![],
+                targets: vec!["ZLIB::ZLIB".to_string()],
+            },
+            _ => {
+                let pascal = name
+                    .split(|c: char| c == '-' || c == '_' || c == '.')
+                    .filter(|p| !p.is_empty())
+                    .map(|p| {
+                        let mut c = p.chars();
+                        match c.next() {
+                            None => String::new(),
+                            Some(first) => first.to_uppercase().chain(c).collect(),
+                        }
+                    })
+                    .collect::<String>();
+                CCmakeDep {
+                    find_package: pascal.clone(),
+                    components: vec![],
+                    targets: vec![format!("{}::{}", pascal, pascal)],
+                }
+            }
+        }
+    }
+
+    /// Resolve vcpkg toolchain file path
+    fn resolve_vcpkg_toolchain() -> Result<PathBuf> {
+        fn discover_default_vcpkg_toolchain() -> Option<PathBuf> {
+            let mut candidates: Vec<PathBuf> = Vec::new();
+
+            if let Ok(home) = std::env::var("HOME") {
+                let home = PathBuf::from(home);
+                candidates.push(
+                    home.join("vcpkg").join("scripts").join("buildsystems").join("vcpkg.cmake"),
+                );
+                candidates.push(
+                    home.join("src")
+                        .join("vcpkg")
+                        .join("scripts")
+                        .join("buildsystems")
+                        .join("vcpkg.cmake"),
+                );
+            }
+
+            candidates
+                .push(PathBuf::from("/opt/homebrew/share/vcpkg/scripts/buildsystems/vcpkg.cmake"));
+            candidates
+                .push(PathBuf::from("/usr/local/share/vcpkg/scripts/buildsystems/vcpkg.cmake"));
+            candidates.push(PathBuf::from("/opt/vcpkg/scripts/buildsystems/vcpkg.cmake"));
+
+            candidates.into_iter().find(|p| p.exists())
+        }
+
+        if let Ok(path) = std::env::var("CMAKE_TOOLCHAIN_FILE") {
+            let p = PathBuf::from(&path);
+            if p.exists() {
+                return Ok(p);
+            }
+        }
+        if let Ok(root) = std::env::var("VCPKG_ROOT") {
+            let toolchain =
+                Path::new(&root).join("scripts").join("buildsystems").join("vcpkg.cmake");
+            if toolchain.exists() {
+                return Ok(toolchain);
+            }
+        }
+        if let Some(toolchain) = discover_default_vcpkg_toolchain() {
+            return Ok(toolchain);
+        }
+        Err(miette!(
+            "vcpkg not found. Set VCPKG_ROOT or CMAKE_TOOLCHAIN_FILE. Example: export VCPKG_ROOT=/path/to/vcpkg"
+        ))
+    }
+
+    /// Get VCPKG_TARGET_TRIPLET for macOS
+    fn vcpkg_macos_triplet() -> Option<String> {
+        #[cfg(target_os = "macos")]
+        {
+            let arch = std::env::consts::ARCH;
+            Some(if arch == "aarch64" || arch == "arm64" {
+                "arm64-osx".to_string()
+            } else {
+                "x64-osx".to_string()
+            })
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = std::env::consts::ARCH;
+            None
+        }
+    }
+
+    /// Build via CMake + vcpkg (when runtime-env/c has vcpkg.json)
+    fn build_with_cmake(
+        &self,
+        work_dir: &Path,
+        source: &str,
+        source_name: &str,
+        output_name: &str,
+        standard: &str,
+        deps: &std::collections::HashMap<String, String>,
+    ) -> Result<PathBuf> {
+        let source_path = work_dir.join(source_name);
+        std::fs::write(&source_path, source)
+            .map_err(|e| miette!("Failed to write {}: {}", source_path.display(), e))?;
+
+        let std_num = standard.trim_start_matches('c');
+        let mut cmake_content = format!(
+            r#"cmake_minimum_required(VERSION 3.20)
+project(polybench-runner C)
+
+set(CMAKE_C_STANDARD {})
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
+
+add_executable({} {})
+"#,
+            std_num, output_name, source_name
+        );
+        let mut dep_summary = Vec::new();
+        for (name, _) in deps {
+            let dep = Self::cmake_dep_mapping(name);
+            if dep.components.is_empty() {
+                cmake_content.push_str(&format!("find_package({} REQUIRED)\n", dep.find_package));
+            } else {
+                cmake_content.push_str(&format!(
+                    "find_package({} REQUIRED COMPONENTS {})\n",
+                    dep.find_package,
+                    dep.components.join(" ")
+                ));
+            }
+            cmake_content.push_str(&format!(
+                "target_link_libraries({} PRIVATE {})\n",
+                output_name,
+                dep.targets.join(" ")
+            ));
+            dep_summary.push(format!("{}=>{}", name, dep.targets.join(",")));
+        }
+
+        let cmake_path = work_dir.join("CMakeLists.txt");
+        std::fs::write(&cmake_path, &cmake_content)
+            .map_err(|e| miette!("Failed to write CMakeLists.txt: {}", e))?;
+
+        let toolchain = Self::resolve_vcpkg_toolchain()?;
+        let mut args: Vec<String> = vec![
+            "-S".to_string(),
+            ".".to_string(),
+            "-B".to_string(),
+            "build".to_string(),
+            format!("-DCMAKE_TOOLCHAIN_FILE={}", toolchain.display()),
+            "-DCMAKE_BUILD_TYPE=Release".to_string(),
+        ];
+        if let Some(triplet) = Self::vcpkg_macos_triplet() {
+            args.push(format!("-DVCPKG_TARGET_TRIPLET={}", triplet));
+        }
+
+        let output = std::process::Command::new("cmake")
+            .args(&args)
+            .current_dir(work_dir)
+            .output()
+            .map_err(|e| miette!("Failed to run cmake: {}", e))?;
+
+        if !output.status.success() {
+            let triplet = Self::vcpkg_macos_triplet().unwrap_or_else(|| "default".to_string());
+            return Err(miette!(
+                "CMake configure failed (toolchain: {}, triplet: {}, deps: [{}]).\nGenerated CMakeLists.txt:\n{}\n--- stdout ---\n{}\n--- stderr ---\n{}",
+                toolchain.display(),
+                triplet,
+                dep_summary.join("; "),
+                cmake_content,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        let build_output = std::process::Command::new("cmake")
+            .args(["--build", "build", "--config", "Release"])
+            .current_dir(work_dir)
+            .output()
+            .map_err(|e| miette!("Failed to run cmake --build: {}", e))?;
+
+        if !build_output.status.success() {
+            return Err(miette!(
+                "C build failed:\n{}\n{}",
+                String::from_utf8_lossy(&build_output.stdout),
+                String::from_utf8_lossy(&build_output.stderr)
+            ));
+        }
+
+        let binary_path = work_dir.join("build").join(output_name);
+        if !binary_path.exists() {
+            return Err(miette!(
+                "C build succeeded but binary not found at {}",
+                binary_path.display()
+            ));
+        }
+
+        Ok(binary_path)
+    }
+
+    fn dep_likely_used_in_source(dep_name: &str, source: &str) -> bool {
+        let dep = dep_name.to_lowercase();
+        let src = source.to_lowercase();
+        if dep == "openssl" {
+            return src.contains("openssl/") ||
+                src.contains("evp_") ||
+                src.contains("sha256(") ||
+                src.contains("sha3_");
+        }
+        if dep == "zlib" {
+            return src.contains("zlib.h") || src.contains("deflate") || src.contains("inflate");
+        }
+        let normalized = dep.replace('-', "_").replace('.', "_");
+        src.contains(&format!("<{}.h>", dep)) ||
+            src.contains(&format!("<{}/", dep)) ||
+            src.contains(&format!("<{}.h>", normalized)) ||
+            src.contains(&format!("<{}/", normalized))
+    }
+
+    fn filter_deps_for_source(
+        &self,
+        deps: std::collections::HashMap<String, String>,
+        source: &str,
+    ) -> std::collections::HashMap<String, String> {
+        deps.into_iter().filter(|(name, _)| Self::dep_likely_used_in_source(name, source)).collect()
     }
 
     fn write_source_and_build(
@@ -87,19 +462,43 @@ impl CRuntime {
         source_name: &str,
         output_name: &str,
     ) -> Result<PathBuf> {
+        let (standard, deps) = self.resolve_c_config_for_work_dir(work_dir)?;
+        let deps = self.filter_deps_for_source(deps, source);
+        let use_cmake = work_dir.as_os_str().to_string_lossy().contains("runtime-env") &&
+            work_dir.join("vcpkg.json").exists() &&
+            !deps.is_empty();
+
+        if use_cmake {
+            return self.build_with_cmake(
+                work_dir,
+                source,
+                source_name,
+                output_name,
+                &standard,
+                &deps,
+            );
+        }
+
         let source_path = work_dir.join(source_name);
         std::fs::write(&source_path, source)
             .map_err(|e| miette!("Failed to write {}: {}", source_path.display(), e))?;
 
         let binary_path = work_dir.join(output_name);
+
+        let mut clang_args: Vec<String> = vec!["-O3".to_string(), format!("-std={}", standard)];
+
+        for (lib_name, _version) in deps {
+            match self.pkg_config_flags(&lib_name) {
+                Ok(flags) => clang_args.extend(flags),
+                Err(e) => return Err(e),
+            }
+        }
+
+        clang_args.push(source_path.to_string_lossy().to_string());
+        clang_args.push("-o".to_string());
+        clang_args.push(binary_path.to_string_lossy().to_string());
         let output = std::process::Command::new(&self.clang_binary)
-            .args([
-                "-O3",
-                "-std=c11",
-                source_path.to_string_lossy().as_ref(),
-                "-o",
-                binary_path.to_string_lossy().as_ref(),
-            ])
+            .args(&clang_args)
             .current_dir(work_dir)
             .output()
             .map_err(|e| miette!("Failed to run clang: {}", e))?;
