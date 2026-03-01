@@ -606,6 +606,7 @@ pub fn package_json_pretty(name: &str) -> String {
 
 /// Generate Cargo.toml content for Rust runtime environment
 /// Note: Package name is always "polybench_runner" to match the executor's expected binary name
+/// Includes alloc_tracker by default for memory benchmark support.
 pub fn cargo_toml(_name: &str, edition: &str) -> String {
     format!(
         r#"[package]
@@ -619,6 +620,7 @@ edition = "{}"
 [dependencies]
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
+alloc_tracker = "0.5"
 
 [profile.release]
 opt-level = 3

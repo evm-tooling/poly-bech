@@ -614,6 +614,14 @@ fn generate_csharp_source(
 
     src.push_str(&CSharpRuntime::emit_hook(spec.before_hooks.get(&Lang::CSharp), "        "));
 
+    let use_memory = spec.memory;
+    if use_memory {
+        // Use GC.GetTotalAllocatedBytes() for cumulative allocation tracking (like Go's TotalAlloc)
+        // This never decreases, so it captures allocations even if they're freed during the
+        // benchmark
+        src.push_str("        long memBefore = GC.GetTotalAllocatedBytes(true);\n");
+    }
+
     if spec.mode == BenchMode::Auto {
         src.push_str(&format!(
             "        double targetNs = {};\n        long totalIterations = 0;\n        double totalNs = 0;\n        int batch = 1;\n        while (totalNs < targetNs) {{\n            var t0 = Stopwatch.GetTimestamp();\n            for (int i = 0; i < batch; i++) {{\n",
@@ -641,12 +649,19 @@ fn generate_csharp_source(
         src.push_str("            } else { batch *= 2; }\n        }\n");
         src.push_str("        double nanosPerOp = totalNs / Math.Max(1, totalIterations);\n");
         src.push_str("        double opsPerSec = 1_000_000_000.0 / Math.Max(1, nanosPerOp);\n");
+        if use_memory {
+            src.push_str("        long memAfter = GC.GetTotalAllocatedBytes(true);\n");
+            src.push_str("        long bytesPerOp = Math.Max(0, (memAfter - memBefore) / Math.Max(1, totalIterations));\n");
+        }
         src.push_str("        var result = new Dictionary<string, object?> {\n");
         src.push_str("            [\"iterations\"] = totalIterations,\n");
         src.push_str("            [\"totalNanos\"] = totalNs,\n");
         src.push_str("            [\"warmupNanos\"] = warmupNanos,\n");
         src.push_str("            [\"nanosPerOp\"] = nanosPerOp,\n");
         src.push_str("            [\"opsPerSec\"] = opsPerSec,\n");
+        if use_memory {
+            src.push_str("            [\"bytesPerOp\"] = bytesPerOp,\n");
+        }
         src.push_str("            [\"samples\"] = samples,\n");
         if spec.use_sink {
             src.push_str("            [\"rawResult\"] = __polybench_sink,\n");
@@ -673,12 +688,19 @@ fn generate_csharp_source(
         src.push_str("        double totalNs = 0; foreach (var s in samples) totalNs += s;\n");
         src.push_str("        double nanosPerOp = totalNs / Math.Max(1, iterations);\n");
         src.push_str("        double opsPerSec = 1_000_000_000.0 / Math.Max(1, nanosPerOp);\n");
+        if use_memory {
+            src.push_str("        long memAfter = GC.GetTotalAllocatedBytes(true);\n");
+            src.push_str("        long bytesPerOp = Math.Max(0, (memAfter - memBefore) / Math.Max(1, iterations));\n");
+        }
         src.push_str("        var result = new Dictionary<string, object?> {\n");
         src.push_str("            [\"iterations\"] = iterations,\n");
         src.push_str("            [\"totalNanos\"] = totalNs,\n");
         src.push_str("            [\"warmupNanos\"] = warmupNanos,\n");
         src.push_str("            [\"nanosPerOp\"] = nanosPerOp,\n");
         src.push_str("            [\"opsPerSec\"] = opsPerSec,\n");
+        if use_memory {
+            src.push_str("            [\"bytesPerOp\"] = bytesPerOp,\n");
+        }
         src.push_str("            [\"samples\"] = samples,\n");
         if spec.use_sink {
             src.push_str("            [\"rawResult\"] = __polybench_sink,\n");
@@ -702,6 +724,10 @@ struct BenchResultJson {
     samples: Vec<f64>,
     #[serde(default)]
     raw_result: Option<String>,
+    #[serde(default)]
+    bytes_per_op: Option<u64>,
+    #[serde(default)]
+    allocs_per_op: Option<u64>,
 }
 
 impl BenchResultJson {
@@ -723,6 +749,9 @@ impl BenchResultJson {
         }
         if let Some(w) = self.warmup_nanos {
             m.warmup_nanos = Some(w as u64);
+        }
+        if let Some(bytes) = self.bytes_per_op {
+            m = m.with_allocs(bytes, self.allocs_per_op.unwrap_or(0));
         }
         m
     }

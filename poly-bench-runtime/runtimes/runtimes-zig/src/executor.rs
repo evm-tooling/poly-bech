@@ -417,10 +417,11 @@ impl ZigRuntime {
             zon_deps.iter().filter(|dep| used_external_deps.contains(*dep)).cloned().collect();
         let use_zig_build = !used_zon_deps.is_empty();
 
+        let link_libc = source.contains("__polybench_mem_snapshot");
         if use_zig_build && zon_path.exists() {
-            self.build_with_zig_build(work_dir, source_name, output_name, &used_zon_deps)
+            self.build_with_zig_build(work_dir, source_name, output_name, &used_zon_deps, link_libc)
         } else {
-            self.build_with_build_exe(work_dir, &source_path, output_name)
+            self.build_with_build_exe(work_dir, &source_path, output_name, link_libc)
         }
     }
 
@@ -429,19 +430,23 @@ impl ZigRuntime {
         work_dir: &Path,
         source_path: &Path,
         output_name: &str,
+        link_libc: bool,
     ) -> Result<PathBuf> {
         let binary_path = work_dir.join(output_name);
-        let output = std::process::Command::new(&self.zig_binary)
-            .args([
-                "build-exe",
-                "-O",
-                "ReleaseFast",
-                source_path.to_string_lossy().as_ref(),
-                &format!("-femit-bin={}", binary_path.to_string_lossy()),
-            ])
-            .current_dir(work_dir)
-            .output()
-            .map_err(|e| miette!("Failed to run zig: {}", e))?;
+        let emit_bin = format!("-femit-bin={}", binary_path.to_string_lossy());
+        let mut cmd = std::process::Command::new(&self.zig_binary);
+        cmd.args([
+            "build-exe",
+            "-O",
+            "ReleaseFast",
+            source_path.to_string_lossy().as_ref(),
+            &emit_bin,
+        ]);
+        if link_libc {
+            cmd.arg("-lc");
+        }
+        let output =
+            cmd.current_dir(work_dir).output().map_err(|e| miette!("Failed to run zig: {}", e))?;
 
         if !output.status.success() {
             return Err(miette!(
@@ -467,6 +472,7 @@ impl ZigRuntime {
         source_name: &str,
         output_name: &str,
         zon_deps: &[String],
+        link_libc: bool,
     ) -> Result<PathBuf> {
         let zon_path = work_dir.join("build.zig.zon");
         let dep_hashes = self.parse_zon_dep_hashes(&zon_path);
@@ -483,7 +489,7 @@ impl ZigRuntime {
             })
             .collect();
         let build_zig_content =
-            self.generate_build_zig_for_bench(source_name, output_name, &dep_modules);
+            self.generate_build_zig_for_bench(source_name, output_name, &dep_modules, link_libc);
         let build_zig_path = work_dir.join("build.zig");
         let backup_path = work_dir.join("build.zig.polybench.bak");
         if build_zig_path.exists() {
@@ -581,6 +587,7 @@ impl ZigRuntime {
         source_name: &str,
         output_name: &str,
         dep_modules: &[(String, String)],
+        link_libc: bool,
     ) -> String {
         let source_str = source_name.replace('\\', "/");
         let mut s = format!(
@@ -626,6 +633,9 @@ pub fn build(b: *std.Build) void {{
 "#,
                 dep_var, dep, module_source
             ));
+        }
+        if link_libc {
+            s.push_str("    exe.link_libc = true;\n");
         }
         s.push_str("    b.installArtifact(exe);\n}\n");
         s
@@ -825,6 +835,44 @@ fn emit_fixtures(spec: &BenchmarkSpec, suite: &SuiteIR, indent: &str) -> String 
     out
 }
 
+fn emit_memory_helpers() -> String {
+    // Simple memory tracking using OS-level heap stats
+    // Note: This tracks current heap usage, not cumulative allocations.
+    // If allocations are freed within each benchmark iteration, this may show 0.
+    r#"fn __polybench_mem_snapshot() u64 {
+    const builtin = @import("builtin");
+    if (builtin.os.tag == .linux) {
+        const c = @cImport({
+            @cInclude("malloc.h");
+        });
+        const mi = c.mallinfo();
+        return @as(u64, @intCast(mi.uordblks));
+    } else if (builtin.os.tag == .macos) {
+        const c = @cImport({
+            @cInclude("malloc/malloc.h");
+        });
+        var stats: c.malloc_statistics_t = undefined;
+        c.malloc_zone_statistics(c.malloc_default_zone(), &stats);
+        return @as(u64, @intCast(stats.size_in_use));
+    } else if (builtin.os.tag == .windows) {
+        const c = @cImport({
+            @cInclude("windows.h");
+            @cInclude("psapi.h");
+        });
+        var pmc: c.PROCESS_MEMORY_COUNTERS_EX = undefined;
+        pmc.cb = @sizeOf(c.PROCESS_MEMORY_COUNTERS_EX);
+        if (c.GetProcessMemoryInfo(c.GetCurrentProcess(), @ptrCast(&pmc), @sizeOf(c.PROCESS_MEMORY_COUNTERS_EX)) != 0) {
+            return @as(u64, pmc.WorkingSetSize);
+        }
+        return 0;
+    } else {
+        return 0;
+    }
+}
+"#
+    .to_string()
+}
+
 fn emit_hook(code: Option<&String>, indent: &str) -> String {
     code.map(|c| {
         ZigRuntime::normalize_indent(c)
@@ -901,12 +949,25 @@ fn generate_zig_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) 
     src.push_str(&emit_fixtures(spec, suite, ""));
     src.push_str("\n");
     src.push_str("fn __polybench_bench() void {\n");
-    for line in impl_code.lines() {
-        src.push_str("    ");
-        src.push_str(line);
-        src.push('\n');
+    // Wrap impl code to discard any return value (Zig 0.15+ is strict about unused values)
+    let impl_trimmed = impl_code.trim();
+    if impl_trimmed.contains('\n') || impl_trimmed.starts_with('{') {
+        // Multi-line or block - emit as-is
+        for line in impl_code.lines() {
+            src.push_str("    ");
+            src.push_str(line);
+            src.push('\n');
+        }
+    } else {
+        // Single expression - wrap with _ = to discard return value
+        src.push_str("    _ = ");
+        src.push_str(impl_trimmed.trim_end_matches(';'));
+        src.push_str(";\n");
     }
     src.push_str("}\n\n");
+    if spec.memory {
+        src.push_str(&emit_memory_helpers());
+    }
 
     if check_only {
         src.push_str("pub fn main() void {}\n");
@@ -948,6 +1009,13 @@ fn generate_zig_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) 
         src.push_str("    const __warmup_nanos: u64 = 0;\n");
     }
 
+    let use_memory = spec.memory;
+    if use_memory {
+        // Track memory using snapshots - accumulate positive deltas
+        src.push_str("    var __total_allocated: u64 = 0;\n");
+        src.push_str("    var __mem_last = __polybench_mem_snapshot();\n");
+    }
+
     if spec.mode == BenchMode::Auto {
         src.push_str(&format!(
             "    const __allocator = std.heap.page_allocator;\n    const target_ns = {:.0};\n    var total_iterations: u64 = 0;\n    var total_ns: f64 = 0;\n    var batch: u64 = 100;\n    var samples = std.ArrayList(f64).initCapacity(__allocator, 16) catch return;\n    defer if (__is_zig_13_or_14) samples.deinit() else samples.deinit(__allocator);\n    while (total_ns < target_ns) {{\n        const t0 = std.time.Instant.now() catch return;\n        for (0..batch) |_| {{\n",
@@ -962,6 +1030,12 @@ fn generate_zig_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) 
             ));
         }
         src.push_str("        }\n        const t1 = std.time.Instant.now() catch return;\n");
+        if use_memory {
+            // Sample memory after each batch and accumulate positive deltas
+            src.push_str("        const __mem_now = __polybench_mem_snapshot();\n");
+            src.push_str("        if (__mem_now > __mem_last) __total_allocated += (__mem_now - __mem_last);\n");
+            src.push_str("        __mem_last = __mem_now;\n");
+        }
         src.push_str("        const elapsed_ns = @as(f64, @floatFromInt(t1.since(t0)));\n");
         src.push_str("        total_ns += elapsed_ns;\n        total_iterations += batch;\n");
         src.push_str("        if (__is_zig_13_or_14) _ = samples.append(elapsed_ns / @as(f64, @floatFromInt(if (batch > 0) batch else 1))) catch break else _ = samples.append(__allocator, elapsed_ns / @as(f64, @floatFromInt(if (batch > 0) batch else 1))) catch break;\n");
@@ -975,13 +1049,25 @@ fn generate_zig_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) 
         src.push_str(
             "    const nanos_per_op = total_ns / @as(f64, @floatFromInt(if (total_iterations > 0) total_iterations else 1));\n    const ops_per_sec = 1000000000.0 / (if (nanos_per_op > 0) nanos_per_op else 1.0);\n",
         );
+        if use_memory {
+            src.push_str("    const __bytes_per_op = if (total_iterations > 0) __total_allocated / total_iterations else @as(u64, 0);\n");
+        }
         src.push_str(&emit_hook(spec.after_hooks.get(&Lang::Zig), "    "));
-        src.push_str("    if (__is_zig_13_or_14) {\n");
-        src.push_str(
-            "        var __stdout_writer = std.io.bufferedWriter(std.io.getStdOut().writer());\n",
-        );
-        src.push_str("        const stdout = __stdout_writer.writer();\n");
-        src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"samples\\\":[\", .{ total_iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec });\n");
+        if use_memory {
+            src.push_str("    if (__is_zig_13_or_14) {\n");
+            src.push_str(
+                "        var __stdout_writer = std.io.bufferedWriter(std.io.getStdOut().writer());\n",
+            );
+            src.push_str("        const stdout = __stdout_writer.writer();\n");
+            src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"bytesPerOp\\\":{},\\\"samples\\\":[\", .{ total_iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec, __bytes_per_op });\n");
+        } else {
+            src.push_str("    if (__is_zig_13_or_14) {\n");
+            src.push_str(
+                "        var __stdout_writer = std.io.bufferedWriter(std.io.getStdOut().writer());\n",
+            );
+            src.push_str("        const stdout = __stdout_writer.writer();\n");
+            src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"samples\\\":[\", .{ total_iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec });\n");
+        }
         src.push_str("        for (samples.items, 0..) |s, i| {\n");
         src.push_str("            if (i > 0) _ = stdout.writeAll(\",\") catch {};\n");
         src.push_str("            try stdout.print(\"{d:.0}\", .{s});\n");
@@ -994,7 +1080,11 @@ fn generate_zig_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) 
             "        var __stdout_writer = std.fs.File.stdout().writer(&__stdout_buffer);\n",
         );
         src.push_str("        const stdout = &__stdout_writer.interface;\n");
-        src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"samples\\\":[\", .{ total_iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec });\n");
+        if use_memory {
+            src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"bytesPerOp\\\":{},\\\"samples\\\":[\", .{ total_iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec, __bytes_per_op });\n");
+        } else {
+            src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"samples\\\":[\", .{ total_iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec });\n");
+        }
         src.push_str("        for (samples.items, 0..) |s, i| {\n");
         src.push_str("            if (i > 0) _ = stdout.writeAll(\",\") catch {};\n");
         src.push_str("            try stdout.print(\"{d:.0}\", .{s});\n");
@@ -1011,17 +1101,35 @@ fn generate_zig_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) 
         src.push_str("        __polybench_bench();\n");
         src.push_str("        const t1 = std.time.Instant.now() catch return;\n");
         src.push_str("        samples[i] = @as(f64, @floatFromInt(t1.since(t0)));\n");
+        if use_memory {
+            // Sample memory after each iteration and accumulate positive deltas
+            src.push_str("        const __mem_now = __polybench_mem_snapshot();\n");
+            src.push_str("        if (__mem_now > __mem_last) __total_allocated += (__mem_now - __mem_last);\n");
+            src.push_str("        __mem_last = __mem_now;\n");
+        }
         src.push_str("    }\n");
         src.push_str(
             "    var total_ns: f64 = 0;\n    for (samples) |s| total_ns += s;\n    const nanos_per_op = total_ns / @as(f64, @floatFromInt(if (iterations > 0) iterations else 1));\n    const ops_per_sec = 1000000000.0 / (if (nanos_per_op > 0) nanos_per_op else 1.0);\n",
         );
+        if use_memory {
+            src.push_str("    const __bytes_per_op = if (iterations > 0) __total_allocated / iterations else @as(u64, 0);\n");
+        }
         src.push_str(&emit_hook(spec.after_hooks.get(&Lang::Zig), "    "));
-        src.push_str("    if (__is_zig_13_or_14) {\n");
-        src.push_str(
-            "        var __stdout_writer = std.io.bufferedWriter(std.io.getStdOut().writer());\n",
-        );
-        src.push_str("        const stdout = __stdout_writer.writer();\n");
-        src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"samples\\\":[\", .{ iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec });\n");
+        if use_memory {
+            src.push_str("    if (__is_zig_13_or_14) {\n");
+            src.push_str(
+                "        var __stdout_writer = std.io.bufferedWriter(std.io.getStdOut().writer());\n",
+            );
+            src.push_str("        const stdout = __stdout_writer.writer();\n");
+            src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"bytesPerOp\\\":{},\\\"samples\\\":[\", .{ iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec, __bytes_per_op });\n");
+        } else {
+            src.push_str("    if (__is_zig_13_or_14) {\n");
+            src.push_str(
+                "        var __stdout_writer = std.io.bufferedWriter(std.io.getStdOut().writer());\n",
+            );
+            src.push_str("        const stdout = __stdout_writer.writer();\n");
+            src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"samples\\\":[\", .{ iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec });\n");
+        }
         src.push_str("        for (samples, 0..) |s, i| {\n");
         src.push_str("            if (i > 0) _ = stdout.writeAll(\",\") catch {};\n");
         src.push_str("            try stdout.print(\"{d:.0}\", .{s});\n");
@@ -1034,7 +1142,11 @@ fn generate_zig_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) 
             "        var __stdout_writer = std.fs.File.stdout().writer(&__stdout_buffer);\n",
         );
         src.push_str("        const stdout = &__stdout_writer.interface;\n");
-        src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"samples\\\":[\", .{ iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec });\n");
+        if use_memory {
+            src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"bytesPerOp\\\":{},\\\"samples\\\":[\", .{ iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec, __bytes_per_op });\n");
+        } else {
+            src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"samples\\\":[\", .{ iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec });\n");
+        }
         src.push_str("        for (samples, 0..) |s, i| {\n");
         src.push_str("            if (i > 0) _ = stdout.writeAll(\",\") catch {};\n");
         src.push_str("            try stdout.print(\"{d:.0}\", .{s});\n");
@@ -1059,6 +1171,10 @@ struct BenchResultJson {
     samples: Vec<f64>,
     #[serde(default)]
     raw_result: Option<String>,
+    #[serde(default)]
+    bytes_per_op: Option<u64>,
+    #[serde(default)]
+    allocs_per_op: Option<u64>,
 }
 
 impl BenchResultJson {
@@ -1080,6 +1196,9 @@ impl BenchResultJson {
         }
         if let Some(w) = self.warmup_nanos {
             m.warmup_nanos = Some(w as u64);
+        }
+        if let Some(bytes) = self.bytes_per_op {
+            m = m.with_allocs(bytes, self.allocs_per_op.unwrap_or(0));
         }
         m
     }

@@ -346,7 +346,9 @@ impl Manifest {
                 None
             },
             rust: if has_lang(&enabled, Lang::Rust) {
-                Some(RustConfig { edition: default_rust_edition(), dependencies: HashMap::new() })
+                let mut deps = HashMap::new();
+                deps.insert("alloc_tracker".to_string(), RustDependency::Simple("0.5".to_string()));
+                Some(RustConfig { edition: default_rust_edition(), dependencies: deps })
             } else {
                 None
             },

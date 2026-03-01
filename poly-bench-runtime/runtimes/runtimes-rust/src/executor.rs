@@ -159,6 +159,17 @@ impl Runtime for RustRuntime {
         // Set up working directory and Cargo.toml based on project_root type
         let (work_dir, cleanup) = if let Some(ref project_root) = self.project_root {
             let is_runtime_env = project_root.as_os_str().to_string_lossy().contains("runtime-env");
+            // Check if this is a poly-bench project (has polybench.toml in project root or parent)
+            let is_polybench_project = is_runtime_env || {
+                // For runtime-env paths, the polybench.toml is 3 levels up
+                // For other paths, check if polybench.toml exists at the root or parent
+                let polybench_root = if is_runtime_env {
+                    project_root.parent().and_then(|p| p.parent()).and_then(|p| p.parent())
+                } else {
+                    Some(project_root.as_path())
+                };
+                polybench_root.map(|p| p.join("polybench.toml").exists()).unwrap_or(false)
+            };
 
             if is_runtime_env {
                 // Use runtime-env directly - it has user's Cargo.toml with dependencies
@@ -170,8 +181,9 @@ impl Runtime for RustRuntime {
                     ensure_alloc_tracker_in_cargo_toml(&cargo_path, spec)?;
                 }
                 (project_root.clone(), false)
-            } else {
-                // Not a runtime-env: use hash-based subdirectory for isolation
+            } else if is_polybench_project {
+                // Poly-bench project: use canonical runtime-env location with hash-based
+                // subdirectory for isolation
                 let cargo_toml = generate_cargo_toml(suite);
                 use std::{
                     collections::hash_map::DefaultHasher,
@@ -183,10 +195,12 @@ impl Runtime for RustRuntime {
 
                 let rust_dir = project_root
                     .join(".polybench")
+                    .join("runtime-env")
                     .join("rust")
                     .join(format!("{:016x}", cargo_hash));
-                std::fs::create_dir_all(&rust_dir)
-                    .map_err(|e| miette!("Failed to create .polybench/rust directory: {}", e))?;
+                std::fs::create_dir_all(&rust_dir).map_err(|e| {
+                    miette!("Failed to create .polybench/runtime-env/rust directory: {}", e)
+                })?;
 
                 // Write generated Cargo.toml for non-runtime-env case
                 let cargo_path = rust_dir.join("Cargo.toml");
@@ -202,6 +216,37 @@ impl Runtime for RustRuntime {
                 }
 
                 (rust_dir, false)
+            } else {
+                // Not a poly-bench project: use temp directory to avoid polluting arbitrary Cargo
+                // projects
+                let cargo_toml = generate_cargo_toml(suite);
+                use std::{
+                    collections::hash_map::DefaultHasher,
+                    hash::{Hash, Hasher},
+                };
+                let mut hasher = DefaultHasher::new();
+                cargo_toml.hash(&mut hasher);
+                let cargo_hash = hasher.finish();
+
+                let temp_dir = std::env::temp_dir()
+                    .join("polybench-rust")
+                    .join(format!("{:016x}", cargo_hash));
+                std::fs::create_dir_all(&temp_dir)
+                    .map_err(|e| miette!("Failed to create temp directory: {}", e))?;
+
+                let cargo_path = temp_dir.join("Cargo.toml");
+                let should_write_cargo = if cargo_path.exists() {
+                    let existing = std::fs::read_to_string(&cargo_path).unwrap_or_default();
+                    existing != cargo_toml
+                } else {
+                    true
+                };
+                if should_write_cargo {
+                    std::fs::write(&cargo_path, &cargo_toml)
+                        .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
+                }
+
+                (temp_dir, false)
             }
         } else {
             // Fall back to temp directory with unique name
@@ -279,54 +324,59 @@ impl Runtime for RustRuntime {
         // Need to compile - set up directories and source
         let (src_path, working_dir) = if let Some(ref project_root) = self.project_root {
             let is_runtime_env = project_root.as_os_str().to_string_lossy().contains("runtime-env");
+            let is_polybench_project =
+                is_runtime_env || project_root.join("polybench.toml").exists();
 
             // Clean up any LSP virtual files that might interfere with cargo build
             if is_runtime_env {
                 cleanup_lsp_virtual_files(project_root);
             }
 
-            let src_path = if is_runtime_env {
-                project_root.join("src").join("main.rs")
-            } else {
-                let bench_dir = project_root.join(".polybench").join("rust");
-                std::fs::create_dir_all(&bench_dir)
-                    .map_err(|e| miette!("Failed to create .polybench/rust directory: {}", e))?;
-                bench_dir.join("src").join("main.rs")
-            };
-
-            // Ensure src directory exists
-            if let Some(parent) = src_path.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| miette!("Failed to create src directory: {}", e))?;
-            }
-
-            // Ensure Cargo.toml exists (create minimal one if missing)
-            let cargo_path = if is_runtime_env {
-                project_root.join("Cargo.toml")
-            } else {
-                project_root.join(".polybench").join("rust").join("Cargo.toml")
-            };
-            if !cargo_path.exists() {
-                let cargo_toml = generate_cargo_toml(suite);
-                std::fs::write(&cargo_path, cargo_toml)
-                    .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
-            }
-
-            let working = if is_runtime_env {
-                project_root.clone()
-            } else {
-                project_root.join(".polybench").join("rust")
-            };
-
-            // Runtime-env Cargo.toml may not have alloc_tracker; add it for memory suites
             if is_runtime_env {
+                let src_path = project_root.join("src").join("main.rs");
+                // Ensure src directory exists
+                if let Some(parent) = src_path.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| miette!("Failed to create src directory: {}", e))?;
+                }
+                // Runtime-env Cargo.toml may not have alloc_tracker; add it for memory suites
                 let cargo_path = project_root.join("Cargo.toml");
                 if cargo_path.exists() {
                     ensure_alloc_tracker_in_cargo_toml(&cargo_path, spec)?;
                 }
+                (src_path, project_root.clone())
+            } else if is_polybench_project {
+                let bench_dir = project_root.join(".polybench").join("runtime-env").join("rust");
+                std::fs::create_dir_all(&bench_dir).map_err(|e| {
+                    miette!("Failed to create .polybench/runtime-env/rust directory: {}", e)
+                })?;
+                let src_path = bench_dir.join("src").join("main.rs");
+                // Ensure src directory exists
+                if let Some(parent) = src_path.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| miette!("Failed to create src directory: {}", e))?;
+                }
+                // Ensure Cargo.toml exists (create minimal one if missing)
+                let cargo_path = bench_dir.join("Cargo.toml");
+                if !cargo_path.exists() {
+                    let cargo_toml = generate_cargo_toml(suite);
+                    std::fs::write(&cargo_path, cargo_toml)
+                        .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
+                }
+                (src_path, bench_dir)
+            } else {
+                // Not a poly-bench project: use temp directory
+                let temp_dir = std::env::temp_dir().join("polybench-rust");
+                std::fs::create_dir_all(&temp_dir)
+                    .map_err(|e| miette!("Failed to create temp directory: {}", e))?;
+                let src_dir = temp_dir.join("src");
+                std::fs::create_dir_all(&src_dir)
+                    .map_err(|e| miette!("Failed to create src directory: {}", e))?;
+                let cargo_toml = generate_minimal_cargo_toml(spec);
+                std::fs::write(temp_dir.join("Cargo.toml"), cargo_toml)
+                    .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
+                (src_dir.join("main.rs"), temp_dir)
             }
-
-            (src_path, working)
         } else {
             // Create temp directory for standalone execution
             let temp_dir = std::env::temp_dir().join("polybench-rust");
@@ -427,54 +477,59 @@ impl RustRuntime {
         // Need to compile - set up directories and source
         let (src_path, working_dir) = if let Some(ref project_root) = self.project_root {
             let is_runtime_env = project_root.as_os_str().to_string_lossy().contains("runtime-env");
+            let is_polybench_project =
+                is_runtime_env || project_root.join("polybench.toml").exists();
 
             // Clean up any LSP virtual files that might interfere with cargo build
             if is_runtime_env {
                 cleanup_lsp_virtual_files(project_root);
             }
 
-            let src_path = if is_runtime_env {
-                project_root.join("src").join("main.rs")
-            } else {
-                let bench_dir = project_root.join(".polybench").join("rust");
-                std::fs::create_dir_all(&bench_dir)
-                    .map_err(|e| miette!("Failed to create .polybench/rust directory: {}", e))?;
-                bench_dir.join("src").join("main.rs")
-            };
-
-            // Ensure src directory exists
-            if let Some(parent) = src_path.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| miette!("Failed to create src directory: {}", e))?;
-            }
-
-            // Ensure Cargo.toml exists (create minimal one if missing)
-            let cargo_path = if is_runtime_env {
-                project_root.join("Cargo.toml")
-            } else {
-                project_root.join(".polybench").join("rust").join("Cargo.toml")
-            };
-            if !cargo_path.exists() {
-                let cargo_toml = generate_cargo_toml(suite);
-                std::fs::write(&cargo_path, cargo_toml)
-                    .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
-            }
-
-            let working = if is_runtime_env {
-                project_root.clone()
-            } else {
-                project_root.join(".polybench").join("rust")
-            };
-
-            // Runtime-env Cargo.toml may not have alloc_tracker; add it for memory suites
             if is_runtime_env {
+                let src_path = project_root.join("src").join("main.rs");
+                // Ensure src directory exists
+                if let Some(parent) = src_path.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| miette!("Failed to create src directory: {}", e))?;
+                }
+                // Runtime-env Cargo.toml may not have alloc_tracker; add it for memory suites
                 let cargo_path = project_root.join("Cargo.toml");
                 if cargo_path.exists() {
                     ensure_alloc_tracker_in_cargo_toml(&cargo_path, spec)?;
                 }
+                (src_path, project_root.clone())
+            } else if is_polybench_project {
+                let bench_dir = project_root.join(".polybench").join("runtime-env").join("rust");
+                std::fs::create_dir_all(&bench_dir).map_err(|e| {
+                    miette!("Failed to create .polybench/runtime-env/rust directory: {}", e)
+                })?;
+                let src_path = bench_dir.join("src").join("main.rs");
+                // Ensure src directory exists
+                if let Some(parent) = src_path.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| miette!("Failed to create src directory: {}", e))?;
+                }
+                // Ensure Cargo.toml exists (create minimal one if missing)
+                let cargo_path = bench_dir.join("Cargo.toml");
+                if !cargo_path.exists() {
+                    let cargo_toml = generate_cargo_toml(suite);
+                    std::fs::write(&cargo_path, cargo_toml)
+                        .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
+                }
+                (src_path, bench_dir)
+            } else {
+                // Not a poly-bench project: use temp directory
+                let temp_dir = std::env::temp_dir().join("polybench-rust");
+                std::fs::create_dir_all(&temp_dir)
+                    .map_err(|e| miette!("Failed to create temp directory: {}", e))?;
+                let src_dir = temp_dir.join("src");
+                std::fs::create_dir_all(&src_dir)
+                    .map_err(|e| miette!("Failed to create src directory: {}", e))?;
+                let cargo_toml = generate_minimal_cargo_toml(spec);
+                std::fs::write(temp_dir.join("Cargo.toml"), cargo_toml)
+                    .map_err(|e| miette!("Failed to write Cargo.toml: {}", e))?;
+                (src_dir.join("main.rs"), temp_dir)
             }
-
-            (src_path, working)
         } else {
             // Create temp directory for standalone execution
             let temp_dir = std::env::temp_dir().join("polybench-rust");
