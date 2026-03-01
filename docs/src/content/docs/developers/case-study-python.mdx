@@ -1,0 +1,397 @@
+---
+title: Case Study — Python Runtime
+description: Step-by-step walkthrough of how the Python runtime was implemented
+---
+
+This case study walks through the Python runtime implementation, section by section. Python is a good reference because it has no compilation step — the executor writes a script and runs it directly. The same patterns apply to other runtimes: you add the language to the grammar, wire up manifest and build, implement the Runtime trait, and optionally add LSP support for editor diagnostics and hover.
+
+<Aside type="tip">
+<span>Use this alongside the [Adding a Runtime](/docs/developers/adding-a-runtime) guide. The case study shows concrete code; the guide provides the full checklist.</span>
+</Aside>
+
+---
+
+## 1. Lang Enum
+
+The first step is to add the language to the shared Lang enum so the DSL parser, manifest, and runtime registry all recognize it. This lives in poly-bench-dsl/src/ast.rs:
+
+<CodeGroup
+  tabs={[
+    {
+      language: "rust",
+      code: `pub enum Lang {
+    // ...
+    Python,
+}
+
+impl Lang {
+    pub const ALL: [Lang; 7] = [..., Lang::Python];
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            // ...
+            "python" | "py" => Some(Lang::Python),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Lang::Python => "python",
+            // ...
+        }
+    }
+
+    pub fn aliases(&self) -> &'static [&'static str] {
+        match self {
+            Lang::Python => &["python", "py"],
+            // ...
+        }
+    }
+}`
+    },
+  ]}
+/>
+
+<Aside type="note">
+<span>Every place that matches on <code>Lang</code> must handle the new variant. Search for <code>Lang::</code> to find touchpoints.</span>
+</Aside>
+
+---
+
+## 2. Manifest Config
+
+The manifest (polybench.toml) needs a config block for the new runtime. In poly-bench-project/src/manifest.rs, add a config struct and wire it into Manifest so has_runtime(Lang::Python) returns true when Python is enabled:
+
+<CodeGroup
+  tabs={[
+    {
+      language: "rust",
+      code: `#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PythonConfig {
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub dependencies: HashMap<String, String>,
+}
+
+pub struct Manifest {
+    // ...
+    pub python: Option<PythonConfig>,
+}
+
+impl Manifest {
+    pub fn has_runtime(&self, lang: Lang) -> bool {
+        match lang {
+            Lang::Python => self.python.is_some(),
+            // ...
+        }
+    }
+}`
+    },
+  ]}
+/>
+
+Manifest::new() creates python: Some(PythonConfig { ... }) when "python" is in the enabled languages list. The dependencies map is used to populate requirements.txt during build.
+
+---
+
+## 3. Init
+
+When a user runs poly-bench init or poly-bench add-runtime python, the init logic creates the runtime environment directory. In poly-bench-project/src/init.rs, add a branch in init_runtime_env_for_lang:
+
+<CodeGroup
+  tabs={[
+    {
+      language: "rust",
+      code: `Lang::Python => {
+    let python_env = runtime_env(project_dir, Lang::Python);
+    std::fs::create_dir_all(&python_env)?;
+    let requirements_content = templates::requirements_txt_for_runtime_env(&[]);
+    std::fs::write(python_env.join("requirements.txt"), requirements_content)?;
+}`
+    },
+  ]}
+/>
+
+<Aside type="note">
+<span>Python does not create the venv at init. The venv is created during poly-bench build when pip install runs.</span>
+</Aside>
+
+---
+
+## 4. Build
+
+The build step installs dependencies and prepares the environment. In poly-bench-project/src/build.rs, add build_python_env and call it from build_runtime_env_for_lang:
+
+<CodeGroup
+  tabs={[
+    {
+      language: "rust",
+      code: `fn build_python_env(project_root: &Path, python_config: &PythonConfig, options: &BuildOptions) -> Result<()> {
+    let python_env = runtime_env(project_root, Lang::Python);
+    std::fs::create_dir_all(&python_env)?;
+
+    // Write requirements.txt (includes pyright for LSP)
+    let deps = python_config.dependencies.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let requirements_content = templates::requirements_txt_for_runtime_env(&deps);
+    std::fs::write(python_env.join("requirements.txt"), requirements_content)?;
+
+    if !options.skip_install {
+        // Create .venv if missing
+        let venv_python = python_env.join(".venv").join("bin").join("python");
+        if !venv_python.exists() {
+            Command::new("python3").args(["-m", "venv", ".venv"]).current_dir(&python_env).output()?;
+        }
+        // pip install -r requirements.txt
+        let venv_pip = python_env.join(".venv").join("bin").join("pip");
+        Command::new(&venv_pip).args(["install", "-r", "requirements.txt"]).current_dir(&python_env).output()?;
+    }
+    Ok(())
+}`
+    },
+  ]}
+/>
+
+---
+
+## 5. Runtime + Factory
+
+The core runtime logic lives in runtimes-python/src/executor.rs. The Runtime trait defines the contract for running benchmarks; the factory creates instances with the correct project root:
+
+<CodeGroup
+  tabs={[
+    {
+      language: "rust",
+      code: `pub struct PythonRuntime {
+    python_binary: PathBuf,
+    project_root: Option<PathBuf>,
+    cached_script: Option<(PathBuf, PathBuf, u64)>,
+}
+
+impl RuntimeFactory for PythonRuntimeFactory {
+    fn lang(&self) -> Lang { Lang::Python }
+    fn name(&self) -> &'static str { "Python Runtime" }
+    fn create(&self, config: &RuntimeConfig) -> Result<Box<dyn Runtime>> {
+        let mut rt = PythonRuntime::new()?;
+        rt.set_project_root(config.get_root(Lang::Python));
+        Ok(Box::new(rt))
+    }
+}
+
+#[async_trait]
+impl Runtime for PythonRuntime {
+    fn lang(&self) -> Lang { Lang::Python }
+    async fn initialize(&mut self, _suite: &SuiteIR) -> Result<()> {
+        which::which("python3").or_else(|_| which::which("python"))
+            .map_err(|_| miette!("Python not found in PATH"))?;
+        Ok(())
+    }
+    fn generate_check_source(&self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<String> {
+        // Generate Python script from IR
+    }
+    async fn compile_check(&self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<()> {
+        // Run pyright or similar
+    }
+    async fn run_benchmark(&mut self, spec: &BenchmarkSpec, suite: &SuiteIR) -> Result<Measurement> {
+        // Write bench.py, spawn python bench.py, parse JSON from stdout
+    }
+    async fn shutdown(&mut self) -> Result<()> { Ok(()) }
+}`
+    },
+  ]}
+/>
+
+<Aside type="tip">
+<span>Python prefers .venv/bin/python when project_root contains runtime-env — so benchmarks use the same interpreter that has the installed deps.</span>
+</Aside>
+
+---
+
+## 6. ErrorMapper
+
+Python uses a passthrough mapper because there is no separate compilation step — the script runs directly, so errors are reported in terms of the generated Python file. In runtimes-python/src/error_mapping.rs:
+
+<CodeGroup
+  tabs={[
+    {
+      language: "rust",
+      code: `impl ErrorMapper for PythonErrorMapper {
+    fn lang(&self) -> Lang { Lang::Python }
+    fn build_mappings(&self, _suite: &SuiteIR, _generated_code: &str) -> LineMappings {
+        LineMappings::default()
+    }
+    fn remap_error(&self, error: &str, _mappings: &LineMappings) -> String {
+        error.to_string()
+    }
+}`
+    },
+  ]}
+/>
+
+<Aside type="note">
+<span>Compiled languages (Go, Rust, C) need real line mapping so compiler errors point to .bench lines. Interpreted languages can use passthrough if the runtime reports errors with useful context.</span>
+</Aside>
+
+---
+
+## 7. RuntimePlugin
+
+The plugin bundles all runtime components and registers them via the #[distributed_slice] macro. In runtimes-python/src/plugin.rs:
+
+<CodeGroup
+  tabs={[
+    {
+      language: "rust",
+      code: `pub struct PythonPlugin;
+
+impl RuntimePlugin for PythonPlugin {
+    fn lang(&self) -> Lang { Lang::Python }
+    fn runtime_factory(&self) -> &'static dyn RuntimeFactory { &PYTHON_RUNTIME_FACTORY }
+    fn error_mapper(&self) -> &'static dyn ErrorMapper { &PYTHON_ERROR_MAPPER }
+    fn lang_display(&self) -> LangDisplayInfo { python_lang_display() }
+    // Optional: project_root_detector, virtual_file_builder, embedded_diagnostic_provider, etc.
+}
+
+#[distributed_slice(poly_bench_traits::PLUGINS)]
+static _PYTHON: &dyn RuntimePlugin = &PYTHON_PLUGIN;`
+    },
+  ]}
+/>
+
+---
+
+## 8. Execution Flow
+
+When run_benchmark is called, the runtime generates a standalone Python script, writes it to disk, runs it, and parses the JSON output. Here is the high-level flow:
+
+1. Generate — Codegen produces a Python script with fixture decoding, init, helpers, and a benchmark loop that prints JSON.
+2. Write — The script is written to bench.py in .polybench/runtime-env/python/ (or a temp dir).
+3. Run — poly-bench spawns python bench.py (or .venv/bin/python bench.py).
+4. Parse — The last non-empty line of stdout is JSON with iterations, total_nanos, nanos_per_op, and ops_per_sec.
+5. Return — poly-bench builds a Measurement via Measurement::from_aggregate(iterations, total_nanos).
+
+<Aside type="caution">
+<span>The benchmark script must print valid JSON on the last line. Use <code>time.perf_counter_ns()</code> for high-resolution timing.</span>
+</Aside>
+
+### CodeGen: How the Python Script Is Built
+
+The Python runtime uses two codegen functions in runtimes-python/src/executor.rs:
+
+- generate_python_check_source — Used when poly-bench check runs. Produces a minimal script with imports, declarations, helpers, and the benchmark implementation — no timing harness or benchmark loop.
+- generate_standalone_script — Used for run_benchmark and precompile. Produces the full script that runs the benchmark and prints JSON.
+
+Both use the same assembly order. The script is built by concatenating the following sections in order:
+
+1. **Header** — `# Code generated by poly-bench. DO NOT EDIT.` and core imports (`time`, `json`, `gc`, `tracemalloc` if memory tracking).
+
+2. **User imports** — From `suite.imports.get(&Lang::Python)` (e.g. `import hashlib`).
+
+3. **Stdlib imports** — From `suite.stdlib_imports` via `stdlib::get_stdlib_code`, which injects standard library helpers used by the DSL.
+
+4. **Declarations** — From `suite.declarations.get(&Lang::Python)`, e.g. module-level constants or helper stubs.
+
+5. **Init code** — From `suite.init_code.get(&Lang::Python)`, run once before the benchmark loop.
+
+6. **Helpers** — From `suite.helpers.get(&Lang::Python)`, e.g. `def keccak256_py(data: bytes) -> bytes`.
+
+7. **Fixture decoding** — For each `fixture_refs` in the spec, either `fixture_name = <implementation>` (Python literal) or `fixture_name = bytes([0x68, 0x65, ...])` for raw hex data.
+
+8. **Benchmark function** — The implementation is wrapped in `def __polybench_bench():` with `return` on the last line when `use_sink` is true (to prevent dead-code elimination).
+
+9. **Benchmark loop** — `def __polybench_run()`: warmup (time-based or iteration-based), `before_hook`, then either:
+   - **Auto mode** — Batched execution until `target_ns` is reached; batch size grows as needed.
+   - **Fixed mode** — Fixed number of iterations.
+
+   Each iteration times the benchmark call. `each_hook` runs before/after each call. `after_hook` runs at the end. If `use_memory` is set, `tracemalloc` tracks peak memory per batch.
+
+10. **JSON output** — The script prints the final JSON on the last line: `{"iterations": N, "total_nanos": T, "nanos_per_op": X, "ops_per_sec": Y}`.
+
+The `normalize_python_indent` helper strips common leading whitespace from embedded blocks so the generated script has consistent indentation.
+
+---
+
+## 9. LSP (Optional)
+
+Python provides full LSP support for editor diagnostics and hover. You can omit LSP initially and add it later; the runtime will work for poly-bench run without it.
+
+### LSP Overview
+
+The LSP integration for embedded Python works as follows:
+
+1. Building a virtual file — The .bench file contains embedded Python blocks (imports, setup, helpers, benchmark implementations). The VirtualFileBuilder assembles these into a single .py file that the LSP can analyze.
+
+2. Running diagnostics — The EmbeddedDiagnosticProvider runs pyright (or pylsp) on that virtual file and maps diagnostics back to positions in the .bench file.
+
+3. Hover and completions — The EmbeddedLspClient wraps pyright-langserver so the editor can request hover, completions, and other LSP features for embedded Python.
+
+### VirtualFileBuilder
+
+The VirtualFileBuilder lives in runtimes-python/src/virtual_file.rs. It implements VirtualFileBuilder::build and receives VirtualFileParams containing:
+
+- bench_uri — URI of the .bench file
+- blocks — Parsed embedded blocks (imports, declarations, helpers, init, benchmark/validate/skip blocks)
+- fixture_names — Names of fixtures referenced by the benchmark
+
+The builder uses VirtualFileBuilderCore to:
+
+1. Categorize blocks — categorize_blocks groups blocks by type (imports, declares, helpers, inits, other).
+
+2. Assemble content — Imports, declarations, helpers, and init are written in order. For benchmark/validate/skip blocks, it emits def _bench_N(): (or similar) with placeholder fixture assignments and the block content indented.
+
+3. Compute paths — The virtual file path is {module_root}/.lsp_virtual/_lsp_virtual_{hash}.py where a hash is derived from the bench path. This keeps virtual files unique per .bench file.
+
+4. Build section mappings — Each block maps a range in the virtual file to a range in the .bench file. These are stored in section_mappings so diagnostics can be translated from virtual line/character back to bench line/character.
+
+### EmbeddedDiagnosticProvider and EmbeddedDiagnosticSetup
+
+The EmbeddedDiagnosticProvider in runtimes-python/src/embedded_diagnostics.rs implements check_blocks(virtual_file, ctx). It:
+
+1. Tries pyright first — Runs pyright --outputjson on the virtual file path (after writing the content to disk). Parses the JSON output for generalDiagnostics and converts each to EmbeddedDiagnostic with virtual_line, virtual_character, length, message, severity, and optional code.
+
+2. Falls back to py_compile — If pyright is not available, runs python -m py_compile and parses stderr for File "...", line N and ErrorType: message. Produces EmbeddedDiagnostic with virtual_line set from the error line.
+
+The LSP layer then uses virtual_file.section_mappings() to map each diagnostic's virtual_line and virtual_character back to the corresponding position in the .bench file.
+
+The EmbeddedDiagnosticSetup implements prepare(module_root, ctx). It calls ctx.ensure_ready(Lang::Python, module_root), which initializes the LSP client for Python if needed (for example, starting pyright-langserver).
+
+### Where to Find pyright-langserver
+
+The Python LSP uses `PyrightConfig` in `runtimes-python/src/pyright_client.rs`:
+
+- **`find_executable_in_workspace`** — Looks for `.venv/bin/pyright-langserver` or `.venv/bin/pyright` under the workspace root. This ensures the venv’s pyright is used when available.
+
+- **`find_executable`** — Falls back to `which` for `pyright` (with `--langserver`) or `pylsp` in PATH.
+
+- **`server_args_for_path`** — For pyright-langserver, passes `--stdio` so it communicates over stdin/stdout.
+
+The plugin registers `embedded_lsp_client_init` and `embedded_lsp_client_get` so the LSP server can start and reuse the pyright client for diagnostics.
+
+### Summary of LSP Components
+
+The table below summarizes the LSP components and their roles:
+
+| Component | Purpose |
+|-----------|---------|
+| VirtualFileBuilder | Builds a virtual .py file from embedded blocks; maintains section mappings for bench to virtual file |
+| EmbeddedDiagnosticProvider | Runs pyright or py_compile on the virtual file; returns EmbeddedDiagnostic with virtual positions |
+| EmbeddedDiagnosticSetup | Calls prepare so the LSP client is ready before diagnostics |
+| EmbeddedLspClient (pyright_client) | Wraps pyright-langserver; find_executable_in_workspace checks .venv/bin/pyright-langserver |
+| ProjectRootDetector | Detects Python root via requirements.txt or pyproject.toml |
+
+---
+
+## Summary
+
+| Section | What it does |
+|---------|--------------|
+| Lang | Adds `python`/`py` to the grammar and config |
+| Manifest | `PythonConfig` with deps; `has_runtime` |
+| Init | Creates `requirements.txt` |
+| Build | Creates venv, runs `pip install` |
+| Runtime | `initialize`, `generate_check_source`, `compile_check`, `run_benchmark`, `shutdown` |
+| ErrorMapper | Passthrough (or real mapping for compiled langs) |
+| Plugin | Bundles all; `#[distributed_slice(PLUGINS)]` |
+
+For the full checklist and LSP details, see [Adding a Runtime](/docs/developers/adding-a-runtime).

@@ -1,0 +1,90 @@
+---
+title: Polybench Runtime
+description: Technical reference for how the .polybench runtime project is set up per language
+---
+
+<div data-pagefind-weight="10">
+
+Each language has an isolated project root at `.polybench/runtime-env/<lang>/`. poly-bench scaffolds this directory at init, populates it during build or install, and generates benchmark source at run time. This section provides technical deep-dives into the scaffolding, codegen, and execution model for each language.
+
+</div>
+
+---
+
+## Init vs Build
+
+Init and build serve different purposes in the poly-bench workflow.
+
+When you run `poly-bench init --languages <lang>`, poly-bench creates the minimal scaffold: manifest files (`go.mod`, `package.json`, `Cargo.toml`, and so on), placeholder source, and config. TypeScript is the only runtime that runs a package install (`npm install`) at init, so `typescript-language-server` is available immediately for LSP. All other runtimes defer dependency installation to build.
+
+When you run `poly-bench build` or `poly-bench install`, poly-bench installs dependencies (`go get`, `npm install`, `cargo fetch`, `pip install`, and so on), creates language-specific tooling (venv for Python, `gopls` for Go, `rust-analyzer` for Rust), and optionally regenerates scaffold files with `--force`. Use `--skip-install` to skip network and install steps when you only need to regenerate config.
+
+<Aside type="note">
+<span>Use <code>--skip-install</code> to skip network and install steps when you only need to regenerate config.</span>
+</Aside>
+
+---
+
+## Pipeline
+
+The benchmark pipeline runs from your .bench files through to execution:
+
+```
+.bench files → DSL Parser (poly-bench-dsl) → IR (poly-bench-ir) → Codegen (runtimes-*) → Write source → Build → Execute
+```
+
+1. **Parse** — `.bench` files are tokenized and parsed into an AST.
+2. **IR** — The AST is lowered to `SuiteIR`, `BenchmarkSpec`, and `FixtureIR` — a normalized representation.
+3. **Codegen** — Each runtime crate generates language-specific source from the IR.
+4. **Write** — Generated source is written to `.polybench/runtime-env/<lang>/` (or a temp dir).
+5. **Build** — The language toolchain compiles the source or prepares it for execution.
+6. **Execute** — poly-bench invokes the compiled binary or interpreter and collects timing.
+
+For the high-level flow, see [Architecture](/docs/core/architecture). For user-facing setup and gotchas, see [Requirements](/docs/requirements). To add a new runtime, see [Adding a Runtime](/docs/developers/adding-a-runtime).
+
+<Aside type="tip">
+<span>For quick validation without execution, run <code>poly-bench check</code>.</span>
+</Aside>
+
+---
+
+## Runtime Summary
+
+The table below summarizes what each runtime scaffolds at init, what gets generated at run time, and how poly-bench builds and executes benchmarks.
+
+| Language | Scaffolded Files | Generated Files | Build Command | Run Command |
+|----------|------------------|-----------------|---------------|-------------|
+| **Go** | `go.mod` | `bench_standalone.go`, `bench_check_<name>.go` | `go build -o polybench_runner` | `./polybench_runner <bench> <iters>` |
+| **TypeScript** | `package.json`, `tsconfig.json` | `bench.mjs` | — | `node bench.mjs` |
+| **Rust** | `Cargo.toml`, `src/main.rs` | `src/main.rs` (overwritten) | `cargo build --release` | `./target/release/polybench_runner` |
+| **Python** | `requirements.txt`, `.venv/` | `bench.py` | — | `python bench.py` |
+| **C** | `main.c`, `vcpkg.json`, `CMakeLists.txt` (if deps) | `bench_standalone.c`, `bench_check_<name>.c` | `clang` or CMake | `./polybench_runner` |
+| **C#** | `polybench.csproj`, `Program.cs`, `global.json` | `Program.cs` (overwritten) | `dotnet build` | `dotnet run` |
+| **Zig** | `build.zig`, `build.zig.zon`, `src/main.zig` | `bench_standalone.zig`, `bench_check_<name>.zig` | `zig build` | `./zig-out/bin/polybench_runner` |
+
+---
+
+## Per-Language Deep-Dives
+
+Each language has a dedicated technical report that covers templates, codegen, and execution details.
+
+| Language | Technical Report |
+|----------|------------------|
+| [Go](/docs/polybench-runtime/go) | `go.mod`, codegen, plugin vs subprocess, `polybench_runner` |
+| [TypeScript](/docs/polybench-runtime/ts) | `package.json`, `tsconfig.json`, V8/Node execution, `bench.mjs` |
+| [Rust](/docs/polybench-runtime/rust) | `Cargo.toml`, `main.rs` overwrite, `polybench_runner` binary |
+| [Python](/docs/polybench-runtime/python) | `.venv`, `requirements.txt`, `bench.py`, subprocess execution |
+| [C](/docs/polybench-runtime/c) | `clang` vs CMake+vcpkg, generated `.c`, build flow |
+| [C#](/docs/polybench-runtime/csharp) | `polybench.csproj`, `Program.cs` overwrite, `global.json`, `dotnet run` |
+| [Zig](/docs/polybench-runtime/zig) | `build.zig`, `build.zig.zon`, generated `.zig`, `zig build` |
+
+---
+
+## Source Crates
+
+The poly-bench codebase is split into crates. The table below lists the main ones relevant to the runtime.
+
+| Crate | Role |
+|-------|------|
+| `poly-bench-project` | Templates ([templates.rs](https://github.com/evm-tooling/poly-bench/blob/main/poly-bench-project/src/templates.rs)), init, build, deps |
+| `poly-bench-runtime/runtimes-*` | Per-language codegen and execution |

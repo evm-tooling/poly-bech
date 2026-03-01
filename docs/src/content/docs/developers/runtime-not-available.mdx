@@ -1,0 +1,28 @@
+---
+title: Runtime Not Available
+description: What to do when the runtime you need isn't supported
+---
+
+If the runtime you need — for example, Java, Kotlin, or Swift — is not supported, you can add it. The process involves implementing the runtime spec, registering the plugin, and wiring init and build support.
+
+<Aside type="note">
+<span>Adding a runtime requires implementing the spec in poly-bench-traits, registering the plugin, and wiring init and build in poly-bench-project. The [Case Study: Python](/docs/developers/case-study-python) walks through a concrete example.</span>
+</Aside>
+
+---
+
+## What's Involved
+
+Adding a new runtime requires the following steps:
+
+1. Implement the runtime spec — Runtime, RuntimeFactory, ErrorMapper, and RuntimePlugin from poly-bench-traits.
+2. Register the plugin — Use `#[distributed_slice(PLUGINS)]` so poly-bench discovers it.
+3. Add init and build support — Scaffold files in poly-bench-project (init, build, templates, deps).
+4. Add LSP integration — VirtualFileBuilder, EmbeddedLspClient, and diagnostics (optional but recommended).
+5. Write tests — Execution snapshot, LSP integration, and init runtime dirs.
+
+---
+
+## Full Guide
+
+For an extremely detailed walkthrough with checklists, codebase touchpoints, and step-by-step instructions, see [Adding a Runtime](/docs/developers/adding-a-runtime).

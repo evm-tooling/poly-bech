@@ -1,0 +1,58 @@
+---
+title: Requirements
+description: Runtime prerequisites and per-language setup guides for poly-bench
+---
+
+<div data-pagefind-weight="9">
+
+poly-bench generates and runs native code in each target language. Each runtime has specific prerequisites, toolchain requirements, and gotchas. This section provides a complete reference for setting up and using each language with poly-bench.
+
+</div>
+
+Before you run benchmarks, you need the language toolchain installed on your system. The table below lists the minimum version and binary for each supported runtime. For deeper technical details on how the runtime project works — including templates, generated files, and the codegen flow — see [Polybench Runtime](/docs/polybench-runtime). Contributors who want to add a new language should start with [Developers](/docs/developers), which covers early development notices and the runtime addition guide.
+
+---
+
+## Runtimes
+
+The following runtimes are supported. Each has a dedicated guide that walks through init, adding dependencies, build, and execution.
+
+| Language | Min Version | Binary | Full Guide |
+|----------|-------------|--------|------------|
+| **Go** | 1.21+ | `go` | [Go runtime](/docs/requirements/go) |
+| **TypeScript** | Node.js 18+ | `node` | [TypeScript runtime](/docs/requirements/ts) |
+| **Rust** | 1.70+ | `cargo` | [Rust runtime](/docs/requirements/rust) |
+| **Python** | 3.8+ | `python3` / `python` | [Python runtime](/docs/requirements/python) |
+| **C** | — | `clang` | [C runtime](/docs/requirements/c) |
+| **C#** | .NET 8.0+ | `dotnet` | [C# runtime](/docs/requirements/csharp) |
+| **Zig** | 0.15+ | `zig` | [Zig runtime](/docs/requirements/zig) |
+
+<Aside type="note">
+<span>C is the only runtime that cannot be auto-installed during <code>poly-bench init</code>. You must install clang manually. All other runtimes can be installed interactively when missing.</span>
+</Aside>
+
+### Quick Reference
+
+When you initialize a project with a language, poly-bench creates a scaffold in `.polybench/runtime-env/<lang>/`. You add dependencies with `poly-bench add`, and `poly-bench install` (or `poly-bench build`) runs the appropriate package manager. The table below summarizes what each runtime uses.
+
+| Runtime | Init creates | Add deps | Install runs |
+|---------|---------------|----------|--------------|
+| Go | `go.mod` | `poly-bench add --go pkg@ver` | `go get` |
+| TypeScript | `package.json`, `tsconfig.json` | `poly-bench add --ts pkg@ver` | `npm install` |
+| Rust | `Cargo.toml`, `src/main.rs` | `poly-bench add --rs crate@ver` | `cargo add` |
+| Python | `requirements.txt` | `poly-bench add --py pkg==ver` | `pip install -r` |
+| C | `main.c` (or vcpkg+CMake with deps) | `poly-bench add --c pkg@ver` | `cmake` + vcpkg |
+| C# | `polybench.csproj`, `Program.cs` | `poly-bench add --cs pkg@ver` | `dotnet restore` |
+| Zig | `build.zig`, `build.zig.zon` | `poly-bench add --zig url` | `zig fetch` |
+
+### Per-Language Guides
+
+Each language page walks through creating a poly-bench project from start to finish. The guides include init commands, dependency management, build behavior, and language-specific gotchas or troubleshooting tips.
+
+- **[Go](/docs/requirements/go)** — Uses go.mod and go get; supports plugin-based execution on Linux and subprocess elsewhere. Includes gopls for LSP.
+- **[TypeScript](/docs/requirements/ts)** — Runs npm install during init; uses ES modules and the typescript-language-server for editor support.
+- **[Rust](/docs/requirements/rust)** — Cargo-based with alloc_tracker for memory benchmarks; defaults to edition 2021.
+- **[Python](/docs/requirements/python)** — Creates a venv; on Debian/Ubuntu you may need python3-venv. Uses pyright for LSP.
+- **[C](/docs/requirements/c)** — Requires clang (not gcc). Uses vcpkg and CMake for external deps. Cannot be auto-installed.
+- **[C#](/docs/requirements/csharp)** — Targets .NET 8 by default; uses global.json to pin the SDK. Version mismatches can cause issues.
+- **[Zig](/docs/requirements/zig)** — Zig 0.15+ is recommended; build.zig.zon format and package compatibility vary by version.

@@ -1,0 +1,119 @@
+---
+title: C Runtime
+description: C runtime requirements, setup, and gotchas for poly-bench
+---
+
+This guide walks through using C with poly-bench, from init through run. It covers what gets created, how dependencies work, and common gotchas.
+
+---
+
+## Prerequisites
+
+The C runtime requires clang — gcc is not supported. The table below summarizes the requirements.
+
+| Requirement | Details |
+|-------------|---------|
+| **Binary** | `clang` (not gcc) |
+| **Version** | — |
+| **Verify** | `clang --version` |
+
+<Aside type="caution">
+<span><strong>Clang only</strong> — poly-bench uses <code>clang</code>, not gcc. Install: <code>brew install llvm</code> (macOS), <code>sudo apt install clang</code> (Linux).</span>
+</Aside>
+
+---
+
+## Init
+
+When you run `poly-bench init --languages c` (or select C in the interactive flow), poly-bench creates a C project under `.polybench/runtime-env/c/`. The structure depends on whether you have external dependencies:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Structure (no deps)",
+      language: "text",
+      code: `.polybench/runtime-env/c/
+└── main.c`
+    },
+    {
+      title: "Structure (with deps)",
+      language: "text",
+      code: `.polybench/runtime-env/c/
+├── main.c
+├── CMakeLists.txt
+└── vcpkg.json`
+    },
+  ]}
+/>
+
+<Aside type="caution">
+<span><strong>No auto-install</strong> — C cannot be auto-installed during init. You must install clang manually.</span>
+</Aside>
+
+With zero C dependencies, poly-bench compiles with clang directly and does not use CMake. When you add external dependencies, it switches to CMake plus a vcpkg manifest.
+
+---
+
+## Add Dependencies
+
+To add C dependencies, use the add command with the `--c` flag:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "CLI",
+      language: "bash",
+      code: `poly-bench add --c openssl@3.2  # [!code focus]`
+    },
+  ]}
+/>
+
+The spec format is `package@version` — for example, `openssl@3.2`. When you add C dependencies, poly-bench uses vcpkg and CMake. You need the following in place:
+
+| Requirement | Details |
+|-------------|---------|
+| **vcpkg** | Set `VCPKG_ROOT` or `CMAKE_TOOLCHAIN_FILE` |
+| **Default paths** | `~/vcpkg`, `/opt/homebrew/share/vcpkg`, etc. |
+| **CMake** | 3.20+ on PATH |
+
+For example, `openssl` maps to `find_package(OpenSSL REQUIRED COMPONENTS SSL Crypto)`. vcpkg installs it; you do not need system OpenSSL if you are using vcpkg.
+
+---
+
+## Install
+
+Running `poly-bench install` (or `poly-bench build`) runs CMake configure and build when C dependencies are present. With no dependencies, there is no install step — just compilation at run time.
+
+---
+
+## Build / Codegen
+
+When you run `poly-bench run`, the build behavior depends on your dependencies. With no C deps, poly-bench compiles with clang directly. With deps, it uses CMake and the vcpkg manifest to build.
+
+---
+
+## Gotchas and Troubleshooting
+
+<Aside type="caution">
+<span><strong>Clang only</strong> — poly-bench uses clang, not gcc. Install: <code>brew install llvm</code> (macOS), <code>sudo apt install clang</code> (Linux).</span>
+</Aside>
+
+<Aside type="caution">
+<span><strong>No auto-install</strong> — C cannot be auto-installed during init; must install manually.</span>
+</Aside>
+
+<Aside type="caution">
+<span><strong>vcpkg required for deps</strong> — When adding C deps (e.g. <code>openssl@3.2</code>), poly-bench uses vcpkg + CMake. Requires <code>VCPKG_ROOT</code> or <code>CMAKE_TOOLCHAIN_FILE</code>.</span>
+</Aside>
+
+<Aside type="caution">
+<span><strong>CMake 3.20+</strong> — <code>cmake</code> must be on PATH.</span>
+</Aside>
+
+<Aside type="note">
+<span><strong>OpenSSL via vcpkg</strong> — <code>openssl</code> maps to <code>find_package(OpenSSL REQUIRED COMPONENTS SSL Crypto)</code>. vcpkg installs it; no system OpenSSL needed if using vcpkg.</span>
+</Aside>
+
+<Aside type="note">
+<span><strong>No deps = clang only</strong> — With zero C deps, poly-bench compiles with clang directly (no CMake). With deps, uses CMake + vcpkg manifest.</span>
+</Aside>

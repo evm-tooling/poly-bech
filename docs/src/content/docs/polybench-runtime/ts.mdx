@@ -1,0 +1,112 @@
+---
+title: TypeScript Runtime
+description: Technical deep-dive on how the .polybench TypeScript runtime project works
+---
+
+This page documents how the `.polybench/runtime-env/ts/` project is set up, how codegen works, and how execution is performed.
+
+---
+
+## Overview
+
+The TypeScript runtime generates an ES module (`bench.mjs`) and executes it with Node.js. There is no separate compilation step — Node runs the generated JavaScript directly. The runtime crate is `runtimes-ts`; templates come from `poly-bench-project`. TypeScript is the only runtime that runs `npm install` during init.
+
+---
+
+## What Init Does
+
+When you run `poly-bench init` with TypeScript enabled, poly-bench creates the runtime environment and runs `npm install` immediately. Specifically:
+
+1. Creates `.polybench/runtime-env/ts/`
+2. Writes `package.json` with `"type": "module"`, `@types/node`, `typescript`, and `typescript-language-server` as dev dependencies
+3. Writes `tsconfig.json` with `moduleResolution: "bundler"`, `target: "ES2022"`, and `noEmit: true`
+4. **Runs `npm install`** immediately
+
+TypeScript is the only runtime that installs dependencies at init. This is because `typescript-language-server` must be available for LSP to work as soon as you open a `.bench` file. Other runtimes defer install to `poly-bench build` or `poly-bench install`.
+
+<Aside type="note">
+<span>TypeScript is the only runtime that runs <code>npm install</code> during init, so <code>typescript-language-server</code> is available immediately for LSP.</span>
+</Aside>
+
+---
+
+## What Build/Install Does
+
+When you run `poly-bench build` or `poly-bench install`:
+
+1. **Regenerates `package.json` and `tsconfig.json`** if `--force` is used
+2. **Adds user dependencies** from `[ts] dependencies` in `polybench.toml` to `package.json`
+3. **Runs `npm install`** (skipped with `--skip-install`)
+
+---
+
+## Design Rationale
+
+- **`"type": "module"`** — Generated code uses ES module syntax (`import`/`export`). Node runs `bench.mjs` directly with no bundler or transpilation at run time.
+- **`moduleResolution: "bundler"`** — No actual bundler is used; this setting satisfies TypeScript's type checker and LSP for modern resolution while execution remains plain Node.
+- **npm install at init** — Ensures `typescript-language-server` is available immediately for editor hover, completion, and diagnostics; without it, LSP would fail until the user runs `poly-bench build`.
+- **Isolated node_modules** — All dependencies live under `.polybench/runtime-env/ts/node_modules/`. No pollution of the project root.
+
+---
+
+## Scaffolded Files (Init/Build)
+
+When you run `poly-bench init --languages ts` or `poly-bench build`, the following is created in `.polybench/runtime-env/ts/`:
+
+| File | Source | Purpose |
+|------|--------|---------|
+| `package.json` | `templates.package_json()` | Project config, `"type": "module"`, dependencies including `typescript-language-server` |
+| `tsconfig.json` | `templates.tsconfig_json()` | `moduleResolution: "bundler"`, no actual bundler — direct Node execution |
+| `node_modules/` | `npm install` at init | Installed dependencies |
+
+The `package.json` uses `"type": "module"` for ES modules. The tsconfig uses `moduleResolution: "bundler"` for tooling compatibility; execution is direct Node.
+
+---
+
+## Codegen
+
+When `poly-bench run` executes a benchmark, the TypeScript runtime:
+
+1. Calls `generate_standalone_script(spec, suite)` in `runtimes-ts/src/codegen.rs`
+2. Produces a complete ES module with: fixture decoding, setup/init code, helper functions, and the benchmark loop
+3. Writes the source to `bench.mjs` in the project root
+
+For `poly-bench check`, the runtime generates `bench_check_<name>.ts` and runs `tsc` to type-check.
+
+**Generated filenames:**
+
+- Run: `bench.mjs`
+- Check: `bench_check_<name>.ts`
+
+---
+
+## Build Pipeline
+
+| Step | Command | Output |
+|------|---------|--------|
+| Run | — | No build; Node executes `bench.mjs` directly |
+| Check | `tsc --noEmit` on generated `.ts` | Type-check only |
+
+---
+
+## Execution Model
+
+1. **Precompile:** Write `bench.mjs` to project root, cache script path and source hash
+2. **Run:** Spawn `node bench.mjs` with `ANVIL_RPC_URL` in env if std::anvil is used
+3. **Collect:** Parse stdout for timing output
+
+The script is a self-contained ES module. It uses `performance.now()` or equivalent for timing and prints results to stdout.
+
+---
+
+## Technical Gotchas
+
+<Aside type="tip">
+<span>The <code>moduleResolution: "bundler"</code> setting is for tooling compatibility; execution is direct Node with no actual bundler.</span>
+</Aside>
+
+- **npm install at init** — TypeScript is the only runtime that runs `npm install` during init; others defer to build or install.
+- **moduleResolution: bundler** — No actual bundler; the setting is for tooling compatibility.
+- **Direct execution** — Generated code runs as Node.js; no transpilation step at run time.
+
+See [Requirements — TypeScript](/docs/requirements/ts) for user-facing setup and gotchas.

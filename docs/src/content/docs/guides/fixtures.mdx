@@ -5,7 +5,7 @@ description: How to define, load, and use test data fixtures in poly-bench
 
 <div data-pagefind-weight="10">
 
-Fixtures define shared test data that is passed to every language implementation in a benchmark. They guarantee that Go, TypeScript, and Rust all operate on identical bytes — a prerequisite for fair cross-language comparisons.
+Fixtures define shared test data that is passed to every language implementation in a benchmark. They guarantee that all languages operate on identical bytes — a prerequisite for fair cross-language comparisons.
 
 </div>
 
@@ -18,6 +18,10 @@ When poly-bench generates benchmark code, each fixture is decoded once and injec
 | Go | `[]byte` |
 | TypeScript | `Uint8Array` |
 | Rust | `&[u8]` (slice reference) |
+| Python | `bytes` |
+| C | `uint8_t*` / `bytes` |
+| C# | `byte[]` |
+| Zig | `[]const u8` |
 
 Fixtures are defined inside a `suite` block and are available to all `bench` blocks in that suite by name.
 
@@ -33,7 +37,7 @@ The simplest fixture: a hex-encoded string inlined directly in the `.bench` file
       title: "bench",
       language: "bench",
       code: `fixture shortInput {
-    hex: "68656c6c6f20776f726c64"   # "hello world" in UTF-8
+    hex: "68656c6c6f20776f726c64"   # "hello world" in UTF-8  # [!code focus:1]
 }
 
 fixture address {
@@ -100,7 +104,7 @@ For larger payloads, store the hex data in an external file and reference it wit
       title: "bench",
       language: "bench",
       code: `fixture largePayload {
-    hex: @file("fixtures/keccak/input_1024.hex")
+    hex: @file("fixtures/keccak/input_1024.hex")  # [!code focus:1]
 }
 
 fixture sortData {
@@ -163,9 +167,8 @@ The most common fixture pattern is a series of fixtures with increasing sizes, p
       language: "bench",
       code: `use std::charting
 
-suite sortN {
+declare suite sortN performance timeBased sameDataset: true {
     description: "O(n log n) sort — stdlib sort on int32 array"
-    mode: "auto"
     targetTime: 500ms
     compare: true
     baseline: "go"
@@ -315,7 +318,7 @@ A fixture defined once in a suite is available to every `bench` block in that su
     {
       title: "bench",
       language: "bench",
-      code: `suite cryptoBench {
+      code: `declare suite cryptoBench performance timeBased sameDataset: true {
     # ... setup ...
 
     fixture data32  { hex: "68656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f72" }
@@ -373,4 +376,4 @@ A fixture defined once in a suite is available to every `bench` block in that su
 
 - [DSL Reference — Fixtures](/docs/core/dsl-reference#fixture-blocks) — Full fixture syntax reference
 - [Charting Guide](/docs/guides/charting) — Using scaling fixtures with `drawSpeedupChart`
-- [Examples](/docs/examples) — Real-world fixture usage patterns
+- [Benchmark Features](/docs/examples) — Fixtures in context

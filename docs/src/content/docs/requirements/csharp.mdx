@@ -1,0 +1,111 @@
+---
+title: C# Runtime
+description: C# runtime requirements, setup, and gotchas for poly-bench
+---
+
+This guide walks through using C# with poly-bench, from init through run. It covers what gets created, how dependencies work, and common gotchas.
+
+---
+
+## Prerequisites
+
+You need the .NET SDK installed and available on your PATH. The table below summarizes the requirements.
+
+| Requirement | Details |
+|-------------|---------|
+| **Binary** | `dotnet` on PATH |
+| **Version** | .NET 8.0+ (SDK) |
+| **Verify** | `dotnet --version` |
+
+Install from [dot.net](https://dot.net/). If .NET is missing when you run init, poly-bench can offer to install it interactively during `poly-bench init`.
+
+---
+
+## Init
+
+When you run `poly-bench init --languages csharp` (or select C# in the interactive flow), poly-bench creates a .NET project under `.polybench/runtime-env/csharp/`:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Structure",
+      language: "text",
+      code: `.polybench/runtime-env/csharp/
+├── polybench.csproj
+├── Program.cs
+├── global.json
+└── NuGet.config`
+    },
+  ]}
+/>
+
+The target framework defaults to net8.0. If you need a different version, you can override it in the project manifest:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "polybench.toml",
+      language: "toml",
+      code: `[csharp]
+target_framework = "net9.0"`
+    },
+  ]}
+/>
+
+poly-bench writes a global.json file to pin the SDK version — for example, 8.0.0 for net8.0. This ensures that dotnet build uses the correct SDK.
+
+---
+
+## Add Dependencies
+
+To add NuGet packages, use the add command with the `--cs` flag:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "CLI",
+      language: "bash",
+      code: `poly-bench add --cs Newtonsoft.Json@13.0.3  # [!code focus]`
+    },
+  ]}
+/>
+
+The spec format is `package@version` — for example, `Newtonsoft.Json@13.0.3`. Dependencies are stored in the manifest and added to the .csproj file.
+
+The NuGet.config adds the vs-impl feed for roslyn-language-server; some LSP setups need this feed.
+
+---
+
+## Install
+
+Running `poly-bench install` (or `poly-bench build`) runs `dotnet restore` to fetch NuGet packages.
+
+---
+
+## Build / Codegen
+
+When you run `poly-bench run`, poly-bench generates C# code and compiles with `dotnet build`. The global.json pin ensures the correct SDK is used.
+
+---
+
+## Gotchas and Troubleshooting
+
+<Aside type="caution">
+<span><strong>Default net8.0</strong> — Target framework defaults to <code>net8.0</code>. Override in polybench.toml: <code>[csharp] target_framework = "net9.0"</code></span>
+</Aside>
+
+<Aside type="caution">
+<span><strong>Version mismatch</strong> — If you have .NET 6 or 7 only, set <code>target_framework = "net6.0"</code> or <code>net7.0</code> in polybench.toml.</span>
+</Aside>
+
+<Aside type="note">
+<span><strong>global.json pins SDK</strong> — poly-bench writes <code>global.json</code> to pin SDK (e.g. <code>8.0.0</code> for net8.0). Ensures <code>dotnet build</code> uses correct SDK.</span>
+</Aside>
+
+<Aside type="note">
+<span><strong>NuGet.config</strong> — Adds vs-impl feed for roslyn-language-server; some LSP setups need it.</span>
+</Aside>
+
+<Aside type="note">
+<span><strong>LSP: csharp-ls</strong> — poly-bench uses csharp-ls 0.16.0 for .NET 8; newer versions may require .NET 10.</span>
+</Aside>

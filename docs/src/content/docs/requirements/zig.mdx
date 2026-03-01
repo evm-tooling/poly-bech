@@ -1,0 +1,98 @@
+---
+title: Zig Runtime
+description: Zig runtime requirements, setup, and gotchas for poly-bench
+---
+
+This guide walks through using Zig with poly-bench, from init through run. It covers what gets created, how dependencies work, and common gotchas.
+
+---
+
+## Prerequisites
+
+You need Zig installed and available on your PATH. The table below summarizes the requirements.
+
+| Requirement | Details |
+|-------------|---------|
+| **Binary** | `zig` on PATH |
+| **Version** | Zig 0.15+ recommended |
+| **Verify** | `zig version` |
+
+Install from [ziglang.org](https://ziglang.org/). If Zig is missing when you run init, poly-bench can offer to install it interactively during `poly-bench init`.
+
+---
+
+## Init
+
+When you run `poly-bench init --languages zig` (or select Zig in the interactive flow), poly-bench creates a Zig project under `.polybench/runtime-env/zig/`:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Structure",
+      language: "text",
+      code: `.polybench/runtime-env/zig/
+├── build.zig
+├── build.zig.zon
+└── src/
+    └── main.zig`
+    },
+  ]}
+/>
+
+Modern Zig expects the build.zig.zon format to use `.name = .pkg_name` (enum literal). poly-bench normalizes legacy `.name = "pkg"` syntax for compatibility.
+
+---
+
+## Add Dependencies
+
+To add Zig dependencies, use the add command with the `--zig` flag:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "CLI",
+      language: "bash",
+      code: `poly-bench add --zig git+https://github.com/example/pkg.git  # [!code focus]`
+    },
+  ]}
+/>
+
+The spec format is `git+https://...` or `https://...`. Dependencies are fetched using `zig fetch --save=<dep_name> <url>`.
+
+---
+
+## Install
+
+Running `poly-bench install` (or `poly-bench build`) runs `zig fetch` to download dependencies into the Zig cache (typically under `~/.cache/zig/p/<hash>/`).
+
+---
+
+## Build / Codegen
+
+When you run `poly-bench run`, poly-bench generates Zig code and compiles with `zig build`. The generated code targets Zig 0.15+ primarily. 0.13 and 0.14 use different ArrayList and File APIs, so the generated code includes an `__is_zig_13_or_14` branch for compatibility.
+
+For packages written for Zig 0.13 or 0.14, poly-bench patches the loop syntax from `for (items) |item, i|` to `for (items, 0..) |item, i|` in cached dependencies for 0.15 compatibility.
+
+---
+
+## Gotchas and Troubleshooting
+
+<Aside type="caution">
+<span><strong>Zig 0.15+ recommended</strong> — Generated code targets 0.15+ primarily. 0.13/0.14 use different <code>ArrayList</code>/<code>File</code> APIs.</span>
+</Aside>
+
+<Aside type="caution">
+<span><strong>patch_dep_for_zig_compat</strong> — For packages written for Zig 0.13/0.14, poly-bench patches <code>for (items) |item, i|</code> → <code>for (items, 0..) |item, i|</code> in cached deps for 0.15 compatibility.</span>
+</Aside>
+
+<Aside type="note">
+<span><strong>build.zig.zon format</strong> — Modern Zig expects <code>.name = .pkg_name</code> (enum literal). poly-bench normalizes legacy <code>.name = "pkg"</code> syntax.</span>
+</Aside>
+
+<Aside type="note">
+<span><strong>zig fetch --save</strong> — Dependencies use <code>zig fetch --save=&lt;dep_name&gt; &lt;url&gt;</code>. Format: <code>git+https://...</code> or <code>https://...</code>.</span>
+</Aside>
+
+<Aside type="note">
+<span><strong>Package compatibility</strong> — Packages targeting Zig 0.11 or older may fail; prefer packages with 0.13+ support.</span>
+</Aside>

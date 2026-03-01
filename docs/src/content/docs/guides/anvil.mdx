@@ -24,7 +24,7 @@ Import the module at the top of your `.bench` file:
     {
       title: "bench",
       language: "bench",
-      code: `use std::anvil`
+      code: `use std::anvil  # [!code focus]`
     },
   ]}
 />
@@ -47,11 +47,11 @@ globalSetup {
     anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
 }
 
-suite suiteA {
+declare suite suiteA performance timeBased sameDataset: true {
     # ... can use ANVIL_RPC_URL here
 }
 
-suite suiteB {
+declare suite suiteB performance timeBased sameDataset: true {
     # ... can also use ANVIL_RPC_URL here
 }`
     },
@@ -60,7 +60,7 @@ suite suiteB {
       language: "bench",
       code: `use std::anvil
 
-suite evmBench {
+declare suite evmBench performance timeBased sameDataset: true {
     globalSetup {
         anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
     }
@@ -82,7 +82,7 @@ suite evmBench {
       language: "bench",
       code: `globalSetup {
     # No fork — blank chain, no real state
-    anvil.spawnAnvil()
+    anvil.spawnAnvil()  # [!code focus:1]
 }`
     },
     {
@@ -90,7 +90,7 @@ suite evmBench {
       language: "bench",
       code: `globalSetup {
     # Fork from mainnet — real balances, contracts, block history
-    anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
+    anvil.spawnAnvil(fork: "https://eth.llamarpc.com")  # [!code focus:1]
 }`
     },
     {
@@ -302,11 +302,10 @@ globalSetup {
     anvil.spawnAnvil(fork: "https://eth.llamarpc.com")
 }
 
-suite rpcBench {
+declare suite rpcBench performance timeBased sameDataset: true {
     description: "Ethereum RPC benchmarks — go-ethereum vs viem"
     compare: true
     baseline: "go"
-    mode: "auto"
     targetTime: 10000ms   # RPC calls are slow; give them time to stabilize
     cvThreshold: 10       # Allow higher variance for network operations
     sink: false           # RPC results are already side-effectful
@@ -449,8 +448,7 @@ RPC calls are orders of magnitude slower than in-memory operations. Set `targetT
     {
       title: "bench",
       language: "bench",
-      code: `suite rpcBench {
-    mode: "auto"
+      code: `declare suite rpcBench performance timeBased sameDataset: true {
     targetTime: 10000ms   # 10 seconds per benchmark
     minIterations: 50     # At least 50 RPC calls
 }`
@@ -467,7 +465,7 @@ Network operations have inherent variance. A `cvThreshold` of `10`–`15` is rea
     {
       title: "bench",
       language: "bench",
-      code: `suite rpcBench {
+      code: `declare suite rpcBench performance timeBased sameDataset: true {
     cvThreshold: 10   # Accept up to 10% coefficient of variation
 }`
     },
@@ -483,7 +481,7 @@ The black-box sink is designed to prevent dead-code elimination of pure computat
     {
       title: "bench",
       language: "bench",
-      code: `suite rpcBench {
+      code: `declare suite rpcBench performance timeBased sameDataset: true {
     sink: false
 }`
     },
@@ -525,4 +523,4 @@ Client objects must be declared at the module/package level so they're accessibl
 - [Standard Library — std::anvil](/docs/core/standard-library#stdanvil) — Full API reference
 - [DSL Reference — globalSetup](/docs/core/dsl-reference#globalsetup-block) — Block syntax
 - [DSL Reference — setup blocks](/docs/core/dsl-reference#setup-lang-blocks) — `declare`, `init`, `helpers`
-- [Examples](/docs/examples) — Anvil example with full context
+- [Benchmark Features](/docs/examples) — globalSetup and Anvil usage

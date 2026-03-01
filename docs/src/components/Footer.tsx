@@ -81,12 +81,12 @@ export default function Footer() {
                     href="/docs/examples"
                     className="hover:text-primary transition-colors"
                   >
-                    Examples
+                    Benchmark Features
                   </Link>
                 </li>
                 <li>
                   <Link
-                    href="/docs/reporting"
+                    href="/docs/getting-started#reporting"
                     className="hover:text-primary transition-colors"
                   >
                     Reporting

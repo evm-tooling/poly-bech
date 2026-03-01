@@ -1,0 +1,204 @@
+---
+title: Fixtures
+description: Shared test data — hex, @file, data/encoding, format/selector
+---
+
+Fixtures define shared test data passed to every language implementation. They ensure all languages operate on identical input, so your benchmarks compare apples to apples.
+
+---
+
+## Type Mapping
+
+Each language receives fixture data in its native type. The table below shows the mapping:
+
+| Language | Fixture type |
+|----------|---------------|
+| Go | `[]byte` |
+| TypeScript | `Uint8Array` |
+| Rust | `&[u8]` |
+| Python | `bytes` |
+| C | `uint8_t*` + length |
+| C# | `byte[]` |
+| Zig | `[]const u8` |
+
+<Aside type="note">
+<span>Each language receives fixture data in its native type so benchmarks compare apples to apples.</span>
+</Aside>
+
+---
+
+## Inline Hex
+
+You can provide binary data as a hex-encoded string directly in the fixture. This works well for small, fixed test vectors.
+
+<Aside type="tip">
+<span>Inline hex works well for small, fixed test vectors; use <code>@file</code> for larger payloads.</span>
+</Aside>
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Inline hex",
+      language: "bench",
+      code: `fixture shortData {
+    hex: "68656c6c6f20776f726c64"   # "hello world" in UTF-8  # [!code focus:1]
+}
+
+fixture address {
+    hex: "d8da6bf26964af9d7eed9e03e53415d37aa96045"   # 20-byte Ethereum address
+}
+
+bench hashShort {
+    go: keccak256(shortData)
+    ts: keccak256(shortData)
+    rust: keccak256(&shortData)
+}`
+    },
+  ]}
+/>
+
+---
+
+## File-referenced Hex
+
+For larger payloads, load hex from an external file using the @file directive. The path is relative to the .bench file.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "@file",
+      language: "bench",
+      code: `fixture largePayload {
+    hex: @file("fixtures/sort/sort_1000.hex")  # [!code focus:1]
+}
+
+fixture abiData {
+    hex: @file("fixtures/abi/erc20_calldata.hex")
+}
+
+bench sortLarge {
+    go: bubbleSort(largePayload)
+    ts: bubbleSort(largePayload)
+    rust: bubble_sort(&largePayload)
+}`
+    },
+  ]}
+/>
+
+<Aside type="tip">
+<span>Keep fixture files in a <code>fixtures/</code> subdirectory. Organize by benchmark type (e.g. <code>fixtures/sort/</code>, <code>fixtures/keccak/</code>).</span>
+</Aside>
+
+---
+
+## Generic data with encoding
+
+When your data is not hex-encoded, use the data field with an encoding. The encoding controls how the bytes are decoded.
+
+| encoding | Use |
+|----------|-----|
+| `raw` | Raw binary bytes |
+| `utf8` | UTF-8 string |
+| `base64` | Base64-encoded string |
+
+<Aside type="note">
+<span>Use <code>encoding: raw</code> for binary, <code>utf8</code> for strings, <code>base64</code> for base64-encoded data.</span>
+</Aside>
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Raw / UTF-8 / Base64",
+      language: "bench",
+      code: `fixture packetRaw {
+    data: @file("fixtures/net/packet.bin")
+    encoding: raw  # [!code focus:1]
+}
+
+fixture payloadUtf8 {
+    data: "hello world"
+    encoding: utf8
+}
+
+fixture payloadB64 {
+    data: "aGVsbG8gd29ybGQ="
+    encoding: base64
+}`
+    },
+  ]}
+/>
+
+---
+
+## Structured Extraction
+
+When your data is in JSON or CSV, use format and selector to extract a specific value. The selector syntax depends on the format.
+
+<Aside type="tip">
+<span>JSON uses JSONPath (<code>$.path</code>); CSV uses <code>row,col</code> (0-indexed).</span>
+</Aside>
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "JSON + CSV",
+      language: "bench",
+      code: `fixture requestId {
+    data: @file("fixtures/requests.json")
+    format: json  # [!code focus:2]
+    selector: "$.items[0].id"
+}
+
+fixture csvCell {
+    data: @file("fixtures/table.csv")
+    format: csv  # [!code focus:2]
+    selector: "1,2"    # row,col (0-indexed)
+}`
+    },
+  ]}
+/>
+
+---
+
+## Optional Fields
+
+Fixtures support optional metadata fields:
+
+| Field | Purpose |
+|-------|---------|
+| `description` | Human-readable description |
+| `shape` | JSON-like descriptor for metadata (e.g. `{ rows: 64, cols: 64 }`) |
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "With description and shape",
+      language: "bench",
+      code: `fixture keccakInput {
+    description: "32-byte input for keccak256 hashing"
+    hex: "68656c6c6f20776f726c6468656c6c6f20776f726c6468656c6c6f20776f72"
+}
+
+fixture matrixData {
+    hex: @file("fixtures/matmul/mat_64.hex")
+    shape: { rows: 64, cols: 64, dtype: "float64" }
+}`
+    },
+  ]}
+/>
+
+---
+
+## Summary
+
+The table below summarizes the fixture types and their syntax:
+
+| Fixture type | Syntax |
+|--------------|--------|
+| Inline hex | `hex: "68656c6c6f"` |
+| File hex | `hex: @file("path/to/file.hex")` |
+| Raw / UTF-8 / Base64 | `data: ...` + `encoding: raw \| utf8 \| base64` |
+| JSON extraction | `data: @file(...)`, `format: json`, `selector: "$.path"` |
+| CSV extraction | `data: @file(...)`, `format: csv`, `selector: "row,col"` |
+
+See the [Fixtures Guide](/docs/guides/fixtures) for practical patterns and scaling strategies.

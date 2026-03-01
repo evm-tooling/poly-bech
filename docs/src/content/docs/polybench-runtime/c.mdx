@@ -1,0 +1,115 @@
+---
+title: C Runtime
+description: Technical deep-dive on how the .polybench C runtime project works
+---
+
+This page documents how the `.polybench/runtime-env/c/` project is set up, how codegen works, and how execution is performed.
+
+---
+
+## Overview
+
+The C runtime uses **clang** (not gcc). With zero C dependencies, it compiles directly with `clang`. When C dependencies are present — for example, OpenSSL via vcpkg — it uses CMake and a vcpkg manifest. The runtime crate is `runtimes-c`; templates come from `poly-bench-project`. C cannot be auto-installed during init; clang must be installed manually.
+
+<Aside type="caution">
+<span>C cannot be auto-installed during init. clang must be installed manually.</span>
+</Aside>
+
+---
+
+## What Init Does
+
+When you run `poly-bench init --languages c`, poly-bench:
+
+1. Creates `.polybench/runtime-env/c/`
+2. Writes `main.c` with a minimal `int main(void) { return 0; }` stub
+
+**No dependencies, no vcpkg, no CMake at init.** The minimal `main.c` exists so the directory has a valid C file. When you run benchmarks, codegen writes `bench_standalone.c` and the executor compiles that directly with `clang`. `main.c` is never compiled by poly-bench — it is a placeholder for the scaffold. With deps, `vcpkg.json` and `CMakeLists.txt` are created by `poly-bench add --c` and `poly-bench build`.
+
+---
+
+## What Build/Install Does
+
+When you run `poly-bench build` or `poly-bench install` with C dependencies in `polybench.toml`:
+
+1. **Creates `vcpkg.json`** if C deps exist (e.g. `openssl@3.2`)
+2. **Creates `CMakeLists.txt`** with `find_package` for each dep and vcpkg toolchain
+3. **Runs CMake configure + build** with vcpkg (requires `VCPKG_ROOT` or `CMAKE_TOOLCHAIN_FILE`)
+
+With **zero** C deps, build does not create vcpkg or CMake. The executor compiles `bench_standalone.c` directly with `clang -o polybench_runner`.
+
+---
+
+## Design Rationale
+
+<Aside type="note">
+<span>poly-bench uses <code>clang</code>, not gcc, for consistent flags across platforms.</span>
+</Aside>
+
+- **Clang only** — poly-bench uses `clang`, not gcc. Clang is widely available (macOS Xcode, Linux packages) and has consistent flags across platforms.
+- **Dual build paths** — No deps → direct `clang` invocation. With deps → CMake + vcpkg. This avoids pulling in CMake/vcpkg for simple benchmarks that need no external libraries.
+- **vcpkg for deps** — C has no standard package manager. vcpkg provides reproducible, cross-platform dependency resolution. OpenSSL, for example, is installed via vcpkg; no system OpenSSL required when using vcpkg.
+- **No auto-install** — C toolchains (`clang`, `cmake`, vcpkg) cannot be installed by poly-bench. The user must install them manually. See [Requirements — C](/docs/requirements/c) for details.
+
+---
+
+## Scaffolded Files (Init/Build)
+
+When you run `poly-bench init --languages c` or `poly-bench build`, the following is created in `.polybench/runtime-env/c/`:
+
+| File | Source | Purpose |
+|------|--------|---------|
+| `main.c` | Placeholder | Minimal stub; used when no deps |
+| `vcpkg.json` | When deps added | vcpkg manifest for dependencies |
+| `CMakeLists.txt` | When deps added | CMake build with vcpkg toolchain |
+
+**No deps:** Only `main.c` exists. poly-bench compiles with `clang` directly.
+
+**With deps:** `vcpkg.json` and `CMakeLists.txt` are created. Requires `VCPKG_ROOT` or `CMAKE_TOOLCHAIN_FILE`. Default paths: `~/vcpkg`, `/opt/homebrew/share/vcpkg`, etc.
+
+---
+
+## Codegen
+
+When `poly-bench run` executes a benchmark, the C runtime:
+
+1. Generates C source with: fixture decoding, setup/init code, helper functions, and the benchmark loop
+2. Writes the source to `bench_standalone.c` (run) or `bench_check_<name>.c` (check)
+
+**Generated filenames:**
+
+- Run: `bench_standalone.c`
+- Check: `bench_check_<suite>_<bench>.c`
+
+**Build output:** `polybench_runner` binary (or `polybench_check` for check).
+
+---
+
+## Build Pipeline
+
+| Scenario | Build Command | Output |
+|----------|---------------|--------|
+| No deps | `clang -o polybench_runner bench_standalone.c` | `polybench_runner` |
+| With deps | CMake configure + build with vcpkg toolchain | `build/polybench_runner` or similar |
+
+The executor loads C config from `polybench.toml` (`[c]` section, `standard`, `dependencies`). If `runtime-env` is used, it can also parse `vcpkg.json` for dependency names.
+
+---
+
+## Execution Model
+
+1. **Precompile:** Write `bench_standalone.c`, compile with clang or CMake, cache binary path
+2. **Run:** Spawn `./polybench_runner <benchmark_name> <iterations>` as a subprocess
+3. **Collect:** Parse stdout for timing output
+
+---
+
+## Technical Gotchas
+
+- **Clang only** — poly-bench uses `clang`, not gcc.
+- **No auto-install** — C cannot be auto-installed during init.
+- **vcpkg for deps** — When adding C deps (e.g. `openssl@3.2`), poly-bench uses vcpkg + CMake. Requires `VCPKG_ROOT` or `CMAKE_TOOLCHAIN_FILE`.
+- **CMake 3.20+** — `cmake` must be on PATH when using deps.
+- **OpenSSL via vcpkg** — `openssl` maps to `find_package(OpenSSL REQUIRED COMPONENTS SSL Crypto)`. vcpkg installs it; no system OpenSSL needed when using vcpkg.
+
+See [Requirements — C](/docs/requirements/c) for user-facing setup and gotchas.

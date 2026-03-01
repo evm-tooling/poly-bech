@@ -1,0 +1,115 @@
+---
+title: Zig Runtime
+description: Technical deep-dive on how the .polybench Zig runtime project works
+---
+
+This page documents how the `.polybench/runtime-env/zig/` project is set up, how codegen works, and how execution is performed.
+
+---
+
+## Overview
+
+The Zig runtime uses the Zig build system. Generated code is written to `bench_standalone.zig` and `bench_check_<name>.zig`. The build uses `zig build`; the output binary is `polybench_runner` in `zig-out/bin/`. Zig 0.15+ is the primary target. The runtime crate is `runtimes-zig`; templates come from `poly-bench-project`.
+
+<Aside type="note">
+<span>Zig 0.15+ is the primary target. Zig 0.13/0.14 use different APIs; codegen includes compatibility branches where needed.</span>
+</Aside>
+
+---
+
+## What Init Does
+
+When you run `poly-bench init --languages zig`, poly-bench:
+
+1. Creates `.polybench/runtime-env/zig/` and `src/`
+2. Writes `build.zig` — the build script that compiles `bench_standalone.zig` (or `bench_check_*.zig` for check)
+3. Writes `build.zig.zon` — the package manifest (init creates an empty or minimal zon)
+4. Writes `src/main.zig` — a minimal stub (used as fallback; codegen writes `bench_standalone.zig` at run time)
+
+**No `zig fetch` at init.** Dependencies are fetched when you run `poly-bench build` or when adding deps with `poly-bench add --zig`.
+
+---
+
+## What Build/Install Does
+
+When you run `poly-bench build` or `poly-bench install`:
+
+1. **Regenerates `build.zig` and `build.zig.zon`** if `--force` is used
+2. **Adds dependencies** from `[zig] dependencies` via `zig fetch --save=<dep_name> <url>`
+3. **Runs `zig fetch`** to download packages (skipped with `--skip-install`)
+
+For packages written for Zig 0.13/0.14, poly-bench may patch cached deps in `~/.cache/zig/p/` to fix for-loop syntax for 0.15 compatibility (`for (items) |item, i|` → `for (items, 0..) |item, i|`).
+
+---
+
+## Design Rationale
+
+- **Separate `bench_standalone.zig`** — Unlike Rust/C#, Zig does not overwrite a single entry file. Codegen writes `bench_standalone.zig` alongside the build files. `build.zig` is configured to compile it. This avoids mutating `src/main.zig`, which can serve as a fallback or reference.
+- **Zig 0.15+ primary** — Generated code targets 0.15+. Zig 0.13/0.14 use different `ArrayList` and `File` APIs; codegen includes an `__is_zig_13_or_14` branch for compatibility where needed.
+- **`build.zig.zon` format** — Modern Zig expects `.name = .pkg_name` (enum literal). poly-bench normalizes legacy `.name = "pkg"` when parsing deps.
+- **Package compatibility** — Packages targeting Zig 0.11 or older may fail. Prefer packages with 0.13+ support. The `patch_dep_for_zig_compat` logic helps for 0.13/0.14 packages.
+
+---
+
+## Scaffolded Files (Init/Build)
+
+When you run `poly-bench init --languages zig` or `poly-bench build`, the following is created in `.polybench/runtime-env/zig/`:
+
+| File | Source | Purpose |
+|------|--------|---------|
+| `build.zig` | `templates.build_zig()` | Build script, entry point for generated sources |
+| `build.zig.zon` | `templates.build_zig_zon()` | Package manifest, dependencies |
+| `src/main.zig` | `templates.main_zig()` | Placeholder or minimal stub |
+
+Modern Zig expects `.name = .pkg_name` (enum literal) in `build.zig.zon`. poly-bench normalizes legacy `.name = "pkg"` syntax. Dependencies use `zig fetch --save=<dep_name> <url>`.
+
+---
+
+## Codegen
+
+When `poly-bench run` executes a benchmark, the Zig runtime:
+
+1. Generates Zig source with: fixture decoding, setup/init code, helper functions, and the benchmark loop
+2. Uses `__is_zig_13_or_14` branch for compatibility — 0.13/0.14 use different `ArrayList`/`File` APIs; 0.15+ is the primary target
+3. Writes the source to `bench_standalone.zig` (run) or `bench_check_<name>.zig` (check)
+
+For packages written for Zig 0.13/0.14, poly-bench patches `for (items) |item, i|` → `for (items, 0..) |item, i|` in cached deps (`~/.cache/zig/p/<hash>/`) for 0.15 compatibility.
+
+**Generated filenames:**
+
+- Run: `bench_standalone.zig`
+- Check: `bench_check_<suite>_<bench>.zig`
+
+**Build output:** `zig-out/bin/polybench_runner`
+
+---
+
+## Build Pipeline
+
+| Step | Command | Output |
+|------|---------|--------|
+| Precompile | `zig build` | `zig-out/bin/polybench_runner` |
+| Check | `zig build` with check target | Compilation only |
+
+---
+
+## Execution Model
+
+1. **Precompile:** Write `bench_standalone.zig`, run `zig build`, cache binary path
+2. **Run:** Spawn `./zig-out/bin/polybench_runner <benchmark_name> <iterations>` as a subprocess
+3. **Collect:** Parse stdout for timing output
+
+---
+
+## Technical Gotchas
+
+<Aside type="caution">
+<span>Packages targeting Zig 0.11 or older may fail; prefer packages with 0.13+ support.</span>
+</Aside>
+
+- **Zig 0.15+ recommended** — Generated code targets 0.15+ primarily. 0.13/0.14 use different APIs.
+- **patch_dep_for_zig_compat** — For packages written for 0.13/0.14, poly-bench patches for-loop syntax in cached deps for 0.15 compatibility.
+- **build.zig.zon format** — Modern Zig expects `.name = .pkg_name` (enum literal). poly-bench normalizes legacy `.name = "pkg"` syntax.
+- **Package compatibility** — Packages targeting Zig 0.11 or older may fail; prefer packages with 0.13+ support.
+
+See [Requirements — Zig](/docs/requirements/zig) for user-facing setup and gotchas.

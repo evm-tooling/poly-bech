@@ -49,8 +49,59 @@ export const docsNav: NavItem[] = [
         items: [
           { label: 'Why poly-bench', slug: 'introduction' },
           { label: 'Getting Started', slug: 'getting-started' },
-          { label: 'Reporting', slug: 'reporting' },
-          { label: 'Examples', slug: 'examples' },
+          { label: 'Benchmark Features', slug: 'examples' },
+        ],
+      },
+    ],
+  },
+  {
+    label: 'Requirements',
+    items: [
+      { label: 'Runtimes', slug: 'requirements' },
+      {
+        label: 'By Language',
+        items: [
+          { label: 'Go', slug: 'requirements/go' },
+          { label: 'TypeScript', slug: 'requirements/ts' },
+          { label: 'Rust', slug: 'requirements/rust' },
+          { label: 'Python', slug: 'requirements/python' },
+          { label: 'C', slug: 'requirements/c' },
+          { label: 'C#', slug: 'requirements/csharp' },
+          { label: 'Zig', slug: 'requirements/zig' },
+        ],
+      },
+    ],
+  },
+  {
+    label: 'Polybench Runtime',
+    items: [
+      { label: 'Overview', slug: 'polybench-runtime' },
+      {
+        label: 'By Language',
+        items: [
+          { label: 'Go', slug: 'polybench-runtime/go' },
+          { label: 'TypeScript', slug: 'polybench-runtime/ts' },
+          { label: 'Rust', slug: 'polybench-runtime/rust' },
+          { label: 'Python', slug: 'polybench-runtime/python' },
+          { label: 'C', slug: 'polybench-runtime/c' },
+          { label: 'C#', slug: 'polybench-runtime/csharp' },
+          { label: 'Zig', slug: 'polybench-runtime/zig' },
+        ],
+      },
+    ],
+  },
+  {
+    label: 'Features',
+    items: [
+      { label: 'Overview', slug: 'features' },
+      {
+        label: 'By Feature',
+        items: [
+          { label: 'Suites', slug: 'features/suites' },
+          { label: 'Setup Blocks', slug: 'features/setup' },
+          { label: 'Benchmarks', slug: 'features/benchmarks' },
+          { label: 'Fixtures', slug: 'features/fixtures' },
+          { label: 'globalSetup', slug: 'features/global-setup' },
         ],
       },
     ],
@@ -87,6 +138,18 @@ export const docsNav: NavItem[] = [
           { label: 'LSP / Editor', slug: 'tools/lsp' },
         ],
       },
+    ],
+  },
+  {
+    label: 'Developers',
+    items: [
+      { label: 'Overview', slug: 'developers' },
+      {
+        label: 'Runtime Not Available',
+        slug: 'developers/runtime-not-available',
+      },
+      { label: 'Adding a Runtime', slug: 'developers/adding-a-runtime' },
+      { label: 'Case Study: Python', slug: 'developers/case-study-python' },
     ],
   },
 ]

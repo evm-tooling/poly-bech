@@ -186,25 +186,32 @@ export function CodeGroup({ tabs: tabsInput, title }: CodeGroupProps) {
   if (tabs.length === 0) return null
 
   return (
-    <div className="group/code my-6 rounded-lg border-1 border-code-border transition-all duration-300 !hover:border-tertiary/30 hover:shadow-[0_0_20px_-1px_hsl(var(--tertiary)/0.15)]">
-      <div className="rounded-lg overflow-hidden bg-code-bg/80">
+    <div className="group/code my-4 rounded-2xl overflow-hidden border border-code-border bg-code-bg shadow-xl dark:shadow-none transition-all duration-300 !hover:border-tertiary/30 hover:shadow-[0_0_20px_-1px_hsl(var(--tertiary)/0.15)]">
+      <div className="overflow-hidden">
         <TabGroup selectedIndex={selectedIndex} onChange={setSelectedIndex}>
-          <div className="flex items-center justify-between h-11 bg-code-bg/50 border-b border-code-border">
-            <TabList className="flex h-full items-stretch">
-              {tabs.map((tab, index) => (
-                <Tab
-                  key={index}
-                  className={`flex items-center justify-center px-3.5 text-[0.8125rem] font-medium cursor-pointer transition-all duration-150 h-11 border-b-2 outline-none ${
-                    selectedIndex === index
-                      ? 'text-primary bg-code-bg !border-primary'
-                      : 'text-foreground-muted bg-transparent border-transparent hover:text-foreground-secondary hover:bg-code-bg/30'
-                  }`}
-                >
-                  {tab.title}
-                </Tab>
-              ))}
-            </TabList>
-            <div className="flex items-center pr-2">
+          <div className="flex items-center justify-between gap-2 px-3 py-2 bg-background-elevated border-b border-border">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex gap-1 shrink-0">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+              </div>
+              <TabList className="flex h-full items-center gap-1 min-w-0">
+                {tabs.map((tab, index) => (
+                  <Tab
+                    key={index}
+                    className={`flex items-center px-2 py-1 text-xs font-mono rounded-md cursor-pointer transition-all duration-150 outline-none shrink-0 ${
+                      selectedIndex === index
+                        ? 'text-foreground bg-code-bg/60'
+                        : 'text-foreground-muted hover:text-foreground-secondary hover:bg-code-bg/30'
+                    }`}
+                  >
+                    {tab.title}
+                  </Tab>
+                ))}
+              </TabList>
+            </div>
+            <div className="flex items-center shrink-0">
               <CopyButton
                 text={parseCodeDirectives(
                   (tabs[selectedIndex]?.code || '').trim(),
@@ -229,7 +236,7 @@ export function CodeGroup({ tabs: tabsInput, title }: CodeGroupProps) {
                     {({ tokens, getLineProps, getTokenProps }) => (
                       <pre
                         style={{ fontFamily: viemMonoFontFamily }}
-                        className="!m-0 !bg-code-bg-deep/20 !pb-4 !pt-3 !px-0 !border-0 overflow-auto text-[0.8125rem] leading-relaxed"
+                        className="!m-0 !bg-code-bg !pb-4 !pt-4 !px-0 !border-0 overflow-auto text-[12px] sm:text-[13px] leading-relaxed"
                         onMouseEnter={() => {
                           if (!active) setActive(true)
                         }}

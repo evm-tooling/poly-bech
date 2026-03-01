@@ -1,0 +1,107 @@
+---
+title: Python Runtime
+description: Technical deep-dive on how the .polybench Python runtime project works
+---
+
+This page documents how the `.polybench/runtime-env/python/` project is set up, how codegen works, and how execution is performed.
+
+---
+
+## Overview
+
+The Python runtime uses a virtual environment (`.venv`) and generates a `bench.py` script. Execution is via subprocess using the venv's Python interpreter so that installed dependencies are available. The runtime crate is `runtimes-python`; templates come from `poly-bench-project`.
+
+---
+
+## What Init Does
+
+When you run `poly-bench init` with Python enabled, poly-bench creates the runtime directory and writes the dependency manifest. Specifically:
+
+1. Creates `.polybench/runtime-env/python/`
+2. Writes `requirements.txt` with `pyright[nodejs]` (for LSP) and any user deps from `[python] dependencies`
+
+No venv is created at init. The virtual environment is created during `poly-bench build` or `poly-bench install`. This keeps init fast and avoids requiring the `venv` module before the user has run install.
+
+---
+
+## What Build/Install Does
+
+When you run `poly-bench build` or `poly-bench install`:
+
+1. **Writes `requirements.txt`** with user deps and always includes `pyright[nodejs]` for LSP
+2. **Creates `.venv`** with `python -m venv .venv` if it doesn't exist (skipped with `--skip-install` if venv already exists; venv creation still runs when missing)
+3. **Runs `pip install -r requirements.txt`** using `.venv/bin/pip` (skipped with `--skip-install`)
+
+On Debian/Ubuntu, `python3-venv` must be installed or venv creation fails with a clear error.
+
+<Aside type="note">
+<span>On Debian/Ubuntu, <code>python3-venv</code> must be installed or venv creation fails with a clear error.</span>
+</Aside>
+
+---
+
+## Design Rationale
+
+<Aside type="tip">
+<span>The <code>.venv</code> lives at <code>.polybench/runtime-env/python/.venv/</code>, so benchmarks run with the same Python that has the installed packages.</span>
+</Aside>
+
+- **Venv inside runtime-env** — The `.venv` lives at `.polybench/runtime-env/python/.venv/`. Benchmarks run with the same Python that has the installed packages, avoiding mismatches with pyenv, conda, or system Python. The executor detects `runtime-env` in the path and prefers `.venv/bin/python`.
+- **`pyright[nodejs]` always present** — LSP needs Pyright for type checking and hover. poly-bench preserves it in `requirements.txt` even when you add or remove other deps.
+- **No build step** — Python is interpreted. Generated `bench.py` runs directly; no compile phase. `time.perf_counter_ns()` provides high-resolution timing.
+
+---
+
+## Scaffolded Files (Init/Build)
+
+When you run `poly-bench init --languages python` or `poly-bench build`, the following is created in `.polybench/runtime-env/python/`:
+
+| File | Source | Purpose |
+|------|--------|---------|
+| `requirements.txt` | `templates.requirements_txt_for_runtime_env()` | Dependencies including `pyright[nodejs]` for LSP |
+| `.venv/` | `python -m venv .venv` (at build) | Isolated virtual environment |
+
+The venv is created with `python -m venv .venv`. All installs use `python_root/.venv/bin/pip`. On Debian/Ubuntu, `python3-venv` must be installed or venv creation fails.
+
+---
+
+## Codegen
+
+When `poly-bench run` executes a benchmark, the Python runtime:
+
+1. Generates a complete Python script with: fixture decoding, setup/init code, helper functions, and the benchmark loop
+2. Uses `time.perf_counter_ns()` for high-resolution timing
+3. Writes the source to `bench.py` in the project root
+
+**Generated filenames:**
+
+- Run: `bench.py`
+
+**Project root detection:** When `project_root` contains `"runtime-env"`, the executor prefers `.venv/bin/python` so the same interpreter that has the installed dependencies is used.
+
+---
+
+## Build Pipeline
+
+| Step | Command | Output |
+|------|---------|--------|
+| Run | — | No build; Python executes `bench.py` directly |
+| Check | `pyright` (if available) | Type-check only |
+
+---
+
+## Execution Model
+
+1. **Precompile:** Write `bench.py` to project root, cache script path and source hash
+2. **Run:** Spawn `python bench.py` (or `.venv/bin/python bench.py` when using runtime-env) with `ANVIL_RPC_URL` in env if std::anvil is used
+3. **Collect:** Parse stdout for timing output
+
+---
+
+## Technical Gotchas
+
+- **venv required** — poly-bench creates `.venv` in `.polybench/runtime-env/python/` using `python -m venv .venv`.
+- **pyright in requirements** — `pyright[nodejs]` is always in `requirements.txt` for LSP; install/remove preserves it.
+- **Venv Python** — When using runtime-env, the executor prefers `.venv/bin/python` over system Python.
+
+See [Requirements — Python](/docs/requirements/python) for user-facing setup and gotchas.

@@ -21,7 +21,7 @@ poly-bench includes commands for validation, compilation, execution, project set
 | `poly-bench init [name]` | Initialize a new project |
 | `poly-bench new <name>` | Create a new benchmark template |
 | `poly-bench add` | Add language dependencies |
-| `poly-bench add-runtime <RUNTIME>` | Add a runtime (go, ts, rust, python) to the project |
+| `poly-bench add-runtime <RUNTIME>` | Add a runtime (go, ts, rust, python, c, csharp, zig) to the project |
 | `poly-bench remove` | Remove language dependencies |
 | `poly-bench install` | Install dependencies from `polybench.toml` |
 | `poly-bench build` | Build/regenerate runtime environment |
@@ -41,7 +41,7 @@ Execute benchmarks from a `.bench` file, or run all files in `benchmarks/` when 
     {
       title: "Usage",
       language: "bash",
-      code: `poly-bench run [OPTIONS] [FILE]`
+      code: `poly-bench run [OPTIONS] [FILE]  # [!code focus]`
     },
   ]}
 />
@@ -50,12 +50,11 @@ Execute benchmarks from a `.bench` file, or run all files in `benchmarks/` when 
 
 | Option | Description |
 |--------|-------------|
-| `--lang <LANG>` | Restrict language: `go`, `ts`/`typescript`, `rust`/`rs` |
+| `--lang <LANG>` | Restrict language: `go`, `ts`/`typescript`, `rust`/`rs`, `python`/`py`, `c`, `csharp`/`cs`, `zig` |
 | `--iterations <N>` | Override iteration count |
 | `--report <FORMAT>` | `console` (default), `markdown`, `json` |
 | `--output <DIR>` / `-o <DIR>` | Output directory for reports/charts |
-| `--go-project <DIR>` | Explicit Go project root (`go.mod`) |
-| `--ts-project <DIR>` | Explicit TS project root (`package.json`/`node_modules`) |
+| `--project-dir <LANG:DIR>` | Explicit project root per language (e.g. `go:./my-mod`, `ts:./frontend`). Repeatable. |
 
 #### Example
 
@@ -87,7 +86,7 @@ Generate charts from existing `out/results.json` without re-running benchmarks.
     {
       title: "Usage",
       language: "bash",
-      code: `poly-bench plot <SUBCOMMAND> [OPTIONS]`
+      code: `poly-bench plot <SUBCOMMAND> [OPTIONS]  # [!code focus]`
     },
   ]}
 />
@@ -148,7 +147,7 @@ Parse and validate a benchmark DSL file.
     {
       title: "terminal",
       language: "bash",
-      code: `poly-bench check <FILE> [--show-ast]`
+      code: `poly-bench check <FILE> [--show-ast]  # [!code focus]`
     },
   ]}
 />
@@ -173,7 +172,7 @@ Compile-check benchmarks without running them.
 
 | Option | Description |
 |--------|-------------|
-| `--lang <LANG>` | Compile-check only one language (`go`, `ts`, `typescript`, `rust`, `rs`) |
+| `--lang <LANG>` | Compile-check only one language (`go`, `ts`, `typescript`, `rust`, `rs`, `python`, `py`, `c`, `csharp`, `cs`, `zig`) |
 | `--no-cache` | Disable compile-result cache for this run |
 | `--clear-cache` | Clear cache before compiling |
 
@@ -192,7 +191,7 @@ Manage compile cache and workspace state.
     {
       title: "terminal",
       language: "bash",
-      code: `poly-bench cache stats
+      code: `poly-bench cache stats  # [!code focus:3]
 poly-bench cache clear
 poly-bench cache clean`
     },
@@ -218,12 +217,12 @@ Generate code from DSL without running.
     {
       title: "terminal",
       language: "bash",
-      code: `poly-bench codegen <FILE> --lang <LANG> --output <DIR>`
+      code: `poly-bench codegen <FILE> --lang <LANG> --output <DIR>  # [!code focus]`
     },
   ]}
 />
 
-`LANG` supports `go`, `ts`/`typescript`, `rust`/`rs`.
+`LANG` supports `go`, `ts`/`typescript`, `rust`/`rs` only. Python, C, C#, and Zig do not support codegen output.
 
 ---
 
@@ -236,7 +235,7 @@ Format benchmark files.
     {
       title: "terminal",
       language: "bash",
-      code: `poly-bench fmt [FILES...] [--write]`
+      code: `poly-bench fmt [FILES...] [--write]  # [!code focus]`
     },
   ]}
 />
@@ -275,6 +274,8 @@ Format benchmark files.
 
 #### `poly-bench add`
 
+Add language dependencies to the project. Updates `polybench.toml` and installs into `.polybench/runtime-env/<lang>/`.
+
 <CodeGroup
   tabs={[
     {
@@ -282,14 +283,18 @@ Format benchmark files.
       language: "bash",
       code: `poly-bench add --go <PKG>
 poly-bench add --ts <PKG>
-poly-bench add --rs <CRATE> [--features <F1,F2,...>]`
+poly-bench add --rs <CRATE> [--features <F1,F2,...>]
+poly-bench add --py <PKG>
+poly-bench add --c <PKG>@<version>
+poly-bench add --cs <PKG>@<version>
+poly-bench add --zig <PKG>`
     },
   ]}
 />
 
 #### `poly-bench add-runtime`
 
-Add a runtime (go, ts, rust, python) to an existing project. Creates the runtime config in `polybench.toml` and builds the `.polybench` runtime environment.
+Add a runtime to an existing project. Creates the runtime config in `polybench.toml` and the `.polybench/runtime-env/<lang>/` directory. Supported runtimes: `go`, `ts`, `rust`, `python`, `c`, `csharp`, `zig`.
 
 <CodeGroup
   tabs={[
@@ -299,7 +304,10 @@ Add a runtime (go, ts, rust, python) to an existing project. Creates the runtime
       code: `poly-bench add-runtime go
 poly-bench add-runtime ts
 poly-bench add-runtime rust
-poly-bench add-runtime python`
+poly-bench add-runtime python
+poly-bench add-runtime c
+poly-bench add-runtime csharp
+poly-bench add-runtime zig`
     },
   ]}
 />

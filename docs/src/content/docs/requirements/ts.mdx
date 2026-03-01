@@ -1,0 +1,94 @@
+---
+title: TypeScript Runtime
+description: TypeScript runtime requirements, setup, and gotchas for poly-bench
+---
+
+This guide walks through using TypeScript with poly-bench, from init through run. It covers what gets created, how dependencies work, and common gotchas.
+
+---
+
+## Prerequisites
+
+You need Node.js installed and available on your PATH. The table below summarizes the requirements.
+
+| Requirement | Details |
+|-------------|---------|
+| **Binary** | `node` on PATH |
+| **Version** | Node.js 18+ |
+| **Verify** | `node --version` |
+
+Install from [nodejs.org](https://nodejs.org/). If Node.js is missing when you run init, poly-bench can offer to install it interactively during `poly-bench init`.
+
+---
+
+## Init
+
+When you run `poly-bench init --languages ts` (or select TypeScript in the interactive flow), poly-bench creates a Node project under `.polybench/runtime-env/ts/`:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Structure",
+      language: "text",
+      code: `.polybench/runtime-env/ts/
+├── package.json
+├── tsconfig.json
+└── src/
+    └── main.ts`
+    },
+  ]}
+/>
+
+TypeScript is the only runtime that runs `npm install` during init. All other runtimes defer the install step to `poly-bench build` or `poly-bench install`, so your TypeScript project will have dependencies ready immediately after init.
+
+---
+
+## Add Dependencies
+
+To add TypeScript or JavaScript dependencies, use the add command with the `--ts` flag:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "CLI",
+      language: "bash",
+      code: `poly-bench add --ts lodash@4.17.21  # [!code focus]`
+    },
+  ]}
+/>
+
+The spec format is `package@version` — for example, `lodash@4.17.21`. Dependencies are stored in the poly-bench manifest and written to package.json. The typescript-language-server is added automatically as a dev dependency for LSP support in editors.
+
+---
+
+## Install
+
+Running `poly-bench install` (or `poly-bench build`) runs `npm install` in `.polybench/runtime-env/ts/`. Because npm install already runs at init, subsequent installs mainly update dependencies when you add new packages.
+
+---
+
+## Build / Codegen
+
+When you run `poly-bench run`, poly-bench generates TypeScript code and executes it with Node.js. There is no separate compilation step; Node runs the generated `.ts` files directly (or transpiled output depending on configuration).
+
+The tsconfig uses `moduleResolution: "bundler"`. There is no actual bundler — execution is direct Node. This setting is chosen for compatibility with modern tooling and type resolution.
+
+---
+
+## Gotchas and Troubleshooting
+
+<Aside type="caution">
+<span><strong>npm install at init</strong> — TypeScript is the only runtime that runs <code>npm install</code> during init. Other runtimes defer to build or install.</span>
+</Aside>
+
+<Aside type="note">
+<span><strong>moduleResolution: bundler</strong> — The tsconfig uses <code>moduleResolution: "bundler"</code>; there is no actual bundler — execution is direct Node.</span>
+</Aside>
+
+<Aside type="note">
+<span><strong>typescript-language-server</strong> — Added as a dev dependency for LSP support in editors.</span>
+</Aside>
+
+<Aside type="note">
+<span><strong>ES modules</strong> — The package.json includes <code>"type": "module"</code> for ES module support.</span>
+</Aside>

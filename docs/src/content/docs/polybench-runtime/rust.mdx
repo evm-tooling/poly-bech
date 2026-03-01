@@ -1,0 +1,112 @@
+---
+title: Rust Runtime
+description: Technical deep-dive on how the .polybench Rust runtime project works
+---
+
+This page documents how the `.polybench/runtime-env/rust/` project is set up, how codegen works, and how execution is performed.
+
+---
+
+## Overview
+
+The Rust runtime uses a Cargo project. The generated benchmark code overwrites `src/main.rs`. The binary is built with `cargo build --release` and must be named `polybench_runner`. The runtime crate is `runtimes-rust`; templates come from `poly-bench-project`.
+
+---
+
+## What Init Does
+
+When you run `poly-bench init` with Rust enabled, poly-bench creates the runtime environment and writes the scaffold. Specifically:
+
+1. Creates `.polybench/runtime-env/rust/` and `src/`
+2. Writes `Cargo.toml` with package name `polybench_runner`, edition 2021, and default deps: `serde`, `serde_json`, `alloc_tracker`
+3. Writes `src/main.rs` with a minimal `fn main() {}` placeholder
+
+No `cargo fetch` or build runs at init. Dependencies are fetched when you run `poly-bench build` or `poly-bench install`.
+
+<Aside type="note">
+<span>No <code>cargo fetch</code> or build runs at init. Dependencies are fetched when you run <code>poly-bench build</code> or <code>poly-bench install</code>.</span>
+</Aside>
+
+---
+
+## What Build/Install Does
+
+When you run `poly-bench build` or `poly-bench install`:
+
+1. **Regenerates `Cargo.toml`** if `--force` is used
+2. **Ensures `alloc_tracker`** is in `Cargo.toml` for memory benchmarks (added automatically if missing)
+3. **Adds user dependencies** from `[rust] dependencies` via `cargo add` (with optional `--features` for crates like `tiny_keccak`)
+4. **Runs `cargo fetch`** to download dependencies (skipped with `--skip-install`)
+5. **Installs rust-analyzer** for LSP (or uses system rust-analyzer if available)
+
+---
+
+## Design Rationale
+
+- **Overwrite `main.rs`** — Codegen produces a complete `main()` with fixture decoding, init, helpers, and the benchmark loop. The placeholder exists only so Cargo can build before the first run; this avoids maintaining a separate `bench_standalone.rs`.
+- **Binary name `polybench_runner`** — The executor expects this exact name. Changing it in `Cargo.toml` would break execution.
+- **`[workspace]` in Cargo.toml** — Marks this as a standalone workspace so it is not accidentally included in a parent workspace.
+- **`alloc_tracker` by default** — Templates include it so memory benchmarks work out of the box; the executor adds it dynamically if a memory suite runs and it is missing.
+- **Release profile** — `opt-level = 3`, `lto = true`, `codegen-units = 1` for maximum performance.
+
+---
+
+## Scaffolded Files (Init/Build)
+
+When you run `poly-bench init --languages rust` or `poly-bench build`, the following is created in `.polybench/runtime-env/rust/`:
+
+| File | Source | Purpose |
+|------|--------|---------|
+| `Cargo.toml` | `templates.cargo_toml()` | Package name, edition 2021, binary name `polybench_runner` |
+| `src/main.rs` | Placeholder | Overwritten by codegen at run time |
+
+The Cargo.toml declares a binary target named `polybench_runner`. Dependencies added via `poly-bench add --rs` are written to `Cargo.toml` via `cargo add`.
+
+---
+
+## Codegen
+
+When `poly-bench run` executes a benchmark, the Rust runtime:
+
+1. Calls `generate_standalone_benchmark(spec, suite)` in `runtimes-rust/src/codegen.rs`
+2. Produces a complete `main.rs` with: `fn main()`, fixture decoding, setup/init code, helper functions, and the benchmark loop
+3. Writes the source to `src/main.rs` (overwriting the placeholder)
+
+For memory benchmarks, the executor automatically adds `alloc_tracker = "0.5"` to `Cargo.toml` via `ensure_alloc_tracker_in_cargo_toml` if not present.
+
+**Generated files:**
+
+- `src/main.rs` — overwritten with full benchmark harness
+
+---
+
+## Build Pipeline
+
+| Step | Command | Output |
+|------|---------|--------|
+| Precompile | `cargo build --release` | `target/release/polybench_runner` |
+| Check | `cargo build` on generated `main.rs` | Compilation only |
+
+The executor caches the binary path and source hash. LSP virtual files in `src/bin/` are cleaned up before compilation to avoid conflicts.
+
+---
+
+## Execution Model
+
+1. **Precompile:** Write `src/main.rs`, run `cargo build --release`, cache binary path
+2. **Run:** Spawn `./target/release/polybench_runner <benchmark_name> <iterations>` as a subprocess
+3. **Collect:** Parse stdout for timing output (ns/op, ops/s, and B/op for memory benchmarks)
+
+---
+
+## Technical Gotchas
+
+<Aside type="tip">
+<span>For memory benchmarks, <code>alloc_tracker = "0.5"</code> is automatically added to <code>Cargo.toml</code> when needed.</span>
+</Aside>
+
+- **Binary name** — The executor expects `polybench_runner`; do not change it in `Cargo.toml`.
+- **alloc_tracker** — For memory benchmarks, `alloc_tracker = "0.5"` is automatically added to `Cargo.toml` when needed.
+- **Edition 2021** — Default Cargo edition.
+
+See [Requirements — Rust](/docs/requirements/rust) for user-facing setup and the `--features` flag.

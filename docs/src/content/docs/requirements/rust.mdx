@@ -1,0 +1,100 @@
+---
+title: Rust Runtime
+description: Rust runtime requirements, setup, and gotchas for poly-bench
+---
+
+This guide walks through using Rust with poly-bench, from init through run. It covers what gets created, how dependencies work, and common gotchas.
+
+---
+
+## Prerequisites
+
+You need Rust installed and available on your PATH. The table below summarizes the requirements.
+
+| Requirement | Details |
+|-------------|---------|
+| **Binary** | `cargo` on PATH |
+| **Version** | Rust 1.70+ |
+| **Verify** | `cargo --version` |
+
+Install from [rustup.rs](https://rustup.rs/). If Rust is missing when you run init, poly-bench can offer to install it interactively during `poly-bench init`.
+
+---
+
+## Init
+
+When you run `poly-bench init --languages rust` (or select Rust in the interactive flow), poly-bench creates a Cargo project under `.polybench/runtime-env/rust/`:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Structure",
+      language: "text",
+      code: `.polybench/runtime-env/rust/
+├── Cargo.toml
+└── src/
+    └── main.rs`
+    },
+  ]}
+/>
+
+The Cargo project uses edition 2021 and the binary name `polybench_runner`. Do not change the package or binary name; the poly-bench executor expects it.
+
+---
+
+## Add Dependencies
+
+To add Rust crates, use the add command with the `--rs` flag:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Simple",
+      language: "bash",
+      code: `poly-bench add --rs serde@1.0  # [!code focus]`
+    },
+    {
+      title: "With features",
+      language: "bash",
+      code: `poly-bench add --rs tiny-keccak@2.0 --features keccak  # [!code focus]`
+    },
+  ]}
+/>
+
+The spec format is `crate@version` — for example, `serde@1.0`. Dependencies are stored in the manifest and added to Cargo.toml via cargo add.
+
+Some crates require specific features to expose the APIs you need. Use the optional `--features` flag with comma-separated feature names — for example, `--features keccak,sha3`. This produces entries like `tiny-keccak = { version = "2.0", features = ["keccak"] }` in Cargo.toml.
+
+For memory benchmarks, poly-bench automatically adds `alloc_tracker = "0.5"` when needed. Do not remove it if you are running alloc benchmarks.
+
+---
+
+## Install
+
+Running `poly-bench install` (or `poly-bench build`) runs `cargo build` to fetch and compile dependencies. Cargo resolves crates from crates.io and builds the project.
+
+---
+
+## Build / Codegen
+
+When you run `poly-bench run`, poly-bench generates Rust code, writes it to the project, and compiles with `cargo build --release`. The generated binary is named `polybench_runner`.
+
+---
+
+## Gotchas and Troubleshooting
+
+<Aside type="caution">
+<span><strong>alloc_tracker</strong> — For memory benchmarks, poly-bench adds <code>alloc_tracker = "0.5"</code> to Cargo.toml. Don't remove it if you're running alloc benchmarks.</span>
+</Aside>
+
+<Aside type="caution">
+<span><strong>Package name polybench_runner</strong> — The executor expects the binary name <code>polybench_runner</code>. Don't change it in Cargo.toml.</span>
+</Aside>
+
+<Aside type="note">
+<span><strong>Edition 2021</strong> — Default Cargo edition.</span>
+</Aside>
+
+<Aside type="note">
+<span><strong>Crates requiring features</strong> — Some crates like <code>tiny-keccak</code> expose APIs only when features are enabled. Use <code>poly-bench add --rs tiny-keccak@2.0 --features keccak</code> to add with the <code>keccak</code> feature.</span>
+</Aside>
