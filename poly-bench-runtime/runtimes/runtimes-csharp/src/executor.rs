@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use miette::{miette, Result};
-use poly_bench_dsl::{BenchMode, Lang};
+use poly_bench_dsl::{AsyncSamplingPolicy, BenchMode, BenchmarkKind, Lang};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use poly_bench_traits::{Measurement, Runtime, RuntimeConfig, RuntimeFactory};
 use regex::Regex;
@@ -528,8 +528,13 @@ fn generate_csharp_source(
     let impl_code = CSharpRuntime::normalize_indent(impl_code.trim());
 
     let mut src = String::new();
+    let is_async = spec.kind == BenchmarkKind::Async;
     src.push_str("using System;\nusing System.Diagnostics;\nusing System.Collections.Generic;\n");
-    src.push_str("using System.Text.Json;\n\n");
+    src.push_str("using System.Text.Json;\n");
+    if is_async {
+        src.push_str("using System.Threading.Tasks;\n");
+    }
+    src.push_str("\n");
     if let Some(imports) = suite.imports.get(&Lang::CSharp) {
         for import_stmt in imports {
             src.push_str(import_stmt);
@@ -563,7 +568,11 @@ fn generate_csharp_source(
         }
     }
 
-    src.push_str("    static object? __polybench_bench() {\n");
+    if is_async {
+        src.push_str("    static async Task<object?> __polybench_bench() {\n");
+    } else {
+        src.push_str("    static object? __polybench_bench() {\n");
+    }
     src.push_str(&emit_fixtures(spec, suite, "        "));
     for line in impl_code.lines() {
         src.push_str("        ");
@@ -577,11 +586,19 @@ fn generate_csharp_source(
     src.push_str("    }\n\n");
 
     if check_only {
-        src.push_str("    public static void Main() { }\n}\n");
+        if is_async {
+            src.push_str("    public static async Task Main() { }\n}\n");
+        } else {
+            src.push_str("    public static void Main() { }\n}\n");
+        }
         return Ok(src);
     }
 
-    src.push_str("    public static void Main() {\n");
+    if is_async {
+        src.push_str("    public static async Task Main() {\n");
+    } else {
+        src.push_str("    public static void Main() {\n");
+    }
     if let Some(init_code) = suite.init_code.get(&Lang::CSharp) {
         if !init_code.trim().is_empty() {
             for line in CSharpRuntime::normalize_indent(init_code).lines() {
@@ -592,6 +609,12 @@ fn generate_csharp_source(
             src.push('\n');
         }
     }
+    let warmup_iters = if is_async {
+        spec.warmup_iterations.min(spec.async_warmup_cap)
+    } else {
+        spec.warmup_iterations
+    };
+
     src.push_str("        var samples = new List<double>();\n");
     src.push_str("        long warmupNanos = 0;\n");
     // Warmup (warmup_time_ms takes precedence over warmup_iterations)
@@ -600,12 +623,18 @@ fn generate_csharp_source(
             "        var warmupStart = Stopwatch.GetTimestamp();\n        var warmupLimitNs = (double){} * 1_000_000;\n        while ((Stopwatch.GetTimestamp() - warmupStart) * (1_000_000_000.0 / Stopwatch.Frequency) < warmupLimitNs) {{\n",
             spec.warmup_time_ms
         ));
-    } else if spec.warmup_iterations > 0 {
-        src.push_str(&format!("        var warmupStart = Stopwatch.GetTimestamp();\n        for (int i = 0; i < {}; i++) {{\n", spec.warmup_iterations));
+    } else if warmup_iters > 0 {
+        src.push_str(&format!("        var warmupStart = Stopwatch.GetTimestamp();\n        for (int i = 0; i < {}; i++) {{\n", warmup_iters));
     }
-    if spec.warmup_time_ms > 0 || spec.warmup_iterations > 0 {
+    if spec.warmup_time_ms > 0 || warmup_iters > 0 {
         src.push_str(&CSharpRuntime::emit_hook(spec.each_hooks.get(&Lang::CSharp), "            "));
-        if spec.use_sink {
+        if is_async {
+            if spec.use_sink {
+                src.push_str("            __polybench_sink = await __polybench_bench();\n");
+            } else {
+                src.push_str("            await __polybench_bench();\n");
+            }
+        } else if spec.use_sink {
             src.push_str("            __polybench_sink = __polybench_bench();\n");
         } else {
             src.push_str("            __polybench_bench();\n");
@@ -623,7 +652,67 @@ fn generate_csharp_source(
         src.push_str("        long memBefore = GC.GetTotalAllocatedBytes(true);\n");
     }
 
-    if spec.mode == BenchMode::Auto {
+    let sample_cap = spec.async_sample_cap;
+    let is_fixed_cap = matches!(spec.async_sampling_policy, AsyncSamplingPolicy::FixedCap);
+
+    if is_async {
+        let target_ns = (spec.target_time_ms as f64) * 1_000_000.0;
+        src.push_str(&format!(
+            "        double targetNs = {};\n        int sampleCap = {};\n        long totalIterations = 0;\n        double totalNs = 0;\n        long successfulCount = 0;\n        long errorCount = 0;\n        var successfulResults = new List<string>();\n        var errorSamples = new List<string>();\n",
+            target_ns, sample_cap
+        ));
+        let bench_call = if spec.use_sink {
+            "__polybench_sink = await __polybench_bench();"
+        } else {
+            "await __polybench_bench();"
+        };
+        let result_capture = if spec.use_sink {
+            "if (successfulResults.Count < sampleCap) successfulResults.Add(JsonSerializer.Serialize(__polybench_sink ?? (object)\"null\"));"
+        } else {
+            ""
+        };
+        if is_fixed_cap {
+            src.push_str(&format!(
+                "        for (int i = 0; i < sampleCap; i++) {{\n{}            var t0 = Stopwatch.GetTimestamp();\n            try {{\n                {}\n                successfulCount++;\n                {}\n            }} catch (Exception ex) {{\n                errorCount++;\n                if (errorSamples.Count < sampleCap) errorSamples.Add(ex.Message.Length > 240 ? ex.Message.Substring(0, 240) : ex.Message);\n            }}\n            var t1 = Stopwatch.GetTimestamp();\n            double elapsedNs = (t1 - t0) * (1_000_000_000.0 / Stopwatch.Frequency);\n            totalNs += elapsedNs;\n            totalIterations++;\n            samples.Add(elapsedNs);\n        }}\n",
+                CSharpRuntime::emit_hook(spec.each_hooks.get(&Lang::CSharp), "            "),
+                bench_call,
+                result_capture
+            ));
+        } else {
+            src.push_str(&format!(
+                "        var rng = new Random();\n        while (totalNs < targetNs) {{\n{}            var t0 = Stopwatch.GetTimestamp();\n            try {{\n                {}\n                successfulCount++;\n                {}\n            }} catch (Exception ex) {{\n                errorCount++;\n                if (errorSamples.Count < sampleCap) errorSamples.Add(ex.Message.Length > 240 ? ex.Message.Substring(0, 240) : ex.Message);\n            }}\n            var t1 = Stopwatch.GetTimestamp();\n            double elapsedNs = (t1 - t0) * (1_000_000_000.0 / Stopwatch.Frequency);\n            totalNs += elapsedNs;\n            totalIterations++;\n            if (samples.Count < sampleCap) samples.Add(elapsedNs);\n            else if (sampleCap > 0) {{ int r = rng.Next(0, (int)totalIterations + 1); if (r < sampleCap) samples[r] = elapsedNs; }}\n        }}\n",
+                CSharpRuntime::emit_hook(spec.each_hooks.get(&Lang::CSharp), "            "),
+                bench_call,
+                result_capture
+            ));
+        }
+        src.push_str("        double nanosPerOp = totalNs / Math.Max(1, totalIterations);\n");
+        src.push_str("        double opsPerSec = 1_000_000_000.0 / Math.Max(1, nanosPerOp);\n");
+        if use_memory {
+            src.push_str("        long memAfter = GC.GetTotalAllocatedBytes(true);\n");
+            src.push_str("        long bytesPerOp = Math.Max(0, (memAfter - memBefore) / Math.Max(1, totalIterations));\n");
+        }
+        src.push_str("        var result = new Dictionary<string, object?> {\n");
+        src.push_str("            [\"iterations\"] = totalIterations,\n");
+        src.push_str("            [\"totalNanos\"] = totalNs,\n");
+        src.push_str("            [\"warmupNanos\"] = warmupNanos,\n");
+        src.push_str("            [\"nanosPerOp\"] = nanosPerOp,\n");
+        src.push_str("            [\"opsPerSec\"] = opsPerSec,\n");
+        if use_memory {
+            src.push_str("            [\"bytesPerOp\"] = bytesPerOp,\n");
+        }
+        src.push_str("            [\"samples\"] = samples,\n");
+        src.push_str("            [\"successfulCount\"] = successfulCount,\n");
+        src.push_str("            [\"errorCount\"] = errorCount,\n");
+        src.push_str("            [\"successfulResults\"] = successfulResults,\n");
+        src.push_str("            [\"errorSamples\"] = errorSamples,\n");
+        if spec.use_sink {
+            src.push_str("            [\"rawResult\"] = __polybench_sink,\n");
+        }
+        src.push_str("        };\n");
+        src.push_str(&CSharpRuntime::emit_hook(spec.after_hooks.get(&Lang::CSharp), "        "));
+        src.push_str("        Console.WriteLine(JsonSerializer.Serialize(result));\n");
+    } else if spec.mode == BenchMode::Auto {
         src.push_str(&format!(
             "        double targetNs = {};\n        long totalIterations = 0;\n        double totalNs = 0;\n        int batch = 1;\n        while (totalNs < targetNs) {{\n            var t0 = Stopwatch.GetTimestamp();\n            for (int i = 0; i < batch; i++) {{\n",
             (spec.target_time_ms as f64) * 1_000_000.0
@@ -729,6 +818,14 @@ struct BenchResultJson {
     bytes_per_op: Option<u64>,
     #[serde(default)]
     allocs_per_op: Option<u64>,
+    #[serde(default)]
+    successful_count: Option<u64>,
+    #[serde(default)]
+    error_count: Option<u64>,
+    #[serde(default)]
+    successful_results: Vec<String>,
+    #[serde(default)]
+    error_samples: Vec<String>,
 }
 
 impl BenchResultJson {
@@ -753,6 +850,15 @@ impl BenchResultJson {
         }
         if let Some(bytes) = self.bytes_per_op {
             m = m.with_allocs(bytes, self.allocs_per_op.unwrap_or(0));
+        }
+        if let Some(sc) = self.successful_count {
+            m.async_success_count = Some(sc);
+        }
+        if let Some(ec) = self.error_count {
+            m.async_error_count = Some(ec);
+        }
+        if !self.error_samples.is_empty() {
+            m.async_error_samples = Some(self.error_samples);
         }
         m
     }

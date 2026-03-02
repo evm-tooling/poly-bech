@@ -1,0 +1,105 @@
+declare suite asyncDemo performance iterationBased sameDataset: false {
+    description: "benchAsync demonstration across all runtimes - simulates async I/O with sleep"
+    baseline: "go"
+    warmup: 2
+    iterations: 5
+    asyncSamplingPolicy: "fixedCap"
+    asyncWarmupCap: 2
+    cvThreshold: 15
+    count: 1
+
+    setup go {
+        import {
+            "time"
+        }
+
+        helpers {
+            func asyncSimGo() any {
+                time.Sleep(250 * time.Millisecond)
+                return 0
+            }
+        }
+    }
+
+    setup ts {
+        helpers {
+            async function asyncSimTs() {
+                await new Promise(r => setTimeout(r, 250))
+                return 0
+            }
+        }
+    }
+
+    setup rust {
+        import {
+            use std::time::Duration;
+            use std::thread;
+        }
+
+        helpers {
+            fn async_sim_rust() -> u64 {
+                thread::sleep(Duration::from_millis(250));
+                0u64
+            }
+        }
+    }
+
+    setup c {
+        import {
+            #include <unistd.h>
+        }
+
+        helpers {
+            static int async_sim_c(void) {
+                usleep(250000);
+                return 0;
+            }
+        }
+    }
+
+    setup python {
+        import {
+            import asyncio
+        }
+
+        helpers {
+            async def async_sim_python():
+                await asyncio.sleep(0.25)
+                return 0
+        }
+    }
+
+    setup csharp {
+        import {
+            using System.Threading.Tasks;
+        }
+
+        helpers {
+            static async Task<object> AsyncSimCsharp() {
+                await Task.Delay(250);
+                return 0;
+            }
+        }
+    }
+
+    setup zig {
+   
+        helpers {
+            fn asyncSimZig() void {
+                std.Thread.sleep(50000000);
+
+            }
+        }
+    }
+
+    benchAsync asyncSleep {
+        description: "Simulated async I/O via sleep - demonstrates benchAsync across all runtimes"
+        go: asyncSimGo()
+        ts: asyncSimTs()
+        rust: async_sim_rust()
+        c: async_sim_c()
+        python: async_sim_python()
+        csharp: AsyncSimCsharp()
+        zig: asyncSimZig()
+    }
+}

@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use miette::{miette, Result};
-use poly_bench_dsl::{BenchMode, Lang};
+use poly_bench_dsl::{AsyncSamplingPolicy, BenchMode, BenchmarkKind, Lang};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use poly_bench_stdlib as stdlib;
 use poly_bench_traits::{Measurement, Runtime, RuntimeConfig, RuntimeFactory};
@@ -995,15 +995,22 @@ fn generate_zig_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) 
     }
     src.push_str(&emit_hook(spec.before_hooks.get(&Lang::Zig), "    "));
 
+    let is_async = spec.kind == BenchmarkKind::Async;
+    let warmup_iters = if is_async {
+        spec.warmup_iterations.min(spec.async_warmup_cap)
+    } else {
+        spec.warmup_iterations
+    };
+
     if spec.warmup_time_ms > 0 {
         src.push_str(&format!(
             "    const __warmup_start = std.time.Instant.now() catch return;\n    const __warmup_limit = @as(u64, @intFromFloat({} * 1e6));\n    while ((std.time.Instant.now() catch return).since(__warmup_start) < __warmup_limit) {{\n",
             spec.warmup_time_ms
         ));
-    } else if spec.warmup_iterations > 0 {
+    } else if warmup_iters > 0 {
         src.push_str(&format!(
             "    const __warmup_start = std.time.Instant.now() catch return;\n    for (0..{}) |_| {{\n",
-            spec.warmup_iterations
+            warmup_iters
         ));
     }
     if spec.warmup_time_ms > 0 || spec.warmup_iterations > 0 {
@@ -1023,7 +1030,76 @@ fn generate_zig_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) 
         src.push_str("    var __mem_last = __polybench_mem_snapshot();\n");
     }
 
-    if spec.mode == BenchMode::Auto {
+    let sample_cap = spec.async_sample_cap;
+    let is_fixed_cap = matches!(spec.async_sampling_policy, AsyncSamplingPolicy::FixedCap);
+
+    if is_async {
+        // Async-sequential: one completed call per iteration, no batching
+        let target_ns = (spec.target_time_ms as f64) * 1_000_000.0;
+        if is_fixed_cap {
+            src.push_str(&format!(
+                "    const __allocator = std.heap.page_allocator;\n    const sample_cap = {};\n    var total_iterations: u64 = 0;\n    var total_ns: f64 = 0;\n    var successful_count: u64 = 0;\n    const error_count: u64 = 0;\n    var samples = std.ArrayList(f64).initCapacity(__allocator, @intCast(sample_cap)) catch return;\n    defer if (__is_zig_13_or_14) samples.deinit() else samples.deinit(__allocator);\n",
+                sample_cap
+            ));
+        } else {
+            src.push_str(&format!(
+                "    const __allocator = std.heap.page_allocator;\n    const target_ns = {:.0};\n    const sample_cap = {};\n    var total_iterations: u64 = 0;\n    var total_ns: f64 = 0;\n    var successful_count: u64 = 0;\n    const error_count: u64 = 0;\n    var samples = std.ArrayList(f64).initCapacity(__allocator, @intCast(sample_cap)) catch return;\n    defer if (__is_zig_13_or_14) samples.deinit() else samples.deinit(__allocator);\n",
+                target_ns, sample_cap
+            ));
+        }
+        if is_fixed_cap {
+            src.push_str(&format!(
+                "    for (0..sample_cap) |_| {{\n{}        const t0 = std.time.Instant.now() catch return;\n        __polybench_bench();\n        const t1 = std.time.Instant.now() catch return;\n        const elapsed_ns = @as(f64, @floatFromInt(t1.since(t0)));\n        total_ns += elapsed_ns;\n        total_iterations += 1;\n        successful_count += 1;\n        if (__is_zig_13_or_14) _ = samples.append(elapsed_ns) catch break else _ = samples.append(__allocator, elapsed_ns) catch break;\n    }}\n",
+                emit_hook(spec.each_hooks.get(&Lang::Zig), "        ")
+            ));
+        } else {
+            src.push_str(&format!(
+                "    var rng = std.Random.DefaultPrng.init(0x9E3779B97F4A7C15);\n    while (total_ns < target_ns) {{\n{}        const t0 = std.time.Instant.now() catch return;\n        __polybench_bench();\n        const t1 = std.time.Instant.now() catch return;\n        const elapsed_ns = @as(f64, @floatFromInt(t1.since(t0)));\n        total_ns += elapsed_ns;\n        total_iterations += 1;\n        successful_count += 1;\n        if (samples.items.len < sample_cap) {{\n            if (__is_zig_13_or_14) _ = samples.append(elapsed_ns) catch break else _ = samples.append(__allocator, elapsed_ns) catch break;\n        }} else {{\n            const r = rng.random().uintAtMost(u64, total_iterations);\n            if (r < sample_cap) samples.items[r] = elapsed_ns;\n        }}\n    }}\n",
+                emit_hook(spec.each_hooks.get(&Lang::Zig), "        ")
+            ));
+        }
+        src.push_str(
+            "    const nanos_per_op = total_ns / @as(f64, @floatFromInt(if (total_iterations > 0) total_iterations else 1));\n    const ops_per_sec = 1000000000.0 / (if (nanos_per_op > 0) nanos_per_op else 1.0);\n",
+        );
+        if use_memory {
+            src.push_str("    const __bytes_per_op = if (total_iterations > 0) __total_allocated / total_iterations else @as(u64, 0);\n");
+        }
+        src.push_str(&emit_hook(spec.after_hooks.get(&Lang::Zig), "    "));
+        src.push_str("    if (__is_zig_13_or_14) {\n");
+        src.push_str(
+            "        var __stdout_writer = std.io.bufferedWriter(std.io.getStdOut().writer());\n",
+        );
+        src.push_str("        const stdout = __stdout_writer.writer();\n");
+        if use_memory {
+            src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"bytesPerOp\\\":{},\\\"samples\\\":[\", .{ total_iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec, __bytes_per_op });\n");
+        } else {
+            src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"samples\\\":[\", .{ total_iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec });\n");
+        }
+        src.push_str("        for (samples.items, 0..) |s, i| {\n");
+        src.push_str("            if (i > 0) _ = stdout.writeAll(\",\") catch {};\n");
+        src.push_str("            try stdout.print(\"{d:.0}\", .{s});\n");
+        src.push_str("        }\n");
+        src.push_str("        try stdout.print(\"],\\\"successfulCount\\\":{},\\\"errorCount\\\":{},\\\"successfulResults\\\":[],\\\"errorSamples\\\":[]}}\\n\", .{ successful_count, error_count });\n");
+        src.push_str("        __stdout_writer.flush() catch {};\n");
+        src.push_str("    } else {\n");
+        src.push_str("        var __stdout_buffer: [4096]u8 = undefined;\n");
+        src.push_str(
+            "        var __stdout_writer = std.fs.File.stdout().writer(&__stdout_buffer);\n",
+        );
+        src.push_str("        const stdout = &__stdout_writer.interface;\n");
+        if use_memory {
+            src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"bytesPerOp\\\":{},\\\"samples\\\":[\", .{ total_iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec, __bytes_per_op });\n");
+        } else {
+            src.push_str("        try stdout.print(\"{{\\\"iterations\\\":{},\\\"totalNanos\\\":{d:.0},\\\"warmupNanos\\\":{},\\\"nanosPerOp\\\":{d:.6},\\\"opsPerSec\\\":{d:.6},\\\"samples\\\":[\", .{ total_iterations, total_ns, __warmup_nanos, nanos_per_op, ops_per_sec });\n");
+        }
+        src.push_str("        for (samples.items, 0..) |s, i| {\n");
+        src.push_str("            if (i > 0) _ = stdout.writeAll(\",\") catch {};\n");
+        src.push_str("            try stdout.print(\"{d:.0}\", .{s});\n");
+        src.push_str("        }\n");
+        src.push_str("        try stdout.print(\"],\\\"successfulCount\\\":{},\\\"errorCount\\\":{},\\\"successfulResults\\\":[],\\\"errorSamples\\\":[]}}\\n\", .{ successful_count, error_count });\n");
+        src.push_str("        stdout.flush() catch {};\n");
+        src.push_str("    }\n");
+    } else if spec.mode == BenchMode::Auto {
         src.push_str(&format!(
             "    const __allocator = std.heap.page_allocator;\n    const target_ns = {:.0};\n    var total_iterations: u64 = 0;\n    var total_ns: f64 = 0;\n    var batch: u64 = 100;\n    var samples = std.ArrayList(f64).initCapacity(__allocator, 16) catch return;\n    defer if (__is_zig_13_or_14) samples.deinit() else samples.deinit(__allocator);\n    while (total_ns < target_ns) {{\n        const t0 = std.time.Instant.now() catch return;\n        for (0..batch) |_| {{\n",
             (spec.target_time_ms as f64) * 1_000_000.0
@@ -1182,6 +1258,14 @@ struct BenchResultJson {
     bytes_per_op: Option<u64>,
     #[serde(default)]
     allocs_per_op: Option<u64>,
+    #[serde(default)]
+    successful_count: Option<u64>,
+    #[serde(default)]
+    error_count: Option<u64>,
+    #[serde(default)]
+    successful_results: Vec<String>,
+    #[serde(default)]
+    error_samples: Vec<String>,
 }
 
 impl BenchResultJson {
@@ -1206,6 +1290,15 @@ impl BenchResultJson {
         }
         if let Some(bytes) = self.bytes_per_op {
             m = m.with_allocs(bytes, self.allocs_per_op.unwrap_or(0));
+        }
+        if let Some(sc) = self.successful_count {
+            m.async_success_count = Some(sc);
+        }
+        if let Some(ec) = self.error_count {
+            m.async_error_count = Some(ec);
+        }
+        if !self.error_samples.is_empty() {
+            m.async_error_samples = Some(self.error_samples);
         }
         m
     }
