@@ -1096,6 +1096,8 @@ fn zig_dep_name_from_url(url: &str) -> String {
     let last = path_part.trim_end_matches('/').rsplit('/').next().unwrap_or("dep");
     // Hosted git URLs often end with ".git"; strip it so module name matches repo name.
     let last = last.strip_suffix(".git").unwrap_or(last);
+    // Repos ending in .zig (e.g. eth.zig) use the part before the dot as package name.
+    let last = last.strip_suffix(".zig").unwrap_or(last);
     // Zig identifiers: alphanumeric + underscore, replace - with _
     let sanitized: String = last
         .chars()
@@ -1233,6 +1235,106 @@ fn extract_dep_hash_from_zon(zig_root: &Path, dep_name: &str) -> Option<String> 
     }
 
     None
+}
+
+/// Parse dep names from build.zig.zon .dependencies = .{ .dep_name = .{ ... }, }
+pub(crate) fn parse_zon_dep_names(zig_root: &Path) -> Vec<String> {
+    let zon_path = zig_root.join("build.zig.zon");
+    let Ok(content) = std::fs::read_to_string(&zon_path) else {
+        return vec![];
+    };
+    let dep_start_re = regex::Regex::new(r"\.dependencies\s*=\s*\.\{").unwrap();
+    let dep_re = regex::Regex::new(r"\.([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\.\{").unwrap();
+    let mut in_deps = false;
+    let mut depth = 0;
+    let mut deps = Vec::new();
+    for line in content.lines() {
+        if dep_start_re.is_match(line) {
+            in_deps = true;
+            depth = 1;
+            continue;
+        }
+        if in_deps {
+            for cap in dep_re.captures_iter(line) {
+                if let Some(name) = cap.get(1) {
+                    deps.push(name.as_str().to_string());
+                }
+            }
+            depth += line.matches('{').count();
+            depth -= line.matches('}').count();
+            if depth == 0 {
+                break;
+            }
+        }
+    }
+    deps
+}
+
+/// Sync build.zig with the dep names from build.zig.zon (inject b.dependency + addImport for each)
+fn sync_build_zig_with_zon_deps(zig_root: &Path) -> Result<()> {
+    let dep_names = parse_zon_dep_names(zig_root);
+    let content = templates::build_zig_with_deps(&dep_names);
+    let build_zig = zig_root.join("build.zig");
+    std::fs::write(&build_zig, content)
+        .map_err(|e| miette::miette!("Failed to write build.zig: {}", e))?;
+    Ok(())
+}
+
+/// Extract suggested fingerprint from zig build stderr (when "missing top-level 'fingerprint'
+/// field")
+fn extract_suggested_fingerprint(stderr: &[u8]) -> Option<String> {
+    let stderr_str = String::from_utf8_lossy(stderr);
+    let re = regex::Regex::new(r"suggested value:\s*(0x[0-9a-fA-F]+)").ok()?;
+    re.captures(&stderr_str).and_then(|c| c.get(1)).map(|m| m.as_str().to_string())
+}
+
+/// Add or update fingerprint in build.zig.zon (Zig 0.15+ requires it)
+fn set_build_zig_zon_fingerprint(zig_root: &Path, fingerprint: &str) -> Result<()> {
+    let zon_path = zig_root.join("build.zig.zon");
+    let content = std::fs::read_to_string(&zon_path)
+        .map_err(|e| miette::miette!("Failed to read build.zig.zon: {}", e))?;
+    let fp_line = format!("    .fingerprint = {fingerprint},");
+    let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+
+    if let Some(idx) = lines.iter().position(|l| l.trim_start().starts_with(".fingerprint")) {
+        lines[idx] = fp_line;
+    } else if let Some(version_idx) =
+        lines.iter().position(|l| l.trim_start().starts_with(".version"))
+    {
+        lines.insert(version_idx + 1, fp_line);
+    } else {
+        let insert_idx = lines.iter().position(|l| l.trim() == ".{").map(|i| i + 1).unwrap_or(0);
+        lines.insert(insert_idx, fp_line);
+    }
+
+    std::fs::write(&zon_path, lines.join("\n") + "\n")
+        .map_err(|e| miette::miette!("Failed to write build.zig.zon: {}", e))?;
+    Ok(())
+}
+
+/// Run zig build, retrying with fingerprint if zon is missing it (Zig 0.15+ requirement)
+fn run_zig_build_with_fingerprint_retry(zig_root: &Path) -> Result<std::process::Output> {
+    let output = Command::new("zig")
+        .args(["build"])
+        .current_dir(zig_root)
+        .output()
+        .map_err(|e| miette::miette!("Failed to run zig build: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("missing top-level 'fingerprint' field") {
+            if let Some(fp) = extract_suggested_fingerprint(&output.stderr) {
+                set_build_zig_zon_fingerprint(zig_root, &fp)?;
+                return Command::new("zig")
+                    .args(["build"])
+                    .current_dir(zig_root)
+                    .output()
+                    .map_err(|e| miette::miette!("Failed to run zig build (retry): {}", e));
+            }
+        }
+    }
+
+    Ok(output)
 }
 
 /// Result of validating a Zig dependency's compatibility
@@ -1398,6 +1500,14 @@ pub fn add_zig_dependency(spec: &str) -> Result<()> {
                     &spinner,
                     &format!("Added {} ({})", dep_name, parsed_url.commit_ref),
                 );
+                sync_build_zig_with_zon_deps(&zig_root)?;
+                let build_output = run_zig_build_with_fingerprint_retry(&zig_root)?;
+                if !build_output.status.success() {
+                    terminal::print_stderr_excerpt(&build_output.stderr, 8);
+                    return Err(miette::miette!(
+                        "zig build failed after adding dependency. Check build.zig and fix any module name mismatches."
+                    ));
+                }
             }
             ZigDepValidation::MissingBuildZon => {
                 terminal::finish_failure(&spinner, "Package validation failed");
@@ -1436,11 +1546,6 @@ pub fn add_zig_dependency(spec: &str) -> Result<()> {
 
 /// Ensure build.zig and build.zig.zon exist in zig_root (required for zig fetch)
 fn ensure_zig_build_files(zig_root: &Path) -> Result<()> {
-    let build_zig = zig_root.join("build.zig");
-    if !build_zig.exists() {
-        std::fs::write(&build_zig, templates::build_zig())
-            .map_err(|e| miette::miette!("Failed to write build.zig: {}", e))?;
-    }
     let build_zig_zon = zig_root.join("build.zig.zon");
     if !build_zig_zon.exists() {
         std::fs::write(&build_zig_zon, templates::build_zig_zon())
@@ -1485,6 +1590,12 @@ fn ensure_zig_build_files(zig_root: &Path) -> Result<()> {
             std::fs::write(&build_zig_zon, updated)
                 .map_err(|e| miette::miette!("Failed to refresh legacy build.zig.zon: {}", e))?;
         }
+    }
+    let build_zig = zig_root.join("build.zig");
+    if !build_zig.exists() {
+        let dep_names = parse_zon_dep_names(zig_root);
+        std::fs::write(&build_zig, templates::build_zig_with_deps(&dep_names))
+            .map_err(|e| miette::miette!("Failed to write build.zig: {}", e))?;
     }
     Ok(())
 }
@@ -2125,6 +2236,15 @@ fn install_zig_deps(project_root: &Path, zig_config: &manifest::ZigConfig) -> Re
         }
     }
 
+    sync_build_zig_with_zon_deps(&zig_root)?;
+    let build_output = run_zig_build_with_fingerprint_retry(&zig_root)?;
+    if !build_output.status.success() {
+        terminal::print_stderr_excerpt(&build_output.stderr, 8);
+        return Err(miette::miette!(
+            "zig build failed. Check build.zig and fix any module name mismatches."
+        ));
+    }
+
     terminal::success_indented("Zig dependencies ready");
     Ok(())
 }
@@ -2226,9 +2346,9 @@ mod tests {
     }
 
     #[test]
-    fn test_zig_dep_name_strips_git_suffix() {
+    fn test_zig_dep_name_strips_git_and_zig_suffix() {
         let name = zig_dep_name_from_url("git+https://github.com/StrobeLabs/eth.zig.git#v0.2.2");
-        assert_eq!(name, "eth_zig");
+        assert_eq!(name, "eth");
     }
 
     // Tests for parse_zig_git_url
@@ -2243,7 +2363,7 @@ mod tests {
             "git+https://github.com/discord-zig/discord.zig.git#abc123def"
         );
         assert_eq!(parsed.commit_ref, "abc123def");
-        assert_eq!(parsed.dep_name, "discord_zig");
+        assert_eq!(parsed.dep_name, "discord");
     }
 
     #[test]

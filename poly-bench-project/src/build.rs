@@ -7,7 +7,9 @@
 //! Use this when the .polybench directory is deleted, corrupted, or after cloning
 //! a repo where it was gitignored.
 
-use crate::{error::ProjectError, manifest, runtime_env, runtime_installer, templates, terminal};
+use crate::{
+    deps, error::ProjectError, manifest, runtime_env, runtime_installer, templates, terminal,
+};
 use flate2::read::GzDecoder;
 use miette::Result;
 use poly_bench_dsl::Lang;
@@ -762,16 +764,6 @@ fn build_zig_env(
     std::fs::create_dir_all(&zig_env)
         .map_err(|e| miette::miette!("Failed to create {}: {}", zig_env.display(), e))?;
 
-    let build_zig_path = zig_env.join("build.zig");
-    if !build_zig_path.exists() {
-        let spinner = terminal::indented_spinner("Creating build.zig...");
-        std::fs::write(&build_zig_path, templates::build_zig())
-            .map_err(|e| miette::miette!("Failed to write build.zig: {}", e))?;
-        terminal::finish_success_indented(&spinner, "Created build.zig");
-    } else {
-        terminal::info_indented("build.zig exists");
-    }
-
     let build_zig_zon_path = zig_env.join("build.zig.zon");
     if !build_zig_zon_path.exists() {
         let spinner = terminal::indented_spinner("Creating build.zig.zon...");
@@ -780,6 +772,17 @@ fn build_zig_env(
         terminal::finish_success_indented(&spinner, "Created build.zig.zon");
     } else {
         terminal::info_indented("build.zig.zon exists");
+    }
+
+    let build_zig_path = zig_env.join("build.zig");
+    if !build_zig_path.exists() {
+        let spinner = terminal::indented_spinner("Creating build.zig...");
+        let dep_names = deps::parse_zon_dep_names(&zig_env);
+        std::fs::write(&build_zig_path, templates::build_zig_with_deps(&dep_names))
+            .map_err(|e| miette::miette!("Failed to write build.zig: {}", e))?;
+        terminal::finish_success_indented(&spinner, "Created build.zig");
+    } else {
+        terminal::info_indented("build.zig exists");
     }
 
     let src_dir = zig_env.join("src");
