@@ -1,3 +1,7 @@
+import { notFound } from 'next/navigation'
+import { MDXRemote } from 'next-mdx-remote/rsc'
+import { Suspense } from 'react'
+import remarkGfm from 'remark-gfm'
 import Aside from '@/components/Aside'
 import BenchmarkSlider from '@/components/BenchmarkSlider'
 import BenchmarkViewer from '@/components/BenchmarkViewer'
@@ -20,10 +24,6 @@ import {
   getDocLastModified,
 } from '@/lib/mdx'
 import { createDocsMetadata, getDocsPageJsonLd } from '@/lib/seo'
-import { MDXRemote } from 'next-mdx-remote/rsc'
-import { notFound } from 'next/navigation'
-import { Suspense } from 'react'
-import remarkGfm from 'remark-gfm'
 
 /** Generate a slug id from heading text (matches extractHeadings logic) */
 function slugify(text: string): string {
