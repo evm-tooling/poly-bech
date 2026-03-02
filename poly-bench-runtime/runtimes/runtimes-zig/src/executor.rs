@@ -23,7 +23,16 @@ pub struct ZigRuntime {
 
 impl ZigRuntime {
     pub fn new() -> Result<Self> {
-        let zig_binary = which::which("zig").map_err(|_| miette!("zig not found in PATH"))?;
+        // Use Polybench-managed toolchain if available, otherwise fall back to system PATH
+        let (zig_binary, _is_managed) = poly_bench_traits::resolve_binary(
+            poly_bench_dsl::Lang::Zig,
+        )
+        .map_err(|_| {
+            miette!(
+                "zig not found. Install via 'poly-bench add-runtime zig' or ensure zig is in PATH"
+            )
+        })?;
+
         Ok(Self {
             zig_binary,
             project_root: None,

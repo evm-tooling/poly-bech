@@ -206,7 +206,7 @@ enum Commands {
         #[arg(long)]
         cs: Option<String>,
 
-        /// Zig package (e.g., "package@0.1.0")
+        /// Zig package URL (e.g., "git+https://github.com/owner/repo/#COMMITHASH")
         #[arg(long)]
         zig: Option<String>,
 

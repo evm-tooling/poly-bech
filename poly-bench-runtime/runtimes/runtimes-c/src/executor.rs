@@ -28,7 +28,8 @@ struct CCmakeDep {
 
 impl CRuntime {
     pub fn new() -> Result<Self> {
-        let clang_binary = which::which("clang").map_err(|_| miette!("clang not found in PATH"))?;
+        let (clang_binary, _) = poly_bench_traits::resolve_binary(poly_bench_dsl::Lang::C)
+            .map_err(|_| miette!("clang not found in PATH. Please install clang/LLVM."))?;
         Ok(Self {
             clang_binary,
             project_root: None,
@@ -566,7 +567,8 @@ impl Runtime for CRuntime {
     }
 
     async fn initialize(&mut self, _suite: &SuiteIR) -> Result<()> {
-        which::which("clang").map_err(|_| miette!("clang not found in PATH"))?;
+        poly_bench_traits::resolve_binary(poly_bench_dsl::Lang::C)
+            .map_err(|_| miette!("clang not found in PATH. Please install clang/LLVM."))?;
         Ok(())
     }
 

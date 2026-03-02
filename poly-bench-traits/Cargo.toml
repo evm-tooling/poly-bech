@@ -20,3 +20,4 @@ async-trait.workspace = true
 tower-lsp.workspace = true
 dashmap.workspace = true
 tracing = "0.1"
+which.workspace = true

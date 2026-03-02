@@ -18,8 +18,8 @@ pub struct GoCompiler {
 impl GoCompiler {
     /// Create a new Go compiler
     pub fn new() -> Result<Self> {
-        let go_binary = which::which("go")
-            .map_err(|_| miette!("Go compiler not found in PATH. Please install Go."))?;
+        let (go_binary, _) = poly_bench_traits::resolve_binary(poly_bench_dsl::Lang::Go)
+            .map_err(|_| miette!("Go compiler not found. Install via 'poly-bench add-runtime go' or ensure go is in PATH"))?;
 
         let temp_dir =
             TempDir::new().map_err(|e| miette!("Failed to create temp directory: {}", e))?;

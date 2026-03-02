@@ -34,8 +34,8 @@ pub struct JsRuntime {
 
 impl JsRuntime {
     pub fn new() -> Result<Self> {
-        let node_binary = which::which("node")
-            .map_err(|_| miette!("Node.js not found in PATH. Please install Node.js."))?;
+        let (node_binary, _) = poly_bench_traits::resolve_binary(poly_bench_dsl::Lang::TypeScript)
+            .map_err(|_| miette!("Node.js not found. Install via 'poly-bench add-runtime ts' or ensure node is in PATH"))?;
 
         Ok(Self {
             temp_dir: None,
