@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { readFile, writeFile, readdir, unlink } from "node:fs/promises";
-import path from "node:path";
+import { config } from "dotenv";
 import { spawn } from "node:child_process";
+import { readdir, readFile, unlink, writeFile } from "node:fs/promises";
+import path from "node:path";
 
 function run(cmd: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -36,6 +37,9 @@ function parseVersion(argv: string[]): string | undefined {
 }
 
 async function main() {
+  // Load .env when running locally (CI passes env via secrets)
+  config();
+
   console.log("🚀 publish:ci starting…");
 
   const argv = process.argv.slice(2);
