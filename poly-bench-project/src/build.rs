@@ -643,13 +643,23 @@ fn build_csharp_env(
                 format!("{}@{}", package, version)
             };
             let spinner = terminal::indented_spinner(&format!("Adding {}...", spec));
-            let output = terminal::run_command_with_spinner(
-                &spinner,
-                Command::new("dotnet")
-                    .args(["add", "polybench.csproj", "package", package, "--version", version])
-                    .current_dir(&csharp_env),
-            )
-            .map_err(|e| miette::miette!("Failed to run dotnet add package: {}", e))?;
+            let output = if version == "latest" {
+                terminal::run_command_with_spinner(
+                    &spinner,
+                    Command::new("dotnet")
+                        .args(["add", "polybench.csproj", "package", package])
+                        .current_dir(&csharp_env),
+                )
+                .map_err(|e| miette::miette!("Failed to run dotnet add package: {}", e))?
+            } else {
+                terminal::run_command_with_spinner(
+                    &spinner,
+                    Command::new("dotnet")
+                        .args(["add", "polybench.csproj", "package", package, "--version", version])
+                        .current_dir(&csharp_env),
+                )
+                .map_err(|e| miette::miette!("Failed to run dotnet add package: {}", e))?
+            };
             if !output.status.success() {
                 terminal::finish_failure_indented(
                     &spinner,
@@ -1264,7 +1274,8 @@ fn update_cargo_toml_deps(rust_root: &Path, rust_config: &manifest::RustConfig) 
     Ok(())
 }
 
-/// Build the argument for `go get` so that transitive deps are added to go.sum
+/// Build the argument for `go get` so that transitive deps are added to go.sum.
+/// When version is "latest", omit @version so Go uses its default.
 fn go_get_spec_for_transitives(package: &str, version: &str) -> String {
     let module = if package.contains('/') {
         let parts: Vec<&str> = package.split('/').collect();
@@ -1277,7 +1288,7 @@ fn go_get_spec_for_transitives(package: &str, version: &str) -> String {
         package.to_string()
     };
     if version == "latest" {
-        format!("{}/...@latest", module)
+        format!("{}/...", module)
     } else {
         format!("{}/...@{}", module, version)
     }
