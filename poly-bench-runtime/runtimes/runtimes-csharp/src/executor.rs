@@ -24,8 +24,8 @@ pub struct CSharpRuntime {
 
 impl CSharpRuntime {
     pub fn new() -> Result<Self> {
-        let dotnet_binary =
-            which::which("dotnet").map_err(|_| miette!("dotnet not found in PATH"))?;
+        let (dotnet_binary, _) = poly_bench_traits::resolve_binary(poly_bench_dsl::Lang::CSharp)
+            .map_err(|_| miette!("dotnet not found. Install via 'poly-bench add-runtime csharp' or ensure dotnet is in PATH"))?;
         Ok(Self {
             dotnet_binary,
             project_root: None,
@@ -288,7 +288,8 @@ impl Runtime for CSharpRuntime {
     }
 
     async fn initialize(&mut self, _suite: &SuiteIR) -> Result<()> {
-        which::which("dotnet").map_err(|_| miette!("dotnet not found in PATH"))?;
+        poly_bench_traits::resolve_binary(poly_bench_dsl::Lang::CSharp)
+            .map_err(|_| miette!("dotnet not found. Install via 'poly-bench add-runtime csharp' or ensure dotnet is in PATH"))?;
         Ok(())
     }
 

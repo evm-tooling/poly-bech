@@ -819,6 +819,101 @@ pub fn remove_csharp_dependency(package: &str) -> Result<()> {
     Ok(())
 }
 
+/// Our Zig version for compatibility checks (0.15.2)
+const POLYBENCH_ZIG_VERSION: (u32, u32, u32) = (0, 15, 2);
+
+/// Parsed Zig git dependency URL
+#[derive(Debug, Clone, PartialEq)]
+struct ZigGitUrl {
+    /// Full URL for zig fetch (e.g., "git+https://github.com/owner/repo.git#abc123")
+    fetch_url: String,
+    /// Commit hash or "HEAD" if not specified
+    commit_ref: String,
+    /// Derived dependency name for --save
+    dep_name: String,
+}
+
+/// Parse and validate a Zig git URL in format: git+https://github.com/owner/repo.git/#COMMITHASH
+///
+/// Accepted formats:
+/// - `git+https://github.com/owner/repo.git/#abc123def` (with commit hash)
+/// - `git+https://github.com/owner/repo/#HEAD` (explicit HEAD)
+/// - `git+https://github.com/owner/repo/` (defaults to HEAD)
+/// - `git+https://github.com/owner/repo.git` (defaults to HEAD)
+///
+/// Returns error for URLs not starting with `git+https://`
+fn parse_zig_git_url(spec: &str) -> Result<ZigGitUrl> {
+    // Must start with "git+"
+    let Some(url_part) = spec.strip_prefix("git+") else {
+        return Err(miette::miette!(
+            "Zig dependencies must start with 'git+'. \n\n\
+             Expected format: git+https://github.com/owner/repo/#COMMITHASH\n\n\
+             Examples:\n  \
+               poly-bench add --zig \"git+https://github.com/discord-zig/discord.zig/#abc123def\"\n  \
+               poly-bench add --zig \"git+https://github.com/discord-zig/discord.zig/#HEAD\"\n  \
+               poly-bench add --zig \"git+https://github.com/discord-zig/discord.zig/\"  (defaults to HEAD)"
+        ));
+    };
+
+    // Must use HTTPS
+    if !url_part.starts_with("https://") {
+        return Err(miette::miette!(
+            "Zig git URLs must use HTTPS.\n\n\
+             Expected format: git+https://github.com/owner/repo/#COMMITHASH"
+        ));
+    }
+
+    // Split URL and fragment (commit ref)
+    let (base_url, commit_ref) = match url_part.split_once('#') {
+        Some((base, ref_part)) => {
+            let ref_str = ref_part.trim();
+            if ref_str.is_empty() || ref_str.eq_ignore_ascii_case("head") {
+                (base, "HEAD".to_string())
+            } else {
+                (base, ref_str.to_string())
+            }
+        }
+        None => (url_part, "HEAD".to_string()),
+    };
+
+    // Validate it's a supported git host (GitHub or GitLab)
+    let base_url_trimmed = base_url.trim_end_matches('/');
+    let is_github = base_url_trimmed.starts_with("https://github.com/");
+    let is_gitlab = base_url_trimmed.starts_with("https://gitlab.com/");
+
+    if !is_github && !is_gitlab {
+        return Err(miette::miette!(
+            "Only GitHub and GitLab URLs are supported.\n\n\
+             Expected format: git+https://github.com/owner/repo/#COMMITHASH\n\
+             Or: git+https://gitlab.com/owner/repo/#COMMITHASH"
+        ));
+    }
+
+    // Validate URL has owner/repo structure (at least 5 segments: https / / host / owner / repo)
+    let segments: Vec<&str> = base_url_trimmed.split('/').collect();
+    if segments.len() < 5 {
+        return Err(miette::miette!(
+            "Invalid git URL structure. Expected owner/repo path.\n\n\
+             Example: git+https://github.com/owner/repo/#COMMITHASH"
+        ));
+    }
+
+    // Ensure URL ends with .git for consistency
+    let normalized_base = if base_url_trimmed.ends_with(".git") {
+        base_url_trimmed.to_string()
+    } else {
+        format!("{}.git", base_url_trimmed)
+    };
+
+    // Build the fetch URL
+    let fetch_url = format!("git+{}#{}", normalized_base, commit_ref);
+
+    // Derive dependency name from repo name
+    let dep_name = zig_dep_name_from_url(&fetch_url);
+
+    Ok(ZigGitUrl { fetch_url, commit_ref, dep_name })
+}
+
 /// Check if a Zig dependency spec looks like a URL (zig fetch requires URLs)
 fn is_zig_url(spec: &str) -> bool {
     spec.contains("://") || spec.starts_with("git+")
@@ -954,6 +1049,179 @@ fn zig_package_url(package: &str, version: &str) -> String {
     }
 }
 
+/// Parse minimum_zig_version from a build.zig.zon file content.
+/// Returns None if the field is not present.
+fn parse_zon_minimum_version(zon_content: &str) -> Option<crate::toolchain::Version> {
+    // Look for: .minimum_zig_version = "X.Y.Z",
+    let re = regex::Regex::new(r#"\.minimum_zig_version\s*=\s*"([^"]+)""#).ok()?;
+    let caps = re.captures(zon_content)?;
+    let version_str = caps.get(1)?.as_str();
+
+    // Parse semver-like version
+    let clean = version_str.split(['-', '+', ' ']).next()?;
+    let parts: Vec<&str> = clean.split('.').collect();
+    let major: u32 = parts.first()?.parse().ok()?;
+    let minor: u32 = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+    let patch: u32 = parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(0);
+
+    Some(crate::toolchain::Version::new(major, minor, patch))
+}
+
+/// Get the Zig cache directory path (typically ~/.cache/zig/p/)
+fn zig_cache_path() -> std::path::PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        std::path::PathBuf::from(home).join(".cache").join("zig").join("p")
+    } else if let Ok(home) = std::env::var("USERPROFILE") {
+        std::path::PathBuf::from(home).join("AppData").join("Local").join("zig").join("p")
+    } else {
+        std::path::PathBuf::from("/tmp/.cache/zig/p")
+    }
+}
+
+/// Clear any existing cached entries for a dependency name from the Zig cache.
+/// This prevents stale/corrupted cache entries from blocking fresh fetches.
+/// The cache uses format: `<dep_name>-<version>-<hash_prefix>-<hash_suffix>`
+fn clear_zig_cache_for_dep(dep_name: &str) {
+    let cache_path = zig_cache_path();
+    if !cache_path.exists() {
+        return;
+    }
+
+    let Ok(entries) = std::fs::read_dir(&cache_path) else {
+        return;
+    };
+
+    let prefix = format!("{}-", dep_name);
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str.starts_with(&prefix) {
+            // This is a cached entry for this dependency - remove it
+            if let Err(e) = std::fs::remove_dir_all(entry.path()) {
+                eprintln!(
+                    "Warning: Failed to clear stale cache entry {}: {}",
+                    entry.path().display(),
+                    e
+                );
+            }
+        }
+    }
+}
+
+/// Extract the package hash from the project's build.zig.zon after zig fetch.
+/// Looks for: .dep_name = .{ ... .hash = "...", }
+fn extract_dep_hash_from_zon(zig_root: &Path, dep_name: &str) -> Option<String> {
+    let zon_path = zig_root.join("build.zig.zon");
+    let content = std::fs::read_to_string(&zon_path).ok()?;
+
+    // Look for the dependency block and extract its hash
+    // Pattern: .dep_name = .{ ... .hash = "HASH", ... }
+    let dep_pattern = format!(r#"\.{}\s*=\s*\.\{{"#, regex::escape(dep_name));
+    let dep_re = regex::Regex::new(&dep_pattern).ok()?;
+
+    // Find where the dependency block starts
+    let dep_match = dep_re.find(&content)?;
+    let after_dep = &content[dep_match.start()..];
+
+    // Find the .hash = "..." within this block
+    let hash_re = regex::Regex::new(r#"\.hash\s*=\s*"([^"]+)""#).ok()?;
+    if let Some(caps) = hash_re.captures(after_dep) {
+        return caps.get(1).map(|m| m.as_str().to_string());
+    }
+
+    None
+}
+
+/// Result of validating a Zig dependency's compatibility
+#[derive(Debug)]
+enum ZigDepValidation {
+    /// Package is compatible
+    Compatible,
+    /// Package has no minimum version specified (compatible)
+    NoMinVersionSpecified,
+    /// Package is missing build.zig.zon
+    MissingBuildZon,
+    /// Package requires a newer Zig version
+    IncompatibleVersion {
+        required: crate::toolchain::Version,
+        polybench: crate::toolchain::Version,
+    },
+}
+
+/// Validate a fetched Zig dependency's version compatibility.
+/// Checks the package's build.zig.zon for minimum_zig_version.
+fn validate_zig_dep_compatibility(dep_hash: &str, _dep_name: &str) -> ZigDepValidation {
+    let cache_path = zig_cache_path();
+    let package_path = cache_path.join(dep_hash);
+
+    // Check if package directory exists
+    if !package_path.exists() {
+        // Try without the full hash (some versions use shorter paths)
+        return ZigDepValidation::MissingBuildZon;
+    }
+
+    // Check for build.zig.zon in the package
+    let zon_path = package_path.join("build.zig.zon");
+    if !zon_path.exists() {
+        return ZigDepValidation::MissingBuildZon;
+    }
+
+    // Read and parse build.zig.zon
+    let Ok(zon_content) = std::fs::read_to_string(&zon_path) else {
+        return ZigDepValidation::MissingBuildZon;
+    };
+
+    // Check for minimum_zig_version
+    match parse_zon_minimum_version(&zon_content) {
+        None => ZigDepValidation::NoMinVersionSpecified,
+        Some(required) => {
+            let polybench = crate::toolchain::Version::new(
+                POLYBENCH_ZIG_VERSION.0,
+                POLYBENCH_ZIG_VERSION.1,
+                POLYBENCH_ZIG_VERSION.2,
+            );
+
+            // If required version is higher than polybench version, it's incompatible
+            if required > polybench {
+                ZigDepValidation::IncompatibleVersion { required, polybench }
+            } else {
+                ZigDepValidation::Compatible
+            }
+        }
+    }
+}
+
+/// Revert a failed Zig dependency add by removing it from polybench.toml and build.zig.zon
+fn revert_zig_dependency(
+    project_root: &Path,
+    zig_root: &Path,
+    package: &str,
+    dep_name: &str,
+) -> Result<()> {
+    // Remove from polybench.toml
+    let mut manifest = crate::load_manifest(project_root)?;
+    manifest.remove_zig_dependency(package)?;
+    crate::save_manifest(project_root, &manifest)?;
+
+    // Remove from build.zig.zon if it exists
+    let zon_path = zig_root.join("build.zig.zon");
+    if zon_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&zon_path) {
+            // Remove the dependency entry using regex
+            // Pattern: .dep_name = .{ ... },
+            let pattern = format!(r"(?s)\s*\.{}\s*=\s*\.\{{[^}}]*\}},?", regex::escape(dep_name));
+            if let Ok(re) = regex::Regex::new(&pattern) {
+                let updated = re.replace(&content, "").to_string();
+                if updated != content {
+                    let _ = std::fs::write(&zon_path, updated);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Add a Zig dependency to the project
 pub fn add_zig_dependency(spec: &str) -> Result<()> {
     if !crate::runtime_check::is_lang_installed(Lang::Zig) {
@@ -971,14 +1239,12 @@ pub fn add_zig_dependency(spec: &str) -> Result<()> {
         return Err(miette::miette!("Zig is not enabled in this project"));
     }
 
-    let (package, version) = parse_dep_spec(spec);
+    // Parse and validate the git URL format
+    let parsed_url = parse_zig_git_url(spec)?;
 
-    if !is_zig_url(&package) {
-        return Err(miette::miette!(
-            "Zig dependencies must be specified as URLs. Example: poly-bench add --zig \"git+https://github.com/Hejsil/zig-bench#main\"\n\
-             Or: poly-bench add --zig \"https://github.com/foo/bar/archive/refs/tags/v0.1.0.tar.gz\""
-        ));
-    }
+    // Store the original spec as the package identifier in manifest
+    let package = spec.to_string();
+    let version = parsed_url.commit_ref.clone();
 
     manifest.add_zig_dependency(&package, &version)?;
     crate::save_manifest(&project_root, &manifest)?;
@@ -989,14 +1255,18 @@ pub fn add_zig_dependency(spec: &str) -> Result<()> {
 
     ensure_zig_build_files(&zig_root)?;
 
-    let zig_url = zig_package_url(&package, &version);
-    let dep_name = zig_dep_name_from_url(&zig_url);
+    let dep_name = &parsed_url.dep_name;
+    let fetch_url = &parsed_url.fetch_url;
+
+    // Clear any stale cache entries for this dependency before fetching.
+    // This ensures we get a fresh download and prevents corrupted cache issues.
+    clear_zig_cache_for_dep(dep_name);
 
     let spinner = terminal::step_spinner(&format!("Fetching {}...", dep_name));
     let output = terminal::run_command_with_spinner(
         &spinner,
         Command::new("zig")
-            .args(["fetch", &format!("--save={}", dep_name), &zig_url])
+            .args(["fetch", &format!("--save={}", dep_name), fetch_url])
             .current_dir(&zig_root),
     )
     .map_err(|e| miette::miette!("Failed to run zig fetch: {}", e))?;
@@ -1004,14 +1274,59 @@ pub fn add_zig_dependency(spec: &str) -> Result<()> {
     if !output.status.success() {
         terminal::finish_failure(&spinner, "zig fetch failed");
         terminal::print_stderr_excerpt(&output.stderr, 8);
+        // Revert the manifest changes since fetch failed
+        let _ = revert_zig_dependency(&project_root, &zig_root, &package, dep_name);
         return Err(command_failure(
-            &format!("zig fetch --save={} {}", dep_name, zig_url),
+            &format!("zig fetch --save={} {}", dep_name, fetch_url),
             &zig_root,
             &output,
             "Verify the URL is valid and the package is accessible.",
         ));
     }
-    terminal::finish_success(&spinner, &format!("Added {} to polybench.toml", package));
+
+    // Extract the hash from the project's build.zig.zon for validation
+    let dep_hash = extract_dep_hash_from_zon(&zig_root, dep_name);
+
+    if let Some(hash) = dep_hash {
+        // Validate the fetched package
+        match validate_zig_dep_compatibility(&hash, dep_name) {
+            ZigDepValidation::Compatible | ZigDepValidation::NoMinVersionSpecified => {
+                terminal::finish_success(
+                    &spinner,
+                    &format!("Added {} ({})", dep_name, parsed_url.commit_ref),
+                );
+            }
+            ZigDepValidation::MissingBuildZon => {
+                terminal::finish_failure(&spinner, "Package validation failed");
+                let _ = revert_zig_dependency(&project_root, &zig_root, &package, dep_name);
+                return Err(miette::miette!(
+                    "Package '{}' does not have a build.zig.zon file.\n\
+                     Zig packages without build.zig.zon are not supported by Polybench.",
+                    dep_name
+                ));
+            }
+            ZigDepValidation::IncompatibleVersion { required, polybench } => {
+                terminal::finish_failure(&spinner, "Package version incompatible");
+                let _ = revert_zig_dependency(&project_root, &zig_root, &package, dep_name);
+                return Err(miette::miette!(
+                    "Package '{}' requires Zig >= {} (minimum_zig_version = \"{}\")\n\
+                     Polybench uses Zig {}. This package is not compatible.",
+                    dep_name,
+                    required,
+                    required,
+                    polybench
+                ));
+            }
+        }
+    } else {
+        // Could not extract hash from build.zig.zon - this shouldn't happen if fetch succeeded
+        terminal::finish_failure(&spinner, "Could not validate package");
+        let _ = revert_zig_dependency(&project_root, &zig_root, &package, dep_name);
+        return Err(miette::miette!(
+            "Could not extract package hash from build.zig.zon after fetch.\n\
+             This may indicate a problem with the package or zig fetch."
+        ));
+    }
 
     Ok(())
 }
@@ -1090,6 +1405,11 @@ pub fn remove_zig_dependency(package: &str) -> Result<()> {
             "Dependency '{}' is not installed. Check polybench.toml for installed Zig dependencies.",
             package
         ));
+    }
+
+    // Extract dep_name from the package URL to clear cache
+    if let Ok(parsed) = parse_zig_git_url(package) {
+        clear_zig_cache_for_dep(&parsed.dep_name);
     }
 
     manifest.remove_zig_dependency(package)?;
@@ -1806,5 +2126,206 @@ mod tests {
     fn test_zig_dep_name_strips_git_suffix() {
         let name = zig_dep_name_from_url("git+https://github.com/StrobeLabs/eth.zig.git#v0.2.2");
         assert_eq!(name, "eth_zig");
+    }
+
+    // Tests for parse_zig_git_url
+
+    #[test]
+    fn test_parse_zig_git_url_with_commit_hash() {
+        let result = parse_zig_git_url("git+https://github.com/discord-zig/discord.zig/#abc123def");
+        assert!(result.is_ok());
+        let parsed = result.unwrap();
+        assert_eq!(
+            parsed.fetch_url,
+            "git+https://github.com/discord-zig/discord.zig.git#abc123def"
+        );
+        assert_eq!(parsed.commit_ref, "abc123def");
+        assert_eq!(parsed.dep_name, "discord_zig");
+    }
+
+    #[test]
+    fn test_parse_zig_git_url_with_head() {
+        let result = parse_zig_git_url("git+https://github.com/discord-zig/discord.zig/#HEAD");
+        assert!(result.is_ok());
+        let parsed = result.unwrap();
+        assert_eq!(parsed.fetch_url, "git+https://github.com/discord-zig/discord.zig.git#HEAD");
+        assert_eq!(parsed.commit_ref, "HEAD");
+    }
+
+    #[test]
+    fn test_parse_zig_git_url_defaults_to_head() {
+        let result = parse_zig_git_url("git+https://github.com/discord-zig/discord.zig/");
+        assert!(result.is_ok());
+        let parsed = result.unwrap();
+        assert_eq!(parsed.commit_ref, "HEAD");
+        assert!(parsed.fetch_url.ends_with("#HEAD"));
+    }
+
+    #[test]
+    fn test_parse_zig_git_url_without_trailing_slash() {
+        let result = parse_zig_git_url("git+https://github.com/discord-zig/discord.zig");
+        assert!(result.is_ok());
+        let parsed = result.unwrap();
+        assert_eq!(parsed.commit_ref, "HEAD");
+    }
+
+    #[test]
+    fn test_parse_zig_git_url_with_git_suffix() {
+        let result = parse_zig_git_url("git+https://github.com/discord-zig/discord.zig.git#main");
+        assert!(result.is_ok());
+        let parsed = result.unwrap();
+        assert_eq!(parsed.fetch_url, "git+https://github.com/discord-zig/discord.zig.git#main");
+        assert_eq!(parsed.commit_ref, "main");
+    }
+
+    #[test]
+    fn test_parse_zig_git_url_gitlab() {
+        let result = parse_zig_git_url("git+https://gitlab.com/owner/repo/#abc123");
+        assert!(result.is_ok());
+        let parsed = result.unwrap();
+        assert_eq!(parsed.fetch_url, "git+https://gitlab.com/owner/repo.git#abc123");
+    }
+
+    #[test]
+    fn test_parse_zig_git_url_rejects_missing_git_prefix() {
+        let result = parse_zig_git_url("https://github.com/discord-zig/discord.zig");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("git+"));
+    }
+
+    #[test]
+    fn test_parse_zig_git_url_rejects_http() {
+        let result = parse_zig_git_url("git+http://github.com/discord-zig/discord.zig");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("HTTPS"));
+    }
+
+    #[test]
+    fn test_parse_zig_git_url_rejects_unsupported_host() {
+        let result = parse_zig_git_url("git+https://bitbucket.org/owner/repo");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("GitHub") || err.contains("GitLab"));
+    }
+
+    #[test]
+    fn test_parse_zig_git_url_rejects_invalid_structure() {
+        let result = parse_zig_git_url("git+https://github.com/invalid");
+        assert!(result.is_err());
+    }
+
+    // Tests for parse_zon_minimum_version
+
+    #[test]
+    fn test_parse_zon_minimum_version_present() {
+        let zon = r#"
+.{
+    .name = .test_package,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.14.0",
+}
+"#;
+        let version = parse_zon_minimum_version(zon);
+        assert!(version.is_some());
+        let v = version.unwrap();
+        assert_eq!(v.major, 0);
+        assert_eq!(v.minor, 14);
+        assert_eq!(v.patch, 0);
+    }
+
+    #[test]
+    fn test_parse_zon_minimum_version_with_patch() {
+        let zon = r#".minimum_zig_version = "0.15.2","#;
+        let version = parse_zon_minimum_version(zon);
+        assert!(version.is_some());
+        let v = version.unwrap();
+        assert_eq!(v.major, 0);
+        assert_eq!(v.minor, 15);
+        assert_eq!(v.patch, 2);
+    }
+
+    #[test]
+    fn test_parse_zon_minimum_version_absent() {
+        let zon = r#"
+.{
+    .name = .test_package,
+    .version = "0.1.0",
+}
+"#;
+        let version = parse_zon_minimum_version(zon);
+        assert!(version.is_none());
+    }
+
+    #[test]
+    fn test_parse_zon_minimum_version_with_prerelease() {
+        let zon = r#".minimum_zig_version = "0.15.0-dev+abc123","#;
+        let version = parse_zon_minimum_version(zon);
+        assert!(version.is_some());
+        let v = version.unwrap();
+        assert_eq!(v.major, 0);
+        assert_eq!(v.minor, 15);
+        assert_eq!(v.patch, 0);
+    }
+
+    // Tests for version compatibility
+
+    #[test]
+    fn test_polybench_zig_version_constant() {
+        assert_eq!(POLYBENCH_ZIG_VERSION, (0, 15, 2));
+    }
+
+    #[test]
+    fn test_extract_dep_hash_from_zon_content() {
+        // Test that regex pattern matches Zig's hash format in build.zig.zon
+        let zon_content = r#".{
+    .name = .test_pkg,
+    .version = "0.0.1",
+    .dependencies = .{
+        .sha3 = .{
+            .url = "git+https://github.com/cod1r/sha3/",
+            .hash = "N-V-__8AAHMxAACiSWxTMCAeALG0mPMHjnhdGUx07YnKBsmV",
+        },
+    },
+    .paths = .{ "" },
+}"#;
+
+        // Test the regex pattern used in extract_dep_hash_from_zon
+        let dep_pattern = format!(r#"\.{}\s*=\s*\.\{{"#, regex::escape("sha3"));
+        let dep_re = regex::Regex::new(&dep_pattern).unwrap();
+        assert!(dep_re.is_match(zon_content));
+
+        let dep_match = dep_re.find(zon_content).unwrap();
+        let after_dep = &zon_content[dep_match.start()..];
+
+        let hash_re = regex::Regex::new(r#"\.hash\s*=\s*"([^"]+)""#).unwrap();
+        let caps = hash_re.captures(after_dep).unwrap();
+        let hash = caps.get(1).unwrap().as_str();
+        assert_eq!(hash, "N-V-__8AAHMxAACiSWxTMCAeALG0mPMHjnhdGUx07YnKBsmV");
+    }
+
+    #[test]
+    fn test_extract_dep_hash_pattern_with_underscore_name() {
+        let zon_content = r#".{
+    .dependencies = .{
+        .eth_zig = .{
+            .url = "git+https://github.com/StrobeLabs/eth.zig.git#v0.2.2",
+            .hash = "efEm-kNdCQBcyYFAZG0FVkmPeN7lJkLLBDaTFp0T7lSD",
+        },
+    },
+}"#;
+
+        let dep_pattern = format!(r#"\.{}\s*=\s*\.\{{"#, regex::escape("eth_zig"));
+        let dep_re = regex::Regex::new(&dep_pattern).unwrap();
+        assert!(dep_re.is_match(zon_content));
+
+        let dep_match = dep_re.find(zon_content).unwrap();
+        let after_dep = &zon_content[dep_match.start()..];
+
+        let hash_re = regex::Regex::new(r#"\.hash\s*=\s*"([^"]+)""#).unwrap();
+        let caps = hash_re.captures(after_dep).unwrap();
+        let hash = caps.get(1).unwrap().as_str();
+        assert_eq!(hash, "efEm-kNdCQBcyYFAZG0FVkmPeN7lJkLLBDaTFp0T7lSD");
     }
 }

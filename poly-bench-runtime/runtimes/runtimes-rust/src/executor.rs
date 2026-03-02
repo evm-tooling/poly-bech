@@ -141,7 +141,8 @@ impl Runtime for RustRuntime {
 
     async fn initialize(&mut self, _suite: &SuiteIR) -> Result<()> {
         // Verify rustc/cargo is available
-        which::which("cargo").map_err(|_| miette!("Cargo not found in PATH"))?;
+        poly_bench_traits::resolve_binary(poly_bench_dsl::Lang::Rust)
+            .map_err(|_| miette!("Cargo not found. Install via 'poly-bench add-runtime rust' or ensure cargo is in PATH"))?;
         Ok(())
     }
 
@@ -281,7 +282,8 @@ impl Runtime for RustRuntime {
         std::fs::write(&main_path, &source)
             .map_err(|e| miette!("Failed to write main.rs: {}", e))?;
 
-        let cargo_binary = which::which("cargo").map_err(|_| miette!("Cargo not found in PATH"))?;
+        let (cargo_binary, _) = poly_bench_traits::resolve_binary(poly_bench_dsl::Lang::Rust)
+            .map_err(|_| miette!("Cargo not found. Install via 'poly-bench add-runtime rust' or ensure cargo is in PATH"))?;
 
         // Use 'cargo check' for fast compilation checking without codegen
         let output = tokio::process::Command::new(&cargo_binary)
@@ -398,7 +400,8 @@ impl Runtime for RustRuntime {
         std::fs::write(&src_path, &source)
             .map_err(|e| miette!("Failed to write benchmark source: {}", e))?;
 
-        let cargo_binary = which::which("cargo").map_err(|_| miette!("Cargo not found in PATH"))?;
+        let (cargo_binary, _) = poly_bench_traits::resolve_binary(poly_bench_dsl::Lang::Rust)
+            .map_err(|_| miette!("Cargo not found. Install via 'poly-bench add-runtime rust' or ensure cargo is in PATH"))?;
 
         // Build the binary
         let build_output = tokio::process::Command::new(&cargo_binary)
@@ -551,7 +554,8 @@ impl RustRuntime {
         std::fs::write(&src_path, &source)
             .map_err(|e| miette!("Failed to write benchmark source: {}", e))?;
 
-        let cargo_binary = which::which("cargo").map_err(|_| miette!("Cargo not found in PATH"))?;
+        let (cargo_binary, _) = poly_bench_traits::resolve_binary(poly_bench_dsl::Lang::Rust)
+            .map_err(|_| miette!("Cargo not found. Install via 'poly-bench add-runtime rust' or ensure cargo is in PATH"))?;
 
         // Build the binary (separate from running)
         let build_output = tokio::process::Command::new(&cargo_binary)

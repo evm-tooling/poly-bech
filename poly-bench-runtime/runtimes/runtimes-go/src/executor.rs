@@ -139,7 +139,12 @@ impl Runtime for GoRuntime {
         std::fs::write(&src_path, &source)
             .map_err(|e| miette!("Failed to write benchmark source: {}", e))?;
 
-        let go_binary = which::which("go").map_err(|_| miette!("Go not found in PATH"))?;
+        let (go_binary, _) =
+            poly_bench_traits::resolve_binary(poly_bench_dsl::Lang::Go).map_err(|_| {
+                miette!(
+                    "Go not found. Install via 'poly-bench add-runtime go' or ensure go is in PATH"
+                )
+            })?;
 
         // Use 'go build' to compile without running
         let output = tokio::process::Command::new(&go_binary)
@@ -197,7 +202,12 @@ impl Runtime for GoRuntime {
         std::fs::write(&src_path, &source)
             .map_err(|e| miette!("Failed to write benchmark source: {}", e))?;
 
-        let go_binary = which::which("go").map_err(|_| miette!("Go not found in PATH"))?;
+        let (go_binary, _) =
+            poly_bench_traits::resolve_binary(poly_bench_dsl::Lang::Go).map_err(|_| {
+                miette!(
+                    "Go not found. Install via 'poly-bench add-runtime go' or ensure go is in PATH"
+                )
+            })?;
 
         // Build the binary (separate from running)
         let binary_path = working_dir.join("polybench_runner");
@@ -378,7 +388,12 @@ impl GoRuntime {
         std::fs::write(&src_path, &source)
             .map_err(|e| miette!("Failed to write benchmark source: {}", e))?;
 
-        let go_binary = which::which("go").map_err(|_| miette!("Go not found in PATH"))?;
+        let (go_binary, _) =
+            poly_bench_traits::resolve_binary(poly_bench_dsl::Lang::Go).map_err(|_| {
+                miette!(
+                    "Go not found. Install via 'poly-bench add-runtime go' or ensure go is in PATH"
+                )
+            })?;
 
         // Build the binary (separate from running)
         let binary_path = working_dir.join("polybench_runner");

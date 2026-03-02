@@ -25,9 +25,8 @@ pub struct PythonRuntime {
 
 impl PythonRuntime {
     pub fn new() -> Result<Self> {
-        let python_binary = which::which("python3")
-            .or_else(|_| which::which("python"))
-            .map_err(|_| miette!("Python not found in PATH. Please install Python 3."))?;
+        let (python_binary, _) = poly_bench_traits::resolve_binary(poly_bench_dsl::Lang::Python)
+            .map_err(|_| miette!("Python not found. Install via 'poly-bench add-runtime python' or ensure python3 is in PATH"))?;
 
         Ok(Self {
             temp_dir: None,

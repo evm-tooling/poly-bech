@@ -23,6 +23,7 @@ pub mod measurement;
 pub mod plugin;
 pub mod project;
 pub mod stdlib_provider;
+pub mod toolchain;
 pub mod traits;
 
 // LSP re-exports
@@ -47,6 +48,9 @@ pub use measurement::{Comparison, ComparisonWinner, Measurement, DEFAULT_CV_THRE
 pub use plugin::{RuntimePlugin, PLUGINS};
 pub use project::{detect_from_markers, ProjectRootDetector};
 pub use stdlib_provider::StdlibProvider;
+pub use toolchain::{
+    is_polybench_toolchain_installed, pinned_version, resolve_binary, resolve_binary_path,
+};
 pub use traits::{Runtime, RuntimeFactory};
 
 /// Convert syntax Lang to dsl Lang for registry lookups
