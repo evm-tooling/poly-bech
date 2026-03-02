@@ -92,7 +92,7 @@ impl Manifest {
   ]}
 />
 
-Manifest::new() creates python: Some(PythonConfig { ... }) when "python" is in the enabled languages list. The dependencies map is used to populate requirements.txt during build.
+Manifest::new() creates python: Some(PythonConfig \{ ... \}) when "python" is in the enabled languages list. The dependencies map is used to populate requirements.txt during build.
 
 ---
 
@@ -306,7 +306,7 @@ Both use the same assembly order. The script is built by concatenating the follo
 
    Each iteration times the benchmark call. `each_hook` runs before/after each call. `after_hook` runs at the end. If `use_memory` is set, `tracemalloc` tracks peak memory per batch.
 
-10. **JSON output** — The script prints the final JSON on the last line: `{"iterations": N, "total_nanos": T, "nanos_per_op": X, "ops_per_sec": Y}`.
+10. **JSON output** — The script prints the final JSON on the last line: `\{"iterations": N, "total_nanos": T, "nanos_per_op": X, "ops_per_sec": Y}`.
 
 The `normalize_python_indent` helper strips common leading whitespace from embedded blocks so the generated script has consistent indentation.
 
@@ -340,7 +340,7 @@ The builder uses VirtualFileBuilderCore to:
 
 2. Assemble content — Imports, declarations, helpers, and init are written in order. For benchmark/validate/skip blocks, it emits def _bench_N(): (or similar) with placeholder fixture assignments and the block content indented.
 
-3. Compute paths — The virtual file path is {module_root}/.lsp_virtual/_lsp_virtual_{hash}.py where a hash is derived from the bench path. This keeps virtual files unique per .bench file.
+3. Compute paths — The virtual file path is `\{module_root}/.lsp_virtual/_lsp_virtual_\{hash}.py` where a hash is derived from the bench path. This keeps virtual files unique per .bench file.
 
 4. Build section mappings — Each block maps a range in the virtual file to a range in the .bench file. These are stored in section_mappings so diagnostics can be translated from virtual line/character back to bench line/character.
 

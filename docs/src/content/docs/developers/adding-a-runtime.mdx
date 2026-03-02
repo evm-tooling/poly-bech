@@ -92,7 +92,7 @@ From `poly-bench-traits/src/lsp_client.rs`. Implement for your language server:
 | `SERVER_NAME` | Name for logging |
 | `LANGUAGE_ID` | Document language ID for LSP |
 | `find_executable()` | Find server in PATH |
-| `find_executable_in_workspace(workspace_root)` | Check `.polybench/runtime-env/{lang}/` first |
+| `find_executable_in_workspace(workspace_root)` | Check `.polybench/runtime-env/\{lang}/` first |
 | `server_args()` | Args to pass to server |
 | `server_args_for_path(path)` | Override args by path (e.g. pyright vs pyright-langserver) |
 | `current_dir(workspace_root)` | Working directory for subprocess |
@@ -156,9 +156,9 @@ Use `Measurement::from_aggregate(iterations, total_nanos)` or `Measurement::from
 The LSP integration works as follows:
 
 1. Virtual file — VirtualFileBuilder::build(params) produces a VirtualFile with content and section_mappings (bench span to virtual line).
-2. Write to disk — The LSP layer writes to .lsp_virtual/virtual_*.{ext} so the language server can see the file.
+2. Write to disk — The LSP layer writes to .lsp_virtual/virtual_*.\{ext} so the language server can see the file.
 3. Diagnostics — EmbeddedDiagnosticProvider::check_blocks() triggers did_change and request_diagnostics, then maps diagnostics back via virtual_to_bench.
-4. LSP client — embedded_lsp_client_init(workspace_root) starts the language server; find_executable_in_workspace checks .polybench/runtime-env/{lang}/ first.
+4. LSP client — embedded_lsp_client_init(workspace_root) starts the language server; find_executable_in_workspace checks .polybench/runtime-env/\{lang}/ first.
 
 ---
 

@@ -683,25 +683,62 @@ pub fn csharp_csproj(target_framework: &str) -> String {
     )
 }
 
-/// Generate build.zig for Zig runtime env
+/// Generate build.zig for Zig runtime env (Zig 0.15.2 format, no deps)
 pub fn build_zig() -> String {
-    r#"const std = @import("std");
+    build_zig_with_deps(&[])
+}
 
-pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
-
-    const exe = b.addExecutable(.{
-        .name = "polybench-runner",
-        .root_source_file = b.path("src/main.zig"),
+/// Generate build.zig for Zig runtime env with dependencies (Zig 0.15.2 format)
+pub fn build_zig_with_deps(deps: &[String]) -> String {
+    let mut dep_blocks = String::new();
+    let mut import_entries = Vec::new();
+    for dep in deps {
+        let dep_var = dep.replace('-', "_");
+        dep_blocks.push_str(&format!(
+            r#"    const {0}_dep = b.dependency("{1}", .{{
         .target = target,
         .optimize = optimize,
-    });
+    }});
+"#,
+            dep_var, dep
+        ));
+        import_entries.push(format!(
+            r#"        .{{ .name = "{0}", .module = {1}_dep.module("{0}") }}"#,
+            dep, dep_var
+        ));
+    }
+    let imports_block = if import_entries.is_empty() {
+        "".to_string()
+    } else {
+        format!(
+            r#",
+        .imports = &.{{
+{}
+        }}"#,
+            import_entries.join(",\n")
+        )
+    };
+    format!(
+        r#"const std = @import("std");
+
+pub fn build(b: *std.Build) void {{
+    const target = b.standardTargetOptions(.{{}});
+    const optimize = b.standardOptimizeOption(.{{}});
+{}
+    const exe = b.addExecutable(.{{
+        .name = "polybench-runner",
+        .root_module = b.createModule(.{{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize{}
+        }}),
+    }});
 
     b.installArtifact(exe);
-}
-"#
-    .to_string()
+}}
+"#,
+        dep_blocks, imports_block
+    )
 }
 
 /// Generate build.zig.zon for Zig runtime env
@@ -1194,6 +1231,19 @@ mod tests {
         let content = build_zig_zon();
         assert!(content.contains(".paths"));
         assert!(content.contains(".name = .polybench"));
+    }
+
+    #[test]
+    fn test_build_zig_with_deps_injects_dependency_blocks() {
+        let deps = vec!["eth".to_string(), "discord".to_string()];
+        let content = build_zig_with_deps(&deps);
+        assert!(content.contains("b.createModule"));
+        assert!(content.contains("eth_dep"));
+        assert!(content.contains("b.dependency(\"eth\""));
+        assert!(content.contains("eth_dep.module(\"eth\")"));
+        assert!(content.contains("discord_dep"));
+        assert!(content.contains("b.dependency(\"discord\""));
+        assert!(content.contains("discord_dep.module(\"discord\")"));
     }
 
     #[test]
