@@ -3,6 +3,10 @@ title: Polybench Runtime
 description: Technical reference for how the .polybench runtime project is set up per language
 ---
 
+<Aside type="caution">
+<span><strong>Docs in progress.</strong> Some content or features may be missing or not covered in detail.</span>
+</Aside>
+
 <div data-pagefind-weight="10">
 
 Each language has an isolated project root at `.polybench/runtime-env/<lang>/`. poly-bench scaffolds this directory at init, populates it during build or install, and generates benchmark source at run time. This section provides technical deep-dives into the scaffolding, codegen, and execution model for each language.
@@ -40,7 +44,7 @@ The benchmark pipeline runs from your .bench files through to execution:
 5. **Build** — The language toolchain compiles the source or prepares it for execution.
 6. **Execute** — poly-bench invokes the compiled binary or interpreter and collects timing.
 
-For the high-level flow, see [Architecture](/docs/core/architecture). For user-facing setup and gotchas, see [Requirements](/docs/requirements). To add a new runtime, see [Adding a Runtime](/docs/developers/adding-a-runtime).
+For the high-level flow, see [Architecture](/docs/architecture). For user-facing setup and gotchas, see [Requirements](/docs/requirements). To add a new runtime, see [Adding a Runtime](/docs/developers/adding-a-runtime).
 
 <Aside type="tip">
 <span>For quick validation without execution, run <code>poly-bench check</code>.</span>
@@ -70,13 +74,13 @@ Each language has a dedicated technical report that covers templates, codegen, a
 
 | Language | Technical Report |
 |----------|------------------|
-| [Go](/docs/polybench-runtime/go) | `go.mod`, codegen, plugin vs subprocess, `polybench_runner` |
-| [TypeScript](/docs/polybench-runtime/ts) | `package.json`, `tsconfig.json`, V8/Node execution, `bench.mjs` |
-| [Rust](/docs/polybench-runtime/rust) | `Cargo.toml`, `main.rs` overwrite, `polybench_runner` binary |
-| [Python](/docs/polybench-runtime/python) | `.venv`, `requirements.txt`, `bench.py`, subprocess execution |
-| [C](/docs/polybench-runtime/c) | `clang` vs CMake+vcpkg, generated `.c`, build flow |
-| [C#](/docs/polybench-runtime/csharp) | `polybench.csproj`, `Program.cs` overwrite, `global.json`, `dotnet run` |
-| [Zig](/docs/polybench-runtime/zig) | `build.zig`, `build.zig.zon`, generated `.zig`, `zig build` |
+| [Go](/docs/architecture/polybench-runtime/go) | `go.mod`, codegen, plugin vs subprocess, `polybench_runner` |
+| [TypeScript](/docs/architecture/polybench-runtime/ts) | `package.json`, `tsconfig.json`, V8/Node execution, `bench.mjs` |
+| [Rust](/docs/architecture/polybench-runtime/rust) | `Cargo.toml`, `main.rs` overwrite, `polybench_runner` binary |
+| [Python](/docs/architecture/polybench-runtime/python) | `.venv`, `requirements.txt`, `bench.py`, subprocess execution |
+| [C](/docs/architecture/polybench-runtime/c) | `clang` vs CMake+vcpkg, generated `.c`, build flow |
+| [C#](/docs/architecture/polybench-runtime/csharp) | `polybench.csproj`, `Program.cs` overwrite, `global.json`, `dotnet run` |
+| [Zig](/docs/architecture/polybench-runtime/zig) | `build.zig`, `build.zig.zon`, generated `.zig`, `zig build` |
 
 ---
 

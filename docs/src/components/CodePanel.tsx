@@ -1,8 +1,8 @@
 'use client'
 
+import { useCodeTheme } from '@/lib/use-code-theme'
 import { Highlight } from 'prism-react-renderer'
 import * as React from 'react'
-import { useCodeTheme } from '@/lib/use-code-theme'
 import '../lib/prism-bash'
 import '../lib/prism-bench'
 
@@ -186,10 +186,10 @@ export function CodeGroup({ tabs: tabsInput, title }: CodeGroupProps) {
   if (tabs.length === 0) return null
 
   return (
-    <div className="group/code my-4 rounded-2xl overflow-hidden border border-code-border bg-code-bg shadow-xl dark:shadow-none transition-all duration-300 !hover:border-tertiary/30 hover:shadow-[0_0_20px_-1px_hsl(var(--tertiary)/0.15)]">
+    <div className="group/code my-8 rounded-2xl overflow-hidden border border-code-border bg-code-bg shadow-xl dark:shadow-none transition-all duration-300 !hover:border-tertiary/30 hover:shadow-[0_0_20px_-1px_hsl(var(--tertiary)/0.15)]">
       <div className="overflow-hidden">
         <TabGroup selectedIndex={selectedIndex} onChange={setSelectedIndex}>
-          <div className="flex items-center justify-between gap-2 px-3 py-2 bg-background-elevated border-b border-border">
+          <div className="flex items-center justify-between gap-2 px-3 py-1 bg-background-elevated border-b border-border">
             <div className="flex items-center gap-2 min-w-0">
               <div className="flex gap-1 shrink-0">
                 <span className="w-2.5 h-2.5 rounded-full bg-red-400" />

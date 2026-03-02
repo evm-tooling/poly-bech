@@ -78,10 +78,10 @@ export default function Footer() {
               <ul className="space-y-2 text-sm text-foreground-secondary">
                 <li>
                   <Link
-                    href="/docs/examples"
+                    href="/docs/platform-compatibility"
                     className="hover:text-primary transition-colors"
                   >
-                    Benchmark Features
+                    Platform Compatibility
                   </Link>
                 </li>
                 <li>
@@ -94,7 +94,7 @@ export default function Footer() {
                 </li>
                 <li>
                   <Link
-                    href="/docs/core/architecture"
+                    href="/docs/architecture"
                     className="hover:text-primary transition-colors"
                   >
                     Architecture

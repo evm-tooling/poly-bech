@@ -1,0 +1,99 @@
+---
+title: Executor
+description: Technical deep-dive on benchmark orchestration, calibration, and measurement collection
+---
+
+<Aside type="caution">
+<span><strong>Docs in progress.</strong> Some content or features may be missing or not covered in detail.</span>
+</Aside>
+
+The `poly-bench-executor` crate orchestrates benchmark execution. It spawns isolated subprocesses per language, runs warmup and timed iterations, collects timing and memory measurements, and aggregates results. This page covers the scheduler, compile cache, workspace management, and calibration flow.
+
+---
+
+## Overview
+
+The executor is responsible for:
+
+1. **Precompile** — Validate and compile generated code for each language before running
+2. **Calibration** — When `runMode` is `timeBased`, determine iteration count to hit target time
+3. **Execution** — Spawn subprocesses, run benchmarks, collect stdout
+4. **Aggregation** — Compute statistics (mean, std dev, ops/sec, speedup) across runs
+
+---
+
+## Scheduler
+
+The scheduler (`poly-bench-executor/src/scheduler.rs`) implements the main run loop:
+
+- **`run(spec, suite, options)`** — Entry point for a single benchmark suite
+- **Per-language execution** — Runs each language in sequence or shuffled (for fairness)
+- **Timeout handling** — Optional per-run timeout
+- **Progress reporting** — Spinner and progress bars via `indicatif`
+
+The scheduler calls into `poly-bench-runtime` to generate code, build, and execute. It collects `Measurement` objects (timing, memory) and aggregates them into `BenchmarkResult` and `SuiteResults`.
+
+---
+
+## Execution Flow
+
+1. **Generate** — For each benchmark, call `poly-bench-runtime` to generate language-specific source
+2. **Build** — Compile or prepare (e.g. `go build`, `cargo build`, `node` for TS)
+3. **Warmup** — Run `warmup` iterations (configurable) to prime caches
+4. **Timed** — Run `iterations` (or calibrated count) and measure
+5. **Repeat** — If `count > 1`, run multiple times and aggregate
+6. **Report** — Pass results to `poly-bench-reporter`
+
+---
+
+## Calibration (timeBased)
+
+When the suite uses `timeBased` run mode:
+
+1. **Pilot run** — Execute 100 iterations to get baseline timing
+2. **Calculate** — `iterations = targetTime / (pilot_time / 100)`
+3. **Clamp** — Apply `minIterations` and `maxIterations` from config
+4. **Execute** — Run benchmarks with the calibrated iteration count
+
+This ensures fast operations get enough iterations for stable timing, and slow operations don't run indefinitely.
+
+---
+
+## Compile Cache
+
+The compile cache (`poly-bench-executor/src/compile_cache.rs`) caches compiled binaries:
+
+- **Cache key** — Hash of generated source + config
+- **Cache stats** — `poly-bench cache stats` shows cache size
+- **Clear** — `poly-bench cache clear` invalidates cache
+- **Clean** — `poly-bench cache clean` removes entire `.polybench/` workspace
+
+If source is unchanged, the executor skips recompilation.
+
+---
+
+## Workspace
+
+The workspace module (`poly-bench-executor/src/workspace.rs`) manages:
+
+- **CompileWorkspace** — Temporary or persistent directory for generated code
+- **ProjectRoots** — Per-language project roots (e.g. `go:./my-mod`, `ts:./frontend`)
+- **Format size** — Human-readable disk usage for cache stats
+
+---
+
+## Anvil Integration
+
+For EVM benchmarks, the executor supports `AnvilService`:
+
+- **spawn** — Start local Anvil node
+- **RPC URL** — Injected into benchmark environment
+- **Cleanup** — Stop Anvil on process exit
+
+---
+
+## Further Reading
+
+- [Architecture](/docs/architecture) — Pipeline overview
+- [Polybench Runtime](/docs/architecture/polybench-runtime) — How generated code is built and executed
+- [Reporter](/docs/architecture/reporter) — How results are formatted

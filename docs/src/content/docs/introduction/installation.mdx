@@ -1,0 +1,70 @@
+---
+title: Installation
+description: ""
+---
+
+Install poly-bench via the native binary installer, or build from source.
+
+## Native Binary
+
+Install the pre-built binary using the installer script:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Install",
+      language: "bash",
+      code: `curl -sSL https://polybench.evm-tooling.tools | bash`
+    },
+  ]}
+/>
+
+This downloads the latest release for your platform (macOS ARM64, Linux x86_64, Windows x86_64) and installs to `~/.local/bin` by default. Use `-d` to specify a custom install directory:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Custom directory",
+      language: "bash",
+      code: `curl -sSL https://polybench.evm-tooling.tools | bash -s -- -d /usr/local/bin`
+    },
+  ]}
+/>
+
+
+## Using Unreleased Commits
+
+To test the latest features before a release, clone the repository and build from source:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Build from source",
+      language: "bash",
+      code: `git clone https://github.com/evm-tooling/poly-bench
+cd poly-bench
+cargo build --release`
+    },
+  ]}
+/>
+
+The binary will be at `target/release/poly-bench`. To install it globally:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Install from source",
+      language: "bash",
+      code: `cargo install --path .`
+    },
+  ]}
+/>
+
+## Security
+
+Follow security best practices when installing and using poly-bench:
+
+- **Pin versions** — Use the installer or `cargo install poly-bench` for reproducible installs. When building from source, pin to a specific commit or tag.
+- **Upgrade mindfully** — Run `poly-bench upgrade` to get the latest release, but review [changelogs](https://github.com/evm-tooling/poly-bench/releases) before upgrading.
+- **Inspect lockfiles** — If you use poly-bench in a project with Go, TypeScript, or Rust dependencies, review `go.sum`, `package-lock.json`, and `Cargo.lock` changes to minimize supply-chain risk.
+- **Pin GitHub Action versions** — In CI workflows, pin actions to commit SHAs instead of tags. [Actions Up](https://github.com/nickspaargaren/actions-up) can help migrate to pinned versions.
