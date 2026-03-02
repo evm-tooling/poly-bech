@@ -24,6 +24,7 @@ default:
   echo "  just dev lint  - clippy"
   echo "  just dev test  - run tests"
   echo "  just rel-p     - release patch (prod)"
+  echo "  just rel-p-P   - release patch, skip pre-commit checks"
   echo ""
   echo "All recipes:"
   just --list --unsorted
@@ -229,10 +230,10 @@ vscode-publish:
   fi
 
 # Release automation.
-[doc("Release: just prod release [patch|minor|major|explicit|docs] [ver]. Shortcuts: rel-p, rel-m, rel-M")]
+[doc("Release: just prod release [patch|minor|major|explicit|docs] [ver] [skip_pre_commit]. Shortcuts: rel-p, rel-m, rel-M. Use -P (rel-p-P) to skip pre-commit checks.")]
 [group('prod')]
 [confirm("Proceed with release workflow?")]
-release kind="patch" version="":
+release kind="patch" version="" skip_pre_commit="false":
   #!/usr/bin/env bash
   set -euo pipefail
 
@@ -245,6 +246,9 @@ release kind="patch" version="":
 
   kind="{{kind}}"
   version="{{version}}"
+  skip_pre_commit="{{skip_pre_commit}}"
+  no_verify=""
+  [[ "$skip_pre_commit" == "true" ]] && no_verify="--no-verify"
 
   if [[ "$kind" == "docs" ]]; then
     if [[ -n "$version" ]]; then
@@ -309,12 +313,12 @@ release kind="patch" version="":
   if git diff --staged --quiet; then
     echo "No version changes to commit."
   else
-    git commit -m "chore: release $rel_version"
-    git push origin main
+    git commit $no_verify -m "chore: release $rel_version"
+    git push $no_verify origin main
   fi
 
   git tag -a "$rel_version" -m "Release $rel_version"
-  git push origin "$rel_version"
+  git push $no_verify origin "$rel_version"
 
   gh release create "$rel_version" \
     --title "$rel_version" \
@@ -330,10 +334,10 @@ release kind="patch" version="":
   echo "Done. Review and merge the release PR to publish."
 
 # Release automation without VSCode extension.
-[doc("Release without VSCode: just prod release-no-vscode [patch|minor|major|explicit|docs]")]
+[doc("Release without VSCode: just prod release-no-vscode [patch|minor|major|explicit|docs] [ver] [skip_pre_commit]. Use -P to skip pre-commit checks.")]
 [group('prod')]
 [confirm("Proceed with release workflow (no VSCode extension bump/publish)?")]
-release-no-vscode kind="patch" version="":
+release-no-vscode kind="patch" version="" skip_pre_commit="false":
   #!/usr/bin/env bash
   set -euo pipefail
 
@@ -346,6 +350,9 @@ release-no-vscode kind="patch" version="":
 
   kind="{{kind}}"
   version="{{version}}"
+  skip_pre_commit="{{skip_pre_commit}}"
+  no_verify=""
+  [[ "$skip_pre_commit" == "true" ]] && no_verify="--no-verify"
 
   if [[ "$kind" == "docs" ]]; then
     if [[ -n "$version" ]]; then
@@ -402,12 +409,12 @@ release-no-vscode kind="patch" version="":
   if git diff --staged --quiet; then
     echo "No version changes to commit."
   else
-    git commit -m "chore: release $rel_version (no vscode)"
-    git push origin main
+    git commit $no_verify -m "chore: release $rel_version (no vscode)"
+    git push $no_verify origin main
   fi
 
   git tag -a "$rel_version" -m "Release $rel_version"
-  git push origin "$rel_version"
+  git push $no_verify origin "$rel_version"
 
   gh release create "$rel_version" \
     --title "$rel_version" \
@@ -454,15 +461,30 @@ b-d-d:
 rel-p:
   just prod release patch
 
+[doc("release: patch bump, skip pre-commit checks (-P)")]
+[group('prod')]
+rel-p-P:
+  just prod release patch "" true
+
 [doc("release: minor bump")]
 [group('prod')]
 rel-m:
   just prod release minor
 
+[doc("release: minor bump, skip pre-commit checks (-P)")]
+[group('prod')]
+rel-m-P:
+  just prod release minor "" true
+
 [doc("release: major bump")]
 [group('prod')]
 rel-M:
   just prod release major
+
+[doc("release: major bump, skip pre-commit checks (-P)")]
+[group('prod')]
+rel-M-P:
+  just prod release major "" true
 
 [doc("release: explicit version")]
 [group('prod')]
