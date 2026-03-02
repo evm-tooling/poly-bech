@@ -96,6 +96,7 @@ jobs:
 
       - name: Publish VSCode extension
         if: ${{ steps.changes.outputs.code_changed == 'true' && steps.changes.outputs.skip_vscode != 'true' }}
+        timeout-minutes: 2
         working-directory: extensions/vscode
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}

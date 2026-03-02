@@ -8,3 +8,5 @@ hash.bench
 .vscode/
 Untitled
 *.vsix
+.env
+.env.example
