@@ -92,7 +92,11 @@
         "extensions": [
           ".bench"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/bench-file.png",
+          "dark": "./icons/bench-file.png"
+        }
       }
     ],
     "grammars": [
