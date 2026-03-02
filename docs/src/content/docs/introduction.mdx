@@ -114,7 +114,7 @@ With poly-bench, you write one `.bench` file:
     }
 
     fixture data {
-        hex: "68656c6c6f20776f726c64"
+        hex: "64000000"
     }
 
     bench keccak256 {
@@ -131,6 +131,10 @@ Run `poly-bench run` and get unified results across all three languages with aut
 
 <Aside type="note">
 <span>The DSL compiles to native benchmark code in each language. Go benchmarks use Go's testing package, TypeScript runs in Node.js, and Rust uses Cargo's bench infrastructure.</span>
+</Aside>
+
+<Aside type="tip">
+<span>To get started quickly, check out the [quick start guide](/docs/getting-started).</span>
 </Aside>
 
 ### Design Principles

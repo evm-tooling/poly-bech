@@ -1,45 +1,44 @@
-import type { Metadata } from 'next'
+import type { Metadata } from 'next';
 
 /**
- * Site-wide SEO configuration for viem-go documentation
+ * Site-wide SEO configuration for poly-bench documentation
  */
 
 export const siteConfig = {
-  name: 'viem-go',
-  title: 'viem-go · Go Interface for Ethereum',
+  name: 'poly-bench',
+  title: 'poly-bench · Write Once, Benchmark Everywhere',
   description:
-    'Build reliable blockchain apps & libraries with idiomatic Go, type-safe and composable modules that interface with Ethereum — inspired by viem',
-  url: 'https://www.viemgolem.sh',
-  ogImage: '/og-image.png', // Default OG image
-  creator: '@viemgo', // Update to your Twitter handle
+    'A cross-language benchmarking framework. Write benchmarks once in a clean DSL and run them natively across Go, TypeScript, Rust, and more.',
+  url: 'https://poly-bench.rs',
+  ogImage: '/og-image.png',
+  creator: '@polybench',
   keywords: [
+    'benchmarking',
+    'cross-language benchmarking',
+    'poly-bench',
+    'Rust',
     'Go',
-    'Golem',
-    'viem-go',
-    'Golang',
-    'Ethereum',
-    'blockchain',
-    'viem',
-    'web3',
-    'smart contracts',
+    'TypeScript',
+    'performance',
+    'DSL',
+    'benchmark DSL',
+    'multi-language',
+    'developer tools',
+    'CLI',
     'EVM',
-    'cryptocurrency',
-    'decentralized',
-    'RPC',
-    'JSON-RPC',
-    'Ethereum client',
-    'Go Ethereum library',
-    'type-safe',
-    'composable',
+    'performance testing',
+    'code benchmarks',
+    'statistical analysis',
+    'native performance',
   ] as string[],
   authors: [
     {
-      name: 'viem-go',
-      url: 'https://www.viemgolem.sh',
+      name: 'poly-bench',
+      url: 'https://poly-bench.rs',
     },
   ] as Array<{ name: string; url: string }>,
   links: {
-    github: 'https://github.com/evm-tooling/viem-go', // Update to your repo
+    github: 'https://github.com/evm-tooling/poly-bench',
   },
 }
 
@@ -75,7 +74,7 @@ export function createBaseMetadata(): Metadata {
           url: siteConfig.ogImage,
           width: 1200,
           height: 630,
-          alt: `${siteConfig.name} - Go Interface for Ethereum`,
+          alt: `${siteConfig.name} - Write Once, Benchmark Everywhere`,
         },
       ],
     },
@@ -102,15 +101,15 @@ export function createBaseMetadata(): Metadata {
     icons: {
       icon: [
         {
-          url: '/favicons/golem-icon-only-light.svg',
+          url: '/favicons/bench-favicon.png',
           media: '(prefers-color-scheme: light)',
         },
         {
-          url: '/favicons/golem-icon-only-dark.svg',
+          url: '/favicons/bench-favicon.png',
           media: '(prefers-color-scheme: dark)',
         },
       ],
-      apple: '/favicons/golem-icon-only-dark.svg',
+      apple: '/favicons/bench-favicon.png',
     },
     manifest: '/manifest.json',
     alternates: {
@@ -189,7 +188,7 @@ export function getHomePageJsonLd() {
       price: '0',
       priceCurrency: 'USD',
     },
-    programmingLanguage: 'Go',
+    programmingLanguage: 'Rust',
   }
 }
 
@@ -230,7 +229,7 @@ export function getDocsPageJsonLd({
     isAccessibleForFree: true,
     about: {
       '@type': 'ComputerLanguage',
-      name: 'Go',
+      name: 'Rust',
     },
   }
 }

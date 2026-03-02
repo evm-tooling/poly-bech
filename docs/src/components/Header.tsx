@@ -155,7 +155,7 @@ export default function Header() {
           <VersionDropdown />
 
           <Link
-            href="/docs/getting-started"
+            href="/docs/introduction"
             className="hidden lg:inline-flex text-sm font-medium px-4 py-2 rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary-hover"
           >
             Read the Docs

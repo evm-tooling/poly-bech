@@ -2,7 +2,7 @@ import type { MetadataRoute } from 'next'
 import { siteConfig } from '@/lib/seo'
 
 /**
- * Generates robots.txt for the viem-go documentation site.
+ * Generates robots.txt for the poly-bench documentation site.
  * This controls how search engine crawlers access and index the site.
  *
  * @see https://nextjs.org/docs/app/api-reference/file-conventions/metadata/robots
