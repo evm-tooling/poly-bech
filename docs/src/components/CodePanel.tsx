@@ -1,8 +1,8 @@
 'use client'
 
-import { useCodeTheme } from '@/lib/use-code-theme'
 import { Highlight } from 'prism-react-renderer'
 import * as React from 'react'
+import { useCodeTheme } from '@/lib/use-code-theme'
 import '../lib/prism-bash'
 import '../lib/prism-bench'
 
