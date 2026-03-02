@@ -99,6 +99,7 @@ fn command_failure(command: &str, cwd: &Path, output: &Output, hint: &str) -> mi
 /// Using "module/...@version" fetches all packages in the module and their
 /// transitive dependencies; plain "module@version" can leave go.sum missing
 /// entries and cause "missing go.sum entry" when the benchmark runs.
+/// When version is "latest", omit @version so Go uses its default (latest).
 fn go_get_spec_for_transitives(package: &str, version: &str) -> String {
     let module = if package.contains('/') {
         let parts: Vec<&str> = package.split('/').collect();
@@ -112,10 +113,72 @@ fn go_get_spec_for_transitives(package: &str, version: &str) -> String {
         package.to_string()
     };
     if version == "latest" {
-        format!("{}/...@latest", module)
+        format!("{}/...", module)
     } else {
         format!("{}/...@{}", module, version)
     }
+}
+
+/// Read resolved Go module version from go.mod via `go list -m`
+fn read_go_dep_version(go_root: &Path, package: &str) -> Option<String> {
+    let output = Command::new("go")
+        .args(["list", "-m", "-json", package])
+        .current_dir(go_root)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    json.get("Version").and_then(|v| v.as_str()).map(String::from)
+}
+
+/// Read resolved npm package version from package.json
+fn read_ts_dep_version(ts_root: &Path, package: &str) -> Option<String> {
+    let path = ts_root.join("package.json");
+    let content = std::fs::read_to_string(&path).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let deps = json.get("dependencies")?.as_object()?;
+    deps.get(package)?.as_str().map(String::from)
+}
+
+/// Read resolved pip package version via `pip show`
+fn read_python_dep_version(python_root: &Path, package: &str) -> Option<String> {
+    let pip_path = ensure_python_venv_and_get_pip(python_root).ok()?;
+    let output =
+        Command::new(&pip_path).args(["show", package]).current_dir(python_root).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        if let Some(ver) = line.strip_prefix("Version: ") {
+            return Some(ver.trim().to_string());
+        }
+    }
+    None
+}
+
+/// Read resolved NuGet package version from .csproj PackageReference
+fn read_csharp_dep_version(csharp_root: &Path, package: &str) -> Option<String> {
+    let csproj_path = csharp_root.join("polybench.csproj");
+    let content = std::fs::read_to_string(&csproj_path).ok()?;
+    let include_attr = format!("Include=\"{}\"", package);
+    let version_attr = "Version=\"";
+    if let Some(pos) = content.find(&include_attr) {
+        // Get the full tag: from opening < to closing />
+        let tag_start = content[..pos].rfind('<')?;
+        let tag_end = content[pos..].find("/>")? + pos + 2;
+        let tag = &content[tag_start..tag_end];
+        if let Some(ver_start) = tag.find(version_attr) {
+            let start = ver_start + version_attr.len();
+            let rest = &tag[start..];
+            if let Some(end) = rest.find('"') {
+                return Some(rest[..end].to_string());
+            }
+        }
+    }
+    None
 }
 
 /// Add a Go dependency to the project
@@ -137,14 +200,11 @@ pub fn add_go_dependency(spec: &str) -> Result<()> {
 
     let (package, version) = parse_dep_spec(spec);
 
-    // Add to manifest
-    manifest.add_go_dependency(&package, &version)?;
-    crate::save_manifest(&project_root, &manifest)?;
-
     let go_root = resolve_runtime_root(&project_root, Lang::Go);
     ensure_go_env(&go_root, manifest.go.as_ref().unwrap())?;
 
     // Use module/...@version so Go fetches all packages and transitive deps into go.sum
+    // When version is "latest", omit @version so Go uses its default
     let go_get_arg = go_get_spec_for_transitives(&package, &version);
     let spinner = terminal::step_spinner(&format!("Installing {}...", go_get_arg));
 
@@ -165,11 +225,21 @@ pub fn add_go_dependency(spec: &str) -> Result<()> {
         ));
     }
 
+    // Read resolved version from go.mod
+    let resolved_version =
+        read_go_dep_version(&go_root, &package).unwrap_or_else(|| version.clone());
+
+    manifest.add_go_dependency(&package, &resolved_version)?;
+    crate::save_manifest(&project_root, &manifest)?;
+
     // Note: We intentionally skip `go mod tidy` here.
     // Running tidy without a .go file that imports the deps would remove them.
     // Tidy will run automatically when `poly-bench run` generates bench code.
 
-    terminal::finish_success(&spinner, &format!("Added {}@{} to polybench.toml", package, version));
+    terminal::finish_success(
+        &spinner,
+        &format!("Added {}@{} to polybench.toml", package, resolved_version),
+    );
 
     Ok(())
 }
@@ -193,10 +263,6 @@ pub fn add_ts_dependency(spec: &str) -> Result<()> {
 
     let (package, version) = parse_dep_spec(spec);
 
-    // Add to manifest
-    manifest.add_ts_dependency(&package, &version)?;
-    crate::save_manifest(&project_root, &manifest)?;
-
     let ts_root = resolve_runtime_root(&project_root, Lang::TypeScript);
     std::fs::create_dir_all(&ts_root)
         .map_err(|e| miette::miette!("Failed to create TS env dir: {}", e))?;
@@ -205,9 +271,8 @@ pub fn add_ts_dependency(spec: &str) -> Result<()> {
         std::fs::write(ts_root.join("package.json"), pkg)
             .map_err(|e| miette::miette!("Failed to write package.json: {}", e))?;
     }
-    update_package_json_deps(&ts_root, manifest.ts.as_ref().unwrap())?;
 
-    // Run npm install
+    // Run npm install (without version when "latest" - npm resolves to latest)
     let npm_spec =
         if version == "latest" { package.clone() } else { format!("{}@{}", package, version) };
 
@@ -230,7 +295,17 @@ pub fn add_ts_dependency(spec: &str) -> Result<()> {
         ));
     }
 
-    terminal::finish_success(&spinner, &format!("Added {}@{} to polybench.toml", package, version));
+    // Read resolved version from package.json (npm adds it)
+    let resolved_version =
+        read_ts_dep_version(&ts_root, &package).unwrap_or_else(|| version.clone());
+
+    manifest.add_ts_dependency(&package, &resolved_version)?;
+    crate::save_manifest(&project_root, &manifest)?;
+
+    terminal::finish_success(
+        &spinner,
+        &format!("Added {}@{} to polybench.toml", package, resolved_version),
+    );
 
     Ok(())
 }
@@ -532,26 +607,10 @@ pub fn add_python_dependency(spec: &str) -> Result<()> {
 
     let (package, version) = parse_python_dep_spec(spec);
 
-    manifest.add_python_dependency(&package, &version)?;
-    crate::save_manifest(&project_root, &manifest)?;
-
     let python_root = resolve_runtime_root(&project_root, Lang::Python);
     std::fs::create_dir_all(&python_root)
         .map_err(|e| miette::miette!("Failed to create Python env dir: {}", e))?;
 
-    let deps: Vec<(String, String)> = manifest
-        .python
-        .as_ref()
-        .unwrap()
-        .dependencies
-        .iter()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
-    let requirements_content = templates::requirements_txt_for_runtime_env(&deps);
-    std::fs::write(python_root.join("requirements.txt"), requirements_content)
-        .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
-
-    // Always install the package so it's immediately available (no need to run install separately)
     let pip_path = ensure_python_venv_and_get_pip(&python_root)?;
     let pip_spec =
         if version == "latest" { package.clone() } else { format!("{}=={}", package, version) };
@@ -572,9 +631,29 @@ pub fn add_python_dependency(spec: &str) -> Result<()> {
             "Fix pip dependency issues.",
         ));
     }
-    terminal::finish_success(&spinner, &pip_spec);
 
-    terminal::success(&format!("Added {} to polybench.toml", package));
+    // Read resolved version from pip show
+    let resolved_version =
+        read_python_dep_version(&python_root, &package).unwrap_or_else(|| version.clone());
+
+    manifest.add_python_dependency(&package, &resolved_version)?;
+    crate::save_manifest(&project_root, &manifest)?;
+
+    // Write requirements.txt from manifest (includes internal deps like pyright)
+    let deps: Vec<(String, String)> = manifest
+        .python
+        .as_ref()
+        .unwrap()
+        .dependencies
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let requirements_content = templates::requirements_txt_for_runtime_env(&deps);
+    std::fs::write(python_root.join("requirements.txt"), requirements_content)
+        .map_err(|e| miette::miette!("Failed to write requirements.txt: {}", e))?;
+
+    terminal::finish_success(&spinner, &pip_spec);
+    terminal::success(&format!("Added {}@{} to polybench.toml", package, resolved_version));
 
     Ok(())
 }
@@ -594,7 +673,9 @@ pub fn add_c_dependency(spec: &str) -> Result<()> {
     }
 
     let (library, version) = parse_dep_spec(spec);
-    manifest.add_c_dependency(&library, &version)?;
+    // vcpkg uses baseline versioning; when no version specified, use "*"
+    let resolved_version = if version == "latest" { "*".to_string() } else { version };
+    manifest.add_c_dependency(&library, &resolved_version)?;
     crate::save_manifest(&project_root, &manifest)?;
 
     let c_config = manifest.c.as_ref().unwrap();
@@ -617,7 +698,7 @@ pub fn add_c_dependency(spec: &str) -> Result<()> {
 
     c_run_cmake_configure(&c_root)?;
 
-    terminal::success(&format!("Added {}@{} to polybench.toml", library, version));
+    terminal::success(&format!("Added {}@{} to polybench.toml", library, resolved_version));
     Ok(())
 }
 
@@ -732,8 +813,6 @@ pub fn add_csharp_dependency(spec: &str) -> Result<()> {
     }
 
     let (package, version) = parse_dep_spec(spec);
-    manifest.add_csharp_dependency(&package, &version)?;
-    crate::save_manifest(&project_root, &manifest)?;
 
     let csharp_root = resolve_runtime_root(&project_root, Lang::CSharp);
     std::fs::create_dir_all(&csharp_root)
@@ -746,27 +825,51 @@ pub fn add_csharp_dependency(spec: &str) -> Result<()> {
             .map_err(|e| miette::miette!("Failed to write polybench.csproj: {}", e))?;
     }
 
-    let spinner = terminal::step_spinner(&format!("Installing {}...", spec));
-    let output = terminal::run_command_with_spinner(
-        &spinner,
-        Command::new("dotnet")
-            .args(["add", "polybench.csproj", "package", &package, "--version", &version])
-            .current_dir(&csharp_root),
-    )
-    .map_err(|e| miette::miette!("Failed to run dotnet add package: {}", e))?;
+    // When version is "latest", omit --version (NuGet doesn't support "latest")
+    let display_spec =
+        if version == "latest" { package.clone() } else { format!("{}@{}", package, version) };
+    let spinner = terminal::step_spinner(&format!("Installing {}...", display_spec));
+
+    let output = if version == "latest" {
+        terminal::run_command_with_spinner(
+            &spinner,
+            Command::new("dotnet")
+                .args(["add", "polybench.csproj", "package", &package])
+                .current_dir(&csharp_root),
+        )
+        .map_err(|e| miette::miette!("Failed to run dotnet add package: {}", e))?
+    } else {
+        terminal::run_command_with_spinner(
+            &spinner,
+            Command::new("dotnet")
+                .args(["add", "polybench.csproj", "package", &package, "--version", &version])
+                .current_dir(&csharp_root),
+        )
+        .map_err(|e| miette::miette!("Failed to run dotnet add package: {}", e))?
+    };
 
     if !output.status.success() {
         terminal::finish_failure(&spinner, "dotnet add package failed");
         terminal::print_stderr_excerpt(&output.stderr, 8);
         return Err(command_failure(
-            &format!("dotnet add package {} --version {}", package, version),
+            &format!("dotnet add package {}", package),
             &csharp_root,
             &output,
             "Verify package/version exists on NuGet.",
         ));
     }
 
-    terminal::finish_success(&spinner, &format!("Added {}@{} to polybench.toml", package, version));
+    // Read resolved version from .csproj
+    let resolved_version =
+        read_csharp_dep_version(&csharp_root, &package).unwrap_or_else(|| version.clone());
+
+    manifest.add_csharp_dependency(&package, &resolved_version)?;
+    crate::save_manifest(&project_root, &manifest)?;
+
+    terminal::finish_success(
+        &spinner,
+        &format!("Added {}@{} to polybench.toml", package, resolved_version),
+    );
     Ok(())
 }
 
