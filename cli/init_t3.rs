@@ -12,6 +12,18 @@ fn diamond_grey() -> console::StyledObject<&'static str> {
     style("◇").dim()
 }
 
+fn diamond_green() -> console::StyledObject<&'static str> {
+    style("◇").green()
+}
+
+fn diamond_red() -> console::StyledObject<&'static str> {
+    style("◇").red()
+}
+
+fn pipe_red() -> console::StyledObject<&'static str> {
+    style("│").red()
+}
+
 /// Theme that formats prompts with │ and ◇ (create-t3-app style).
 pub struct T3StyleTheme(ColorfulTheme);
 
@@ -37,7 +49,8 @@ impl Theme for T3StyleTheme {
         self.0.format_prompt(f, prompt)
     }
     fn format_error(&self, f: &mut dyn Write, err: &str) -> std::fmt::Result {
-        self.0.format_error(f, err)
+        // T3-style error: pipe + diamond in red, error message in red
+        write!(f, "{}  {}", pipe_red(), style(err).red())
     }
     fn format_confirm_prompt(
         &self,
@@ -61,6 +74,7 @@ impl Theme for T3StyleTheme {
         prompt: &str,
         default: Option<&str>,
     ) -> std::fmt::Result {
+        // Active step (pending): dim
         write!(f, "\n{}\n{}  {}", pipe_grey(), diamond_grey(), prompt)?;
         if let Some(d) = default {
             write!(f, " {}", style(d).dim())?;
@@ -74,14 +88,15 @@ impl Theme for T3StyleTheme {
         prompt: &str,
         sel: &str,
     ) -> std::fmt::Result {
+        // Completed step: green
         write!(
             f,
-            "\n{}\n{}  {}\n{}  {}\n{}\n",
+            "\n{}\n{}  {}\n{}  {}\n{}",
             pipe_grey(),
-            diamond_grey(),
-            prompt,
+            diamond_green(),
+            style(prompt).green(),
             pipe_grey(),
-            sel,
+            style(sel).green(),
             pipe_grey()
         )
     }
@@ -96,18 +111,21 @@ impl Theme for T3StyleTheme {
         self.0.format_password_prompt_selection(f, prompt)
     }
     fn format_select_prompt(&self, f: &mut dyn Write, prompt: &str) -> std::fmt::Result {
-        self.0.format_select_prompt(f, prompt)
+        write!(f, "{}  {}", diamond_grey(), prompt)
     }
     fn format_select_prompt_selection(
         &self,
         f: &mut dyn Write,
-        prompt: &str,
+        _prompt: &str,
         sel: &str,
     ) -> std::fmt::Result {
-        self.0.format_select_prompt_selection(f, prompt, sel)
+        // Prompt is already on screen from format_select_prompt; only output selection to avoid
+        // duplicate
+        write!(f, "{}  {}\n{}\n", pipe_grey(), style(sel).green(), pipe_grey())
     }
     fn format_multi_select_prompt(&self, f: &mut dyn Write, prompt: &str) -> std::fmt::Result {
-        write!(f, "\n{}\n{}  {}\n", pipe_grey(), diamond_grey(), prompt)
+        // Active step (pending): dim
+        write!(f, "{}  {}", diamond_grey(), prompt)
     }
     fn format_multi_select_prompt_selection(
         &self,
@@ -116,14 +134,14 @@ impl Theme for T3StyleTheme {
         selections: &[&str],
     ) -> std::fmt::Result {
         let sel_str = selections.join(", ");
+        // Completed step: green. No leading \n or pipe (replaces menu in-place).
         write!(
             f,
-            "\n{}\n{}  {}\n{}  {}\n{}\n",
+            "{}  {}\n{}  {}\n{}\n",
+            diamond_green(),
+            style(prompt).green(),
             pipe_grey(),
-            diamond_grey(),
-            prompt,
-            pipe_grey(),
-            sel_str,
+            style(sel_str).green(),
             pipe_grey()
         )
     }
@@ -173,8 +191,8 @@ pub fn print_init_logo() {
     println!();
 }
 
-/// Print T3-style success block after scaffold (✔ lines in green).
-pub fn print_init_success_block(project_name: &str) {
+/// Print T3-style scaffolding complete message (before build).
+pub fn print_scaffold_complete(project_name: &str) {
     use colored::Colorize;
     println!();
     println!("{}", format!("✔ {} scaffolded successfully!", project_name).green().bold());
@@ -184,24 +202,76 @@ pub fn print_init_success_block(project_name: &str) {
     println!("{}", "✔ Successfully setup boilerplate for benchmarks/".green());
     println!("{}", "✔ Successfully setup boilerplate for .polybench/".green());
     println!();
+}
+
+/// Print T3-style next steps message (after build).
+/// If `build_ran` is false, includes instruction to run build first.
+pub fn print_next_steps(build_ran: bool) {
+    println!();
     println!("Next steps:");
-    println!("  {}", format!("cd {}", project_name).cyan());
+    if !build_ran {
+        println!("  poly-bench build      # Install LSP servers and dependencies");
+    }
     println!("  poly-bench run        # Run benchmarks");
     println!();
 }
 
-/// Print T3-style success block for init in current directory (no cd needed).
-pub fn print_init_success_block_current_dir(project_name: &str) {
+/// Init step labels for error display.
+pub const INIT_STEP_1: &str = "What will your project be called?";
+pub const INIT_STEP_2: &str = "Which languages to include?";
+pub const INIT_STEP_3: &str = "Scaffolding project";
+pub const INIT_STEP_4: &str = "Building project";
+
+/// Print T3-style error block: step progress with failed step in red, then pretty error.
+/// Uses Debug for miette::Report (graphical handler with syntax highlighting).
+pub fn print_init_error_block<E: std::fmt::Debug>(
+    completed_steps: &[(&str, &str)], // (prompt, value)
+    failed_step: &str,
+    error: &E,
+) {
     use colored::Colorize;
-    println!();
-    println!("{}", format!("✔ {} scaffolded successfully!", project_name).green().bold());
-    println!();
-    println!("Adding boilerplate...");
-    println!("{}", "✔ Successfully setup boilerplate for polybench.toml".green());
-    println!("{}", "✔ Successfully setup boilerplate for benchmarks/".green());
-    println!("{}", "✔ Successfully setup boilerplate for .polybench/".green());
-    println!();
-    println!("Next steps:");
-    println!("  poly-bench run        # Run benchmarks");
-    println!();
+    use std::io::Write;
+
+    let stderr = std::io::stderr();
+    let mut w = stderr.lock();
+
+    let _ = writeln!(w);
+    let _ = writeln!(w, "{}", pipe_grey());
+    for (prompt, value) in completed_steps {
+        let _ = writeln!(w, "{}  {}", diamond_green(), style(prompt).green());
+        let _ = writeln!(w, "{}  {}", pipe_grey(), style(value).green());
+        let _ = writeln!(w, "{}", pipe_grey());
+    }
+    // Failed step in red
+    let _ = writeln!(w, "{}  {}", diamond_red(), style(failed_step).red().bold());
+    let _ = writeln!(w, "{}", pipe_red());
+    let _ = writeln!(w);
+
+    // Debug format: miette::Report uses graphical handler (code-colored, snippets)
+    let _ = writeln!(w, "{:?}", error);
+    let _ = writeln!(w);
+}
+
+/// Print T3-style rejection when no runtimes remain (e.g. user skipped all installs).
+/// Only prints the failed step + error (steps 1 and 2 are already on screen from language
+/// selection).
+pub fn print_init_runtime_rejection(
+    failed_step_prompt: &str,
+    failed_step_value: &str,
+    error_msg: &str,
+) {
+    use colored::Colorize;
+    use std::io::Write;
+
+    let stderr = std::io::stderr();
+    let mut w = stderr.lock();
+
+    // Failed step in red (bullet + prompt, then pipe + value)
+    let _ = writeln!(w, "{}  {}", diamond_red(), style(failed_step_prompt).red().bold());
+    let _ = writeln!(w, "{}  {}", pipe_red(), style(failed_step_value).red());
+    let _ = writeln!(w, "{}", pipe_red());
+    let _ = writeln!(w);
+    // Error in red
+    let _ = writeln!(w, "{}", format!("Error: {}", error_msg).red().bold());
+    let _ = writeln!(w);
 }

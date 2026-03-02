@@ -558,7 +558,7 @@ pub fn new_bench(name: &str, has_go: bool, has_ts: bool, has_rust: bool) -> Stri
 
 /// Generate go.mod content
 pub fn go_mod(module_name: &str, go_version: Option<&str>) -> String {
-    let version = go_version.unwrap_or("1.21");
+    let version = go_version.unwrap_or("1.24");
     format!("module {}\n\ngo {}\n", module_name, version)
 }
 
@@ -1147,9 +1147,14 @@ mod tests {
 
     #[test]
     fn test_go_mod() {
+        // Test with specific version passed
         let content = go_mod("my-project", Some("1.22"));
         assert!(content.contains("module my-project"));
         assert!(content.contains("go 1.22"));
+
+        // Test with default version (should use pinned 1.24)
+        let content_default = go_mod("my-project", None);
+        assert!(content_default.contains("go 1.24"));
     }
 
     #[test]
