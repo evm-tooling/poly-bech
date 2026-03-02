@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use miette::{miette, Result};
-use poly_bench_dsl::{BenchMode, Lang};
+use poly_bench_dsl::{AsyncSamplingPolicy, BenchMode, BenchmarkKind, Lang};
 use poly_bench_ir::{BenchmarkSpec, SuiteIR};
 use poly_bench_stdlib as stdlib;
 use poly_bench_traits::{Measurement, Runtime, RuntimeConfig, RuntimeFactory};
@@ -903,14 +903,21 @@ fn generate_c_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) ->
     }
     src.push_str(&emit_hook(spec.before_hooks.get(&Lang::C), "    "));
 
+    let is_async = spec.kind == BenchmarkKind::Async;
+    let warmup_iters = if is_async {
+        spec.warmup_iterations.min(spec.async_warmup_cap)
+    } else {
+        spec.warmup_iterations
+    };
+
     // Warmup (warmup_time_ms takes precedence over warmup_iterations)
     if spec.warmup_time_ms > 0 {
         src.push_str(&format!(
             "    uint64_t __warmup_start = __polybench_nanos_now();\n    uint64_t __warmup_limit = (uint64_t)({} * 1e6);\n    while ((__polybench_nanos_now() - __warmup_start) < __warmup_limit) {{\n",
             spec.warmup_time_ms
         ));
-    } else if spec.warmup_iterations > 0 {
-        src.push_str(&format!("    uint64_t __warmup_start = __polybench_nanos_now();\n    for (uint64_t i = 0; i < {}; i++) {{\n", spec.warmup_iterations));
+    } else if warmup_iters > 0 {
+        src.push_str(&format!("    uint64_t __warmup_start = __polybench_nanos_now();\n    for (uint64_t i = 0; i < {}; i++) {{\n", warmup_iters));
     }
     if spec.warmup_time_ms > 0 || spec.warmup_iterations > 0 {
         src.push_str(&emit_hook(spec.each_hooks.get(&Lang::C), "        "));
@@ -933,7 +940,56 @@ fn generate_c_source(spec: &BenchmarkSpec, suite: &SuiteIR, check_only: bool) ->
         src.push_str("    uint64_t __mem_before = __polybench_get_total_allocated();\n");
     }
 
-    if spec.mode == BenchMode::Auto {
+    let sample_cap = spec.async_sample_cap;
+    let each_hook_c = emit_hook(spec.each_hooks.get(&Lang::C), "            ");
+
+    if is_async {
+        // Async-sequential: one completed call per iteration, no batching
+        let target_nanos = (spec.target_time_ms as f64) * 1_000_000.0;
+        let is_fixed_cap = matches!(spec.async_sampling_policy, AsyncSamplingPolicy::FixedCap);
+
+        src.push_str(&format!(
+            "    double targetNs = {:.0};\n    uint64_t sampleCap = {};\n    uint64_t totalIterations = 0;\n    double totalNs = 0.0;\n    size_t sampleCount = 0;\n    double* samples = (double*)malloc((size_t)sampleCap * sizeof(double));\n    if (!samples) return 1;\n    uint64_t successfulCount = 0;\n    uint64_t errorCount = 0;\n\n",
+            target_nanos, sample_cap
+        ));
+
+        let bench_call = if spec.use_sink {
+            "__polybench_sink = __polybench_bench();"
+        } else {
+            "__polybench_bench();"
+        };
+        if is_fixed_cap {
+            src.push_str(&format!(
+                "    for (uint64_t i = 0; i < sampleCap; i++) {{\n{}        uint64_t t0 = __polybench_nanos_now();\n        {}\n        uint64_t t1 = __polybench_nanos_now();\n        double elapsedNs = (double)(t1 - t0);\n        totalNs += elapsedNs;\n        totalIterations++;\n        successfulCount++;\n        if (sampleCount < sampleCap) samples[sampleCount++] = elapsedNs;\n    }}\n",
+                each_hook_c, bench_call
+            ));
+        } else {
+            src.push_str(&format!(
+                "    while (totalNs < targetNs) {{\n{}        uint64_t t0 = __polybench_nanos_now();\n        {}\n        uint64_t t1 = __polybench_nanos_now();\n        double elapsedNs = (double)(t1 - t0);\n        totalNs += elapsedNs;\n        totalIterations++;\n        successfulCount++;\n        if (sampleCount < sampleCap) {{\n            samples[sampleCount++] = elapsedNs;\n        }} else {{\n            uint64_t r = (uint64_t)((totalIterations + 1) * (rand() / (RAND_MAX + 1.0)));\n            if (r < sampleCap) samples[r] = elapsedNs;\n        }}\n    }}\n",
+                each_hook_c, bench_call
+            ));
+        }
+
+        src.push_str(
+            "    double nanosPerOp = totalNs / (double)(totalIterations ? totalIterations : 1);\n    double opsPerSec = 1000000000.0 / (nanosPerOp > 0.0 ? nanosPerOp : 1.0);\n",
+        );
+        if use_memory {
+            src.push_str("    uint64_t __mem_after = __polybench_get_total_allocated();\n");
+            src.push_str("    uint64_t __bytes_per_op = totalIterations ? (__mem_after - __mem_before) / totalIterations : 0;\n");
+        }
+        src.push_str(&emit_hook(spec.after_hooks.get(&Lang::C), "    "));
+        if use_memory {
+            src.push_str("    printf(\"{\\\"iterations\\\":%llu,\\\"totalNanos\\\":%.0f,\\\"warmupNanos\\\":%llu,\\\"nanosPerOp\\\":%.6f,\\\"opsPerSec\\\":%.6f,\\\"bytesPerOp\\\":%llu,\\\"samples\\\":[\", (unsigned long long)totalIterations, totalNs, (unsigned long long)__warmup_nanos, nanosPerOp, opsPerSec, (unsigned long long)__bytes_per_op);\n");
+        } else {
+            src.push_str("    printf(\"{\\\"iterations\\\":%llu,\\\"totalNanos\\\":%.0f,\\\"warmupNanos\\\":%llu,\\\"nanosPerOp\\\":%.6f,\\\"opsPerSec\\\":%.6f,\\\"samples\\\":[\", (unsigned long long)totalIterations, totalNs, (unsigned long long)__warmup_nanos, nanosPerOp, opsPerSec);\n");
+        }
+        src.push_str("    for (size_t i = 0; i < sampleCount; i++) { if (i) printf(\",\"); printf(\"%.0f\", samples[i]); }\n");
+        src.push_str("    printf(\"],\\\"successfulCount\\\":%llu,\\\"errorCount\\\":%llu,\\\"successfulResults\\\":[],\\\"errorSamples\\\":[]\", (unsigned long long)successfulCount, (unsigned long long)errorCount);\n");
+        src.push_str(
+            "    if (__polybench_sink) { printf(\",\\\"rawResult\\\":\\\"sink\\\"\"); }\n",
+        );
+        src.push_str("    printf(\"}\\n\");\n    free(samples);\n");
+    } else if spec.mode == BenchMode::Auto {
         src.push_str(&format!(
             "    double targetNs = {:.0};\n    uint64_t totalIterations = 0;\n    double totalNs = 0.0;\n    uint64_t batch = 1;\n    size_t sampleCap = 4096;\n    size_t sampleCount = 0;\n    double* samples = (double*)malloc(sampleCap * sizeof(double));\n    if (!samples) return 1;\n    while (totalNs < targetNs) {{\n        uint64_t t0 = __polybench_nanos_now();\n        for (uint64_t i = 0; i < batch; i++) {{\n",
             (spec.target_time_ms as f64) * 1_000_000.0
@@ -1029,6 +1085,14 @@ struct BenchResultJson {
     bytes_per_op: Option<u64>,
     #[serde(default)]
     allocs_per_op: Option<u64>,
+    #[serde(default)]
+    successful_count: Option<u64>,
+    #[serde(default)]
+    error_count: Option<u64>,
+    #[serde(default)]
+    successful_results: Vec<String>,
+    #[serde(default)]
+    error_samples: Vec<String>,
 }
 
 impl BenchResultJson {
@@ -1053,6 +1117,15 @@ impl BenchResultJson {
         }
         if let Some(bytes) = self.bytes_per_op {
             m = m.with_allocs(bytes, self.allocs_per_op.unwrap_or(0));
+        }
+        if let Some(sc) = self.successful_count {
+            m.async_success_count = Some(sc);
+        }
+        if let Some(ec) = self.error_count {
+            m.async_error_count = Some(ec);
+        }
+        if !self.error_samples.is_empty() {
+            m.async_error_samples = Some(self.error_samples);
         }
         m
     }
