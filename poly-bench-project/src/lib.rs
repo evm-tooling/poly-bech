@@ -14,8 +14,10 @@ pub mod init;
 pub mod manifest;
 pub mod runtime_check;
 pub mod runtime_installer;
+pub mod shim;
 pub mod templates;
 pub mod terminal;
+pub mod toolchain;
 
 pub use detectors::{detect_from_markers, get_detector, ProjectRootDetector};
 

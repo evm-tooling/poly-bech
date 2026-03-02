@@ -220,10 +220,6 @@ enum Commands {
         /// Runtime to add (go, ts, rust, python, c, csharp)
         #[arg(value_name = "RUNTIME")]
         runtime: String,
-
-        /// Install to /usr/local (system-wide, requires sudo) instead of ~/.local/share (default)
-        #[arg(long)]
-        system: bool,
     },
 
     /// Remove a dependency
@@ -507,8 +503,8 @@ async fn main() -> Result<()> {
         Commands::Add { go, ts, rs, py, c, cs, zig, features } => {
             cmd_add(go, ts, rs, py, c, cs, zig, features)?;
         }
-        Commands::AddRuntime { runtime, system } => {
-            cmd_add_runtime(&runtime, system)?;
+        Commands::AddRuntime { runtime } => {
+            cmd_add_runtime(&runtime)?;
         }
         Commands::Remove { go, ts, rs, py, c, cs, zig } => {
             cmd_remove(go, ts, rs, py, c, cs, zig)?;
@@ -1555,11 +1551,11 @@ fn cmd_upgrade() -> Result<()> {
 }
 
 fn cmd_init(name: Option<&str>, languages: Vec<String>, no_example: bool) -> Result<()> {
-    let (name, languages, quiet) = match name {
-        Some(n) => (n.to_string(), languages, false),
+    let (name, languages, quiet, run_install) = match name {
+        Some(n) => (n.to_string(), languages, false, true), // Non-interactive: always run install
         None => {
-            let (name, languages) = init_interactive()?;
-            (name, languages, true)
+            let (name, languages, run_install) = init_interactive()?;
+            (name, languages, true, run_install)
         }
     };
     let is_current_dir = name == ".";
@@ -1570,70 +1566,115 @@ fn cmd_init(name: Option<&str>, languages: Vec<String>, no_example: bool) -> Res
         quiet,
         defer_final_message: true,
     };
-    let project_dir = project::init::init_project(&options)?;
 
-    // Run build to install LSPs and initialize runtime-env
+    let project_dir = match project::init::init_project(&options) {
+        Ok(d) => d,
+        Err(e) => {
+            if quiet {
+                let lang_summary = options.languages.join(", ");
+                init_t3::print_init_error_block(
+                    &[(init_t3::INIT_STEP_1, name.as_str()), (init_t3::INIT_STEP_2, &lang_summary)],
+                    init_t3::INIT_STEP_3,
+                    &e,
+                );
+                std::process::exit(1);
+            }
+            return Err(e);
+        }
+    };
+
+    // Print scaffolding complete message BEFORE build
     let project_dir = project_dir.canonicalize().unwrap_or_else(|_| project_dir.clone());
-    let prev_cwd = std::env::current_dir().ok();
-    std::env::set_current_dir(&project_dir)
-        .map_err(|e| miette::miette!("Failed to change to project directory: {}", e))?;
-
-    // Prepend poly-bench runtime paths so build commands find binaries (e.g. after fresh install)
-    let paths_to_prepend: Vec<_> = options
-        .languages
-        .iter()
-        .filter_map(|r| poly_bench_dsl::Lang::from_str(r.trim()))
-        .filter_map(|l| project::runtime_installer::polybench_runtime_path(l))
-        .collect();
-    if !paths_to_prepend.is_empty() {
-        if let Ok(current) = std::env::var("PATH") {
-            let sep = if cfg!(windows) { ";" } else { ":" };
-            let prepended = paths_to_prepend
-                .iter()
-                .map(|p| p.display().to_string())
-                .collect::<Vec<_>>()
-                .join(sep);
-            std::env::set_var("PATH", format!("{}{}{}", prepended, sep, current));
-        }
-    }
-
-    let build_options = project::build::BuildOptions { force: false, skip_install: false };
-    if let Err(e) = project::build::build_project(&build_options) {
-        if let Some(ref prev) = prev_cwd {
-            let _ = std::env::set_current_dir(prev);
-        }
-        return Err(e);
-    }
-
-    // Output summary after build
     if quiet {
-        if is_current_dir {
-            let dir_name =
-                project_dir.file_name().and_then(|s| s.to_str()).unwrap_or(".").to_string();
-            init_t3::print_init_success_block_current_dir(&dir_name);
+        let display_name = if is_current_dir {
+            project_dir.file_name().and_then(|s| s.to_str()).unwrap_or(".").to_string()
         } else {
-            init_t3::print_init_success_block(&options.name);
-        }
+            options.name.clone()
+        };
+        init_t3::print_scaffold_complete(&display_name);
     } else {
         let project_name =
             project_dir.file_name().and_then(|s| s.to_str()).unwrap_or(&options.name).to_string();
         println!();
-        project::terminal::success(&format!(
-            "Project '{}' initialized successfully!",
-            project_name
-        ));
+        project::terminal::success(&format!("Project '{}' scaffolded successfully!", project_name));
+        println!();
+    }
+
+    // Change to project directory for build
+    let prev_cwd = std::env::current_dir().ok();
+    if let Err(e) = std::env::set_current_dir(&project_dir) {
+        if quiet {
+            let lang_summary = options.languages.join(", ");
+            init_t3::print_init_error_block(
+                &[(init_t3::INIT_STEP_1, name.as_str()), (init_t3::INIT_STEP_2, &lang_summary)],
+                "Changing to project directory",
+                &e,
+            );
+            std::process::exit(1);
+        }
+        return Err(miette::miette!("Failed to change to project directory: {}", e));
+    }
+
+    // Only run build if user confirmed install
+    if run_install {
+        // Prepend poly-bench runtime paths so build commands find binaries (e.g. after fresh
+        // install)
+        let paths_to_prepend: Vec<_> = options
+            .languages
+            .iter()
+            .filter_map(|r| poly_bench_dsl::Lang::from_str(r.trim()))
+            .filter_map(|l| project::runtime_installer::polybench_runtime_path(l))
+            .collect();
+        if !paths_to_prepend.is_empty() {
+            if let Ok(current) = std::env::var("PATH") {
+                let sep = if cfg!(windows) { ";" } else { ":" };
+                let prepended = paths_to_prepend
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(sep);
+                std::env::set_var("PATH", format!("{}{}{}", prepended, sep, current));
+            }
+        }
+
+        // Run build to install LSPs and initialize runtime-env
+        let build_options = project::build::BuildOptions { force: false, skip_install: false };
+        if let Err(e) = project::build::build_project(&build_options) {
+            if let Some(ref prev) = prev_cwd {
+                let _ = std::env::set_current_dir(prev);
+            }
+            if quiet {
+                let lang_summary = options.languages.join(", ");
+                init_t3::print_init_error_block(
+                    &[(init_t3::INIT_STEP_1, name.as_str()), (init_t3::INIT_STEP_2, &lang_summary)],
+                    init_t3::INIT_STEP_4,
+                    &e,
+                );
+                std::process::exit(1);
+            }
+            return Err(e);
+        }
+    }
+
+    // Print next steps
+    if quiet {
+        init_t3::print_next_steps(run_install);
+    } else {
         println!();
         println!("Next steps:");
+        if !run_install {
+            println!("  poly-bench build      # Install LSP servers and dependencies");
+        }
         println!("  poly-bench run        # Run benchmarks");
         println!();
     }
 
     // Cd into project and start shell when we created a new project (not current dir)
+    // Note: we're already in the project dir, just exec shell without extra messages
     if !is_current_dir && std::io::stdout().is_terminal() && std::io::stderr().is_terminal() {
         #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt;
-            println!("  Starting shell in project directory...");
             let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
             let err = std::process::Command::new(&shell).arg("-i").current_dir(&project_dir).exec();
             eprintln!("Failed to start shell: {}", err);
@@ -1641,7 +1682,8 @@ fn cmd_init(name: Option<&str>, languages: Vec<String>, no_example: bool) -> Res
         }
         #[cfg(not(unix))]
         {
-            println!("  cd {}", project_dir.display());
+            // On non-Unix, we can't exec into shell, but we're already in the project dir
+            // so no need to print cd instructions
         }
     }
     if let Some(ref prev) = prev_cwd {
@@ -1651,16 +1693,11 @@ fn cmd_init(name: Option<&str>, languages: Vec<String>, no_example: bool) -> Res
     Ok(())
 }
 
-/// User choice when a runtime is not installed
-enum InstallChoice {
-    Install,
-    Skip,
-}
-
 /// Interactive init: T3-style menu flow with │ ◇ prompts and blocky logo.
-fn init_interactive() -> Result<(String, Vec<String>)> {
+/// Returns (project_name, languages, run_install).
+fn init_interactive() -> Result<(String, Vec<String>, bool)> {
     use colored::Colorize;
-    use dialoguer::{Input, MultiSelect};
+    use dialoguer::Input;
     use miette::miette;
     use poly_bench_dsl::Lang;
     use std::{thread, time::Duration};
@@ -1685,8 +1722,6 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
         .map_err(|e| miette!("Prompt failed: {}", e))?;
     let name = name.trim().to_string();
 
-    thread::sleep(Duration::from_millis(80));
-
     // Build choices from supported_languages (All + each language)
     let supported = poly_bench_runtime::supported_languages();
     let all_label = format!(
@@ -1701,13 +1736,10 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
     for lang in supported {
         lang_choices.push(poly_bench_runtime::lang_label(*lang));
     }
-    let defaults = vec![false; lang_choices.len()];
-    let prompt = "Which languages to include? (Space = toggle)";
-    let selected: Vec<usize> = MultiSelect::with_theme(&theme)
-        .with_prompt(prompt)
-        .items(&lang_choices)
-        .defaults(&defaults)
-        .interact()
+    let mut defaults = vec![false; lang_choices.len()];
+    defaults[0] = true; // "All" selected by default (shown in green)
+    let prompt = "Which languages to include? (↑/↓ = navigate, Space = toggle)";
+    let selected: Vec<usize> = language_select_interact(&theme, prompt, &lang_choices, &defaults)
         .map_err(|e| miette!("Prompt failed: {}", e))?;
 
     if selected.is_empty() {
@@ -1735,203 +1767,477 @@ fn init_interactive() -> Result<(String, Vec<String>)> {
         selected.into_iter().filter_map(lang_to_str).collect()
     };
 
-    // For each selected language, check if runtime is installed. If not, prompt install or skip.
+    // For each selected language, check runtime status and handle accordingly:
+    // 1. Compatible version found -> use it
+    // 2. Incompatible version found -> prompt to install private toolchain
+    // 3. Not installed -> prompt to install and create global symlink
     let mut to_remove = Vec::new();
+    let mut last_skipped_lang = String::new();
     for (i, raw) in languages.iter().enumerate() {
         let Some(lang) = Lang::from_str(raw.trim()) else { continue };
-        if project::runtime_check::is_lang_installed(lang) {
-            continue;
-        }
         let label = poly_bench_runtime::lang_label(lang);
-        let choice = prompt_install_or_skip(&theme, lang, &label)?;
-        match choice {
-            InstallChoice::Install => {
-                if project::runtime_installer::can_auto_install(lang) {
-                    let version = prompt_version_select(&theme, lang, &label)?;
-                    let custom_path = prompt_install_path(
-                        &theme,
-                        lang,
-                        project::runtime_installer::InstallLocation::UserLocal,
-                        &label,
-                    )?;
-                    match project::runtime_installer::install_lang(
-                        lang,
-                        project::runtime_installer::InstallLocation::UserLocal,
-                        custom_path,
+        let status = project::runtime_check::check_runtime_status(lang);
+
+        match status {
+            project::runtime_check::VersionStatus::Compatible { path, version } => {
+                println!(
+                    "  {} Using system {} {} at {}",
+                    "✓".green(),
+                    label,
+                    version,
+                    path.display()
+                );
+            }
+            project::runtime_check::VersionStatus::Incompatible { installed, minimum, .. } => {
+                // Check if Polybench toolchain is already installed
+                if project::toolchain::is_polybench_toolchain_installed(lang) {
+                    let version = project::toolchain::pinned_version(lang);
+                    println!(
+                        "  {} Using Polybench {} {} (system {} is below minimum {})",
+                        "✓".green(),
+                        label,
                         version,
-                    ) {
+                        installed,
+                        minimum
+                    );
+                } else if project::runtime_installer::can_auto_install(lang) {
+                    match confirm_and_install(&theme, lang, false, Some(&installed), Some(&minimum))
+                    {
+                        Ok(true) => {
+                            println!("  {} Installed {} for Polybench use", "✓".green(), label);
+                        }
+                        Ok(false) => {
+                            println!("  {} Skipped {} installation", "⚠".yellow(), label);
+                            to_remove.push(i);
+                            last_skipped_lang = label.to_string();
+                        }
                         Err(e) => {
                             eprintln!("{} Failed to install {}: {}", "✗".red(), label, e);
                             to_remove.push(i);
-                            print_runtime_skip_warning(lang, &label);
-                        }
-                        Ok(Some(custom_bin_dir)) => {
-                            if let Ok(Some(config_path)) =
-                                project::runtime_installer::ensure_path_in_shell_config(
-                                    &custom_bin_dir,
-                                )
-                            {
-                                project::terminal::info_indented(&format!(
-                                    "Added to PATH in {}. Run 'source {}' or restart your terminal.",
-                                    config_path.display(),
-                                    config_path.display()
-                                ));
-                            }
-                        }
-                        Ok(None) => {
-                            if let Ok(Some(config_path)) =
-                                project::runtime_installer::ensure_runtime_in_shell_config(lang)
-                            {
-                                project::terminal::info_indented(&format!(
-                                    "Added to PATH in {}. Run 'source {}' or restart your terminal.",
-                                    config_path.display(),
-                                    config_path.display()
-                                ));
-                            }
+                            last_skipped_lang = label.to_string();
                         }
                     }
                 } else {
+                    println!(
+                        "  {} System {} {} is below minimum {}",
+                        "⚠".yellow(),
+                        label,
+                        installed,
+                        minimum
+                    );
                     println!("{} {} requires manual install.", "⚠".yellow(), label);
                     println!("  {}", project::runtime_check::install_hint(lang));
                     to_remove.push(i);
+                    last_skipped_lang = label.to_string();
                 }
             }
-            InstallChoice::Skip => {
-                to_remove.push(i);
-                print_runtime_skip_warning(lang, &label);
+            project::runtime_check::VersionStatus::NotInstalled => {
+                // Check if Polybench toolchain is already installed
+                if project::toolchain::is_polybench_toolchain_installed(lang) {
+                    let version = project::toolchain::pinned_version(lang);
+                    println!("  {} Using Polybench {} {}", "✓".green(), label, version);
+                } else if project::runtime_installer::can_auto_install(lang) {
+                    match confirm_and_install(&theme, lang, true, None, None) {
+                        Ok(true) => {
+                            println!("  {} Installed {} for global use", "✓".green(), label);
+                            // Show PATH guidance if needed
+                            if project::shim::needs_path_setup() {
+                                let cmd = project::shim::get_path_setup_command();
+                                println!();
+                                println!(
+                                    "  To use {} globally, add ~/.local/bin to your PATH:",
+                                    label
+                                );
+                                println!("    {}", cmd.dimmed());
+                                println!();
+                            }
+                        }
+                        Ok(false) => {
+                            println!("  {} Skipped {} installation", "⚠".yellow(), label);
+                            to_remove.push(i);
+                            last_skipped_lang = label.to_string();
+                        }
+                        Err(e) => {
+                            eprintln!("{} Failed to install {}: {}", "✗".red(), label, e);
+                            to_remove.push(i);
+                            last_skipped_lang = label.to_string();
+                        }
+                    }
+                } else {
+                    println!("  {} {} is not installed", "⚠".yellow(), label);
+                    println!("{} {} requires manual install.", "⚠".yellow(), label);
+                    println!("  {}", project::runtime_check::install_hint(lang));
+                    to_remove.push(i);
+                    last_skipped_lang = label.to_string();
+                }
             }
         }
     }
-    // Remove in reverse order to preserve indices
+    // Remove failed languages in reverse order to preserve indices
     for i in to_remove.into_iter().rev() {
         languages.remove(i);
     }
     if languages.is_empty() {
-        return Err(miette!(
-            "No languages with installed runtimes. Install at least one runtime manually and run 'poly-bench add-runtime <lang>' later."
-        ));
+        let _ = console::Term::stderr().clear_last_lines(3);
+        init_t3::print_init_runtime_rejection(
+            &format!("{} could not be installed", last_skipped_lang),
+            "All selected runtimes failed to install",
+            "Poly-bench projects need to be initialised with at least one runtime.",
+        );
+        std::process::exit(1);
     }
 
-    Ok((name, languages))
+    // Prompt for install deps
+    let run_install = prompt_install_deps_confirmation(&languages).unwrap_or(true);
+
+    Ok((name, languages, run_install))
 }
 
-fn prompt_install_or_skip(
-    theme: &init_t3::T3StyleTheme,
-    _lang: poly_bench_dsl::Lang,
-    label: &str,
-) -> Result<InstallChoice> {
-    use dialoguer::Select;
-    use miette::miette;
+/// Custom language selection with All/individual mutual exclusion:
+/// - Selecting "All" unselects all individual languages.
+/// - Selecting any individual language unselects "All".
+fn language_select_interact(
+    theme: &impl dialoguer::theme::Theme,
+    prompt: &str,
+    items: &[&str],
+    defaults: &[bool],
+) -> std::result::Result<Vec<usize>, Box<dyn std::error::Error + Send + Sync>> {
+    use console::{Key, Term};
 
-    let choices = [
-        format!("Install now (poly-bench will download and configure {})", label),
-        format!("Skip (install manually later, add via poly-bench add-runtime {})", label),
-    ];
-    let selected = Select::with_theme(theme)
-        .with_prompt(&format!("{} is not installed. What would you like to do?", label))
-        .items(&choices)
-        .default(0)
-        .interact()
-        .map_err(|e| miette!("Prompt failed: {}", e))?;
-    Ok(if selected == 0 { InstallChoice::Install } else { InstallChoice::Skip })
-}
-
-/// Prompts for version selection: latest (recommended) or choose from fetched top 5.
-/// Returns None to use default/latest, Some(version) when user picks a specific version.
-fn prompt_version_select(
-    theme: &init_t3::T3StyleTheme,
-    lang: poly_bench_dsl::Lang,
-    label: &str,
-) -> Result<Option<String>> {
-    use colored::Colorize;
-    use dialoguer::Select;
-    use miette::miette;
-
-    if !project::runtime_installer::supports_version_selection(lang) {
-        return Ok(None);
+    let term = Term::stderr();
+    if !term.is_term() {
+        return Err("Not a terminal".into());
     }
 
-    let choices = ["Latest (recommended)".to_string(), "Choose version...".to_string()];
-    let selected = Select::with_theme(theme)
-        .with_prompt(&format!("Which {} version to install?", label))
-        .items(&choices)
-        .default(0)
-        .interact()
-        .map_err(|e| miette!("Prompt failed: {}", e))?;
+    let mut checked = defaults.to_vec();
+    let mut sel = 0;
+    let n = items.len();
 
-    if selected == 0 {
-        return Ok(None);
-    }
+    term.hide_cursor()?;
 
-    let versions = match project::runtime_installer::fetch_available_versions(lang) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("{} Could not fetch versions: {}. Using latest.", "⚠".yellow(), e);
-            return Ok(None);
+    loop {
+        // Render prompt
+        let mut buf = String::new();
+        theme.format_multi_select_prompt(&mut buf, prompt)?;
+        term.write_line(&buf)?;
+
+        // Render items
+        for (idx, item) in items.iter().enumerate() {
+            let mut buf = String::new();
+            theme.format_multi_select_prompt_item(&mut buf, item, checked[idx], sel == idx)?;
+            term.write_line(&buf)?;
         }
-    };
+        term.flush()?;
 
-    if versions.is_empty() {
-        return Ok(None);
+        match term.read_key()? {
+            Key::ArrowDown | Key::Tab | Key::Char('j') => {
+                sel = (sel + 1) % n;
+            }
+            Key::ArrowUp | Key::BackTab | Key::Char('k') => {
+                sel = (sel + n - 1) % n;
+            }
+            Key::Char(' ') => {
+                checked[sel] = !checked[sel];
+                if sel == 0 {
+                    // "All" toggled: if now selected, clear all individuals
+                    if checked[0] {
+                        for i in 1..n {
+                            checked[i] = false;
+                        }
+                    }
+                } else {
+                    // Individual toggled: if now selected, unselect "All"
+                    if checked[sel] {
+                        checked[0] = false;
+                    }
+                }
+            }
+            Key::Char('a') => {
+                if checked.iter().all(|&c| c) {
+                    checked.fill(false);
+                } else {
+                    // Select "All" = clear individuals, check All only
+                    checked.fill(false);
+                    checked[0] = true;
+                }
+            }
+            Key::Escape | Key::Char('q') => {
+                // No-op (match standard MultiSelect which doesn't allow quit)
+            }
+            Key::Enter => {
+                let selected: Vec<usize> = checked
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(idx, &c)| if c { Some(idx) } else { None })
+                    .collect();
+
+                // Clear menu (prompt + items) so only the final selection is shown
+                term.clear_last_lines(n + 1)?;
+
+                // Render final selection
+                let selections: Vec<&str> = selected.iter().map(|&i| items[i]).collect();
+                let mut buf = String::new();
+                theme.format_multi_select_prompt_selection(&mut buf, prompt, &selections)?;
+                // Use write_str instead of write_line since format_multi_select_prompt_selection
+                // already includes trailing newline
+                term.write_str(&buf)?;
+
+                term.show_cursor()?;
+                term.flush()?;
+                return Ok(selected);
+            }
+            _ => {}
+        }
+
+        term.clear_last_lines(n + 1)?;
     }
-
-    let selected_idx = Select::with_theme(theme)
-        .with_prompt("Select version")
-        .items(&versions)
-        .default(0)
-        .interact()
-        .map_err(|e| miette!("Prompt failed: {}", e))?;
-
-    Ok(versions.get(selected_idx).cloned())
 }
 
-/// Prompts for install path: default or custom. Returns None for default, Some(path) for custom.
-fn prompt_install_path(
-    theme: &init_t3::T3StyleTheme,
+/// Prompt the user to confirm a runtime installation with T3-style formatting.
+/// Returns true if user confirms, false if they decline.
+fn prompt_install_confirmation(
+    _theme: &init_t3::T3StyleTheme,
     lang: poly_bench_dsl::Lang,
-    location: project::runtime_installer::InstallLocation,
-    label: &str,
-) -> Result<Option<PathBuf>> {
-    use dialoguer::{Input, Select};
-    use miette::miette;
+    create_global: bool,
+    system_version: Option<&project::toolchain::Version>,
+    minimum_version: Option<&project::toolchain::Version>,
+) -> Result<bool> {
+    use console::{style, Key, Term};
 
-    let default_path = project::runtime_installer::default_install_path(lang, location)
-        .map_err(|e| miette!("Could not determine default path: {}", e))?;
-    let default_str = default_path.display().to_string();
+    let label = poly_bench_runtime::lang_label(lang);
+    let version = project::toolchain::pinned_version(lang);
+    let install_dir = project::toolchain::toolchain_path(lang, version)
+        .map_err(|e| miette::miette!("Failed to determine install path: {}", e))?;
 
-    let choices =
-        [format!("Install to default path: {}", default_str), "Install to custom path".to_string()];
-    let selected = Select::with_theme(theme)
-        .with_prompt(&format!("Where to install {}?", label))
-        .items(&choices)
-        .default(0)
-        .interact()
-        .map_err(|e| miette!("Prompt failed: {}", e))?;
+    let term = Term::stderr();
+    let pipe = style("│").dim();
+    let pipe_indent = style("│       ").dim();
+    let diamond_grey = style("◇").dim();
+    let diamond_green = style("◇").green();
 
-    if selected == 1 {
-        let path: String = Input::with_theme(theme)
-            .with_prompt("Enter install path")
-            .default(default_str)
-            .interact_text()
-            .map_err(|e| miette!("Input failed: {}", e))?;
-        let p = PathBuf::from(path.trim());
-        if p.as_os_str().is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(p))
-        }
+    // Print the install prompt header (green title) - no leading newline, follows directly from │
+    eprintln!(
+        "{}-----{}  {}",
+        diamond_grey,
+        diamond_green,
+        style(format!("Install {} {}?", label, version)).green()
+    );
+
+    // Show system version info if incompatible
+    if let (Some(sys_ver), Some(min_ver)) = (system_version, minimum_version) {
+        eprintln!(
+            "{}{}",
+            pipe_indent,
+            style(format!("ℹ System {} {} is below minimum {}", label, sys_ver, min_ver)).dim()
+        );
+    }
+
+    eprintln!(
+        "{}{}",
+        pipe_indent,
+        style(format!("ℹ Polybench uses {} version {}", label, version)).dim()
+    );
+    eprintln!(
+        "{}{}",
+        pipe_indent,
+        style(format!("ℹ Install location: {}", install_dir.display())).dim()
+    );
+
+    if !create_global {
+        eprintln!(
+            "{}{}",
+            pipe_indent,
+            style(format!("ℹ This version will only be used by Polybench and will not affect your current {} installation", label)).dim()
+        );
     } else {
-        Ok(None)
+        if let Ok(global_dir) = project::toolchain::global_bin_dir() {
+            eprintln!(
+                "{}{}",
+                pipe_indent,
+                style(format!("ℹ Global symlink: {}", global_dir.display())).dim()
+            );
+        }
     }
+
+    // Custom Yes/No selection with radio buttons
+    let mut selected = true; // Default to Yes
+    term.hide_cursor().ok();
+
+    loop {
+        // Render the selection
+        let yes_indicator = if selected { style("●").green() } else { style("○").dim() };
+        let no_indicator = if !selected { style("●").green() } else { style("○").dim() };
+        let yes_text = if selected { style("Yes").green() } else { style("Yes").dim() };
+        let no_text = if !selected { style("No").green() } else { style("No").dim() };
+
+        term.write_line(&format!(
+            "{}  {} {} / {} {}",
+            pipe_indent, yes_indicator, yes_text, no_indicator, no_text
+        ))
+        .ok();
+
+        match term.read_key() {
+            Ok(Key::ArrowLeft) | Ok(Key::ArrowUp) | Ok(Key::Char('h')) | Ok(Key::Char('k')) => {
+                selected = true;
+            }
+            Ok(Key::ArrowRight) | Ok(Key::ArrowDown) | Ok(Key::Char('l')) | Ok(Key::Char('j')) => {
+                selected = false;
+            }
+            Ok(Key::Char('y')) | Ok(Key::Char('Y')) => {
+                selected = true;
+                term.clear_last_lines(1).ok();
+                break;
+            }
+            Ok(Key::Char('n')) | Ok(Key::Char('N')) => {
+                selected = false;
+                term.clear_last_lines(1).ok();
+                break;
+            }
+            Ok(Key::Enter) => {
+                term.clear_last_lines(1).ok();
+                break;
+            }
+            Ok(Key::Escape) => {
+                selected = false;
+                term.clear_last_lines(1).ok();
+                break;
+            }
+            _ => {}
+        }
+
+        term.clear_last_lines(1).ok();
+    }
+
+    // Print final selection
+    let final_yes = if selected { style("●").green() } else { style("○").dim() };
+    let final_no = if !selected { style("●").green() } else { style("○").dim() };
+    let final_yes_text = if selected { style("Yes").green() } else { style("Yes").dim() };
+    let final_no_text = if !selected { style("No").green() } else { style("No").dim() };
+
+    term.write_line(&format!(
+        "{}  {} {} / {} {}",
+        pipe_indent, final_yes, final_yes_text, final_no, final_no_text
+    ))
+    .ok();
+    term.write_line(&format!("{}", pipe)).ok();
+    term.show_cursor().ok();
+
+    Ok(selected)
 }
 
-fn print_runtime_skip_warning(lang: poly_bench_dsl::Lang, label: &str) {
-    use colored::Colorize;
-    println!();
-    println!("{} {} is not installed.", "⚠".yellow(), label);
-    println!("  Install manually and run 'poly-bench add-runtime {}' later.", lang.as_str());
-    println!("  {}", project::runtime_check::install_hint(lang));
-    println!();
+/// Prompt the user to confirm installing project dependencies with T3-style formatting.
+/// Returns true if user confirms, false if they decline.
+fn prompt_install_deps_confirmation(_languages: &[String]) -> Result<bool> {
+    use console::{style, Key, Term};
+
+    let term = Term::stderr();
+    let pipe = style("│").dim();
+    let diamond_green = style("◇").green();
+
+    // Print the install prompt header (green title, simpler format)
+    eprintln!(
+        "{}  {}",
+        diamond_green,
+        style("Should we run 'poly-bench install' for you? (this installs LSP servers)").green()
+    );
+
+    // Custom Yes/No selection with radio buttons
+    let mut selected = true; // Default to Yes
+    term.hide_cursor().ok();
+
+    loop {
+        // Render the selection
+        let yes_indicator = if selected { style("●").green() } else { style("○").dim() };
+        let no_indicator = if !selected { style("●").green() } else { style("○").dim() };
+        let yes_text = if selected { style("Yes").green() } else { style("Yes").dim() };
+        let no_text = if !selected { style("No").green() } else { style("No").dim() };
+
+        term.write_line(&format!(
+            "{}  {} {} / {} {}",
+            pipe, yes_indicator, yes_text, no_indicator, no_text
+        ))
+        .ok();
+
+        match term.read_key() {
+            Ok(Key::ArrowLeft) | Ok(Key::ArrowUp) | Ok(Key::Char('h')) | Ok(Key::Char('k')) => {
+                selected = true;
+            }
+            Ok(Key::ArrowRight) | Ok(Key::ArrowDown) | Ok(Key::Char('l')) | Ok(Key::Char('j')) => {
+                selected = false;
+            }
+            Ok(Key::Char('y')) | Ok(Key::Char('Y')) => {
+                selected = true;
+                term.clear_last_lines(1).ok();
+                break;
+            }
+            Ok(Key::Char('n')) | Ok(Key::Char('N')) => {
+                selected = false;
+                term.clear_last_lines(1).ok();
+                break;
+            }
+            Ok(Key::Enter) => {
+                term.clear_last_lines(1).ok();
+                break;
+            }
+            Ok(Key::Escape) => {
+                selected = false;
+                term.clear_last_lines(1).ok();
+                break;
+            }
+            _ => {}
+        }
+
+        term.clear_last_lines(1).ok();
+    }
+
+    // Print final selection
+    let final_yes = if selected { style("●").green() } else { style("○").dim() };
+    let final_no = if !selected { style("●").green() } else { style("○").dim() };
+    let final_yes_text = if selected { style("Yes").green() } else { style("Yes").dim() };
+    let final_no_text = if !selected { style("No").green() } else { style("No").dim() };
+
+    term.write_line(&format!(
+        "{}  {} {} / {} {}",
+        pipe, final_yes, final_yes_text, final_no, final_no_text
+    ))
+    .ok();
+    term.write_line(&format!("{}", pipe)).ok();
+    term.show_cursor().ok();
+
+    Ok(selected)
+}
+
+/// Install a language toolchain and set up shims.
+/// If `create_global` is true, also creates a global symlink in ~/.local/bin.
+fn install_and_setup_shim(lang: poly_bench_dsl::Lang, create_global: bool) -> Result<()> {
+    // Install the toolchain
+    let binary_path = project::runtime_installer::install_toolchain(lang)?;
+
+    // Create shim
+    project::shim::create_shim_with_fallback(lang, &binary_path)?;
+
+    // Create global symlink if requested (user doesn't have the runtime)
+    if create_global {
+        project::shim::create_global_symlink(lang)?;
+    }
+
+    Ok(())
+}
+
+/// Prompt for confirmation and then install if confirmed.
+/// Returns Ok(true) if installed, Ok(false) if user declined, Err on failure.
+fn confirm_and_install(
+    theme: &init_t3::T3StyleTheme,
+    lang: poly_bench_dsl::Lang,
+    create_global: bool,
+    system_version: Option<&project::toolchain::Version>,
+    minimum_version: Option<&project::toolchain::Version>,
+) -> Result<bool> {
+    if !prompt_install_confirmation(theme, lang, create_global, system_version, minimum_version)? {
+        return Ok(false);
+    }
+    install_and_setup_shim(lang, create_global)?;
+    Ok(true)
 }
 
 fn cmd_new(name: &str) -> Result<()> {
@@ -2046,7 +2352,7 @@ fn cmd_remove(
     Ok(())
 }
 
-fn cmd_add_runtime(runtime: &str, system: bool) -> Result<()> {
+fn cmd_add_runtime(runtime: &str) -> Result<()> {
     use colored::Colorize;
     use poly_bench_dsl::Lang;
 
@@ -2061,81 +2367,62 @@ fn cmd_add_runtime(runtime: &str, system: bool) -> Result<()> {
         ));
     }
 
-    // If runtime not installed, prompt install or exit
-    let _did_install = if !project::runtime_check::is_lang_installed(lang) {
-        let label = poly_bench_runtime::lang_label(lang);
-        let theme = init_t3::T3StyleTheme::new();
-        let choice = prompt_install_or_skip(&theme, lang, &label)?;
-        match choice {
-            InstallChoice::Install => {
-                if project::runtime_installer::can_auto_install(lang) {
-                    let loc = if system {
-                        project::runtime_installer::InstallLocation::System
-                    } else {
-                        project::runtime_installer::InstallLocation::UserLocal
-                    };
-                    let version = prompt_version_select(&theme, lang, &label)?;
-                    let custom_path = prompt_install_path(&theme, lang, loc, &label)?;
-                    match project::runtime_installer::install_lang(lang, loc, custom_path, version)?
-                    {
-                        Some(custom_bin_dir) => {
-                            if let Ok(current) = std::env::var("PATH") {
-                                let sep = if cfg!(windows) { ";" } else { ":" };
-                                std::env::set_var(
-                                    "PATH",
-                                    format!("{}{}{}", custom_bin_dir.display(), sep, current),
-                                );
-                            }
-                            if let Ok(Some(config_path)) =
-                                project::runtime_installer::ensure_path_in_shell_config(
-                                    &custom_bin_dir,
-                                )
-                            {
-                                println!("  Added to PATH in {}.", config_path.display());
-                                println!(
-                                    "  Run 'source {}' or open a new terminal to use {} in future sessions.",
-                                    config_path.display(),
-                                    poly_bench_runtime::lang_label(lang)
-                                );
-                            }
-                        }
-                        None => {
-                            if let Some(path) =
-                                project::runtime_installer::polybench_runtime_path(lang)
-                            {
-                                if let Ok(current) = std::env::var("PATH") {
-                                    let sep = if cfg!(windows) { ";" } else { ":" };
-                                    std::env::set_var(
-                                        "PATH",
-                                        format!("{}{}{}", path.display(), sep, current),
-                                    );
-                                }
-                            }
-                            if let Ok(Some(config_path)) =
-                                project::runtime_installer::ensure_runtime_in_shell_config(lang)
-                            {
-                                println!("  Added to PATH in {}.", config_path.display());
-                                println!(
-                                    "  Run 'source {}' or open a new terminal to use {} in future sessions.",
-                                    config_path.display(),
-                                    poly_bench_runtime::lang_label(lang)
-                                );
-                            }
-                        }
-                    }
-                    true
-                } else {
-                    println!("{} {} requires manual install.", "⚠".yellow(), label);
-                    println!("  {}", project::runtime_check::install_hint(lang));
+    let label = poly_bench_runtime::lang_label(lang);
+    let theme = init_t3::T3StyleTheme::new();
+    let status = project::runtime_check::check_runtime_status(lang);
+
+    // Handle runtime status using the 3-criteria flow
+    match status {
+        project::runtime_check::VersionStatus::Compatible { path, version } => {
+            println!("  {} Using system {} {} at {}", "✓".green(), label, version, path.display());
+        }
+        project::runtime_check::VersionStatus::Incompatible { installed, minimum, .. } => {
+            if project::runtime_installer::can_auto_install(lang) {
+                if !confirm_and_install(&theme, lang, false, Some(&installed), Some(&minimum))? {
                     return Err(miette::miette!(
-                        "Cannot add {} without runtime. Install manually and run 'poly-bench add-runtime {}' again.",
-                        label,
-                        lang.as_str()
+                        "Installation declined. Cannot add {} without compatible runtime.",
+                        label
                     ));
                 }
+                println!("  {} Installed {} for Polybench use", "✓".green(), label);
+            } else {
+                println!(
+                    "  {} System {} {} is below minimum {}",
+                    "⚠".yellow(),
+                    label,
+                    installed,
+                    minimum
+                );
+                println!("{} {} requires manual install.", "⚠".yellow(), label);
+                println!("  {}", project::runtime_check::install_hint(lang));
+                return Err(miette::miette!(
+                    "Cannot add {} without compatible runtime. Install manually and run 'poly-bench add-runtime {}' again.",
+                    label,
+                    lang.as_str()
+                ));
             }
-            InstallChoice::Skip => {
-                print_runtime_skip_warning(lang, &label);
+        }
+        project::runtime_check::VersionStatus::NotInstalled => {
+            if project::runtime_installer::can_auto_install(lang) {
+                if !confirm_and_install(&theme, lang, true, None, None)? {
+                    return Err(miette::miette!(
+                        "Installation declined. Cannot add {} without runtime.",
+                        label
+                    ));
+                }
+                println!("  {} Installed {} for global use", "✓".green(), label);
+                // Show PATH guidance if needed
+                if project::shim::needs_path_setup() {
+                    let cmd = project::shim::get_path_setup_command();
+                    println!();
+                    println!("  To use {} globally, add ~/.local/bin to your PATH:", label);
+                    println!("    {}", cmd.dimmed());
+                    println!();
+                }
+            } else {
+                println!("  {} {} is not installed", "⚠".yellow(), label);
+                println!("{} {} requires manual install.", "⚠".yellow(), label);
+                println!("  {}", project::runtime_check::install_hint(lang));
                 return Err(miette::miette!(
                     "Cannot add {} without runtime. Install manually and run 'poly-bench add-runtime {}' again.",
                     label,
@@ -2143,9 +2430,7 @@ fn cmd_add_runtime(runtime: &str, system: bool) -> Result<()> {
                 ));
             }
         }
-    } else {
-        false
-    };
+    }
 
     let current_dir = std::env::current_dir()
         .map_err(|e| miette::miette!("Failed to get current directory: {}", e))?;
