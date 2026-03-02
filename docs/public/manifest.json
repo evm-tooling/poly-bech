@@ -1,7 +1,7 @@
 {
-  "name": "viemgolem · Go Interface for Ethereum",
-  "short_name": "viem-go golem",
-  "description": "Build reliable blockchain apps & libraries with idiomatic Go, type-safe and composable modules that interface with Ethereum — inspired by viem",
+  "name": "poly-bench · Write Once, Benchmark Everywhere",
+  "short_name": "poly-bench",
+  "description": "A cross-language benchmarking framework. Write benchmarks once in a clean DSL and run them natively across Go, TypeScript, Rust, and more.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0a",
@@ -9,15 +9,15 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/favicons/golem-icon-only-dark.svg",
+      "src": "/favicons/bench-favicon.png",
       "sizes": "any",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/favicons/golem-icon-only-dark.svg",
+      "src": "/favicons/bench-favicon.png",
       "sizes": "any",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "maskable"
     }
   ],

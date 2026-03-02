@@ -103,7 +103,6 @@ declare suite example performance timeBased sameDataset: false {
             'function approve(address spender, uint256 amount) returns (bool)',
             'function transferFrom(address from, address to, uint256 amount) returns (bool)',
             ]) 
-
         }
 
         helpers {
@@ -173,13 +172,12 @@ declare suite example performance timeBased sameDataset: false {
         }
     }
 
-
     bench concurrent_execution_example {
         description: "Fixed execution example"
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
     }
-    
+
     bench outlier_detection_example {
         description: "Benchmark with outlier detection enabled"
         targetTime: 2000ms
@@ -209,14 +207,14 @@ declare suite example performance timeBased sameDataset: false {
         warmup: 100
         before ts: resetCounter()
         before go: resetCounter()
-        after ts: {
-            void setupCounter 
-        }
         after go: {
             _ = setupCounter 
         }
-        each go: incrementCounter()
+        after ts: {
+            void setupCounter 
+        }
         each ts: incrementCounter()
+        each go: incrementCounter()
         go: sha256SumGo(data)
         ts: sha256SumTs(data)
     }

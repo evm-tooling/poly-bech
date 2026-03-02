@@ -3,7 +3,7 @@ import { getAllDocSlugs, getDocLastModified } from '@/lib/mdx'
 import { siteConfig } from '@/lib/seo'
 
 /**
- * Generates a dynamic sitemap for the viem-go documentation site.
+ * Generates a dynamic sitemap for the poly-bench documentation site.
  * This helps search engines discover and index all pages.
  *
  * @see https://nextjs.org/docs/app/api-reference/file-conventions/metadata/sitemap

@@ -47,11 +47,10 @@ const fadeIn = {
 
 const benchFileCode = `use std::charting
 
-suite keccakBench {
+declare suitekeccakBench performance timeBased sameDataset: true {
     description: "Keccak256 benchmark - Rust should win here"
     warmup: 100ms
     baseline: "go"
-    mode: "auto"
     targetTime: 3000ms
 
     after {
@@ -102,7 +101,7 @@ suite keccakBench {
     }
 
     fixture data {
-        hex: "68656c6c6f20776f726c64"
+        hex: "64000000"
     }
 
     bench keccak256Bench {
@@ -368,7 +367,7 @@ export default function Home() {
                   className="mt-8 flex flex-wrap gap-3"
                 >
                   <a
-                    href="/docs/getting-started"
+                    href="/docs/introduction"
                     className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-medium text-primary-foreground bg-primary hover:bg-primary-hover transition-all hover:scale-[1.02]"
                   >
                     Read the Docs <ArrowRight className="w-4 h-4" />
@@ -895,7 +894,7 @@ export default function Home() {
                 View on GitHub <ArrowRight className="w-4 h-4" />
               </a>
               <a
-                href="/docs/getting-started"
+                href="/docs/introduction"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-medium text-foreground-secondary !border !border-border bg-secondary/50 hover:bg-secondary transition-colors"
               >
                 Read the Docs
