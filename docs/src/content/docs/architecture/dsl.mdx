@@ -1,0 +1,103 @@
+---
+title: DSL
+description: Technical deep-dive on the poly-bench DSL parser, lexer, AST, and validator
+---
+
+<Aside type="caution">
+<span><strong>Docs in progress.</strong> Some content or features may be missing or not covered in detail.</span>
+</Aside>
+
+The `poly-bench-dsl` crate is the front-end of the poly-bench pipeline. It converts `.bench` source files into a structured Abstract Syntax Tree (AST) that downstream crates consume. This page covers the lexer, parser, AST types, validation, and formatter.
+
+---
+
+## Overview
+
+The DSL pipeline:
+
+1. **Lexer** — Converts character stream into tokens (keywords, identifiers, strings, numbers, punctuation)
+2. **Parser** — Parses token stream into AST nodes
+3. **Validator** — Semantic checks (fixture references, language block completeness, configuration)
+4. **Formatter** — Pretty-prints `.bench` files for consistent style
+
+---
+
+## Lexer
+
+The lexer (`poly-bench-dsl/src/lexer.rs`) tokenizes source text. It maintains line/column tracking for error reporting and handles:
+
+- **Keywords** — `suite`, `bench`, `setup`, `fixture`, `declare`, `use`, `import`, `helpers`, `after`, `before`, `each`, `globalSetup`, `performance`, `timeBased`, `sameDataset`, `baseline`, `warmup`, `targetTime`, `count`, `hex`, `data`, etc.
+- **Identifiers** — Suite names, benchmarks, fixture names, language tags (`go`, `ts`, `rust`, `python`, `c`, `csharp`, `zig`)
+- **Literals** — strings (double-quoted), hex strings, numbers (with `ms` suffix for durations)
+- **Punctuation** — `{`, `}`, `(`, `)`, `:`, `,`, `@`, `=`
+
+The lexer produces a `Vec<Token>` with `TokenKind` and `Span` for each token. Errors include source location for diagnostics.
+
+---
+
+## Parser
+
+The parser (`poly-bench-dsl/src/parser.rs`) consumes tokens and builds an AST. The grammar is defined in `poly-bench-grammar` (Tree-sitter) and the parser produces:
+
+- **File** — Top-level container with `use` directives and suite declarations
+- **Suite** — `declare suite` or `suite` blocks with configuration, setup blocks, fixtures, benchmarks, and `after` blocks
+- **Setup** — Per-language blocks with `import`, `declare`, `init`, and `helpers`
+- **Fixture** — `hex`, `data`, `encoding`, `format`, or `selector` properties
+- **Bench** — Benchmark blocks with language-specific expressions and optional `before`/`each`/`after` hooks
+
+The parser is recursive-descent and handles error recovery. Invalid input produces `ParseError` with span information.
+
+---
+
+## AST Types
+
+The AST (`poly-bench-dsl/src/ast.rs`) defines:
+
+- **Lang** — Enum for supported languages (Go, TypeScript, Rust, Python, C, C#, Zig)
+- **Span** — Line/column/byte range for error reporting
+- **File**, **Suite**, **Setup**, **Bench**, **Fixture** — Node types with serialization
+- **CodeBlock** — Embedded language code (Go, TypeScript, Rust, Python) with language tag
+
+AST nodes are serializable (`Serialize`/`Deserialize`) for caching and tooling.
+
+---
+
+## Validator
+
+The validator (`poly-bench-dsl/src/validate.rs`) runs semantic checks:
+
+- **Fixture references** — Benchmarks reference defined fixtures
+- **sameDataset consistency** — When `sameDataset: true`, all benchmarks use the same fixture set
+- **Setup completeness** — Each language used in benchmarks has a setup block
+- **Configuration** — `baseline`, `warmup`, `targetTime`, `count` are valid
+
+Validation produces `ValidationResult` with `ValidationError` and `ValidationWarning` for each issue.
+
+---
+
+## Formatter
+
+The formatter (`poly-bench-dsl/src/formatter.rs`) pretty-prints `.bench` files:
+
+- `format_file(source, filename)` — Returns formatted string
+- `format_file_with_options` — Configurable indentation and line width
+
+Used by `poly-bench fmt` and the LSP for incremental formatting.
+
+---
+
+## Related Crates
+
+| Crate | Role |
+|-------|------|
+| `poly-bench-grammar` | Tree-sitter grammar for `.bench` files; used by LSP and parser |
+| `poly-bench-syntax` | Tree-sitter-based parsing for LSP (error-tolerant) |
+| `poly-bench-ir` | Lowers AST to IR for codegen |
+
+---
+
+## Further Reading
+
+- [DSL Reference](/docs/core/dsl-reference) — Complete syntax documentation
+- [Architecture](/docs/architecture) — Pipeline overview
+- [LSP v2](/docs/architecture/lsp-v2) — Editor integration

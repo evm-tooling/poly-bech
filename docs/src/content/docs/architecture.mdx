@@ -1,0 +1,125 @@
+---
+title: Architecture
+description: How poly-bench is structured, how benchmarks flow, and how the runtime isolation works
+---
+
+<Aside type="caution">
+<span><strong>Docs in progress.</strong> Some content or features may be missing or not covered in detail.</span>
+</Aside>
+
+poly-bench is built as a modular Rust workspace where each crate handles a specific responsibility. This architecture enables clean separation between parsing, validation, code generation, execution, and reporting.
+
+### The Big Idea
+
+- **DSL files** (`.bench`) are the source of truth for benchmark definitions
+- **IR (Intermediate Representation)** is a normalized, validated structure that all downstream tools consume
+- **Runtimes** are isolated per-language execution environments that run generated benchmark code
+- **Reporters** transform raw timing data into human-readable output (console, markdown, JSON, charts)
+
+<Aside type="note">
+<span>The DSL compiles to native benchmark code in each language. Go benchmarks use Go's runtime, TypeScript runs in Node.js, and Rust uses Cargo. There's no interpretation or FFI — each language runs at full native speed.</span>
+</Aside>
+
+### Component Map
+
+Every benchmark flows through the same pipeline. Your `.bench` file is parsed into an AST, lowered to IR, used to generate language-specific code, executed in isolated runtimes, and finally reported.
+
+<FlowDiagram
+  nodes={[
+    {
+      label: "Your .bench file",
+      variant: "accent"
+    },
+    {
+      label: "DSL Parser",
+      sublabel: "poly-bench-dsl",
+      items: [
+        "Lexer → Token stream",
+        "Parser → AST (Abstract Syntax Tree)",
+        "Validator → Semantic checks"
+      ]
+    },
+    {
+      label: "IR Lowering",
+      sublabel: "poly-bench-ir",
+      items: [
+        "Normalize configuration",
+        "Resolve fixtures and imports",
+        "Validate language blocks"
+      ]
+    },
+    {
+      label: "Code Generation",
+      sublabel: "poly-bench-runtime",
+      items: [
+        "Go: Generate benchmark_plugin.go",
+        "TypeScript: Generate benchmark.ts",
+        "Rust: Generate main.rs",
+        "Python, C, C#, Zig: Generate per-runtime"
+      ]
+    },
+    {
+      label: "Runtime Execution",
+      sublabel: "poly-bench-executor",
+      items: [
+        "Spawn isolated subprocess per language",
+        "Run warmup iterations",
+        "Collect timing measurements",
+        "Track memory allocations"
+      ]
+    },
+    {
+      label: "Reporting",
+      sublabel: "poly-bench-reporter",
+      items: [
+        "Console: Colored tables",
+        "Markdown: Documentation-ready",
+        "JSON: CI/automation",
+        "SVG: Generated charts"
+      ]
+    },
+    {
+      label: "Results",
+      variant: "accent"
+    }
+  ]}
+/>
+
+### Architecture Deep-Dives
+
+| Component | Description |
+|-----------|-------------|
+| [DSL](/docs/architecture/dsl) | Lexer, parser, AST, formatter, and validator for `.bench` files |
+| [Polybench Runtime](/docs/architecture/polybench-runtime) | Language-specific code generation (Go, TS, Rust, Python, C, C#, Zig) |
+| [Executor](/docs/architecture/executor) | Orchestrates benchmark runs, calibration, and measurement collection |
+| [Reporter](/docs/architecture/reporter) | Console, markdown, JSON, and SVG chart output |
+| [LSP v2](/docs/architecture/lsp-v2) | Language Server Protocol for editor support |
+
+<Aside type="tip">
+<span>The modular design means you can use individual crates in your own tooling. For example, use <code>poly-bench-dsl</code> to parse <code>.bench</code> files in a custom analysis tool.</span>
+</Aside>
+
+### How Benchmarks Flow
+
+### 1. Parse & Validate
+
+When you run `poly-bench run benchmark.bench`, the DSL parser tokenizes and parses your file into an AST. The validator checks for semantic errors like undefined fixtures or missing language blocks.
+
+### 2. Lower to IR
+
+The AST is lowered to an Intermediate Representation that's fully resolved and normalized. This step resolves fixture references, merges configuration with defaults, and prepares data structures for code generation.
+
+### 3. Generate Code
+
+For each target language, poly-bench generates native benchmark code. The generated code includes imports, helper functions, fixture data, and a benchmark harness with timing code.
+
+### 4. Execute in Isolated Runtimes
+
+Each language runs in its own isolated subprocess. Runtime environments live in `.polybench/runtime-env/` — each language has its own dependency directory for reproducible builds.
+
+### Further Reading
+
+- [DSL Reference](/docs/core/dsl-reference) — Complete syntax documentation
+- [Standard Library](/docs/core/standard-library) — Module reference
+- [CLI Reference](/docs/tools/cli) — Command-line options
+- [Features](/docs/features) — Fixtures, hooks, globalSetup, charting

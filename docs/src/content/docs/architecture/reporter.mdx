@@ -1,0 +1,82 @@
+---
+title: Reporter
+description: Technical deep-dive on how poly-bench formats and outputs benchmark results
+---
+
+<Aside type="caution">
+<span><strong>Docs in progress.</strong> Some content or features may be missing or not covered in detail.</span>
+</Aside>
+
+The `poly-bench-reporter` crate generates output from benchmark results. It supports console tables, markdown reports, JSON for CI, and SVG charts. This page covers the output formats, chart execution, and how results flow from the executor to the reporter.
+
+---
+
+## Overview
+
+The reporter produces:
+
+| Format | Use case | Module |
+|--------|----------|--------|
+| **Console** | Interactive terminal output | `console.rs` |
+| **Markdown** | Documentation-ready reports | `markdown.rs` |
+| **JSON** | CI integration, automation | `json.rs` |
+| **SVG** | Charts (tables, bar, line, speedup) | `svg.rs`, `charts/` |
+
+---
+
+## Console Reporter
+
+The console reporter (`poly-bench-reporter/src/console.rs`) produces vitest/tinybench-style output:
+
+- **Colored tables** — Per-language timing, ops/sec, speedup vs baseline
+- **Distribution stats** — Min, max, mean, p50, p75, p99
+- **Config section** — Iterations, warmup, timeout
+- **Memory stats** — Optional allocation tracking
+
+---
+
+## Markdown Reporter
+
+The markdown reporter (`poly-bench-reporter/src/markdown.rs`) generates documentation-ready reports:
+
+- Tables with headers
+- Suitable for CI artifacts or docs
+
+---
+
+## JSON Reporter
+
+The JSON reporter (`poly-bench-reporter/src/json.rs`) outputs structured data:
+
+- `results.json` — Full benchmark results for `poly-bench plot`
+- Used by CI pipelines and custom tooling
+
+---
+
+## Chart Execution
+
+The chart executor (`poly-bench-reporter/src/chart_executor.rs`) runs chart directives from `after` blocks:
+
+- **execute_chart_directives** — Takes `ChartDirectiveIR` from IR, `BenchmarkResults`, and output dir
+- **Chart types** — `drawTable`, `drawBarChart`, `drawLineChart`, `drawSpeedupChart`
+- **Per-benchmark charts** — Speedup charts can generate individual charts per benchmark
+
+Charts are written as SVG files to the output directory.
+
+---
+
+## Chart Types
+
+The `charts/` module implements:
+
+- **Bar chart** — Grouped bars by language
+- **Line chart** — Time series or scaling data
+- **Speedup chart** — Relative to baseline
+
+---
+
+## Further Reading
+
+- [Charting Guide](/docs/guides/charting) — User-facing chart options
+- [Architecture](/docs/architecture) — Pipeline overview
+- [Executor](/docs/architecture/executor) — How results are collected

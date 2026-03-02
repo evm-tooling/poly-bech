@@ -48,44 +48,9 @@ export const docsNav: NavItem[] = [
         label: 'Overview',
         items: [
           { label: 'Why poly-bench', slug: 'introduction' },
+          { label: 'Installation', slug: 'introduction/installation' },
+          { label: 'Platform Compatibility', slug: 'platform-compatibility' },
           { label: 'Getting Started', slug: 'getting-started' },
-          { label: 'Benchmark Features', slug: 'examples' },
-        ],
-      },
-    ],
-  },
-  {
-    label: 'Requirements',
-    items: [
-      { label: 'Runtimes', slug: 'requirements' },
-      {
-        label: 'By Language',
-        items: [
-          { label: 'Go', slug: 'requirements/go' },
-          { label: 'TypeScript', slug: 'requirements/ts' },
-          { label: 'Rust', slug: 'requirements/rust' },
-          { label: 'Python', slug: 'requirements/python' },
-          { label: 'C', slug: 'requirements/c' },
-          { label: 'C#', slug: 'requirements/csharp' },
-          { label: 'Zig', slug: 'requirements/zig' },
-        ],
-      },
-    ],
-  },
-  {
-    label: 'Polybench Runtime',
-    items: [
-      { label: 'Overview', slug: 'polybench-runtime' },
-      {
-        label: 'By Language',
-        items: [
-          { label: 'Go', slug: 'polybench-runtime/go' },
-          { label: 'TypeScript', slug: 'polybench-runtime/ts' },
-          { label: 'Rust', slug: 'polybench-runtime/rust' },
-          { label: 'Python', slug: 'polybench-runtime/python' },
-          { label: 'C', slug: 'polybench-runtime/c' },
-          { label: 'C#', slug: 'polybench-runtime/csharp' },
-          { label: 'Zig', slug: 'polybench-runtime/zig' },
         ],
       },
     ],
@@ -95,7 +60,7 @@ export const docsNav: NavItem[] = [
     items: [
       { label: 'Overview', slug: 'features' },
       {
-        label: 'By Feature',
+        label: 'Bench Semantics',
         items: [
           { label: 'Suites', slug: 'features/suites' },
           { label: 'Setup Blocks', slug: 'features/setup' },
@@ -104,13 +69,8 @@ export const docsNav: NavItem[] = [
           { label: 'globalSetup', slug: 'features/global-setup' },
         ],
       },
-    ],
-  },
-  {
-    label: 'Guides',
-    items: [
       {
-        label: 'Usage',
+        label: 'Standard Library',
         items: [
           { label: 'Charting', slug: 'guides/charting' },
           { label: 'Anvil & EVM', slug: 'guides/anvil' },
@@ -121,12 +81,39 @@ export const docsNav: NavItem[] = [
     ],
   },
   {
+    label: 'Architecture',
+    items: [
+      { label: 'Overview', slug: 'architecture' },
+      {
+        label: 'Polybench Runtime',
+        items: [
+          { label: 'Overview', slug: 'architecture/polybench-runtime' },
+          { label: 'Go', slug: 'architecture/polybench-runtime/go' },
+          { label: 'TypeScript', slug: 'architecture/polybench-runtime/ts' },
+          { label: 'Rust', slug: 'architecture/polybench-runtime/rust' },
+          { label: 'Python', slug: 'architecture/polybench-runtime/python' },
+          { label: 'C', slug: 'architecture/polybench-runtime/c' },
+          { label: 'C#', slug: 'architecture/polybench-runtime/csharp' },
+          { label: 'Zig', slug: 'architecture/polybench-runtime/zig' },
+        ],
+      },
+      {
+        label: 'Components',
+        items: [
+          { label: 'DSL', slug: 'architecture/dsl' },
+          { label: 'Executor', slug: 'architecture/executor' },
+          { label: 'Reporter', slug: 'architecture/reporter' },
+          { label: 'LSP v2', slug: 'architecture/lsp-v2' },
+        ],
+      },
+    ],
+  },
+  {
     label: 'Reference',
     items: [
       {
         label: 'Core',
         items: [
-          { label: 'Architecture', slug: 'core/architecture' },
           { label: 'DSL Reference', slug: 'core/dsl-reference' },
           { label: 'Standard Library', slug: 'core/standard-library' },
         ],

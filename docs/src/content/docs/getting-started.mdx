@@ -1,1015 +1,352 @@
 ---
 title: Getting Started
-description: Get up and running with poly-bench in minutes
+description: ""
 ---
 
-<div data-pagefind-weight="10">
+Get started with poly-bench in just a few steps.
 
-### Installation
+## Overview
 
-Install poly-bench using the installer:
+poly-bench is a multi-language benchmarking framework that lets you define benchmarks once and run them across Go, TypeScript, Rust, and more with unified output and fair comparisons:
+
+- **Define once, run everywhere** — Write one `.bench` file; poly-bench compiles to native code in each target language.
+- **Fair comparisons** — Same iterations, same data, same warmup strategy across all languages ensures apples-to-apples results.
+- **Rich output** — Console tables, markdown reports, JSON for CI, and SVG charts from a single run.
+- **Developer experience** — Custom DSL with LSP support, auto-calibration, and portable fixtures.
+
+You can learn more in [Why poly-bench](/docs/introduction).
+
+## Installation
+
+Install poly-bench using the native binary installer:
 
 <CodeGroup 
   tabs={[
     {
       title: "Install",
       language: "bash",
-      code: `curl -sSL https://install.evm-tooling.tools | bash  # [!code focus]`
+      code: `curl -sSL https://polybench.evm-tooling.tools | bash`
     },
   ]}
 />
 
-Or via Cargo:
 
-<CodeGroup 
-  tabs={[
-    {
-      title: "Cargo",
-      language: "bash",
-      code: `cargo install poly-bench  # [!code focus]`
-    },
-  ]}
-/>
 
-### Supported Runtimes
+For custom install paths, unreleased commits, and security notes, see [Installation](/docs/introduction/installation).
 
-poly-bench supports **7 languages** for cross-language benchmarking:
+## Quick Start
 
-| Runtime | CLI name | Description |
-|---------|----------|-------------|
-| Go | `go` | Go's testing package and plugin execution |
-| TypeScript | `ts` / `typescript` | Node.js with ES modules |
-| Rust | `rust` / `rs` | Cargo benchmark harness |
-| Python | `python` / `py` | Python 3 with virtualenv |
-| C | `c` | Clang-compiled native code |
-| C# | `csharp` / `cs` | .NET SDK (net8.0 default) |
-| Zig | `zig` | Zig build system |
+### 1. Define your bench suite
 
-<Aside type="note">
-<span>You only need the runtimes for languages you're actually benchmarking. If you're only comparing Go and TypeScript, the others aren't required.</span>
-</Aside>
-
-### Prerequisites by Runtime
-
-Each runtime has specific requirements. Install the tools for the languages you plan to benchmark:
-
-| Runtime | Requirement | Verify | Notes |
-|---------|-------------|--------|-------|
-| **Go** | Go 1.21+ | `go version` | Standard Go toolchain |
-| **TypeScript** | Node.js 18+, npm | `node --version` | Uses Node for execution |
-| **Rust** | Rust 1.70+, Cargo | `rustc --version` | Install via [rustup](https://rustup.rs/) |
-| **Python** | Python 3.8+, pip, venv | `python3 --version` | `python3-venv` on Debian/Ubuntu |
-| **C** | Clang (LLVM) | `clang --version` | Not gcc — poly-bench uses clang. Install: `brew install llvm` (macOS), `sudo apt install clang` (Linux), `choco install llvm` (Windows) |
-| **C#** | .NET SDK 8.0+ | `dotnet --version` | [Download](https://dotnet.microsoft.com/download) |
-| **Zig** | Zig 0.15+ | `zig version` | [Download](https://ziglang.org/download/) — 0.15+ required for build system compatibility |
-
-<Aside type="tip">
-<span>During <code>poly-bench init</code>, poly-bench can auto-install Go, Node.js, Rust, Python, Zig, and C# if they're missing. C requires manual installation (clang).</span>
-</Aside>
-
-For full workflow details, init behavior, dependency management, and language-specific gotchas, see the [Requirements and Runtimes](/docs/requirements) guides.
-
-### Quick Start
-
-Follow this guide to create your first benchmark. poly-bench will walk you through language selection and optional runtime installation.
-
-</div>
-
----
-
-### 1. Initialize a Project
-
-Create a new poly-bench project. Running without arguments starts an **interactive flow** that prompts for project name, which languages to include, and offers to install missing runtimes:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Interactive (recommended)",
-      language: "bash",
-      code: `poly-bench init
-# Prompts: project name → language selection → install missing runtimes`
-    },
-    {
-      title: "Non-interactive",
-      language: "bash",
-      code: `poly-bench init my-benchmarks --languages go,ts,rust  # [!code focus:2]
-cd my-benchmarks`
-    },
-  ]}
-/>
-
-#### Init Options
-
-| Option | Description |
-|--------|-------------|
-| `--languages go,ts,rust,...` | Comma-separated list: `go`, `ts`, `rust`, `python`, `c`, `csharp`, `zig` |
-| `--no-example` | Skip creating the example benchmark and fixtures |
-
-#### Runtime Installer During Init
-
-When you select a language that isn't installed, poly-bench offers to:
-
-- **Install now** — Download and configure the runtime (Go, Node, Rust, Python, Zig, C#). C must be installed manually.
-- **Skip** — Add the runtime to the project config; install later and run `poly-bench add-runtime <lang>`.
-
-#### Adding Runtimes Later
-
-If you initialized without a runtime or installed it afterward, add it to an existing project:
+Initialise a new Polybench project by running the `init` CLI command. you can do so by copying the command below into your terminal
 
 <CodeGroup 
   tabs={[
     {
       title: "Terminal",
       language: "bash",
-      code: `poly-bench add-runtime go  # [!code focus:3]
-poly-bench add-runtime ts
-poly-bench add-runtime rust
-poly-bench add-runtime python
-poly-bench add-runtime c
-poly-bench add-runtime csharp
+      code: `poly-bench init my-benchmarks --languages go,ts,rust
+`
+    },
+  ]}
+/>
+
+<Aside type="note">
+<span>Alternatively, run <code>poly-bench init</code> with no flags — it will walk you through an interactive menu to select languages. If you don't have a given language installed, poly-bench can install it for you.</span>
+</Aside>
+
+Declare a suite with the required header tokens: `suiteType`, `runMode`, and `sameDataset`. Use `performance` for timing, `timeBased` for auto-calibration, and set `sameDataset: true` when all benchmarks share the same fixture data.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "benchmarks/hash.bench",
+      language: "bench",
+      code: `declare suite hashBench performance timeBased sameDataset: true {
+    description: "String Concatenation hash benchmark"
+    baseline: "go"
+    warmup: 100
+    targetTime: 1000ms
+    count: 1
+
+    # ... setup and benchmarks next
+}`
+    },
+  ]}
+/>
+
+### 2. Define your params
+
+Add fixtures (shared test data) and setup blocks for each language. Fixtures ensure all implementations receive identical input. Setup blocks define imports and helpers.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "benchmarks/hash.bench",
+      language: "bench",
+      code: `declare suite hashBench performance timeBased sameDataset: true {
+    description: "String Concatination hash benchmark"
+    baseline: "go"
+    warmup: 100
+    targetTime: 1000ms
+    count: 1
+
+     setup go { //[!code focus: 29]
+      import (
+            "encoding/binary"
+            "strings"
+        )
+      
+      helpers {
+          func concatGo(data []byte) []byte {
+            n := binary.LittleEndian.Uint32(data[0:4])
+            var b strings.Builder
+            b.Grow(int(n))  // pre-allocate
+            for i := uint32(0); i < n; i++ {
+                b.WriteByte('x')
+            }
+            return []byte(b.String())
+        }
+      }
+    }
+
+    setup ts {
+        helpers {
+            function concatTs(data: Uint8Array): Uint8Array {
+                const n = new DataView(data.buffer, data.byteOffset, 4).getUint32(0, true)
+                let s = ''
+                for (let i = 0; i < n; i++) s += 'x'
+                return new TextEncoder().encode(s)
+            }
+        }
+    }
+}`
+    },
+  ]}
+/>
+
+### 3. Add your bench tests and plot your chart
+
+Add benchmark blocks that call your helpers across languages. Use `after` blocks to generate charts from the results.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "benchmarks/hash.bench",
+      language: "bench",
+      code: `use std::charting // [!code focus: 1]
+
+declare suite hashBench performance timeBased sameDataset: true {
+    description: "String Concatination hash benchmark"
+    baseline: "go"
+    warmup: 100
+    targetTime: 1000ms
+    count: 1
+
+     setup go { 
+        import ("encoding/binary")
+        
+        helpers {
+          import (
+                "encoding/binary"
+                "strings"
+            )
+          
+          helpers {
+              func concatGo(data []byte) []byte {
+                n := binary.LittleEndian.Uint32(data[0:4])
+                var b strings.Builder
+                b.Grow(int(n))  // pre-allocate
+                for i := uint32(0); i < n; i++ {
+                    b.WriteByte('x')
+                }
+                return []byte(b.String())
+            }
+      }
+    }
+
+    setup ts {
+        helpers {
+            function concatTs(data: Uint8Array): Uint8Array {
+                const n = new DataView(data.buffer, data.byteOffset, 4).getUint32(0, true)
+                let s = ''
+                for (let i = 0; i < n; i++) s += 'x'
+                return new TextEncoder().encode(s)
+            }
+        }
+    }
+
+    fixture data {  //[!code focus: 20]
+        hex: "64000000"
+    }
+
+    bench stringConcatBench {
+        go: concatGo(data)
+        ts: concatTs(data)
+    }
+
+    after {
+        charting.drawTable(
+            title: "String Conctenation Performance",
+            output: "str-concat-table.svg"
+        )
+        charting.drawSpeedupChart(
+            title: "String Conctenation Speedup",
+            output: "str-concat-speedup.svg"
+        )
+    }
+     }
+}`
+    },
+  ]}
+/>
+
+Run the benchmark:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `poly-bench run benchmarks/string-concat.bench`
+    },
+  ]}
+/>
+
+Charts are written to the output directory (e.g. `out/hash-table.svg`).
+
+## CLI at a glance
+
+A quick tour of the main commands you'll use day to day.
+
+### plot
+
+Generate charts from existing results without re-running benchmarks. Use `plot from-file` to apply chart directives from a `.bench` file's `after` block, or use subcommands like `bar-chart`, `line-chart`, `speedup-chart`, and `table` with a results file:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `poly-bench plot from-file benchmarks/hash.bench --results out/results.json`
+    },
+  ]}
+/>
+
+### compile
+
+Verify that your benchmark scripts will build across all languages without actually running them. Useful in CI or before committing:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `poly-bench compile benchmarks/hash.bench`
+    },
+  ]}
+/>
+
+### install and build
+
+- **`poly-bench install`** — Install dependencies declared in `polybench.toml` into each language's runtime environment (e.g. `go get`, `npm install`, `cargo add`).
+- **`poly-bench build`** — Regenerate the `.polybench/` directory, run codegen, and compile. Use this when you've changed dependencies or want to refresh the runtime environment.
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `poly-bench install
+poly-bench build`
+    },
+  ]}
+/>
+
+### add-runtime
+
+Add a new language runtime to an existing project. Creates the runtime config in `polybench.toml` and scaffolds `.polybench/runtime-env/<lang>/`:
+
+<CodeGroup 
+  tabs={[
+    {
+      title: "Terminal",
+      language: "bash",
+      code: `poly-bench add-runtime python
 poly-bench add-runtime zig`
     },
   ]}
 />
 
-This updates `polybench.toml` and creates the `.polybench/runtime-env/<lang>/` directory for that runtime.
+Supported runtimes: `go`, `ts`, `rust`, `python`, `c`, `csharp`, `zig`.
 
----
+### add
 
-### 2. Project Structure
-
-After init, your project looks like this:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Structure",
-      language: "text",
-      code: `my-benchmarks/
-├── polybench.toml           # Project config and enabled runtimes
-├── benchmarks/
-│   ├── example.bench        # Bubble sort benchmark (template)
-│   └── fixtures/
-│       └── sort/           # Hex fixture files (sort_100.hex, etc.)
-└── .polybench/
-    └── runtime-env/        # Per-language build environments
-        ├── go/             # go.mod, generated bench code
-        ├── ts/              # package.json, node_modules
-        ├── rust/            # Cargo.toml, target/
-        ├── python/          # requirements.txt, .venv
-        ├── c/               # Generated C sources
-        ├── csharp/          # polybench.csproj
-        └── zig/             # build.zig, src/`
-    },
-  ]}
-/>
-
----
-
-### 3. The Example Benchmark
-
-The default `example.bench` is a **bubble sort benchmark** that compares implementations across your enabled languages. It demonstrates:
-
-- **File fixtures** — `@file("fixtures/sort/sort_100.hex")` for portable test data
-- **Multiple benchmarks** — `n100` through `n1000` with varying input sizes
-- **Chart generation** — Line chart, speedup chart, and results table via `std::charting`
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "benchmarks/example.bench (excerpt)",
-      language: "bench",
-      code: `use std::charting
-
-declare suite bubbleN performance timeBased sameDataset: true {
-    description: "O(n²) bubble sort on int32 array"
-    baseline: "go"
-    warmup: 100
-    targetTime: 1000ms
-    fairness: "strict"
-    cvThreshold: 5
-    count: 1
-
-    setup go {
-        import ("encoding/binary")
-        helpers {
-            func bubbleGo(data []byte) []byte {
-                n := len(data) / 4
-                arr := make([]int32, n)
-                for i := 0; i < n; i++ {
-                    arr[i] = int32(binary.BigEndian.Uint32(data[i*4:(i+1)*4]))
-                }
-                for i := 0; i < n; i++ {
-                    for j := 0; j < n-1-i; j++ {
-                        if arr[j] > arr[j+1] {
-                            arr[j], arr[j+1] = arr[j+1], arr[j]
-                        }
-                    }
-                }
-                out := make([]byte, len(data))
-                for i := 0; i < n; i++ {
-                    binary.BigEndian.PutUint32(out[i*4:(i+1)*4], uint32(arr[i]))
-                }
-                return out
-            }
-        }
-    }
-
-    setup ts {
-        helpers {
-            function bubbleTs(data: Uint8Array): Uint8Array {
-                const n = data.length / 4
-                const arr = new Array(n)
-                for (let i = 0; i < n; i++) {
-                    arr[i] = (data[i*4]<<24) | (data[i*4+1]<<16) | (data[i*4+2]<<8) | data[i*4+3]
-                }
-                for (let i = 0; i < n; i++) {
-                    for (let j = 0; j < n - 1 - i; j++) {
-                        if (arr[j] > arr[j+1]) [arr[j], arr[j+1]] = [arr[j+1], arr[j]]
-                    }
-                }
-                const out = new Uint8Array(data.length)
-                const view = new DataView(out.buffer)
-                for (let i = 0; i < n; i++) view.setInt32(i * 4, arr[i], false)
-                return out
-            }
-        }
-    }
-
-    setup rust {
-        helpers {
-            fn bubble_rust(data: &[u8]) -> Vec<u8> {
-                let n = data.len() / 4;
-                let mut arr: Vec<i32> = (0..n).map(|i| {
-                    i32::from_be_bytes([data[i*4], data[i*4+1], data[i*4+2], data[i*4+3]])
-                }).collect();
-                for i in 0..n {
-                    for j in 0..n-1-i {
-                        if arr[j] > arr[j+1] {
-                            arr.swap(j, j+1);
-                        }
-                    }
-                }
-                let mut out = vec![0u8; data.len()];
-                for i in 0..n {
-                    out[i*4..(i+1)*4].copy_from_slice(&arr[i].to_be_bytes());
-                }
-                out
-            }
-        }
-    }
-
-    fixture s100 { hex: @file("fixtures/sort/sort_100.hex") }
-    fixture s200 { hex: @file("fixtures/sort/sort_200.hex") }
-    # ... s300 through s1000 ...
-
-    bench n100 {
-        go: bubbleGo(s100)
-        ts: bubbleTs(s100)
-        rust: bubble_rust(&s100)
-    }
-    # ... n200 through n1000 ...
-
-    after {
-        charting.drawLineChart(
-            title: "Bubble Sort - O(n²)",
-            output: "bubble-line-linear.svg",
-            yScale: "linear",
-            showStdDev: true,
-            showRegression: true,
-        )
-        charting.drawSpeedupChart(
-            title: "Bubble Sort - O(n²)",
-            output: "bubble-bar-speed.svg",
-        )
-        charting.drawTable(
-            title: "Sort Performance Comparison",
-            output: "bubble-table-curr.svg",
-        )
-    }
-}`
-    },
-  ]}
-/>
-
-<Aside type="note">
-<span>The example includes setup blocks only for the languages you enabled at init. Add more with <code>poly-bench add-runtime &lt;lang&gt;</code> and extend the file.</span>
-</Aside>
-
----
-
-### 4. Add Dependencies
-
-Add libraries you want to benchmark. poly-bench manages dependencies per language in `.polybench/runtime-env/`:
+Add language dependencies using the runtime flag (`--go`, `--ts`, `--rust`, etc.). Each dependency is appended to the corresponding section in `polybench.toml` and installed into `.polybench/runtime-env/<lang>/`:
 
 <CodeGroup 
   tabs={[
     {
       title: "Terminal",
       language: "bash",
-      code: `# Add Go dependencies
-poly-bench add --go golang.org/x/crypto
-
-# Add npm dependencies  
-poly-bench add --ts viem
-
-# Add Rust crates
-poly-bench add --rs tiny-keccak
-
-# Add Python packages
-poly-bench add --py "numpy==1.26"
-
-# Add C dependencies (vcpkg)
-poly-bench add --c openssl@3.2
-
-# Add C# packages
-poly-bench add --cs Newtonsoft.Json@13.0.3
-
-# Add Zig dependencies
-poly-bench add --zig "git+https://github.com/example/zig-pkg#main"`
+      code: `poly-bench add --go github.com/example/pkg@v1.0.0
+poly-bench add --ts lodash@4.17.21
+poly-bench add --rs serde@1.0`
     },
   ]}
 />
 
-Then install all dependencies:
+### The `polybench.toml` manifest
+
+Your project manifest lives at the root and configures defaults, languages, and dependencies. When you run `poly-bench add`, it writes entries into the `[go.dependencies]`, `[ts.dependencies]`, and similar sections. Key sections:
 
 <CodeGroup 
   tabs={[
     {
-      title: "Terminal",
-      language: "bash",
-      code: `poly-bench install`
+      title: "polybench.toml",
+      language: "toml",
+      code: `[project]
+name = "my-benchmarks"
+version = "0.0.1"
+
+[defaults]
+iterations = 1000
+warmup = 100
+languages = ["go", "ts", "rust"]
+
+# Per-language config and dependencies
+[go]
+version = "1.21"
+
+[go.dependencies]
+"github.com/example/pkg" = "latest"
+
+[ts.dependencies]
+lodash = "4.17.21"
+
+[rust.dependencies]
+serde = "1.0"
+tokio = { version = "1.0", features = ["rt"] }
+
+[output]
+output_dir = "out"
+auto_save_results = true`
     },
   ]}
 />
 
-<Aside type="tip">
-<span>Dependencies are isolated per-project in <code>.polybench/runtime-env/</code>. This keeps benchmarks reproducible and avoids polluting your global environment.</span>
-</Aside>
-
----
-
-### 5. CLI Commands Reference
-
-Quick reference for the main commands. See the [CLI Reference](/docs/tools/cli) for full options.
-
-#### `poly-bench run`
-
-Execute benchmarks. Default: run all `.bench` files in `benchmarks/`.
-
-| Option | Description |
-|--------|-------------|
-| `--lang <LANG>` | Run only benchmarks for a specific language (`go`, `ts`, `rust`, `python`, `c`, `csharp`, `zig`) |
-| `--iterations <N>` | Override iteration count |
-| `--report <FORMAT>` | Output format: `console` (default), `markdown`, `json` |
-| `--output <DIR>` / `-o <DIR>` | Output directory for reports and charts |
-| `--project-dir LANG:DIR` | Explicit project root for a language (e.g. `go:./my-go-mod`) |
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Examples",
-      language: "bash",
-      code: `# Run all benchmarks
-poly-bench run
-
-# Run a specific file
-poly-bench run benchmarks/example.bench
-
-# Run with output directory for charts/reports
-poly-bench run --output out/
-
-# Run only a specific language
-poly-bench run --lang go
-
-# Generate markdown or JSON report
-poly-bench run --report markdown --output results/
-poly-bench run --report json --output results/`
-    },
-  ]}
-/>
-
-#### `poly-bench check`
-
-Parse and validate a `.bench` file without running. Catches syntax and semantic errors.
-
-| Option | Description |
-|--------|-------------|
-| `--show-ast` | Show the parsed AST (for debugging) |
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Example",
-      language: "bash",
-      code: `poly-bench check benchmarks/example.bench
-poly-bench check benchmarks/example.bench --show-ast`
-    },
-  ]}
-/>
-
-#### `poly-bench new`
-
-Create a new benchmark file with an empty suite template.
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Example",
-      language: "bash",
-      code: `poly-bench new keccak
-# Creates benchmarks/keccak.bench with a minimal suite`
-    },
-  ]}
-/>
-
-#### `poly-bench fmt`
-
-Format `.bench` files. Without `--write`, prints formatted output to stdout.
-
-| Option | Description |
-|--------|-------------|
-| `--write` / `-w` | Write formatted content back to files (otherwise prints to stdout) |
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Example",
-      language: "bash",
-      code: `# Format and save
-poly-bench fmt benchmarks/*.bench --write
-
-# Preview formatted output
-poly-bench fmt benchmarks/example.bench`
-    },
-  ]}
-/>
-
-#### `poly-bench install`
-
-Install all dependencies from `polybench.toml` into `.polybench/runtime-env/`.
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Example",
-      language: "bash",
-      code: `poly-bench install`
-    },
-  ]}
-/>
-
-#### `poly-bench build`
-
-Build or regenerate the `.polybench` runtime environment. Use after adding a new runtime or changing dependencies.
-
-| Option | Description |
-|--------|-------------|
-| `--force` / `-f` | Force regenerate all files even if they exist |
-| `--skip-install` | Skip running `npm install` / `go get` / etc. |
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Example",
-      language: "bash",
-      code: `poly-bench build
-poly-bench build --force
-poly-bench build --skip-install`
-    },
-  ]}
-/>
-
-#### `poly-bench add-runtime`
-
-Add a runtime to an existing project. Creates the runtime config in `polybench.toml` and the `.polybench/runtime-env/<lang>/` directory.
-
-| Option | Description |
-|--------|-------------|
-| `--system` | Install to `/usr/local` (system-wide, requires sudo) instead of user-local |
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Example",
-      language: "bash",
-      code: `poly-bench add-runtime zig
-poly-bench add-runtime zig --system
-# Adds Zig to the project; run poly-bench install afterward`
-    },
-  ]}
-/>
-
-#### `poly-bench plot`
-
-Generate charts from existing `out/results.json` without re-running benchmarks.
-
-| Option | Description |
-|--------|-------------|
-| `--results <PATH>` | Path to results JSON (default: `out/results.json`) |
-| `--output <DIR>` / `-o <DIR>` | Output directory for charts (default: `out/`) |
-| `--output-file <FILE>` | Output filename (required for direct chart subcommands) |
-| `--title <TITLE>` | Chart title |
-| `--suite <NAME>` | Filter to a specific suite |
-| `--y-scale <SCALE>` | Y-axis scale: `linear`, `log10`, `symlog`, `split` |
-| `--sort-by <KEY>` | Sort by: `speedup`, `name`, `time`, `ops` |
-| `--theme <THEME>` | Color theme: `dark` or `light` |
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Example",
-      language: "bash",
-      code: `# Use chart directives from a .bench file
-poly-bench plot from-file benchmarks/example.bench
-
-# Generate a bar chart directly (--output-file required)
-poly-bench plot bar-chart --output-file results.svg --title "Performance"
-
-# With custom results path and output dir
-poly-bench plot from-file --results out/results.json --output charts/`
-    },
-  ]}
-/>
-
----
-
-### 6. Run Benchmarks
-
-Execute your benchmark:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Terminal",
-      language: "bash",
-      code: `poly-bench run benchmarks/example.bench --output out/`
-    },
-  ]}
-/>
-
-You'll see output like:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Output",
-      language: "text",
-      code: `Running suite: bubbleN
-  Calibrating iterations...
-  Target time: 1000ms
-  
-  Running: n100
-    go:   1,234 ns/op (810,372 ops/s) ± 2.1%
-    ts:   15,678 ns/op (63,784 ops/s) ± 3.4%
-    rust: 987 ns/op (1,013,171 ops/s) ± 1.8%
-
-  Comparison (baseline: go):
-    rust: 1.25x faster
-    ts:   12.70x slower
-
-  ✓ Suite completed in 9.2s`
-    },
-  ]}
-/>
-
-Charts are written to the output directory (e.g. `out/bubble-line-linear.svg`).
-
----
-
-### 7. Configuration Options
-
-The suite configuration controls how benchmarks run. Run mode is set in the suite declaration (`timeBased` or `iterationBased`).
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `iterations` | Fixed iteration count (when `runMode: iterationBased`) | - |
-| `warmup` / `warmupIterations` | Warmup iterations before timing | 0 |
-| `warmupTime` | Warmup duration in ms (takes precedence over warmup) | - |
-| `targetTime` | Target time for calibration (when `runMode: timeBased`) | `3000ms` |
-| `count` | Runs per benchmark for statistics | 1 |
-| `baseline` | Language for comparison ratios | - |
-| `cvThreshold` | Coefficient of variation threshold (%) for stability | 5.0 |
-| `outlierDetection` | IQR-based outlier removal | true |
-| `fairness` | Fairness mode: `"strict"` or `"legacy"` | `"strict"` |
-| `suiteType: memory` | Enable memory profiling (in suite declaration) | — |
-
----
-
-## Reporting
-
-Output formats, chart generation, and CI integration for poly-bench results.
-
-### Overview
-
-poly-bench provides multiple output formats to fit different workflows: colorful console tables for development, markdown for documentation, JSON for CI pipelines, and SVG charts for visual comparisons.
-
-| Format | Use Case | Flag |
-|--------|----------|------|
-| Console | Development, quick iteration | (default) |
-| Markdown | Documentation, GitHub PRs | `--report markdown` |
-| JSON | CI/CD, automation, custom tooling | `--report json` |
-| SVG Charts | Visual comparison, presentations | Via `charting.*` directives |
-
-### Console Output
-
-The default console output provides a formatted, colored view of benchmark results:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Output",
-      language: "text",
-      code: `Running suite: keccak
-  Calibrating iterations...
-  Target time: 3000ms
-  Calibrated to: 2,430,000 iterations
-  
-  Running: keccak256Bench (run 1/3)
-    go:   1,234 ns/op (810,372 ops/s) ± 2.1%
-    ts:   15,678 ns/op (63,784 ops/s) ± 3.4%
-    rust: 987 ns/op (1,013,171 ops/s) ± 1.8%
-
-  Running: keccak256Bench (run 2/3)
-    go:   1,198 ns/op (834,725 ops/s) ± 1.9%
-    ts:   15,432 ns/op (64,800 ops/s) ± 2.8%
-    rust: 1,002 ns/op (998,004 ops/s) ± 2.0%
-
-  Running: keccak256Bench (run 3/3)
-    go:   1,215 ns/op (823,045 ops/s) ± 2.3%
-    ts:   15,890 ns/op (62,933 ops/s) ± 3.1%
-    rust: 991 ns/op (1,009,082 ops/s) ± 1.6%
-
-  ─────────────────────────────────────────────
-  Summary: keccak256Bench
-  ─────────────────────────────────────────────
-  
-  │ Lang │ Mean (ns/op) │ Std Dev │ Ops/s    │
-  ├──────┼──────────────┼─────────┼──────────┤
-  │ rust │ 993          │ ± 1.8%  │ 1,006,752│
-  │ go   │ 1,216        │ ± 2.1%  │ 822,714  │
-  │ ts   │ 15,667       │ ± 3.1%  │ 63,839   │
-
-  Comparison (baseline: go):
-    rust: 1.22x faster
-    ts:   12.88x slower
-
-  ✓ Suite completed in 9.2s`
-    },
-  ]}
-/>
-
-<Aside type="tip">
-<span>The console output is automatically colored when running in a terminal. Use <code>--color never</code> to force plain output for logs or piping.</span>
-</Aside>
-
-### Markdown Reports
-
-Generate markdown reports for documentation or GitHub pull requests:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Terminal",
-      language: "bash",
-      code: `poly-bench run benchmarks/keccak.bench --report markdown --output results/`
-    },
-  ]}
-/>
-
-This generates `results/benchmark-report.md`:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "benchmark-report.md",
-      language: "markdown",
-      code: `# Benchmark Report
-
-## Suite: keccak
-
-**Description:** Keccak256 hash benchmark
-
-**Configuration:**
-- Mode: auto (target: 3000ms)
-- Warmup: 1000 iterations
-- Runs: 3
-- Baseline: go
-
-### Results
-
-| Benchmark | Go (ns/op) | TS (ns/op) | Rust (ns/op) |
-|-----------|------------|------------|--------------|
-| keccak256Bench | 1,216 ± 2.1% | 15,667 ± 3.1% | 993 ± 1.8% |
-
-### Comparison
-
-| Benchmark | Go | TypeScript | Rust |
-|-----------|-----|------------|------|
-| keccak256Bench | baseline | 12.88x slower | 1.22x faster |
-
-### Statistics
-
-| Metric | Go | TypeScript | Rust |
-|--------|-----|------------|------|
-| Mean (ns/op) | 1,216 | 15,667 | 993 |
-| Ops/s | 822,714 | 63,839 | 1,006,752 |
-| Std Dev | ± 2.1% | ± 3.1% | ± 1.8% |
-
-*Generated by poly-bench v0.0.22*`
-    },
-  ]}
-/>
-
-### JSON Output
-
-For CI/CD pipelines and automation, output results as JSON:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Terminal",
-      language: "bash",
-      code: `poly-bench run benchmarks/keccak.bench --report json --output results/`
-    },
-  ]}
-/>
-
-This generates `results/benchmark-results.json`:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "benchmark-results.json",
-      language: "json",
-      code: `{
-  "version": "0.0.22",
-  "timestamp": "2024-01-15T10:30:00Z",
-  "suites": [
-    {
-      "name": "keccak",
-      "description": "Keccak256 hash benchmark",
-      "config": {
-        "mode": "auto",
-        "targetTime": 3000,
-        "warmup": 1000,
-        "count": 3,
-        "baseline": "go"
-      },
-      "benchmarks": [
-        {
-          "name": "keccak256Bench",
-          "results": {
-            "go": {
-              "meanNsPerOp": 1216,
-              "stdDev": 0.021,
-              "opsPerSec": 822714,
-              "runs": [1234, 1198, 1215],
-              "memory": null
-            },
-            "ts": {
-              "meanNsPerOp": 15667,
-              "stdDev": 0.031,
-              "opsPerSec": 63839,
-              "runs": [15678, 15432, 15890],
-              "memory": null
-            },
-            "rust": {
-              "meanNsPerOp": 993,
-              "stdDev": 0.018,
-              "opsPerSec": 1006752,
-              "runs": [987, 1002, 991],
-              "memory": null
-            }
-          },
-          "comparisons": {
-            "rust": { "ratio": 0.817, "label": "1.22x faster" },
-            "ts": { "ratio": 12.88, "label": "12.88x slower" }
-          }
-        }
-      ]
-    }
-  ]
-}`
-    },
-  ]}
-/>
-
-<Aside type="note">
-<span>JSON output is ideal for tracking performance regressions in CI. Parse the results and fail builds when performance degrades beyond a threshold.</span>
-</Aside>
-
-### SVG Chart Generation
-
-poly-bench can generate SVG charts directly from benchmark results using the `charting` standard library module.
-
-Add chart directives to your suite-level `after` block:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: ".bench",
-      language: "bench",
-      code: `use std::charting
-
-suite keccak {
-    // ... benchmark config and setup ...
-
-    bench keccak256Bench {
-        go: keccak256Go(data)
-        ts: keccak256Ts(data)
-        rust: keccak256_rust(&data)
-    }
-
-    after {
-        charting.drawTable(
-            title: "Keccak256 Performance",
-            output: "keccak-table.svg"
-        )
-    }
-}`
-    },
-  ]}
-/>
-
-Run with an output directory to generate the chart:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Terminal",
-      language: "bash",
-      code: `poly-bench run benchmarks/keccak.bench --output results/`
-    },
-  ]}
-/>
-
-This generates `results/keccak-table.svg`.
-
-### Available Chart Types
-
-| Directive | Description |
-|-----------|-------------|
-| `charting.drawTable(...)` | SVG results table for benchmark comparisons |
-| `charting.drawSpeedupChart(...)` | SVG speedup chart relative to a baseline benchmark |
-
-<Aside type="tip">
-<span>Charts are styled automatically with a clean, readable design. They work well in both light and dark documentation themes.</span>
-</Aside>
-
-### Comparison Tables
-
-Set `baseline` to specify a language for speedup/slowdown ratios. The comparison table appears automatically in the output:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: ".bench",
-      language: "bench",
-      code: `suite myBenchmarks {
-    baseline: "go"      // Use Go as the baseline (1.0x)
-    
-    // ... rest of suite
-}`
-    },
-  ]}
-/>
-
-The comparison shows speedup/slowdown ratios relative to the baseline:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Output",
-      language: "text",
-      code: `  Comparison (baseline: go):
-    rust: 1.22x faster
-    ts:   12.88x slower`
-    },
-  ]}
-/>
-
-### Statistical Options
-
-Control the statistical rigor of your benchmarks:
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `warmup` | Iterations before timing starts | 1000 |
-| `count` | Number of runs per benchmark | 1 |
-| `outlierDetection` | IQR-based outlier removal | true |
-| `cvThreshold` | Target coefficient of variation (%) | 5.0 |
-
-<CodeGroup 
-  tabs={[
-    {
-      title: ".bench",
-      language: "bench",
-      code: `suite rigorous {
-    warmup: 1000              // 1000 warmup iterations
-    count: 5                  // 5 runs per benchmark
-    outlierDetection: true    // Remove statistical outliers
-    cvThreshold: 5            // Stability target (coefficient of variation %)
-    
-    // ... rest of suite
-}`
-    },
-  ]}
-/>
-
-<Aside type="note">
-<span><code>cvThreshold</code> is used as the suite's stability target for benchmark variance analysis.</span>
-</Aside>
-
-### Memory Profiling
-
-Track memory allocations alongside timing (use `suiteType: memory` in the suite declaration):
-
-<CodeGroup 
-  tabs={[
-    {
-      title: ".bench",
-      language: "bench",
-      code: `suite withMemory {
-    // Use declare suite ... memory ... for memory profiling
-    
-    // ... rest of suite
-}`
-    },
-  ]}
-/>
-
-Memory results appear in the output:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: "Output",
-      language: "text",
-      code: `  Running: keccak256Bench
-    go:   1,234 ns/op (810,372 ops/s) ± 2.1%  |  96 B/op, 2 allocs/op
-    ts:   15,678 ns/op (63,784 ops/s) ± 3.4%  |  1,024 B/op
-    rust: 987 ns/op (1,013,171 ops/s) ± 1.8%  |  0 B/op, 0 allocs/op`
-    },
-  ]}
-/>
-
-### CI Integration
-
-Example GitHub Actions workflow for performance regression testing:
-
-<CodeGroup 
-  tabs={[
-    {
-      title: ".github/workflows/bench.yml",
-      language: "yaml",
-      code: `name: Benchmarks
-
-on:
-  pull_request:
-    branches: [main]
-
-jobs:
-  benchmark:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install poly-bench
-        run: cargo install poly-bench
-      
-      - name: Setup languages
-        run: |
-          # Go is pre-installed
-          # Node.js is pre-installed
-          rustup default stable
-      
-      - name: Install dependencies
-        run: poly-bench install
-      
-      - name: Run benchmarks
-        run: poly-bench run --report json --output results/
-      
-      - name: Upload results
-        uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-results
-          path: results/`
-    },
-  ]}
-/>
-
----
-
-### Next Steps
-
-- See [Features](/docs/features) for per-feature reference (suites, setup, benchmarks, fixtures)
-- See [Requirements and Runtimes](/docs/requirements) for per-language setup, dependencies, and gotchas
-- Learn about the [DSL Reference](/docs/core/dsl-reference) for full syntax documentation
-- Explore the [Standard Library](/docs/core/standard-library) for `std::anvil` and `std::charting`
-- See [Benchmark Features](/docs/examples) for fixtures, lifecycle hooks, and charting
-- Check out [CLI Reference](/docs/tools/cli) for all command options
-
-<Aside type="note">
-<span>Need help? Run <code>poly-bench --help</code> or <code>poly-bench run --help</code> for command-line documentation.</span>
-</Aside>
+| Section | Purpose |
+|---------|---------|
+| `[project]` | Project name and version |
+| `[defaults]` | Default iterations, warmup, and language list |
+| `[go]`, `[ts]`, `[rust]`, etc. | Language-specific settings (version, module path, etc.) |
+| `[go.dependencies]`, `[ts.dependencies]`, etc. | Dependencies for each runtime; `poly-bench add` updates these |
+| `[output]` | Output directory, report formats, auto-save behavior |
+
+## Next steps
+
+- [Platform Compatibility](/docs/platform-compatibility) — Default versions, toolchain paths, and dependencies
+- [Requirements](/docs/requirements) — Per-language setup and runtime details
+- [Suites](/docs/features/suites) — Full suite configuration reference
+- [Charting](/docs/guides/charting) — Chart types and options
+- [CLI Reference](/docs/tools/cli) — All command options

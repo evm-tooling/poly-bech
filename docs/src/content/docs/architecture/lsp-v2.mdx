@@ -1,0 +1,104 @@
+---
+title: LSP v2
+description: Technical deep-dive on the poly-bench Language Server Protocol implementation
+---
+
+<Aside type="caution">
+<span><strong>Docs in progress.</strong> Some content or features may be missing or not covered in detail.</span>
+</Aside>
+
+The `poly-bench-lsp-v2` crate implements the Language Server Protocol. It provides syntax highlighting, diagnostics, hover, formatting, and embedded language support for `.bench` files. This page covers the server architecture, Tree-sitter integration, and embedded code handling.
+
+---
+
+## Overview
+
+LSP v2 is a rewrite that improves on v1 with:
+
+- **Error-tolerant parsing** — Always produces a syntax tree, even with errors
+- **Incremental parsing** — Fast re-parsing on edits
+- **Full semantic token coverage** — All syntax elements highlighted
+- **Incremental formatting** — Small edits instead of whole-document replacement
+- **Better diagnostics** — Syntax errors from Tree-sitter + semantic validation
+- **Embedded language hover** — Full hover support for Go, TypeScript, Rust, and Python code
+
+---
+
+## Server Architecture
+
+The server (`poly-bench-lsp-v2/src/server.rs`) uses `tower-lsp` and implements:
+
+- **PolyBenchLanguageServer** — Main server struct with document store, embedded config, virtual file managers
+- **Document store** — `DashMap` of open documents by URI
+- **Workspace root** — Detected from workspace folders or initialized document
+
+Handlers:
+
+- **textDocument/didOpen**, **didChange**, **didSave** — Track document state, publish diagnostics
+- **textDocument/hover** — Hover for DSL and embedded code
+- **textDocument/semanticTokens/full** — Semantic highlighting
+- **textDocument/formatting** — Format entire document
+- **textDocument/rangeFormatting** — Format selection
+- **textDocument/completion** — Code completion (if implemented)
+
+---
+
+## Tree-sitter Integration
+
+The LSP uses `poly-bench-syntax` (Tree-sitter-based) for parsing:
+
+- **Error-tolerant** — Always returns a tree; parse errors become diagnostics
+- **Incremental** — Reuses unchanged subtrees on edit
+- **Queries** — `queries/highlights.scm` for semantic tokens
+
+This differs from `poly-bench-dsl` (used by CLI), which uses a different parser. The LSP prioritizes responsiveness and partial results over strict correctness.
+
+---
+
+## Diagnostics
+
+Diagnostics (`poly-bench-lsp-v2/src/diagnostics.rs`):
+
+- **Syntax errors** — From Tree-sitter parse failures
+- **Semantic validation** — Fixture references, setup completeness
+- **Embedded code** — Type-checked via virtual files (see below)
+
+On save, the LSP runs embedded code checks (Go, TypeScript, Rust, Python) and merges those diagnostics.
+
+---
+
+## Embedded Language Support
+
+Embedded code blocks (e.g. `setup go { ... }`) are supported via:
+
+- **Virtual files** — Extracted code is written to temp files and passed to language-specific tools
+- **VirtualFileManagers** — Per-language managers (gopls, typescript-language-server, rust-analyzer, pyright)
+- **Embedded diagnostics** — `check_embedded_code` runs type-checkers and maps errors back to source spans
+- **Embedded hover** — `get_hover` resolves hover for embedded code by delegating to the language server
+
+---
+
+## Semantic Tokens
+
+Semantic tokens (`poly-bench-lsp-v2/src/semantic_tokens.rs`):
+
+- **Legend** — Defines token types for the DSL (suite, bench, fixture, setup, etc.)
+- **Tree-sitter queries** — `captures` in `.scm` files map nodes to token types
+- **Embedded code** — Delegates to language servers for embedded blocks
+
+---
+
+## Formatter
+
+The formatter (`poly-bench-lsp-v2/src/formatter.rs`):
+
+- **Format document** — Full document or range
+- **Incremental** — Can format only changed regions
+
+---
+
+## Further Reading
+
+- [LSP / Editor](/docs/tools/lsp) — User-facing setup and configuration
+- [Architecture](/docs/architecture) — Pipeline overview
+- [DSL](/docs/architecture/dsl) — Parser and AST

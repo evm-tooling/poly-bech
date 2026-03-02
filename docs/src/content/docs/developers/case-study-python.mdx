@@ -3,6 +3,10 @@ title: Case Study — Python Runtime
 description: Step-by-step walkthrough of how the Python runtime was implemented
 ---
 
+<Aside type="caution">
+<span><strong>Docs in progress.</strong> Some content or features may be missing or not covered in detail.</span>
+</Aside>
+
 This case study walks through the Python runtime implementation, section by section. Python is a good reference because it has no compilation step — the executor writes a script and runs it directly. The same patterns apply to other runtimes: you add the language to the grammar, wire up manifest and build, implement the Runtime trait, and optionally add LSP support for editor diagnostics and hover.
 
 <Aside type="tip">

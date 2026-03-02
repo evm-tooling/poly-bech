@@ -1,0 +1,114 @@
+---
+title: Platform Compatibility
+description: Default language versions, toolchain installation, and per-language dependencies for poly-bench
+---
+
+
+poly-bench uses pinned language versions to ensure consistent benchmark results across machines. This page explains the default versions, how poly-bench resolves toolchains when your system has a different version, where custom binaries are installed, and the dependencies required for each language.
+
+---
+
+## Default Language Versions
+
+poly-bench targets specific versions for each supported runtime. The table below lists the pinned versions used when poly-bench installs a toolchain.
+
+| Language | Pinned Version | Minimum Compatible |
+|----------|----------------|--------------------|
+| **Go** | 1.24.0 | 1.21+ |
+| **TypeScript** (Node.js) | 22.11.0 | 22.0+ |
+| **Rust** | stable | 1.70+ |
+| **Python** | 3.12.0 | 3.8+ |
+| **C#** | .NET 8.0 | 8.0+ |
+| **Zig** | 0.15.2 | 0.15.2+ |
+| **C** | — | clang (manual install) |
+
+<Aside type="note">
+<span>C is the only runtime that cannot be auto-installed. You must install clang manually. See [C runtime requirements](/docs/requirements/c).</span>
+</Aside>
+
+---
+
+## Version Resolution
+
+### Compatible versions
+
+If you already have a language installed and its version meets the minimum requirement, poly-bench will use your existing binary. No separate installation is performed. For example, if you have Go 1.22 or Node.js 22.x on your PATH, poly-bench proceeds with that.
+
+### Incompatible or missing versions
+
+When the language is missing or the installed version is below the minimum, poly-bench can install its own toolchain. This binary is used **only by poly-bench** and does not replace or conflict with your system installation. Your global `go`, `node`, `python3`, etc. remain unchanged.
+
+During `poly-bench init`, you may be prompted to install a compatible version. If you accept, poly-bench downloads and installs the pinned version to a dedicated directory.
+
+---
+
+## Where poly-bench installs toolchains
+
+Custom toolchains are stored under a platform-specific base directory:
+
+| Platform | Base path |
+|----------|-----------|
+| **macOS** | `~/Library/Application Support/Polybench/` |
+| **Linux** | `~/.local/share/polybench/` |
+| **Windows** | `%LOCALAPPDATA%\Polybench\` |
+
+The full layout is:
+
+```
+<base>/toolchains/<lang>/<version>/<platform>/
+```
+
+For example, on macOS with Go 1.24.0:
+
+```
+~/Library/Application Support/Polybench/toolchains/go/1.24.0/darwin-arm64/go/bin/go
+```
+
+The binary for each language lives at a predictable path within that tree. poly-bench prefers this Polybench-managed installation over system PATH when resolving which binary to use.
+
+---
+
+## Language-specific dependencies
+
+Some runtimes require additional tools or packages on your system.
+
+### C Runtime
+
+The C runtime uses **vcpkg** and **CMake** when you add external dependencies (e.g. `poly-bench add --c openssl@3.2`). You need:
+
+- **vcpkg** — Set `VCPKG_ROOT` or `CMAKE_TOOLCHAIN_FILE` to your vcpkg installation
+- **CMake** — 3.20+ on PATH
+- **make** — On some systems, CMake uses `make` as the default generator. If builds fail, ensure `make` is installed:
+
+  - macOS: `xcode-select --install` or `brew install make`
+  - Debian/Ubuntu: `sudo apt install build-essential`
+
+With no C dependencies, poly-bench compiles with clang directly and does not use CMake.
+
+### Python Runtime
+
+poly-bench creates a virtual environment (`.venv`) in `.polybench/runtime-env/python/` using `python -m venv .venv`. All installs use the venv's pip, so dependencies stay isolated from your system Python.
+
+On **Debian/Ubuntu**, the `venv` module may not be installed by default. Install it:
+
+```bash
+sudo apt install python3-venv
+```
+
+Without `python3-venv`, creating the virtual environment will fail.
+
+### Other runtimes
+
+- **Go** — Uses `go.mod` and `go get`; no extra system dependencies.
+- **TypeScript** — Uses `npm install`; Node.js provides npm.
+- **Rust** — Uses Cargo; Rustup installs Rust and Cargo together.
+- **C#** — Uses `dotnet`; the .NET SDK includes everything needed.
+- **Zig** — Uses `zig` and `build.zig`; no extra system dependencies.
+
+---
+
+## Next steps
+
+- [Requirements](/docs/requirements) — Per-language setup guides and prerequisites
+- [Getting Started](/docs/getting-started) — Create your first benchmark
+- [Polybench Runtime](/docs/architecture/polybench-runtime) — How generated code is built and executed

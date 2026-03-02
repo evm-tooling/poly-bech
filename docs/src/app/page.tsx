@@ -436,13 +436,13 @@ export default function Home() {
               >
                 {/* .bench file */}
                 <div className="relative z-20 rounded-2xl overflow-hidden !border !border-border bg-code-bg shadow-xl dark:shadow-none">
-                  <div className="flex items-center gap-2 px-4 py-3 bg-background-elevated !border-b !border-border">
-                    <div className="flex gap-1.5">
-                      <span className="w-3 h-3 rounded-full bg-red-400" />
-                      <span className="w-3 h-3 rounded-full bg-amber-400" />
-                      <span className="w-3 h-3 rounded-full bg-emerald-400" />
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-background-elevated !border-b !border-border">
+                    <div className="flex gap-0.5">
+                      <span className="w-2 h-2 rounded-full bg-red-400" />
+                      <span className="w-2 h-2 rounded-full bg-amber-400" />
+                      <span className="w-2 h-2 rounded-full bg-emerald-400" />
                     </div>
-                    <span className="text-xs ml-2 font-mono text-foreground-muted">
+                    <span className="text-[11px] ml-1.5 font-mono text-foreground-muted">
                       keccak.bench
                     </span>
                   </div>
@@ -468,12 +468,12 @@ export default function Home() {
                 </div>
                 {/* Install terminal */}
                 <div className="relative z-20 rounded-2xl overflow-hidden !border !border-border bg-code-bg shadow-xl dark:shadow-none">
-                  <div className="flex items-center justify-between gap-2 px-4 py-1 bg-background-elevated !border-b !border-border">
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full bg-red-400" />
-                      <span className="w-3 h-3 rounded-full bg-amber-400" />
-                      <span className="w-3 h-3 rounded-full bg-emerald-400" />
-                      <span className="text-xs ml-2 font-mono text-foreground-muted">
+                  <div className="flex items-center justify-between gap-1.5 px-2.5 py-1.5 bg-background-elevated !border-b !border-border">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-red-400" />
+                      <span className="w-2 h-2 rounded-full bg-amber-400" />
+                      <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                      <span className="text-[11px] ml-1.5 font-mono text-foreground-muted">
                         Terminal
                       </span>
                     </div>

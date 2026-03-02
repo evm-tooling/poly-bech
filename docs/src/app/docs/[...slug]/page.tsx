@@ -1,7 +1,3 @@
-import { notFound } from 'next/navigation'
-import { MDXRemote } from 'next-mdx-remote/rsc'
-import { Suspense } from 'react'
-import remarkGfm from 'remark-gfm'
 import Aside from '@/components/Aside'
 import BenchmarkSlider from '@/components/BenchmarkSlider'
 import BenchmarkViewer from '@/components/BenchmarkViewer'
@@ -24,6 +20,10 @@ import {
   getDocLastModified,
 } from '@/lib/mdx'
 import { createDocsMetadata, getDocsPageJsonLd } from '@/lib/seo'
+import { MDXRemote } from 'next-mdx-remote/rsc'
+import { notFound } from 'next/navigation'
+import { Suspense } from 'react'
+import remarkGfm from 'remark-gfm'
 
 /** Generate a slug id from heading text (matches extractHeadings logic) */
 function slugify(text: string): string {
@@ -171,7 +171,7 @@ export default async function DocPage({ params }: PageProps) {
       />
       <div className="flex flex-col xl:flex-row gap-0">
         <TableOfContents headings={headings} />
-        <article className="xl:order-1 flex-1 min-w-0 max-w-[80ch]">
+        <article className="xl:order-1 flex-1 min-w-0 max-w-[85ch]">
           <h1 className="heading-1 mb-2">{doc.meta.title}</h1>
           {doc.meta.description && (
             <p className="text-lead mb-8">{doc.meta.description}</p>

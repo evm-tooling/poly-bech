@@ -888,9 +888,9 @@ small {
   & p {
     color: hsl(var(--foreground-secondary));
     font-size: var(--fs-body);
-    line-height: var(--lh-body);
+    line-height: 1.5;
     margin-top: 0;
-    margin-bottom: 1.25rem;
+    margin-bottom: 1.5rem;
   }
 
   & strong {
@@ -962,6 +962,11 @@ small {
     &::marker {
       color: hsl(var(--tertiary));
     }
+  }
+
+  & li > p {
+    margin-top: 0;
+    margin-bottom: 0.375rem;
   }
 
   & li > ul,
