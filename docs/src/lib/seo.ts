@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata } from 'next'
 
 /**
  * Site-wide SEO configuration for poly-bench documentation
