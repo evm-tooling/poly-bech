@@ -8,7 +8,7 @@ license = "MIT"
 [dependencies]
 tree-sitter = "0.26"
 tree-sitter-polybench = { path = "../poly-bench-grammar" }
-thiserror = "1.0"
+thiserror = "2.0"
 miette = { version = "7", features = ["fancy"] }
 
 [dev-dependencies]
