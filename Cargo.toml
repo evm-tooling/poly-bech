@@ -48,7 +48,7 @@ clap = { version = "4", features = ["derive"] }
 toml = "1.0"
 toml_edit = "0.22"
 colored = "2"
-tabled = "0.15"
+tabled = "0.20"
 async-trait = "0.1"
 tempfile = "3"
 which = "6"
