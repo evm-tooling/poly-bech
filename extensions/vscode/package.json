@@ -134,6 +134,6 @@
     "@types/node": "^25.3.2",
     "dotenv": "^16.4.5",
     "@types/vscode": "^1.74.0",
-    "typescript": "^5.3.0"
+    "typescript": "^6.0.2"
   }
 }
